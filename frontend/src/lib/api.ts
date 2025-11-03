@@ -23,9 +23,9 @@ async function apiRequest<T>(
   
   const token = await getAccessToken()
   
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...fetchOptions.headers,
+    ...(fetchOptions.headers as Record<string, string>),
   }
   
   if (token) {
@@ -51,48 +51,48 @@ async function apiRequest<T>(
 
 export const api = {
   projects: {
-    list: () => apiRequest('/projects'),
-    get: (id: string) => apiRequest(`/projects/${id}`),
-    create: (data: any) => apiRequest('/projects', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiRequest(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (id: string) => apiRequest(`/projects/${id}`, { method: 'DELETE' }),
+    list: () => apiRequest<any[]>('/projects'),
+    get: (id: string) => apiRequest<any>(`/projects/${id}`),
+    create: (data: any) => apiRequest<any>('/projects', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) => apiRequest<any>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => apiRequest<void>(`/projects/${id}`, { method: 'DELETE' }),
   },
   
   assets: {
-    list: (projectId: string) => apiRequest(`/assets?project_id=${projectId}`),
-    get: (id: string) => apiRequest(`/assets/${id}`),
-    delete: (id: string) => apiRequest(`/assets/${id}`, { method: 'DELETE' }),
+    list: (projectId: string) => apiRequest<any[]>(`/assets?project_id=${projectId}`),
+    get: (id: string) => apiRequest<any>(`/assets/${id}`),
+    delete: (id: string) => apiRequest<void>(`/assets/${id}`, { method: 'DELETE' }),
   },
   
   playlists: {
-    list: (projectId: string) => apiRequest(`/playlists?project_id=${projectId}`),
-    get: (id: string) => apiRequest(`/playlists/${id}`),
-    create: (data: any) => apiRequest('/playlists', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiRequest(`/playlists/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (id: string) => apiRequest(`/playlists/${id}`, { method: 'DELETE' }),
-    validate: (id: string) => apiRequest(`/playlists/${id}/validate`),
+    list: (projectId: string) => apiRequest<any[]>(`/playlists?project_id=${projectId}`),
+    get: (id: string) => apiRequest<any>(`/playlists/${id}`),
+    create: (data: any) => apiRequest<any>('/playlists', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) => apiRequest<any>(`/playlists/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => apiRequest<void>(`/playlists/${id}`, { method: 'DELETE' }),
+    validate: (id: string) => apiRequest<any>(`/playlists/${id}/validate`),
   },
   
   destinations: {
-    list: (projectId: string) => apiRequest(`/destinations?project_id=${projectId}`),
-    get: (id: string) => apiRequest(`/destinations/${id}`),
-    create: (data: any) => apiRequest('/destinations', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiRequest(`/destinations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (id: string) => apiRequest(`/destinations/${id}`, { method: 'DELETE' }),
+    list: (projectId: string) => apiRequest<any[]>(`/destinations?project_id=${projectId}`),
+    get: (id: string) => apiRequest<any>(`/destinations/${id}`),
+    create: (data: any) => apiRequest<any>('/destinations', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) => apiRequest<any>(`/destinations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => apiRequest<void>(`/destinations/${id}`, { method: 'DELETE' }),
   },
   
   streams: {
-    list: (projectId: string) => apiRequest(`/streams?project_id=${projectId}`),
-    get: (id: string) => apiRequest(`/streams/${id}`),
-    create: (data: any) => apiRequest('/streams', { method: 'POST', body: JSON.stringify(data) }),
-    delete: (id: string) => apiRequest(`/streams/${id}`, { method: 'DELETE' }),
-    start: (id: string) => apiRequest(`/streams/${id}/start`, { method: 'POST' }),
-    stop: (id: string) => apiRequest(`/streams/${id}/stop`, { method: 'POST' }),
-    status: (id: string) => apiRequest(`/streams/${id}/status`),
-    logs: (id: string, lines?: number) => apiRequest(`/streams/${id}/logs`, { params: { lines: lines || 100 } }),
+    list: (projectId: string) => apiRequest<any[]>(`/streams?project_id=${projectId}`),
+    get: (id: string) => apiRequest<any>(`/streams/${id}`),
+    create: (data: any) => apiRequest<any>('/streams', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id: string) => apiRequest<void>(`/streams/${id}`, { method: 'DELETE' }),
+    start: (id: string) => apiRequest<any>(`/streams/${id}/start`, { method: 'POST' }),
+    stop: (id: string) => apiRequest<any>(`/streams/${id}/stop`, { method: 'POST' }),
+    status: (id: string) => apiRequest<any>(`/streams/${id}/status`),
+    logs: (id: string, lines?: number) => apiRequest<string>(`/streams/${id}/logs`, { params: { lines: lines || 100 } }),
   },
   
   metrics: {
-    get: () => apiRequest('/metrics'),
+    get: () => apiRequest<any>('/metrics'),
   },
 }

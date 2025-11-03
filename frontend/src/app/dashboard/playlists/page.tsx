@@ -54,7 +54,7 @@ export default function PlaylistsPage() {
   const { data: assets } = useQuery({
     queryKey: ['assets', projectId],
     queryFn: () => api.assets.list(projectId),
-    enabled: !!projectId && (showCreate || editingId),
+    enabled: !!projectId && (showCreate || !!editingId),
   })
 
   const createMutation = useMutation({

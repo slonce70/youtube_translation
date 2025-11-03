@@ -74,11 +74,13 @@ export default function AssetsPage() {
     })
 
     uppyInstance.on('complete', (result) => {
-      if (result.successful.length > 0) {
+      if (result.successful && result.successful.length > 0) {
         setTimeout(() => {
           queryClient.invalidateQueries({ queryKey: ['assets', projectId] })
           setShowUpload(false)
-          uppyInstance.reset()
+          if ('reset' in uppyInstance) {
+            (uppyInstance as any).reset()
+          }
         }, 2000)
       }
     })
@@ -86,7 +88,9 @@ export default function AssetsPage() {
     setUppy(uppyInstance)
 
     return () => {
-      uppyInstance.close()
+      if ('close' in uppyInstance) {
+        (uppyInstance as any).close()
+      }
     }
   }, [user, projectId, queryClient])
 
