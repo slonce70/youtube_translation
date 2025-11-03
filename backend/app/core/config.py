@@ -17,13 +17,10 @@ class Settings(BaseSettings):
     # Supabase
     supabase_url: str
     supabase_key: str
-    supabase_service_key: str
-
-    # Database
-    database_url: str
+    supabase_jwt_secret: str
 
     # Security
-    secret_key: str
+    encryption_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
 
