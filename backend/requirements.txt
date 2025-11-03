@@ -10,11 +10,14 @@ orjson==3.10.7
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 supabase==2.9.0
-asyncpg==0.29.0
 
 # Database
-sqlalchemy==2.0.35
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.29.0
 alembic==1.14.0
+
+# Security/Encryption
+cryptography==43.0.0
 
 # Monitoring (optional)
 sentry-sdk[fastapi]==2.17.0

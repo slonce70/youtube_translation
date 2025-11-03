@@ -68,3 +68,4 @@ Thumbs.db
 *.pem
 *.key
 stream_keys.txt
+backend/.env.example
