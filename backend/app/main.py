@@ -4,7 +4,7 @@ from fastapi.responses import ORJSONResponse
 import logging
 
 from app.core.config import settings
-from app.api.routes import auth, assets, playlists, destinations, streams
+from app.api.routes import auth, assets, playlists, destinations, streams, projects, metrics
 
 # Configure logging
 logging.basicConfig(
@@ -32,10 +32,12 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(projects.router, prefix="/api", tags=["projects"])
 app.include_router(assets.router, prefix="/api/assets", tags=["assets"])
 app.include_router(playlists.router, prefix="/api/playlists", tags=["playlists"])
 app.include_router(destinations.router, prefix="/api/destinations", tags=["destinations"])
 app.include_router(streams.router, prefix="/api/streams", tags=["streams"])
+app.include_router(metrics.router, prefix="/api", tags=["metrics"])
 
 
 @app.on_event("startup")
