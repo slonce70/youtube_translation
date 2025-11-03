@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: youtube-streaming-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../backend/uploads:/app/uploads
+      - ../backend/streams:/app/streams
+      - ../backend/logs:/app/logs
+    env_file:
+      - ../backend/.env
+    restart: unless-stopped
+    networks:
+      - app-network
+    depends_on:
+      - tusd
+
+  # tusd (Resumable uploads)
+  tusd:
+    image: tusproject/tusd:latest
+    container_name: youtube-streaming-tusd
+    command: -dir /data -hooks-http http://backend:8000/api/assets/upload-complete
+    ports:
+      - "1080:1080"
+    volumes:
+      - tusd-data:/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Caddy (Reverse proxy with auto HTTPS)
+  caddy:
+    image: caddy:2-alpine
+    container_name: youtube-streaming-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+    networks:
+      - app-network
+    depends_on:
+      - backend
+
+  # Frontend (Next.js) - Optional in docker-compose
+  # Can be deployed separately on Vercel
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: youtube-streaming-frontend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../frontend/.env.local
+    restart: unless-stopped
+    networks:
+      - app-network
+    depends_on:
+      - backend
+
+volumes:
+  tusd-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  app-network:
+    driver: bridge

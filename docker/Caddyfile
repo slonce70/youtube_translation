@@ -1,0 +1,50 @@
+# Production Caddyfile
+# Replace yourdomain.com with your actual domain
+
+yourdomain.com {
+    # Frontend
+    handle / {
+        reverse_proxy frontend:3000
+    }
+
+    # Backend API
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # tusd upload endpoint
+    handle /uploads/* {
+        reverse_proxy tusd:1080
+    }
+
+    # Enable compression
+    encode gzip
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+    }
+
+    # Logs
+    log {
+        output file /var/log/caddy/access.log
+    }
+}
+
+# Development Caddyfile (localhost)
+:80 {
+    handle / {
+        reverse_proxy frontend:3000
+    }
+
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /uploads/* {
+        reverse_proxy tusd:1080
+    }
+}
