@@ -22,7 +22,7 @@ class StreamKeyEncryption:
             iterations=100000,
             backend=default_backend()
         )
-        key = base64.urlsafe_b64encode(kdf.derive(settings.secret_key.encode()))
+        key = base64.urlsafe_b64encode(kdf.derive(settings.encryption_key.encode()))
         self.cipher = Fernet(key)
     
     def encrypt(self, stream_key: str) -> str:
