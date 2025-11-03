@@ -59,59 +59,107 @@
 
 ---
 
-## 🚧 В Розробці (Phase 1 - Core Features)
+## ✅ Backend Complete (Phase 1 - Backend API)
 
-### Phase 1.1: Database & Models (Not Started)
-- [ ] Supabase project setup
-- [ ] Database schema SQL migrations
-- [ ] SQLAlchemy models (projects, assets, playlists, destinations, streams)
-- [ ] RLS policies implementation
-- [ ] Alembic migrations setup
+### Phase 1.1: Database & Models ✅
+- [x] Supabase project setup guide
+- [x] Database schema SQL migrations (001_initial_schema.sql)
+- [x] SQLAlchemy models (projects, assets, playlists, destinations, streams)
+- [x] RLS policies implementation (002_row_level_security.sql)
+- [x] Pydantic schemas for validation
 
-### Phase 1.2: Authentication (Not Started)
-- [ ] Supabase Auth integration в backend
-- [ ] JWT token validation middleware
-- [ ] Current user dependency
-- [ ] Frontend Supabase client
-- [ ] Login/Signup UI components
+### Phase 1.2: Authentication ✅
+- [x] Supabase Auth integration в backend
+- [x] JWT token validation middleware
+- [x] Current user dependency (app/api/deps.py)
+- [x] Stream key encryption/decryption (Fernet)
+- [x] Security utilities (app/core/security.py)
 
-### Phase 1.3: Assets Management (Not Started)
-- [ ] tusd webhook handler
-- [ ] Asset CRUD operations
-- [ ] File validation on upload
-- [ ] Metadata storage
-- [ ] Frontend upload component (Uppy)
-- [ ] Assets list UI
+### Phase 1.3: Assets Management ✅
+- [x] tusd webhook handler
+- [x] Asset CRUD operations
+- [x] File validation on upload (FFprobe integration)
+- [x] Metadata storage (H.264, AAC, yuv420p checking)
+- [x] Compatibility validation
 
-### Phase 1.4: Playlists (Not Started)
-- [ ] Playlist CRUD operations
-- [ ] Validation of asset compatibility
-- [ ] Playlist items ordering
-- [ ] Frontend drag-n-drop editor
-- [ ] Playlist preview
+### Phase 1.4: Playlists ✅
+- [x] Playlist CRUD operations
+- [x] Validation of asset compatibility
+- [x] Playlist items ordering (drag-n-drop support)
+- [x] Playlist validation endpoint
+- [x] Nested items management
 
-### Phase 1.5: Destinations (Not Started)
-- [ ] Destination CRUD operations
-- [ ] Stream key encryption/decryption
-- [ ] RTMPS URL validation
-- [ ] Frontend destination manager
-- [ ] Key masking in UI
+### Phase 1.5: Destinations ✅
+- [x] Destination CRUD operations
+- [x] Stream key encryption/decryption
+- [x] RTMPS URL validation
+- [x] Key masking in responses
+- [x] Automatic encryption on create/update
 
-### Phase 1.6: Streaming (Not Started)
-- [ ] Stream CRUD operations
-- [ ] Start/stop stream implementation
-- [ ] Log parsing and streaming (SSE)
-- [ ] Status monitoring
-- [ ] Frontend stream control UI
-- [ ] Real-time logs viewer
-- [ ] Stream cards component
+### Phase 1.6: Streaming ✅
+- [x] Stream CRUD operations
+- [x] Start/stop stream implementation
+- [x] FFmpeg process management
+- [x] Status monitoring with uptime tracking
+- [x] Log file access (last N lines)
+- [x] Multi-destination streaming (tee muxer)
+- [x] Automatic recovery (FIFO muxer)
+- [x] Graceful shutdown
 
-### Phase 1.7: Dashboard (Not Started)
-- [ ] System metrics endpoint (psutil)
-- [ ] Capacity estimation
-- [ ] Active streams overview
-- [ ] Frontend dashboard UI
+### Phase 1.7: Projects & Metrics ✅
+- [x] Projects CRUD operations
+- [x] System metrics endpoint (psutil)
+- [x] Capacity estimation algorithm
+- [x] Active streams overview
+- [x] CPU, RAM, disk, network monitoring
+- [x] Stream count by status
+
+---
+
+## 🚧 В Розробці (Phase 2 - Frontend)
+
+### Phase 2.1: Frontend Foundation (Not Started)
+- [ ] Next.js pages structure (app router)
+- [ ] Supabase client setup
+- [ ] API client with TanStack Query
+- [ ] Authentication pages (login/signup)
+- [ ] Protected routes middleware
+
+### Phase 2.2: Dashboard (Not Started)
+- [ ] Dashboard layout
 - [ ] Metrics visualization
+- [ ] Active streams cards
+- [ ] System status indicators
+- [ ] Quick actions menu
+
+### Phase 2.3: Assets UI (Not Started)
+- [ ] Upload component (Uppy + tus)
+- [ ] Assets list with filters
+- [ ] Compatibility badges
+- [ ] Asset details view
+- [ ] Delete confirmation
+
+### Phase 2.4: Playlists UI (Not Started)
+- [ ] Playlist list view
+- [ ] Drag-n-drop editor
+- [ ] Asset picker modal
+- [ ] Playlist validation display
+- [ ] Loop toggle
+
+### Phase 2.5: Destinations UI (Not Started)
+- [ ] Destinations list
+- [ ] Add/Edit destination form
+- [ ] Stream key masking
+- [ ] Enable/disable toggle
+- [ ] Delete confirmation
+
+### Phase 2.6: Streams UI (Not Started)
+- [ ] Stream control panel
+- [ ] Start/stop buttons
+- [ ] Status display with uptime
+- [ ] Log viewer with auto-refresh
+- [ ] Multi-destination selection
+- [ ] Stream configuration form
 
 ---
 
@@ -143,12 +191,12 @@
 ## 🎯 Поточний Фокус
 
 **Зараз:** Backend API ПОВНІСТЮ готовий! ✅ 🎉
-**Далі:** Frontend implementation або додаткові endpoints (metrics, projects)
+**Далі:** Frontend implementation (Next.js + React 19)
 
 ## 📊 Загальний Прогрес
 
 - **Phase 0 (Setup):** 100% ✅
-- **Phase 1 (Backend API):** 95% ✅
+- **Phase 1 (Backend API):** 100% ✅
   - Database & Models: 100% ✅
   - Auth & Security: 100% ✅
   - Assets API: 100% ✅
@@ -156,21 +204,21 @@
   - Destinations API: 100% ✅
   - Streams API: 100% ✅
   - Streaming Engine: 100% ✅
-  - Projects API: 0% (optional)
-  - Metrics API: 0% (optional)
+  - Projects API: 100% ✅
+  - Metrics API: 100% ✅
 - **Phase 2 (Frontend):** 5% 🚧
 - **Phase 3 (Testing):** 0% ⏳
 - **Phase 4 (Deployment):** 0% ⏳
 
-**Загальний прогрес проекту:** ~65%
+**Загальний прогрес проекту:** ~70%
 
 ---
 
 ## 🕐 Оцінка Часу
 
-- **Витрачено:** ~8 годин (Backend повністю готовий!)
-- **Залишилось:** ~4-6 годин для MVP (тільки frontend)
-- **ETA MVP:** 4-6 годин чистого часу
+- **Витрачено:** ~9 годин (Backend 100% готовий!)
+- **Залишилось:** ~4-5 годин для MVP (frontend implementation)
+- **ETA MVP:** 4-5 годин чистого часу
 
 ## 📝 Нотатки
 
@@ -192,4 +240,4 @@ Droid Shield блокує commit файлів:
 
 ---
 
-_Останнє оновлення: 2025-11-03 23:35_
+_Останнє оновлення: 2025-11-04 00:15_
