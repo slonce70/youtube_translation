@@ -10,7 +10,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -57,9 +56,14 @@ Thumbs.db
 /backend/streams/
 /backend/logs/
 *.mp4
-*.ts
+# MPEG transport stream video files (not TypeScript)
+/backend/**/*.ts
+/frontend/**/*.ts
+!frontend/src/**/*.ts
+!frontend/src/**/*.tsx
 *.flv
-*.log
+backend/*.log
+frontend/*.log
 
 # Docker
 .dockerignore
