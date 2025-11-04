@@ -180,8 +180,8 @@ SUPABASE_JWT_SECRET=xxx
 ENCRYPTION_KEY=your-32-character-secret-key-here
 
 # Paths
-UPLOAD_DIR=/app/uploads
-STREAM_DIR=/app/streams
+UPLOAD_DIR=./uploads
+STREAM_DIR=./streams
 
 # FFmpeg
 FFMPEG_BIN=/usr/bin/ffmpeg
@@ -193,7 +193,7 @@ FFPROBE_BIN=/usr/bin/ffprobe
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJxxx...
 NEXT_PUBLIC_API_URL=http://localhost:8000/api
-NEXT_PUBLIC_TUSD_URL=http://localhost:8080
+NEXT_PUBLIC_TUSD_URL=http://localhost:1080
 ```
 
 ### 4. Start Services
@@ -206,7 +206,7 @@ Services will be available at:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
-- tusd Upload: http://localhost:8080
+- tusd Upload: http://localhost:1080
 
 ### 5. First Time Setup
 1. Navigate to http://localhost:3000

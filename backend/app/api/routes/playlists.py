@@ -7,9 +7,10 @@ from uuid import UUID
 import logging
 
 from app.api.deps import require_user
-from app.models.database import Playlist, PlaylistItem, Project, Asset
+from app.models.database import Playlist, PlaylistItem, Asset
 from app.schemas.api import PlaylistResponse, PlaylistCreate, PlaylistUpdate
 from app.streaming.playlist_builder import PlaylistBuilder
+from app.core.quota import QuotaEnforcer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -17,7 +18,6 @@ router = APIRouter()
 
 @router.get("/", response_model=List[PlaylistResponse])
 async def list_playlists(
-    project_id: UUID = None,
     user_deps: tuple = Depends(require_user)
 ):
     """List all playlists for current user"""
@@ -26,13 +26,9 @@ async def list_playlists(
     try:
         query = (
             select(Playlist)
-            .join(Project)
-            .where(Project.user_id == user_id)
+            .where(Playlist.user_id == user_id)
             .options(selectinload(Playlist.items))
         )
-        
-        if project_id:
-            query = query.where(Playlist.project_id == project_id)
         
         result = await db.execute(query)
         playlists = result.scalars().all()
@@ -56,23 +52,13 @@ async def create_playlist(
     db, user_id = user_deps
     
     try:
-        # Verify project belongs to user
-        project_query = select(Project).where(
-            Project.id == playlist_data.project_id,
-            Project.user_id == user_id
-        )
-        result = await db.execute(project_query)
-        project = result.scalar_one_or_none()
-        
-        if not project:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
-            )
+        # Check quota for playlists
+        enforcer = QuotaEnforcer(db, user_id)
+        await enforcer.check_playlists_limit()
         
         # Create playlist
         playlist = Playlist(
-            project_id=playlist_data.project_id,
+            user_id=user_id,
             name=playlist_data.name,
             description=playlist_data.description,
             loop=playlist_data.loop
@@ -83,10 +69,10 @@ async def create_playlist(
         
         # Add playlist items
         for item_data in playlist_data.items:
-            # Verify asset belongs to same project
+            # Verify asset belongs to same user
             asset_query = select(Asset).where(
                 Asset.id == item_data.asset_id,
-                Asset.project_id == playlist_data.project_id
+                Asset.user_id == user_id
             )
             asset_result = await db.execute(asset_query)
             asset = asset_result.scalar_one_or_none()
@@ -94,7 +80,7 @@ async def create_playlist(
             if not asset:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Asset {item_data.asset_id} not found in project"
+                    detail=f"Asset {item_data.asset_id} not found"
                 )
             
             item = PlaylistItem(
@@ -136,10 +122,9 @@ async def get_playlist(
     try:
         query = (
             select(Playlist)
-            .join(Project)
             .where(
                 Playlist.id == playlist_id,
-                Project.user_id == user_id
+                Playlist.user_id == user_id
             )
             .options(selectinload(Playlist.items))
         )
@@ -176,9 +161,9 @@ async def update_playlist(
     
     try:
         # Get playlist
-        query = select(Playlist).join(Project).where(
+        query = select(Playlist).where(
             Playlist.id == playlist_id,
-            Project.user_id == user_id
+            Playlist.user_id == user_id
         )
         result = await db.execute(query)
         playlist = result.scalar_one_or_none()
@@ -223,9 +208,9 @@ async def delete_playlist(
     
     try:
         # Verify ownership
-        query = select(Playlist).join(Project).where(
+        query = select(Playlist).where(
             Playlist.id == playlist_id,
-            Project.user_id == user_id
+            Playlist.user_id == user_id
         )
         result = await db.execute(query)
         playlist = result.scalar_one_or_none()
@@ -268,10 +253,9 @@ async def validate_playlist(
         # Get playlist with items and assets
         query = (
             select(Playlist)
-            .join(Project)
             .where(
                 Playlist.id == playlist_id,
-                Project.user_id == user_id
+                Playlist.user_id == user_id
             )
             .options(
                 selectinload(Playlist.items).selectinload(PlaylistItem.asset)

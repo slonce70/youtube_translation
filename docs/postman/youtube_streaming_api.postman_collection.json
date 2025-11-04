@@ -1,0 +1,410 @@
+{
+  "info": {
+    "name": "YouTube Multi-Channel Streaming API",
+    "_postman_id": "3df2f1a8-0f80-4bf0-8c58-3e92a4af42fa",
+    "description": "Postman collection generated on November 4, 2025 for exercising the FastAPI backend.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "supabase_token",
+      "value": "{{YOUR_SUPABASE_BEARER}}"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (501 placeholder)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@example.com\",\n  \"password\": \"secret\"\n}"
+            },
+            "url": "{{base_url}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Get Current User (501 placeholder)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quota",
+      "item": [
+        {
+          "name": "Internal tusd Quota Check",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tusd-Signature",
+                "value": "{{tusd_signature}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"00000000-0000-0000-0000-000000000000\",\n  \"file_size\": 104857600\n}"
+            },
+            "url": "{{base_url}}/api/internal/check-quota"
+          }
+        },
+        {
+          "name": "Get User Quota",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/quota?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "quota"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Assets",
+      "item": [
+        {
+          "name": "List Assets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/assets/"
+          }
+        },
+        {
+          "name": "Create Asset Record",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"demo.mp4\",\n  \"storage_path\": \"/app/uploads/demo.mp4\",\n  \"size_bytes\": 123456789\n}"
+            },
+            "url": "{{base_url}}/api/assets/"
+          }
+        },
+        {
+          "name": "Get Asset",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/assets/{{asset_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Playlists",
+      "item": [
+        {
+          "name": "List Playlists",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/playlists/"
+          }
+        },
+        {
+          "name": "Create Playlist",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Playlist\",\n  \"description\": \"Autogenerated example\",\n  \"loop\": true,\n  \"items\": [\n    {\n      \"asset_id\": \"{{asset_id}}\",\n      \"position\": 1\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/api/playlists/"
+          }
+        },
+        {
+          "name": "Validate Playlist",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/playlists/{{playlist_id}}/validate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Destinations",
+      "item": [
+        {
+          "name": "List Destinations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/destinations/"
+          }
+        },
+        {
+          "name": "Create Destination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"YouTube Primary\",\n  \"rtmps_url\": \"rtmps://a.rtmp.youtube.com/live2\",\n  \"stream_key\": \"abcd-efgh\",\n  \"enabled\": true\n}"
+            },
+            "url": "{{base_url}}/api/destinations/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Streams",
+      "item": [
+        {
+          "name": "List Streams",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/streams/"
+          }
+        },
+        {
+          "name": "Create Stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Stream\",\n  \"playlist_id\": \"{{playlist_id}}\",\n  \"destination_ids\": [\n    \"{{destination_id}}\"\n  ]\n}"
+            },
+            "url": "{{base_url}}/api/streams/"
+          }
+        },
+        {
+          "name": "Start Stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/streams/{{stream_id}}/start"
+          }
+        },
+        {
+          "name": "Stream Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/streams/{{stream_id}}/status"
+          }
+        },
+        {
+          "name": "Stream Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/streams/{{stream_id}}/logs?lines=200",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "streams",
+                "{{stream_id}}",
+                "logs"
+              ],
+              "query": [
+                {
+                  "key": "lines",
+                  "value": "200"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Verify Admin Access",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/admin/access"
+          }
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/admin/users"
+          }
+        },
+        {
+          "name": "Force Stop Stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/admin/streams/{{stream_id}}/stop"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Metrics",
+      "item": [
+        {
+          "name": "Get Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supabase_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/metrics/"
+          }
+        }
+      ]
+    }
+  ]
+}
+

@@ -1,38 +1,42 @@
-from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Body
+from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import List
 from pathlib import Path
+import asyncio
+import json
 from uuid import UUID
 import logging
 
 from app.api.deps import require_user
-from app.models.database import Asset, Project
+from app.models.database import Asset
 from app.schemas.api import AssetResponse, AssetCreate
 from app.streaming.validator import VideoValidator
 from app.core.config import settings
+from app.core.database import get_db
+from app.core.quota import QuotaEnforcer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Initialize validator
-validator = VideoValidator(settings.ffprobe_bin)
+try:
+    validator = VideoValidator(settings.ffprobe_bin)
+except FileNotFoundError as exc:
+    logger.error("FFprobe binary not available: %s", exc)
+    validator = None
 
 
 @router.get("/", response_model=List[AssetResponse])
 async def list_assets(
-    project_id: UUID = None,
     user_deps: tuple = Depends(require_user)
 ):
     """List all video assets for current user"""
     db, user_id = user_deps
     
     try:
-        # Build query
-        query = select(Asset).join(Project).where(Project.user_id == user_id)
-        
-        if project_id:
-            query = query.where(Asset.project_id == project_id)
+        # Build query - filter by user_id directly
+        query = select(Asset).where(Asset.user_id == user_id)
         
         result = await db.execute(query)
         assets = result.scalars().all()
@@ -40,10 +44,10 @@ async def list_assets(
         return assets
         
     except Exception as e:
-        logger.error(f"Error listing assets: {e}")
+        logger.exception(f"Error listing assets: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list assets"
+            detail=f"Failed to list assets: {str(e)}"
         )
 
 
@@ -60,23 +64,13 @@ async def create_asset(
     db, user_id = user_deps
     
     try:
-        # Verify project belongs to user
-        project_query = select(Project).where(
-            Project.id == asset_data.project_id,
-            Project.user_id == user_id
-        )
-        result = await db.execute(project_query)
-        project = result.scalar_one_or_none()
+        # Check quota for assets
+        enforcer = QuotaEnforcer(db, user_id)
+        await enforcer.check_assets_limit()
         
-        if not project:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
-            )
-        
-        # Create asset record
+        # Create asset record - directly for user_id
         asset = Asset(
-            project_id=asset_data.project_id,
+            user_id=user_id,
             filename=asset_data.filename,
             storage_path=asset_data.storage_path,
             size_bytes=asset_data.size_bytes,
@@ -98,60 +92,243 @@ async def create_asset(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error creating asset: {e}")
+        logger.exception(f"Error creating asset: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create asset"
+            detail=f"Failed to create asset: {str(e)}"
         )
 
 
 @router.post("/upload-complete")
 async def handle_upload_complete(
-    upload_data: dict = Body(...),
-    background_tasks: BackgroundTasks = None
+    request: Request,
+    background_tasks: BackgroundTasks = None,
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Webhook handler called by tusd when upload completes.
     Validates the file and creates asset record.
     """
     try:
-        file_path = Path(upload_data.get("Storage", {}).get("Path", ""))
-        
-        if not file_path.exists():
+        try:
+            upload_data = await request.json()
+        except Exception as parse_error:
+            raw_body = await request.body()
+            logger.error(
+                "Invalid webhook payload from tusd: %s (%s)", raw_body[:500], parse_error
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid tusd webhook payload",
+            )
+
+        event_block = upload_data.get("Event") or {}
+        event_type = upload_data.get("Type") or event_block.get("Type")
+        upload_meta = (
+            upload_data.get("Upload")
+            or event_block.get("Upload")
+            or {}
+        )
+        upload_id = upload_meta.get("ID")
+
+        if event_type and event_type != "post-finish":
+            logger.debug(
+                "Skipping tusd hook event '%s' for upload %s",
+                event_type,
+                upload_id,
+            )
+            return {"success": True, "skipped": True, "event": event_type}
+
+        if not upload_meta:
+            logger.warning("Missing upload metadata in tusd payload: %s", upload_data)
+            return {"success": True, "skipped": True, "reason": "missing_upload"}
+
+        storage_payload = (
+            upload_data.get("Storage")
+            or upload_meta.get("Storage")
+            or event_block.get("Upload", {}).get("Storage")
+            or {}
+        )
+        raw_path = storage_payload.get("Path")
+
+        async def resolve_file_path() -> Path | None:
+            def resolve_path(path_value: str | None) -> Path | None:
+                if not path_value:
+                    return None
+                candidate = Path(path_value)
+                return candidate if candidate.exists() else None
+
+            file_candidate = resolve_path(raw_path)
+
+            if not file_candidate or not file_candidate.is_file():
+                info_path = resolve_path(storage_payload.get("InfoPath"))
+                if info_path and info_path.is_file():
+                    try:
+                        info_data = json.loads(info_path.read_text(encoding="utf-8"))
+                        raw_storage_path = (
+                            info_data.get("Storage", {}).get("Path")
+                            or info_data.get("storage", {}).get("path")
+                        )
+                        candidate = resolve_path(raw_storage_path)
+                        if candidate and candidate.is_file():
+                            file_candidate = candidate
+                        elif info_data.get("ID"):
+                            fallback = Path(settings.upload_dir) / info_data["ID"]
+                            if fallback.exists():
+                                file_candidate = fallback
+                    except Exception as info_error:
+                        logger.warning(
+                            "Failed to parse tusd info file %s: %s",
+                            info_path,
+                            info_error,
+                        )
+
+            if (not file_candidate or not file_candidate.is_file()) and upload_id:
+                fallback = Path(settings.upload_dir) / upload_id
+                if fallback.exists():
+                    file_candidate = fallback
+
+            return file_candidate if file_candidate and file_candidate.is_file() else None
+
+        file_path: Path | None = None
+        for attempt in range(6):
+            file_path = await resolve_file_path()
+            if file_path:
+                break
+            await asyncio.sleep(0.5)
+
+        if not file_path:
+            logger.error(
+                "Upload file not found after retries: id=%s storage=%s", upload_id, storage_payload
+            )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Uploaded file not found"
+                detail="Uploaded file not found on disk",
             )
-        
+
         logger.info(f"Processing upload: {file_path}")
-        
-        # Validate file with ffprobe
-        validation_result = await validator.validate_file(file_path)
-        
-        # Extract metadata
-        meta = validation_result.get("meta", {})
-        stream_info = validator.get_stream_info(meta)
-        
-        # Get file size
+
+        upload_root = Path(settings.upload_dir).resolve()
+        resolved_path = file_path.resolve()
+        if upload_root not in resolved_path.parents and resolved_path != upload_root:
+            logger.error(
+                "Detected upload outside of permitted directory: %s (root=%s)",
+                resolved_path,
+                upload_root,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid upload path detected"
+            )
+
+        # Get file size early for fallbacks
         size_bytes = file_path.stat().st_size
+
+        if validator is None:
+            validation_result = {
+                "compatible_for_copy": False,
+                "meta": {},
+                "validation_errors": [
+                    "ffprobe is not available on the server. Install FFmpeg or set FFPROBE_BIN."
+                ],
+            }
+            stream_info = {
+                "duration": 0,
+                "size_bytes": size_bytes,
+                "bitrate": 0,
+            }
+        else:
+            validation_result = await validator.validate_file(file_path)
+            meta = validation_result.get("meta", {})
+            stream_info = validator.get_stream_info(meta)
+
+        meta = validation_result.get("meta", {})
+        meta_payload = (
+            upload_data.get("Meta")
+            or upload_meta.get("MetaData")
+            or event_block.get("Upload", {}).get("MetaData")
+            or {}
+        )
+
+        if not meta_payload:
+            info_path_value = storage_payload.get("InfoPath") if isinstance(storage_payload, dict) else None
+            if info_path_value:
+                info_file = Path(info_path_value)
+                if info_file.exists():
+                    try:
+                        info_data = json.loads(info_file.read_text(encoding="utf-8"))
+                        meta_payload = info_data.get("MetaData", {}) or {}
+                    except Exception as info_error:
+                        logger.warning(
+                            "Unable to read metadata from %s: %s",
+                            info_file,
+                            info_error,
+                        )
+
+        created_asset = None
+
+        project_id_raw = meta_payload.get("project_id")
+        if project_id_raw:
+            logger.info("Ignoring legacy project_id %s in tusd metadata", project_id_raw)
+
+        filename_override = meta_payload.get("filename")
+        user_id_raw = meta_payload.get("user_id")
+
+        asset_owner_id = None
+        if user_id_raw:
+            try:
+                asset_owner_id = UUID(user_id_raw)
+            except ValueError:
+                logger.warning("Invalid user_id provided in tusd metadata: %s", user_id_raw)
+        else:
+            logger.warning("Missing user_id in tusd metadata for upload %s", upload_id)
+
+        if asset_owner_id:
+            try:
+                asset = Asset(
+                    user_id=asset_owner_id,
+                    filename=filename_override or file_path.name,
+                    storage_path=str(file_path),
+                    size_bytes=size_bytes,
+                    duration_seconds=stream_info.get("duration"),
+                    meta=stream_info,
+                    compatible_for_copy=validation_result["compatible_for_copy"],
+                    validation_errors=validation_result.get("validation_errors", []),
+                )
+
+                db.add(asset)
+                await db.commit()
+                await db.refresh(asset)
+                created_asset = asset
+                logger.info(f"Created asset {asset.id} from tusd webhook for user {asset_owner_id}")
+            except Exception as commit_error:
+                await db.rollback()
+                logger.error(
+                    "Failed to create asset from tusd webhook for user %s: %s",
+                    user_id_raw,
+                    commit_error,
+                )
         
-        # Return validation result
-        # Frontend will call create_asset with this data
-        return {
+        response_payload = {
             "success": True,
             "file_path": str(file_path),
-            "filename": file_path.name,
+            "filename": filename_override or file_path.name,
             "size_bytes": size_bytes,
             "compatible_for_copy": validation_result["compatible_for_copy"],
             "validation_errors": validation_result.get("validation_errors", []),
-            "meta": stream_info
+            "meta": stream_info,
         }
+
+        if created_asset:
+            response_payload["asset_id"] = str(created_asset.id)
+
+        return response_payload
         
     except Exception as e:
-        logger.error(f"Error processing upload: {e}")
+        logger.exception(f"Error processing upload: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail=f"Failed to process upload: {str(e)}"
         )
 
 
@@ -164,9 +341,9 @@ async def get_asset(
     db, user_id = user_deps
     
     try:
-        query = select(Asset).join(Project).where(
+        query = select(Asset).where(
             Asset.id == asset_id,
-            Project.user_id == user_id
+            Asset.user_id == user_id
         )
         result = await db.execute(query)
         asset = result.scalar_one_or_none()
@@ -182,10 +359,10 @@ async def get_asset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting asset: {e}")
+        logger.exception(f"Error getting asset: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get asset"
+            detail=f"Failed to get asset: {str(e)}"
         )
 
 
@@ -199,9 +376,9 @@ async def delete_asset(
     
     try:
         # Get asset
-        query = select(Asset).join(Project).where(
+        query = select(Asset).where(
             Asset.id == asset_id,
-            Project.user_id == user_id
+            Asset.user_id == user_id
         )
         result = await db.execute(query)
         asset = result.scalar_one_or_none()
@@ -228,8 +405,8 @@ async def delete_asset(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error deleting asset: {e}")
+        logger.exception(f"Error deleting asset: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete asset"
+            detail=f"Failed to delete asset: {str(e)}"
         )

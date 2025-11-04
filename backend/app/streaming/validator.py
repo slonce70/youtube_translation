@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Dict, Any
 
@@ -18,7 +19,18 @@ class VideoValidator:
     RECOMMENDED_GOP_SIZE = 60  # 2 seconds at 30fps
 
     def __init__(self, ffprobe_bin: str = "/usr/bin/ffprobe"):
-        self.ffprobe_bin = ffprobe_bin
+        candidate = Path(ffprobe_bin)
+        if candidate.exists():
+            self.ffprobe_bin = ffprobe_bin
+        else:
+            detected = shutil.which("ffprobe")
+            if detected:
+                logger.info("Using ffprobe binary at %s", detected)
+                self.ffprobe_bin = detected
+            else:
+                raise FileNotFoundError(
+                    "ffprobe binary not found. Install FFmpeg or set FFMPEG_BIN/FFPROBE_BIN in .env"
+                )
 
     async def validate_file(self, file_path: Path) -> Dict[str, Any]:
         """

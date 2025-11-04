@@ -22,11 +22,14 @@ MANIFEST
 venv/
 ENV/
 env/
+.venv/
 
 # FastAPI
 .env
 .env.local
 .env.production
+backend/.env
+frontend/.env.local
 
 # Node
 node_modules/
@@ -64,6 +67,10 @@ Thumbs.db
 *.flv
 backend/*.log
 frontend/*.log
+
+# Runtime data
+/uploads/
+/streams/
 
 # Docker
 .dockerignore

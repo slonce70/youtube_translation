@@ -1,9 +1,10 @@
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 import base64
 import logging
+from typing import Optional
 
 from app.core.config import settings
 
@@ -13,16 +14,27 @@ logger = logging.getLogger(__name__)
 class StreamKeyEncryption:
     """Handle encryption/decryption of YouTube stream keys"""
     
-    def __init__(self):
-        # Derive key from SECRET_KEY
-        kdf = PBKDF2(
+    def __init__(self, encryption_key: str, salt: Optional[bytes] = None):
+        """
+        Initialize encryption with key and salt from settings.
+        
+        Args:
+            encryption_key: Base encryption key from settings
+            salt: Optional salt, uses settings.encryption_salt if not provided
+        """
+        # Use environment-specific salt
+        if salt is None:
+            salt = settings.encryption_salt.encode()
+        
+        # Derive key from ENCRYPTION_KEY and salt
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=b'youtube_streaming_salt',  # In production, use random salt per project
+            salt=salt,
             iterations=100000,
             backend=default_backend()
         )
-        key = base64.urlsafe_b64encode(kdf.derive(settings.encryption_key.encode()))
+        key = base64.urlsafe_b64encode(kdf.derive(encryption_key.encode()))
         self.cipher = Fernet(key)
     
     def encrypt(self, stream_key: str) -> str:
@@ -80,8 +92,8 @@ class StreamKeyEncryption:
         return f"{masked_part}{visible_part}"
 
 
-# Global instance
-encryption = StreamKeyEncryption()
+# Global instance initialized with settings
+encryption = StreamKeyEncryption(settings.encryption_key)
 
 
 def encrypt_stream_key(key: str) -> str:

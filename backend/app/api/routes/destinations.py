@@ -6,27 +6,24 @@ from uuid import UUID
 import logging
 
 from app.api.deps import require_user
-from app.models.database import Destination, Project
+from app.models.database import Destination
 from app.schemas.api import DestinationResponse, DestinationCreate, DestinationUpdate
 from app.core.security import encrypt_stream_key, decrypt_stream_key, mask_stream_key
+from app.core.quota import QuotaEnforcer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/", response_model=List[DestinationResponse])
+@router.get("/")
 async def list_destinations(
-    project_id: UUID = None,
     user_deps: tuple = Depends(require_user)
 ):
     """List all YouTube destinations for current user"""
     db, user_id = user_deps
     
     try:
-        query = select(Destination).join(Project).where(Project.user_id == user_id)
-        
-        if project_id:
-            query = query.where(Destination.project_id == project_id)
+        query = select(Destination).where(Destination.user_id == user_id)
         
         result = await db.execute(query)
         destinations = result.scalars().all()
@@ -35,28 +32,27 @@ async def list_destinations(
         response_destinations = []
         for dest in destinations:
             dest_dict = {
-                "id": dest.id,
-                "project_id": dest.project_id,
+                "id": str(dest.id),
                 "name": dest.name,
                 "rtmps_url": dest.rtmps_url,
                 "enabled": dest.enabled,
                 "stream_key_masked": mask_stream_key(dest.stream_key_encrypted),
-                "created_at": dest.created_at,
-                "updated_at": dest.updated_at
+                "created_at": dest.created_at.isoformat(),
+                "updated_at": dest.updated_at.isoformat()
             }
             response_destinations.append(dest_dict)
         
         return response_destinations
         
     except Exception as e:
-        logger.error(f"Error listing destinations: {e}")
+        logger.exception(f"Error listing destinations: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list destinations"
+            detail=f"Failed to list destinations: {str(e)}"
         )
 
 
-@router.post("/", response_model=DestinationResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_destination(
     destination_data: DestinationCreate,
     user_deps: tuple = Depends(require_user)
@@ -64,27 +60,20 @@ async def create_destination(
     """Add a new YouTube channel destination with encrypted stream key"""
     db, user_id = user_deps
     
+    logger.info(f"Creating destination with data: {destination_data.model_dump()}")
+    
     try:
-        # Verify project belongs to user
-        project_query = select(Project).where(
-            Project.id == destination_data.project_id,
-            Project.user_id == user_id
-        )
-        result = await db.execute(project_query)
-        project = result.scalar_one_or_none()
-        
-        if not project:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
-            )
-        
+        # Check quota for destinations
+        enforcer = QuotaEnforcer(db, user_id)
+        await enforcer.check_destinations_limit()
+        await enforcer.ensure_destination_allowed(destination_data.rtmps_url)
+
         # Encrypt stream key
         encrypted_key = encrypt_stream_key(destination_data.stream_key)
         
         # Create destination
         destination = Destination(
-            project_id=destination_data.project_id,
+            user_id=user_id,
             name=destination_data.name,
             rtmps_url=destination_data.rtmps_url,
             stream_key_encrypted=encrypted_key,
@@ -98,31 +87,28 @@ async def create_destination(
         logger.info(f"Created destination {destination.id} for user {user_id}")
         
         # Return with masked key
-        response = {
-            "id": destination.id,
-            "project_id": destination.project_id,
+        return {
+            "id": str(destination.id),
             "name": destination.name,
             "rtmps_url": destination.rtmps_url,
             "enabled": destination.enabled,
             "stream_key_masked": mask_stream_key(encrypted_key),
-            "created_at": destination.created_at,
-            "updated_at": destination.updated_at
+            "created_at": destination.created_at.isoformat(),
+            "updated_at": destination.updated_at.isoformat()
         }
-        
-        return response
         
     except HTTPException:
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error creating destination: {e}")
+        logger.exception(f"Error creating destination: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create destination"
+            detail=f"Failed to create destination: {str(e)}"
         )
 
 
-@router.get("/{destination_id}", response_model=DestinationResponse)
+@router.get("/{destination_id}")
 async def get_destination(
     destination_id: UUID,
     user_deps: tuple = Depends(require_user)
@@ -131,9 +117,9 @@ async def get_destination(
     db, user_id = user_deps
     
     try:
-        query = select(Destination).join(Project).where(
+        query = select(Destination).where(
             Destination.id == destination_id,
-            Project.user_id == user_id
+            Destination.user_id == user_id
         )
         result = await db.execute(query)
         destination = result.scalar_one_or_none()
@@ -144,30 +130,27 @@ async def get_destination(
                 detail="Destination not found"
             )
         
-        response = {
-            "id": destination.id,
-            "project_id": destination.project_id,
+        return {
+            "id": str(destination.id),
             "name": destination.name,
             "rtmps_url": destination.rtmps_url,
             "enabled": destination.enabled,
             "stream_key_masked": mask_stream_key(destination.stream_key_encrypted),
-            "created_at": destination.created_at,
-            "updated_at": destination.updated_at
+            "created_at": destination.created_at.isoformat(),
+            "updated_at": destination.updated_at.isoformat()
         }
-        
-        return response
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting destination: {e}")
+        logger.exception(f"Error getting destination: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get destination"
+            detail=f"Failed to get destination: {str(e)}"
         )
 
 
-@router.put("/{destination_id}", response_model=DestinationResponse)
+@router.put("/{destination_id}")
 async def update_destination(
     destination_id: UUID,
     destination_data: DestinationUpdate,
@@ -176,28 +159,34 @@ async def update_destination(
     """Update destination"""
     db, user_id = user_deps
     
+    logger.info(f"Updating destination {destination_id} with data: {destination_data.model_dump(exclude_unset=True)}")
+    
     try:
         # Get destination
-        query = select(Destination).join(Project).where(
+        query = select(Destination).where(
             Destination.id == destination_id,
-            Project.user_id == user_id
+            Destination.user_id == user_id
         )
         result = await db.execute(query)
         destination = result.scalar_one_or_none()
-        
+
         if not destination:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Destination not found"
             )
-        
-        # Update fields
+
+        enforcer = QuotaEnforcer(db, user_id)
+        await enforcer.check_suspended()
+
+        # Update fields (only if provided)
         if destination_data.name is not None:
             destination.name = destination_data.name
         if destination_data.rtmps_url is not None:
+            await enforcer.ensure_destination_allowed(destination_data.rtmps_url)
             destination.rtmps_url = destination_data.rtmps_url
-        if destination_data.stream_key is not None:
-            # Re-encrypt new key
+        if destination_data.stream_key is not None and destination_data.stream_key.strip():
+            # Re-encrypt new key only if it's not empty
             destination.stream_key_encrypted = encrypt_stream_key(destination_data.stream_key)
         if destination_data.enabled is not None:
             destination.enabled = destination_data.enabled
@@ -205,27 +194,24 @@ async def update_destination(
         await db.commit()
         await db.refresh(destination)
         
-        response = {
-            "id": destination.id,
-            "project_id": destination.project_id,
+        return {
+            "id": str(destination.id),
             "name": destination.name,
             "rtmps_url": destination.rtmps_url,
             "enabled": destination.enabled,
             "stream_key_masked": mask_stream_key(destination.stream_key_encrypted),
-            "created_at": destination.created_at,
-            "updated_at": destination.updated_at
+            "created_at": destination.created_at.isoformat(),
+            "updated_at": destination.updated_at.isoformat()
         }
-        
-        return response
         
     except HTTPException:
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error updating destination: {e}")
+        logger.exception(f"Error updating destination: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update destination"
+            detail=f"Failed to update destination: {str(e)}"
         )
 
 
@@ -239,9 +225,9 @@ async def delete_destination(
     
     try:
         # Verify ownership
-        query = select(Destination).join(Project).where(
+        query = select(Destination).where(
             Destination.id == destination_id,
-            Project.user_id == user_id
+            Destination.user_id == user_id
         )
         result = await db.execute(query)
         destination = result.scalar_one_or_none()
@@ -262,8 +248,8 @@ async def delete_destination(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error deleting destination: {e}")
+        logger.exception(f"Error deleting destination: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete destination"
+            detail=f"Failed to delete destination: {str(e)}"
         )

@@ -4,36 +4,12 @@ from datetime import datetime
 from uuid import UUID
 
 
-# Base schemas
-class ProjectBase(BaseModel):
-    name: str
-    description: Optional[str] = None
-
-
-class ProjectCreate(ProjectBase):
-    pass
-
-
-class ProjectUpdate(ProjectBase):
-    name: Optional[str] = None
-
-
-class ProjectResponse(ProjectBase):
-    model_config = ConfigDict(from_attributes=True)
-    
-    id: UUID
-    user_id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-
 # Asset schemas
 class AssetBase(BaseModel):
     filename: str
 
 
 class AssetCreate(AssetBase):
-    project_id: UUID
     storage_path: str
     size_bytes: int
     duration_seconds: Optional[float] = None
@@ -46,7 +22,6 @@ class AssetResponse(AssetBase):
     model_config = ConfigDict(from_attributes=True)
     
     id: UUID
-    project_id: UUID
     storage_path: str
     size_bytes: int
     duration_seconds: Optional[float]
@@ -80,7 +55,6 @@ class PlaylistBase(BaseModel):
 
 
 class PlaylistCreate(PlaylistBase):
-    project_id: UUID
     items: List[PlaylistItemCreate] = []
 
 
@@ -94,7 +68,6 @@ class PlaylistResponse(PlaylistBase):
     model_config = ConfigDict(from_attributes=True)
     
     id: UUID
-    project_id: UUID
     created_at: datetime
     updated_at: datetime
     items: List[PlaylistItemResponse] = []
@@ -108,8 +81,7 @@ class DestinationBase(BaseModel):
 
 
 class DestinationCreate(DestinationBase):
-    project_id: UUID
-    stream_key: str  # Will be encrypted before storage
+    stream_key: str = Field(..., min_length=1, description="YouTube stream key (will be encrypted)")
 
 
 class DestinationUpdate(BaseModel):
@@ -123,7 +95,6 @@ class DestinationResponse(DestinationBase):
     model_config = ConfigDict(from_attributes=True)
     
     id: UUID
-    project_id: UUID
     stream_key_masked: str = Field(default="****")  # Never expose real key
     created_at: datetime
     updated_at: datetime
@@ -135,7 +106,6 @@ class StreamBase(BaseModel):
 
 
 class StreamCreate(StreamBase):
-    project_id: UUID
     playlist_id: UUID
     destination_ids: List[UUID]
 
@@ -149,7 +119,6 @@ class StreamResponse(StreamBase):
     model_config = ConfigDict(from_attributes=True)
     
     id: UUID
-    project_id: UUID
     playlist_id: UUID
     status: str
     pid: Optional[int]
@@ -186,6 +155,17 @@ class StreamEventResponse(BaseModel):
     message: str
     metadata: Optional[dict]
     created_at: datetime
+
+
+# Stream logs schemas
+class StreamLogsRequest(BaseModel):
+    lines: int = Field(default=100, ge=1, le=10000, description="Number of log lines to fetch (1-10000)")
+
+
+class StreamLogsResponse(BaseModel):
+    stream_id: UUID
+    logs: List[str]
+    total_lines: int
 
 
 # Pagination

@@ -1,0 +1,113 @@
+#!/bin/bash
+#
+# Tusd Post-Finish Hook - Move File to User Directory and Notify Backend
+#
+# This hook is called AFTER tusd completes the upload.
+# It moves the file from _temp to the user's directory and notifies the backend.
+#
+
+set -e
+
+# Read webhook data from stdin (может быть многострочным)
+HOOK_DATA=$(cat)
+
+if [ -z "$HOOK_DATA" ]; then
+    echo "[post-finish] ERROR: empty payload from tusd" >&2
+    exit 0
+fi
+
+# Extract metadata
+USER_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.user_id // .Upload.MetaData.user_id // empty')
+UPLOAD_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.ID // .Upload.ID // empty')
+FILENAME=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.filename // .Upload.MetaData.filename // .Upload.MetaData.name // empty')
+
+# Debug logging
+echo "[post-finish] Upload ID: $UPLOAD_ID" >&2
+echo "[post-finish] User ID: $USER_ID" >&2
+echo "[post-finish] Filename: $FILENAME" >&2
+
+# Validate user_id
+if [ -z "$USER_ID" ] || [ "$USER_ID" = "null" ]; then
+    echo "[post-finish] ERROR: Missing user_id in upload metadata" >&2
+    exit 0  # Don't fail - file is uploaded, just log error
+fi
+
+# Define paths (absolute to avoid cwd issues)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+UPLOAD_ROOT="${TUSD_UPLOAD_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)/uploads}"
+TEMP_DIR="$UPLOAD_ROOT/_temp"
+USER_DIR="$UPLOAD_ROOT/$USER_ID"
+
+TEMP_FILE="$TEMP_DIR/$UPLOAD_ID"
+TEMP_INFO="$TEMP_DIR/$UPLOAD_ID.info"
+FINAL_FILE="$USER_DIR/$UPLOAD_ID"
+FINAL_INFO="$USER_DIR/$UPLOAD_ID.info"
+
+echo "[post-finish] Temp file: $TEMP_FILE" >&2
+echo "[post-finish] Final file: $FINAL_FILE" >&2
+
+# Create user directory if it doesn't exist
+if [ ! -d "$USER_DIR" ]; then
+    echo "[post-finish] Creating user directory: $USER_DIR" >&2
+    mkdir -p "$USER_DIR"
+    chmod 700 "$USER_DIR"
+fi
+
+# Move file from _temp to user directory
+if [ -f "$TEMP_FILE" ]; then
+    echo "[post-finish] Moving file to user directory..." >&2
+    mv "$TEMP_FILE" "$FINAL_FILE"
+    
+    # Move .info file if exists
+    if [ -f "$TEMP_INFO" ]; then
+        mv "$TEMP_INFO" "$FINAL_INFO"
+    fi
+    
+    # Update storage path in webhook data
+    UPDATED_DATA=$(echo "$HOOK_DATA" | jq \
+        --arg path "$FINAL_FILE" \
+        '.Storage.Path = $path')
+    
+    echo "[post-finish] File moved successfully" >&2
+else
+    echo "[post-finish] WARNING: Temp file not found at $TEMP_FILE" >&2
+    
+    # Check if file already in user directory (maybe moved by tusd)
+    if [ -f "$FINAL_FILE" ]; then
+        echo "[post-finish] File already in user directory" >&2
+        UPDATED_DATA="$HOOK_DATA"
+    else
+        echo "[post-finish] ERROR: File not found in temp or user directory!" >&2
+        exit 0  # Don't fail the upload
+    fi
+fi
+
+# Notify backend via webhook
+BACKEND_URL="http://localhost:8000/api/assets/upload-complete"
+
+echo "[post-finish] Notifying backend..." >&2
+
+WEBHOOK_RESPONSE=$(curl -s -X POST "$BACKEND_URL" \
+    -H "Content-Type: application/json" \
+    -d "${UPDATED_DATA:-$HOOK_DATA}" 2>&1)
+
+CURL_EXIT_CODE=$?
+
+if [ $CURL_EXIT_CODE -ne 0 ]; then
+    echo "[post-finish] ERROR: Failed to notify backend" >&2
+    echo "[post-finish] Curl exit code: $CURL_EXIT_CODE" >&2
+    echo "[post-finish] Response: $WEBHOOK_RESPONSE" >&2
+else
+    echo "[post-finish] Backend notified successfully" >&2
+    echo "[post-finish] Response: $WEBHOOK_RESPONSE" >&2
+fi
+
+# Get file size
+if [ -f "$FINAL_FILE" ]; then
+    FILE_SIZE=$(stat -f%z "$FINAL_FILE" 2>/dev/null || stat -c%s "$FINAL_FILE" 2>/dev/null || echo "unknown")
+    echo "[post-finish] Final file size: $FILE_SIZE bytes" >&2
+fi
+
+echo "[post-finish] Upload complete!" >&2
+
+exit 0

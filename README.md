@@ -1,99 +1,130 @@
-# YouTube Multi-Channel 24/7 Streaming Service 🎬
+# YouTube Multi-Channel Streaming Platform
 
-**[🇷🇺 Инструкция по запуску на русском → ЗАПУСК.md](ЗАПУСК.md)**
+Многоарендная платформа для круглосуточных YouTube‑стримов с разделением квот, загрузкой больших файлов через tusd и административной панелью.
 
----
+## ⚡️ Основные возможности
 
-Self-hosted service for streaming to multiple YouTube channels simultaneously with **zero transcoding**.
+- Многоканальные 24/7 стримы без перекодирования (FFmpeg `-c copy`)
+- Квоты и тарифы (storage, streams, assets, playlists, destinations)
+- Изоляция файлов `/uploads/{user_id}` и RLS в Supabase
+- Автоматическое создание профилей пользователей Supabase
+- Веб-панель (Next.js) + tusd для возобновляемых загрузок
+- Админский интерфейс с метриками и алертами
 
-## ✨ Key Features
-
-- ✅ 24/7 streaming to **multiple YouTube channels** from one source
-- ✅ **Zero transcoding** (FFmpeg `-c copy`) = minimal CPU usage (2-5% per stream)
-- ✅ Modern web interface with **real-time monitoring**
-- ✅ **Resumable file uploads** via tus protocol
-- ✅ Playlist management with looping
-- ✅ User authentication and **Row Level Security**
-- ✅ Stream key **encryption** for security
-- ✅ Real-time **logs viewer** and uptime tracking
-- ✅ **Capacity estimation** (how many streams your server can handle)
-
-## 🏗️ Tech Stack
-
-- **Backend**: FastAPI (Python 3.12+) + FFmpeg + Supabase Auth
-- **Frontend**: Next.js 15 + React 19 + TanStack Query + Uppy
-- **Database**: Supabase (PostgreSQL + RLS)
-- **Upload**: tusd (tus protocol for resumable uploads)
-- **Proxy**: Caddy (automatic HTTPS)
-- **Deployment**: Docker Compose
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Docker & Docker Compose
-- Supabase account (free tier: 50K MAU)
-- YouTube channel(s) with stream keys
-
-### Installation (5 minutes)
+## 🚀 Быстрый старт (локально)
 
 ```bash
-# 1. Clone repository
 git clone https://github.com/slonce70/youtube_translation.git
 cd youtube_translation
 
-# 2. Setup Supabase (see docs/SUPABASE_SETUP.md)
+# 1. Python окружение
+python3 -m venv .venv
+source .venv/bin/activate
+make install-backend
 
-# 3. Configure environment
-cp .env.example .env
+# 2. Node окружение
+cd frontend
+npm install
+cd ..
+
+# 3. Конфигурация
+cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
-# Edit both files with your credentials
+# Заполните ключи Supabase, DATABASE_URL, TUSD_HMAC_SECRET и пути к ffmpeg
 
-# 4. Start services
-cd docker
-docker-compose up -d
+# 4. Запуск всех сервисов
+make dev
 
-# 5. Open http://localhost:3000
+# Backend:  http://localhost:8000
+# Frontend: http://localhost:3000
+# tusd:     http://localhost:1080/files/
 ```
 
-**[📖 Full Guide (Russian) → ЗАПУСК.md](ЗАПУСК.md)**
+Скрипт `make dev` стартует FastAPI, Next.js и tusd. Для корректного копирования файлов в `/uploads/{user_id}` требуется валидный `TUSD_HMAC_SECRET` в `backend/.env`.
 
-## 📊 Status
+## 🔑 Важные переменные окружения
 
-- ✅ **Backend**: 100% complete (9 API endpoints, FFmpeg integration, encryption)
-- ✅ **Frontend**: 100% complete (6 pages, real-time updates, Uppy uploads)  
-- ✅ **Testing**: TypeScript & Python syntax validated
-- ✅ **Dependencies**: Installed and tested
-- ⏳ **Production**: Ready to deploy
+| Переменная | Назначение |
+|------------|------------|
+| `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_JWT_SECRET` | Авторизация и профили пользователей |
+| `DATABASE_URL` | Подключение к Supabase Postgres (порт 5432, session mode) |
+| `ENCRYPTION_KEY`, `ENCRYPTION_SALT` | Шифрование стрим-ключей |
+| `TUSD_HMAC_SECRET` | Подпись запросов tusd → FastAPI |
+| `UPLOAD_DIR`, `STREAM_DIR` | Рабочие каталоги (по умолчанию `./uploads`, `./streams`) |
+| `FFMPEG_BIN`, `FFPROBE_BIN` | Пути к бинарям FFmpeg/FFprobe |
 
-**Overall Progress: 90% (MVP Ready)** 🎉
+Все значения хранятся в `backend/.env` и не должны попадать в git.
 
-## 📚 Documentation
+## 🧭 Структура проекта
 
-- **[🇷🇺 ЗАПУСК.md](ЗАПУСК.md)** - Инструкция по запуску (Russian)
-- **[📖 MVP_COMPLETE.md](docs/MVP_COMPLETE.md)** - Complete feature list & API reference
-- **[🏗️ ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture
-- **[💻 DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Development guide
-- **[🔐 SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)** - Supabase configuration
+```
+backend/               FastAPI, миграции, tusd hooks
+frontend/              Next.js приложение (app router)
+docs/                  Техническая документация
+docker/                docker-compose и инфраструктурные файлы
+start-*.sh             Локальные скрипты запуска
+Makefile               Команды для разработки и CI
+```
 
-## 📈 System Requirements
+## 📚 Документация
 
-### Minimum (1-2 streams)
-- CPU: 2 cores | RAM: 2 GB | Disk: 20 GB | Network: 5 Mbps/stream
+- `docs/ARCHITECTURE.md` — архитектура решения
+- `docs/MVP_COMPLETE.md` — реализованный функционал и API
+- `docs/SUPABASE_SETUP.md` — настройка проекта в Supabase
+- `docs/IMPLEMENTATION_REPORT.md` — отчёт по доработкам
+- `docs/TROUBLESHOOTING.md` — часто встречающиеся проблемы
+- `docs/backend_api_contract.md` и `docs/backend_api_map.md` — контракты REST API  
+- `docs/postman/` — готовые коллекции и окружения Postman
 
-### Recommended (5-10 streams)
-- CPU: 4 cores | RAM: 4 GB | Disk: 100 GB | Network: 10 Mbps/stream
+## 🛠 Команды Makefile
 
-### Per Stream Usage
-- CPU: ~2-5% (no transcoding!) | RAM: ~50-100 MB | Network: ~2-5 Mbps (1080p)
+```bash
+make install            # backend + frontend зависимости
+make dev                # поднять backend, frontend и tusd
+make dev-backend        # только FastAPI
+make dev-frontend       # только Next.js
+make dev-tusd           # только tusd
+make test               # pytest + npm test
+make lint               # ruff + black + eslint
+make type-check         # mypy + npm run type-check
+make clean              # очистка временных файлов
+```
 
-## 🎬 Usage Workflow
+## 🐳 Docker
 
-1. **Upload** video assets (H.264, AAC, yuv420p)
-2. **Create** playlist with compatible assets
-3. **Add** YouTube destination(s) with stream keys
-4. **Create** stream and select playlist + destinations
-5. **Start** streaming and monitor logs
-6. **Enjoy** 24/7 streaming! 🚀
+Для развёртывания в контейнерах используйте `docker/docker-compose.yml`. Перед запуском пропишите переменные окружения (см. `backend/.env.example`).
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
+
+## 🔐 Безопасность
+
+- Все таблицы защищены RLS-политиками (см. `backend/migrations`)
+- tusd взаимодействует с API только через подписанные запросы
+- Секреты Supabase и ключи шифрования находятся вне репозитория
+- Для production рекомендуется дополнительно включить Sentry и HTTPS-прокси (см. Caddy конфигурацию в `docker/`)
+
+## 🤝 Вклад и поддержка
+
+Пул-реквесты и issue приветствуются. Перед коммитом запускайте `make lint` и `make test`.  
+Вопросы и предложения можно оформлять через Issues на GitHub.
+
+# Docker
+make docker-up            # Start containers
+make docker-down          # Stop containers
+make docker-logs          # View logs
+
+# Database
+make migrate              # Apply migrations
+make create-admin         # Create admin user
+
+# Utilities
+make clean                # Clean temp files
+make security-audit       # Audit dependencies
+```
+
+For full list: `make help`
 
 ## 📝 License
 

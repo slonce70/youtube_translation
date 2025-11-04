@@ -31,8 +31,11 @@
 ## 4. Get Database Connection String
 
 1. Go to Project Settings → Database
-2. Copy **Connection string** (Transaction mode)
+2. Copy **Connection string** - use **Session Mode** (port 5432)
 3. Replace `[YOUR-PASSWORD]` with your database password
+
+⚠️ **IMPORTANT**: Use port **5432** (Session Mode), NOT port 6543 (Transaction Mode).
+Transaction Mode is incompatible with asyncpg/SQLAlchemy async.
 
 ## 5. Configure Backend (.env)
 
@@ -48,15 +51,15 @@ SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_KEY=YOUR_ANON_KEY
 SUPABASE_SERVICE_KEY=YOUR_SERVICE_ROLE_KEY
 
-# Database
+# Database (IMPORTANT: Use port 5432, NOT 6543)
 DATABASE_URL=postgresql://postgres.YOUR_PROJECT:[YOUR-PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
 
 # Security - Generate with: openssl rand -hex 32
 SECRET_KEY=GENERATE_YOUR_OWN_SECRET_KEY_HERE
 
 # Storage
-UPLOAD_DIR=/app/uploads
-STREAM_DIR=/app/streams
+UPLOAD_DIR=./uploads
+STREAM_DIR=./streams
 MAX_UPLOAD_SIZE=10737418240
 
 # FFmpeg
