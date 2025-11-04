@@ -9,12 +9,14 @@ from datetime import datetime
 import logging
 
 from app.api.deps import require_user
-from app.models.database import Stream, StreamDestination, Project, Playlist, Destination, PlaylistItem
-from app.schemas.api import StreamResponse, StreamCreate, StreamStatus
+from app.models.database import Stream, StreamDestination, Playlist, Destination, PlaylistItem
+from app.schemas.api import StreamResponse, StreamCreate, StreamStatus, StreamLogsResponse
+from fastapi import Query
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.streaming.playlist_builder import PlaylistBuilder
 from app.core.security import decrypt_stream_key
 from app.core.config import settings
+from app.core.quota import QuotaEnforcer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -22,17 +24,13 @@ router = APIRouter()
 
 @router.get("/", response_model=List[StreamResponse])
 async def list_streams(
-    project_id: UUID = None,
     user_deps: tuple = Depends(require_user)
 ):
     """List all streams for current user"""
     db, user_id = user_deps
     
     try:
-        query = select(Stream).join(Project).where(Project.user_id == user_id)
-        
-        if project_id:
-            query = query.where(Stream.project_id == project_id)
+        query = select(Stream).where(Stream.user_id == user_id)
         
         result = await db.execute(query)
         streams = result.scalars().all()
@@ -40,10 +38,10 @@ async def list_streams(
         return streams
         
     except Exception as e:
-        logger.error(f"Error listing streams: {e}")
+        logger.exception(f"Error listing streams: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list streams"
+            detail=f"Failed to list streams: {str(e)}"
         )
 
 
@@ -56,24 +54,10 @@ async def create_stream(
     db, user_id = user_deps
     
     try:
-        # Verify project belongs to user
-        project_query = select(Project).where(
-            Project.id == stream_data.project_id,
-            Project.user_id == user_id
-        )
-        result = await db.execute(project_query)
-        project = result.scalar_one_or_none()
-        
-        if not project:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
-            )
-        
-        # Verify playlist belongs to project
+        # Verify playlist belongs to user
         playlist_query = select(Playlist).where(
             Playlist.id == stream_data.playlist_id,
-            Playlist.project_id == stream_data.project_id
+            Playlist.user_id == user_id
         )
         result = await db.execute(playlist_query)
         playlist = result.scalar_one_or_none()
@@ -86,7 +70,7 @@ async def create_stream(
         
         # Create stream
         stream = Stream(
-            project_id=stream_data.project_id,
+            user_id=user_id,
             playlist_id=stream_data.playlist_id,
             name=stream_data.name,
             status="stopped"
@@ -97,10 +81,10 @@ async def create_stream(
         
         # Add stream destinations
         for dest_id in stream_data.destination_ids:
-            # Verify destination belongs to project
+            # Verify destination belongs to user
             dest_query = select(Destination).where(
                 Destination.id == dest_id,
-                Destination.project_id == stream_data.project_id
+                Destination.user_id == user_id
             )
             dest_result = await db.execute(dest_query)
             destination = dest_result.scalar_one_or_none()
@@ -108,7 +92,7 @@ async def create_stream(
             if not destination:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Destination {dest_id} not found in project"
+                    detail=f"Destination {dest_id} not found"
                 )
             
             stream_dest = StreamDestination(
@@ -128,10 +112,10 @@ async def create_stream(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error creating stream: {e}")
+        logger.exception(f"Error creating stream: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create stream"
+            detail=f"Failed to create stream: {str(e)}"
         )
 
 
@@ -145,13 +129,16 @@ async def start_stream(
     db, user_id = user_deps
     
     try:
+        # Check quota for concurrent streams
+        enforcer = QuotaEnforcer(db, user_id)
+        await enforcer.check_concurrent_streams()
+        
         # Get stream with all related data
         query = (
             select(Stream)
-            .join(Project)
             .where(
                 Stream.id == stream_id,
-                Project.user_id == user_id
+                Stream.user_id == user_id
             )
             .options(
                 selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
@@ -244,7 +231,7 @@ async def start_stream(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error starting stream: {e}")
+        logger.exception(f"Error starting stream: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start stream: {str(e)}"
@@ -261,9 +248,9 @@ async def stop_stream(
     
     try:
         # Get stream
-        query = select(Stream).join(Project).where(
+        query = select(Stream).where(
             Stream.id == stream_id,
-            Project.user_id == user_id
+            Stream.user_id == user_id
         )
         result = await db.execute(query)
         stream = result.scalar_one_or_none()
@@ -297,10 +284,10 @@ async def stop_stream(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error stopping stream: {e}")
+        logger.exception(f"Error stopping stream: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to stop stream"
+            detail=f"Failed to stop stream: {str(e)}"
         )
 
 
@@ -314,9 +301,9 @@ async def get_stream_status(
     
     try:
         # Get stream from database
-        query = select(Stream).join(Project).where(
+        query = select(Stream).where(
             Stream.id == stream_id,
-            Project.user_id == user_id
+            Stream.user_id == user_id
         )
         result = await db.execute(query)
         stream = result.scalar_one_or_none()
@@ -346,27 +333,27 @@ async def get_stream_status(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting stream status: {e}")
+        logger.exception(f"Error getting stream status: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get stream status"
+            detail=f"Failed to get stream status: {str(e)}"
         )
 
 
-@router.get("/{stream_id}/logs")
+@router.get("/{stream_id}/logs", response_model=StreamLogsResponse)
 async def get_stream_logs(
     stream_id: UUID,
-    lines: int = 100,
+    lines: int = Query(default=100, ge=1, le=10000, description="Number of log lines (1-10000)"),
     user_deps: tuple = Depends(require_user)
 ):
-    """Get stream logs (last N lines)"""
+    """Get stream logs (last N lines with validation)"""
     db, user_id = user_deps
     
     try:
         # Get stream
-        query = select(Stream).join(Project).where(
+        query = select(Stream).where(
             Stream.id == stream_id,
-            Project.user_id == user_id
+            Stream.user_id == user_id
         )
         result = await db.execute(query)
         stream = result.scalar_one_or_none()
@@ -378,7 +365,11 @@ async def get_stream_logs(
             )
         
         if not stream.log_path or not Path(stream.log_path).exists():
-            return {"logs": []}
+            return StreamLogsResponse(
+                stream_id=stream_id,
+                logs=[],
+                total_lines=0
+            )
         
         # Read last N lines of log file
         log_file = Path(stream.log_path)
@@ -386,18 +377,19 @@ async def get_stream_logs(
             all_lines = f.readlines()
             last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
         
-        return {
-            "stream_id": stream_id,
-            "logs": [line.strip() for line in last_lines]
-        }
+        return StreamLogsResponse(
+            stream_id=stream_id,
+            logs=[line.strip() for line in last_lines],
+            total_lines=len(all_lines)
+        )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting stream logs: {e}")
+        logger.exception(f"Error getting stream logs: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get stream logs"
+            detail=f"Failed to get stream logs: {str(e)}"
         )
 
 
@@ -411,9 +403,9 @@ async def delete_stream(
     
     try:
         # Get stream
-        query = select(Stream).join(Project).where(
+        query = select(Stream).where(
             Stream.id == stream_id,
-            Project.user_id == user_id
+            Stream.user_id == user_id
         )
         result = await db.execute(query)
         stream = result.scalar_one_or_none()
@@ -444,8 +436,8 @@ async def delete_stream(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error deleting stream: {e}")
+        logger.exception(f"Error deleting stream: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete stream"
+            detail=f"Failed to delete stream: {str(e)}"
         )

@@ -2,6 +2,8 @@ import logging
 from pathlib import Path
 from typing import List, Dict
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -132,7 +134,7 @@ class PlaylistBuilder:
             
             # Combine using FFmpeg
             cmd = [
-                "ffmpeg",
+                settings.ffmpeg_bin,
                 "-f", "concat",
                 "-safe", "0",
                 "-i", str(temp_playlist),

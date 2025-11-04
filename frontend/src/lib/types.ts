@@ -1,0 +1,249 @@
+export interface Asset {
+  id: string
+  filename: string
+  storage_path: string
+  size_bytes: number
+  duration_seconds?: number | null
+  meta?: Record<string, unknown> | null
+  compatible_for_copy: boolean
+  validation_errors?: string[] | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PlaylistItem {
+  id: string
+  playlist_id: string
+  asset_id: string
+  position: number
+  created_at: string
+}
+
+export interface Playlist {
+  id: string
+  name: string
+  description?: string | null
+  loop: boolean
+  items: PlaylistItem[]
+  created_at: string
+  updated_at: string
+}
+
+export interface PlaylistItemInput {
+  asset_id: string
+  position: number
+}
+
+export interface PlaylistCreatePayload {
+  name: string
+  description?: string
+  loop: boolean
+  items: PlaylistItemInput[]
+}
+
+export interface PlaylistUpdatePayload {
+  name?: string
+  description?: string
+  loop?: boolean
+  items?: PlaylistItemInput[]
+}
+
+export interface Destination {
+  id: string
+  name: string
+  rtmps_url: string
+  enabled: boolean
+  stream_key_masked: string
+  created_at: string
+  updated_at: string
+}
+
+export interface DestinationCreatePayload {
+  name: string
+  rtmps_url: string
+  stream_key: string
+  enabled: boolean
+}
+
+export interface DestinationUpdatePayload {
+  name?: string
+  rtmps_url?: string
+  stream_key?: string
+  enabled?: boolean
+}
+
+export type StreamStatusValue =
+  | 'stopped'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'error'
+
+export interface Stream {
+  id: string
+  playlist_id: string
+  name?: string | null
+  status: StreamStatusValue
+  pid?: number | null
+  log_path?: string | null
+  error_message?: string | null
+  started_at?: string | null
+  stopped_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface StreamStatusResponse {
+  id: string
+  status: StreamStatusValue
+  uptime_seconds?: number | null
+  is_running: boolean
+  error_message?: string | null
+}
+
+export interface StreamLogsResponse {
+  stream_id: string
+  logs: string[]
+}
+
+export interface MetricsResponse {
+  system: {
+    cpu: {
+      percent: number
+      count: number
+      frequency_mhz: number | null
+    }
+    memory: {
+      total_gb: number
+      available_gb: number
+      used_gb: number
+      percent: number
+    }
+    disk: {
+      total_gb: number
+      used_gb: number
+      free_gb: number
+      percent: number
+    } | null
+    network: {
+      bytes_sent: number
+      bytes_recv: number
+      packets_sent: number
+      packets_recv: number
+    }
+  }
+  streams: {
+    total_streams: number
+    active_streams: number
+    idle_streams: number
+    error_streams: number
+  }
+  capacity: {
+    active_streams: number
+    estimated_additional_capacity: number
+    estimated_total_capacity: number
+    cpu_limited: boolean
+    memory_limited: boolean
+  }
+}
+
+export interface CreateStreamPayload {
+  name?: string
+  playlist_id: string
+  destination_ids: string[]
+}
+
+export interface CreateAssetPayload {
+  filename: string
+  storage_path: string
+  size_bytes: number
+  duration_seconds?: number | null
+  meta?: Record<string, unknown> | null
+  compatible_for_copy: boolean
+  validation_errors?: string[] | null
+}
+
+export interface UploadWebhookResult {
+  success: boolean
+  file_path: string
+  filename: string
+  size_bytes: number
+  compatible_for_copy: boolean
+  validation_errors: string[]
+  meta: Record<string, unknown>
+  asset_id?: string
+}
+
+// Admin API Types
+export interface AdminAccessResponse {
+  user_id: string
+  email: string
+  full_name: string | null
+  subscription_tier: string
+  subscription_status: string
+  is_admin: boolean
+  is_suspended: boolean
+}
+
+export interface AdminUserListItem {
+  user_id: string
+  email: string
+  full_name: string | null
+  subscription_tier: string
+  subscription_status: string
+  is_suspended: boolean
+  current_storage_bytes: number
+  total_stream_hours: number
+  created_at: string
+  last_login_at: string | null
+}
+
+export interface AdminUserDetail extends AdminUserListItem {
+  company_name: string | null
+  subscription_started_at: string | null
+  subscription_expires_at: string | null
+  is_admin: boolean
+  suspension_reason: string | null
+  assets_count: number
+  playlists_count: number
+  destinations_count: number
+  streams_count: number
+  active_streams_count: number
+  updated_at: string
+}
+
+export interface AdminStreamListItem {
+  stream_id: string
+  user_id: string
+  user_email: string
+  name: string
+  status: string
+  playlist_id: string
+  destinations_count: number
+  started_at: string | null
+  created_at: string
+}
+
+export interface AdminAlertListItem {
+  alert_id: string
+  user_id: string
+  user_email: string
+  alert_type: string
+  severity: 'warning' | 'critical'
+  message: string
+  resolved: boolean
+  created_at: string
+  resolved_at: string | null
+  resolved_by: string | null
+}
+
+export interface AdminActionLog {
+  id: string
+  admin_user_id: string
+  admin_email: string
+  action_type: string
+  target_user_id: string | null
+  target_user_email: string | null
+  details: Record<string, any>
+  created_at: string
+}

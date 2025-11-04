@@ -4,6 +4,7 @@ import signal
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
+import aiofiles
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ class FFmpegStreamManager:
         self.ffmpeg_bin = ffmpeg_bin
         self.active_streams: Dict[str, asyncio.subprocess.Process] = {}
         self.stream_info: Dict[str, Dict] = {}
+        self._cleanup_lock = asyncio.Lock()  # Thread-safety for cleanup operations
 
     async def start_stream(
         self,
@@ -46,17 +48,11 @@ class FFmpegStreamManager:
             logger.info(f"Starting stream {stream_id}")
             logger.debug(f"FFmpeg command: {' '.join(cmd)}")
 
-            # Open log file if specified
-            log_handle = None
-            if log_file:
-                log_file.parent.mkdir(parents=True, exist_ok=True)
-                log_handle = open(log_file, "wb")
-
-            # Start FFmpeg process
+            # Start FFmpeg process with pipes (no file handle leak)
             process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE if not log_handle else log_handle,
-                stderr=asyncio.subprocess.PIPE if not log_handle else log_handle,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 preexec_fn=None  # Don't change process group
             )
 
@@ -71,18 +67,18 @@ class FFmpegStreamManager:
 
             logger.info(f"Stream {stream_id} started with PID {process.pid}")
             
-            # Monitor process in background
-            asyncio.create_task(self._monitor_process(stream_id, process, log_handle))
+            # Monitor process in background and handle logs
+            asyncio.create_task(self._monitor_process(stream_id, process, log_file))
 
             return True
 
         except Exception as e:
-            logger.error(f"Error starting stream {stream_id}: {e}")
+            logger.exception(f"Error starting stream {stream_id}: {e}")
             return False
 
     async def stop_stream(self, stream_id: str, timeout: int = 10) -> bool:
         """
-        Stop a running stream gracefully.
+        Stop a running stream gracefully with proper cleanup.
         
         Args:
             stream_id: Stream identifier
@@ -91,37 +87,52 @@ class FFmpegStreamManager:
         Returns:
             True if stream stopped successfully
         """
-        try:
-            if stream_id not in self.active_streams:
-                logger.warning(f"Stream {stream_id} is not running")
-                return False
-
-            process = self.active_streams[stream_id]
-            
-            logger.info(f"Stopping stream {stream_id} (PID {process.pid})")
-
-            # Send SIGINT for graceful shutdown
-            process.send_signal(signal.SIGINT)
-
+        async with self._cleanup_lock:
             try:
-                # Wait for process to exit
-                await asyncio.wait_for(process.wait(), timeout=timeout)
-                logger.info(f"Stream {stream_id} stopped gracefully")
-            except asyncio.TimeoutError:
-                # Force kill if timeout
-                logger.warning(f"Stream {stream_id} did not stop gracefully, forcing kill")
-                process.kill()
-                await process.wait()
+                if stream_id not in self.active_streams:
+                    logger.warning(f"Stream {stream_id} is not running")
+                    # Cleanup orphaned info
+                    if stream_id in self.stream_info:
+                        del self.stream_info[stream_id]
+                    return False
 
-            # Cleanup
-            del self.active_streams[stream_id]
-            del self.stream_info[stream_id]
+                process = self.active_streams[stream_id]
+                
+                logger.info(f"Stopping stream {stream_id} (PID {process.pid})")
 
-            return True
+                # Send SIGINT for graceful shutdown
+                try:
+                    process.send_signal(signal.SIGINT)
+                except ProcessLookupError:
+                    logger.warning(f"Process {process.pid} already terminated")
 
-        except Exception as e:
-            logger.error(f"Error stopping stream {stream_id}: {e}")
-            return False
+                try:
+                    # Wait for process to exit
+                    await asyncio.wait_for(process.wait(), timeout=timeout)
+                    logger.info(f"Stream {stream_id} stopped gracefully")
+                except asyncio.TimeoutError:
+                    # Force kill if timeout
+                    logger.warning(f"Stream {stream_id} timeout, forcing kill")
+                    try:
+                        process.kill()
+                        await process.wait()
+                    except ProcessLookupError:
+                        pass
+
+                # Cleanup
+                if stream_id in self.active_streams:
+                    del self.active_streams[stream_id]
+                if stream_id in self.stream_info:
+                    del self.stream_info[stream_id]
+
+                return True
+
+            except Exception as e:
+                logger.exception(f"Error stopping stream {stream_id}: {e}")
+                # Force cleanup on error
+                self.active_streams.pop(stream_id, None)
+                self.stream_info.pop(stream_id, None)
+                return False
 
     def is_running(self, stream_id: str) -> bool:
         """Check if stream is currently running"""
@@ -193,10 +204,14 @@ class FFmpegStreamManager:
         self,
         stream_id: str,
         process: asyncio.subprocess.Process,
-        log_handle
+        log_file: Optional[Path]
     ):
-        """Monitor FFmpeg process and cleanup on exit"""
+        """Monitor FFmpeg process, write logs, and cleanup on exit"""
         try:
+            # Write logs to file if specified
+            if log_file:
+                asyncio.create_task(self._write_logs_to_file(stream_id, process, log_file))
+            
             returncode = await process.wait()
             
             if returncode == 0:
@@ -205,14 +220,47 @@ class FFmpegStreamManager:
                 logger.error(f"Stream {stream_id} exited with code {returncode}")
             
             # Cleanup
-            if stream_id in self.active_streams:
-                del self.active_streams[stream_id]
-            
-            if log_handle:
-                log_handle.close()
+            async with self._cleanup_lock:
+                if stream_id in self.active_streams:
+                    del self.active_streams[stream_id]
+                if stream_id in self.stream_info:
+                    del self.stream_info[stream_id]
 
         except Exception as e:
-            logger.error(f"Error monitoring stream {stream_id}: {e}")
+            logger.exception(f"Error monitoring stream {stream_id}: {e}")
+
+    async def _write_logs_to_file(
+        self,
+        stream_id: str,
+        process: asyncio.subprocess.Process,
+        log_file: Path
+    ):
+        """Write process output to log file safely using async file operations"""
+        try:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            async with aiofiles.open(log_file, "wb") as f:
+                while True:
+                    line = await process.stderr.readline()
+                    if not line:
+                        break
+                    await f.write(line)
+                    
+        except Exception as e:
+            logger.exception(f"Error writing logs for stream {stream_id}: {e}")
+
+    async def cleanup_dead_streams(self):
+        """Periodically cleanup dead stream info to prevent memory leaks"""
+        async with self._cleanup_lock:
+            dead_streams = []
+            for stream_id, process in list(self.active_streams.items()):
+                if process.returncode is not None:
+                    dead_streams.append(stream_id)
+            
+            for stream_id in dead_streams:
+                logger.info(f"Cleaning up dead stream {stream_id}")
+                self.active_streams.pop(stream_id, None)
+                self.stream_info.pop(stream_id, None)
 
 
 # Global instance

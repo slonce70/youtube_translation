@@ -8,6 +8,7 @@ import os
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.database import Stream
+from uuid import UUID
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -63,32 +64,41 @@ def get_system_metrics() -> Dict[str, Any]:
 
 async def get_stream_metrics(db: AsyncSession, user_id: str) -> Dict[str, Any]:
     """Get stream-related metrics for the current user."""
+    try:
+        user_uuid = UUID(user_id)
+    except (ValueError, TypeError):
+        user_uuid = user_id
     
     # Count total streams
     result = await db.execute(
-        select(func.count(Stream.id))
-        .where(Stream.user_id == user_id)
+        select(func.count(Stream.id)).where(Stream.user_id == user_uuid)
     )
     total_streams = result.scalar()
     
     # Count active streams
     result = await db.execute(
-        select(func.count(Stream.id))
-        .where(Stream.user_id == user_id, Stream.status == "running")
+        select(func.count(Stream.id)).where(
+            Stream.user_id == user_uuid,
+            Stream.status == "running"
+        )
     )
     active_streams = result.scalar()
     
-    # Count idle streams
+    # Count inactive streams (represented as "stopped" in the database)
     result = await db.execute(
-        select(func.count(Stream.id))
-        .where(Stream.user_id == user_id, Stream.status == "idle")
+        select(func.count(Stream.id)).where(
+            Stream.user_id == user_uuid,
+            Stream.status == "stopped"
+        )
     )
     idle_streams = result.scalar()
     
     # Count error streams
     result = await db.execute(
-        select(func.count(Stream.id))
-        .where(Stream.user_id == user_id, Stream.status == "error")
+        select(func.count(Stream.id)).where(
+            Stream.user_id == user_uuid,
+            Stream.status == "error"
+        )
     )
     error_streams = result.scalar()
     

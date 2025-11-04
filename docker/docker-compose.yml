@@ -19,20 +19,33 @@ services:
     networks:
       - app-network
     depends_on:
-      - tusd
+      tusd:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # tusd (Resumable uploads)
   tusd:
     image: tusproject/tusd:latest
     container_name: youtube-streaming-tusd
-    command: -dir /data -hooks-http http://backend:8000/api/assets/upload-complete
+    command: -dir /app/uploads -hooks-http http://backend:8000/api/assets/upload-complete -port 1080
     ports:
       - "1080:1080"
     volumes:
-      - tusd-data:/data
+      - ../backend/uploads:/app/uploads
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:1080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # Caddy (Reverse proxy with auto HTTPS)
   caddy:
@@ -67,10 +80,16 @@ services:
     networks:
       - app-network
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
-  tusd-data:
   caddy-data:
   caddy-config:
 

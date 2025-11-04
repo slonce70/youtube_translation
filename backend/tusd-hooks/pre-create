@@ -1,0 +1,112 @@
+#!/bin/bash
+#
+# Tusd Pre-Create Hook - Quota Check and User Directory Creation
+#
+# This hook is called BEFORE tusd creates the upload file.
+# It checks if the user has enough quota to upload the file.
+#
+
+# Exit on error for critical failures
+set -e
+
+# Read webhook data from stdin (tusd may send multi-line JSON)
+HOOK_DATA=$(cat)
+
+if [ -z "$HOOK_DATA" ]; then
+    echo "[pre-create] ERROR: empty payload from tusd" >&2
+    echo '{"HTTPResponse":{"StatusCode":400,"Body":"Missing hook payload","Headers":{"Content-Type":"text/plain"}}}' >&1
+    exit 1
+fi
+
+# Debug: Print raw hook data
+echo "[pre-create] RAW HOOK DATA: $HOOK_DATA" >&2
+
+# Extract metadata
+USER_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.user_id // .Upload.MetaData.user_id // empty')
+FILE_SIZE=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.Size // .Upload.Size // 0')
+UPLOAD_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.ID // .Upload.ID // empty')
+
+# Debug logging
+echo "[pre-create] Upload ID: $UPLOAD_ID" >&2
+echo "[pre-create] User ID: $USER_ID" >&2
+echo "[pre-create] File Size: $FILE_SIZE bytes" >&2
+
+# Validate user_id
+if [ -z "$USER_ID" ] || [ "$USER_ID" = "null" ]; then
+    echo "ERROR: Missing user_id in upload metadata" >&2
+    echo '{"HTTPResponse":{"StatusCode":400,"Body":"Missing user_id in metadata","Headers":{"Content-Type":"text/plain"}}}' >&1
+    exit 1
+fi
+
+# Check quota via backend API
+BACKEND_URL="http://localhost:8000/api/internal/check-quota"
+REQUEST_PAYLOAD=$(jq -n --arg user "$USER_ID" --argjson size "$FILE_SIZE" '{user_id: $user, file_size: ($size | tonumber)}')
+
+if [ -z "$TUSD_HMAC_SECRET" ]; then
+    echo "[pre-create] ERROR: TUSD_HMAC_SECRET is not set" >&2
+    BODY="Upload rejected: internal security configuration error"
+    echo "{\"HTTPResponse\":{\"StatusCode\":500,\"Body\":\"$BODY\",\"Headers\":{\"Content-Type\":\"text/plain\"}}}" >&1
+    exit 1
+fi
+
+SIGNATURE=$(printf '%s' "$REQUEST_PAYLOAD" | openssl dgst -sha256 -hmac "$TUSD_HMAC_SECRET" | awk '{print $NF}')
+
+set +e
+HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST "$BACKEND_URL" \
+    -H "Content-Type: application/json" \
+    -H "X-Tusd-Signature: $SIGNATURE" \
+    -d "$REQUEST_PAYLOAD")
+CURL_EXIT_CODE=$?
+set -e
+
+if [ $CURL_EXIT_CODE -ne 0 ]; then
+    echo "[pre-create] ERROR: Failed to connect to backend API (code $CURL_EXIT_CODE)" >&2
+    BODY="Upload rejected: quota service unavailable"
+    echo "{\"HTTPResponse\":{\"StatusCode\":503,\"Body\":\"$BODY\",\"Headers\":{\"Content-Type\":\"text/plain\"}}}" >&1
+    exit 1
+fi
+
+RESPONSE_BODY=${HTTP_RESPONSE%HTTPSTATUS:*}
+HTTP_STATUS=${HTTP_RESPONSE##*HTTPSTATUS:}
+
+if [ "$HTTP_STATUS" -ne 200 ]; then
+    REASON=$(echo "$RESPONSE_BODY" | jq -r '.detail // .reason // "Quota check failed"' 2>/dev/null)
+    [ -z "$REASON" ] && REASON="Quota check failed"
+    echo "[pre-create] REJECT: $REASON (HTTP $HTTP_STATUS)" >&2
+    STATUS_CODE=$HTTP_STATUS
+    if [ "$STATUS_CODE" -lt 400 ] || [ "$STATUS_CODE" -ge 600 ]; then
+        STATUS_CODE=403
+    fi
+    BODY="Upload rejected: $REASON"
+    echo "{\"HTTPResponse\":{\"StatusCode\":$STATUS_CODE,\"Body\":\"$BODY\",\"Headers\":{\"Content-Type\":\"text/plain\"}}}" >&1
+    exit 1
+fi
+
+CAN_UPLOAD=$(echo "$RESPONSE_BODY" | jq -r '.can_upload // false')
+REASON=$(echo "$RESPONSE_BODY" | jq -r '.reason // "Unknown error"')
+
+echo "[pre-create] Quota check result: can_upload=$CAN_UPLOAD" >&2
+
+if [ "$CAN_UPLOAD" != "true" ]; then
+    echo "[pre-create] REJECT: $REASON" >&2
+    # Return HTTP 413 Payload Too Large for quota exceeded
+    BODY="Upload rejected: $REASON"
+    echo "{\"HTTPResponse\":{\"StatusCode\":413,\"Body\":\"$BODY\",\"Headers\":{\"Content-Type\":\"text/plain\"}}}" >&1
+    exit 1
+fi
+
+# Create user directory if it doesn't exist (absolute path)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+UPLOAD_ROOT="${TUSD_UPLOAD_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)/uploads}"
+USER_DIR="$UPLOAD_ROOT/$USER_ID"
+
+if [ ! -d "$USER_DIR" ]; then
+    echo "[pre-create] Creating user directory: $USER_DIR" >&2
+    mkdir -p "$USER_DIR"
+    chmod 700 "$USER_DIR"
+fi
+
+echo "[pre-create] ACCEPT: Upload allowed" >&2
+
+# Return success (allow upload)
+exit 0
