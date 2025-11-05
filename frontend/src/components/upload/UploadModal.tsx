@@ -616,9 +616,10 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-      <Card className="w-full max-w-4xl animate-scale-in shadow-2xl">
-        <CardContent className="p-6 space-y-6 relative">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-sm">
+      <div className="flex min-h-full items-center justify-center px-4 py-12">
+        <Card className="w-full max-w-4xl animate-scale-in shadow-2xl max-h-[calc(100vh-4rem)] overflow-hidden">
+          <CardContent className="relative space-y-6 overflow-y-auto p-6 max-h-[calc(100vh-4rem)]">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
@@ -928,5 +929,6 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
         </CardContent>
       </Card>
     </div>
-  )
+  </div>
+)
 }

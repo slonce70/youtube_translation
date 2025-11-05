@@ -72,7 +72,7 @@ export const BITRATE_GUIDANCE: BitrateRecommendation[] = [
     maxHeight: 1299,
     fps: 60,
     minBitrateMbps: 4,
-    maxBitrateMbps: 10,
+    maxBitrateMbps: 12,
     targetBitrateMbps: 12,
   },
   {
@@ -81,26 +81,8 @@ export const BITRATE_GUIDANCE: BitrateRecommendation[] = [
     maxHeight: 1299,
     fps: 30,
     minBitrateMbps: 3,
-    maxBitrateMbps: 8,
+    maxBitrateMbps: 10,
     targetBitrateMbps: 10,
-  },
-  {
-    resolutionLabel: '720p',
-    minHeight: 700,
-    maxHeight: 999,
-    fps: 60,
-    minBitrateMbps: 3,
-    maxBitrateMbps: 8,
-    targetBitrateMbps: 6,
-  },
-  {
-    resolutionLabel: '240p – 720p',
-    minHeight: 200,
-    maxHeight: 699,
-    fps: 30,
-    minBitrateMbps: 3,
-    maxBitrateMbps: 8,
-    targetBitrateMbps: 4,
   },
 ]
 

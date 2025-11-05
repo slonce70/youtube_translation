@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import signal
+import shutil
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -20,8 +21,8 @@ logger = logging.getLogger(__name__)
 class FFmpegStreamManager:
     """Manages FFmpeg streaming processes"""
 
-    def __init__(self, ffmpeg_bin: str = "/usr/bin/ffmpeg"):
-        self.ffmpeg_bin = ffmpeg_bin
+    def __init__(self, ffmpeg_bin: Optional[str] = None):
+        self.ffmpeg_bin = self._resolve_ffmpeg_bin(ffmpeg_bin or settings.ffmpeg_bin)
         self.active_streams: Dict[str, asyncio.subprocess.Process] = {}
         self.stream_info: Dict[str, Dict] = {}
         self._cleanup_lock = asyncio.Lock()  # Thread-safety for cleanup operations
@@ -380,7 +381,7 @@ class FFmpegStreamManager:
             logger.debug("Stream ID %s is not a UUID; storing alert without FK", stream_id)
 
         alert = SystemAlert(
-            alert_type="ffmpeg_failure",
+            alert_type="stream_failure",
             severity=severity,
             user_id=user_uuid,
             stream_id=stream_uuid,
@@ -450,5 +451,27 @@ class FFmpegStreamManager:
                 self.stream_info.pop(stream_id, None)
 
 
+    @staticmethod
+    def _resolve_ffmpeg_bin(candidate: str) -> str:
+        """Resolve FFmpeg binary path from settings or PATH with helpful errors."""
+        provided_path = Path(candidate)
+        if provided_path.exists():
+            return str(provided_path)
+
+        detected = shutil.which(candidate) if candidate else None
+        if detected:
+            logger.info("Using FFmpeg binary at %s", detected)
+            return detected
+
+        fallback = shutil.which("ffmpeg")
+        if fallback:
+            logger.info("Detected FFmpeg binary via PATH at %s", fallback)
+            return fallback
+
+        raise FileNotFoundError(
+            "FFmpeg binary not found. Install FFmpeg or set FFMPEG_BIN in your environment."
+        )
+
+
 # Global instance
-ffmpeg_manager = FFmpegStreamManager()
+ffmpeg_manager = FFmpegStreamManager(settings.ffmpeg_bin)

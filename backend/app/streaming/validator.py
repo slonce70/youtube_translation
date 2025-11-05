@@ -61,7 +61,7 @@ class VideoValidator:
             "max_height": 1299,
             "fps": 60,
             "min_bitrate_mbps": 4,
-            "max_bitrate_mbps": 10,
+            "max_bitrate_mbps": 12,
             "target_bitrate_mbps": 12,
         },
         {
@@ -70,26 +70,8 @@ class VideoValidator:
             "max_height": 1299,
             "fps": 30,
             "min_bitrate_mbps": 3,
-            "max_bitrate_mbps": 8,
+            "max_bitrate_mbps": 10,
             "target_bitrate_mbps": 10,
-        },
-        {
-            "label": "720p",
-            "min_height": 700,
-            "max_height": 999,
-            "fps": 60,
-            "min_bitrate_mbps": 3,
-            "max_bitrate_mbps": 8,
-            "target_bitrate_mbps": 6,
-        },
-        {
-            "label": "240p – 720p",
-            "min_height": 200,
-            "max_height": 699,
-            "fps": 30,
-            "min_bitrate_mbps": 3,
-            "max_bitrate_mbps": 8,
-            "target_bitrate_mbps": 4,
         },
     ]
 

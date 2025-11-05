@@ -6,7 +6,7 @@ across all API operations.
 """
 
 from functools import wraps
-from typing import Optional, Callable
+from typing import Optional, Callable, List, Dict, Any, Tuple
 from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from app.models.database import (
     UserProfile, SubscriptionTierLimits,
     Asset, Playlist, Destination, Stream, SystemAlert
 )
+from app.streaming.validator import VideoValidator
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,272 @@ class QuotaEnforcer:
                         "tier": self._profile.subscription_tier,
                     }
                 )
+
+    async def evaluate_stream_quality(self, assets: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Validate selected assets against tier quality limits.
+
+        Returns dict with keys: ok, violations, limits, tier, recommended.
+        """
+        await self.check_suspended()
+        await self._load_limits()
+
+        limits = self._limits
+        result: Dict[str, Any] = {
+            "tier": self._profile.subscription_tier,
+            "limits": {
+                "max_resolution_height": limits.max_resolution_height,
+                "max_fps": limits.max_fps,
+                "max_video_bitrate_mbps": limits.max_video_bitrate_mbps,
+                "enforce_stream_quality": limits.enforce_stream_quality,
+            },
+            "violations": [],
+            "ok": True,
+        }
+
+        if not limits.enforce_stream_quality:
+            return result
+
+        guidance_table = VideoValidator.BITRATE_GUIDANCE
+
+        def _safe_int(value: Any) -> Optional[int]:
+            if isinstance(value, (int, float)):
+                return int(value)
+            if isinstance(value, str) and value.strip():
+                try:
+                    return int(float(value))
+                except ValueError:
+                    return None
+            return None
+
+        def _safe_float(value: Any) -> Optional[float]:
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str) and value.strip():
+                try:
+                    return float(value)
+                except ValueError:
+                    return None
+            return None
+
+        def _safe_float(value: Any) -> Optional[float]:
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str) and value.strip():
+                try:
+                    return float(value)
+                except ValueError:
+                    return None
+            return None
+
+        def _normalize_fps(value: Optional[float]) -> Tuple[Optional[int], bool]:
+            if value is None or value <= 0:
+                return None, True
+
+            diff_30 = abs(value - 30)
+            diff_60 = abs(value - 60)
+
+            if diff_30 <= 3:
+                return 30, False
+            if diff_60 <= 5:
+                return 60, False
+
+            # Outside guideline, but return the closest bucket
+            bucket = 30 if diff_30 < diff_60 else 60
+            return bucket, True
+
+        def _match_guideline(height: Optional[int], fps_value: Optional[float]):
+            bucket, out_of_guideline = _normalize_fps(fps_value)
+
+            if height is None:
+                return None, bucket, True
+
+            rule = next(
+                (
+                    entry
+                    for entry in guidance_table
+                    if height >= entry["min_height"]
+                    and height <= entry["max_height"]
+                    and (bucket is None or entry["fps"] == bucket)
+                ),
+                None,
+            )
+
+            if rule is None:
+                rule = next(
+                    (
+                        entry
+                        for entry in guidance_table
+                        if height >= entry["min_height"] and height <= entry["max_height"]
+                    ),
+                    None,
+                )
+
+            return rule, bucket, out_of_guideline
+
+        def _format_bitrate(value: Optional[float]) -> Optional[str]:
+            if value is None:
+                return None
+            return f"{value:.2f} Mbps"
+
+        recommended_info_set = False
+
+        for index, asset in enumerate(assets):
+            meta = asset.get("meta") or {}
+            video = meta.get("video") or {}
+
+            def add_violation(code: str, message: str, current: Any = None, allowed: Any = None):
+                result["violations"].append(
+                    {
+                        "code": code,
+                        "message": message,
+                        "asset_id": asset.get("asset_id"),
+                        "filename": asset.get("filename"),
+                        "position": index,
+                        "current": current,
+                        "allowed": allowed,
+                    }
+                )
+
+            if not video:
+                add_violation(
+                    "missing_metadata",
+                    "Video metadata is missing. Revalidate the file before streaming.",
+                )
+                continue
+
+            height = _safe_int(video.get("height"))
+            fps = _safe_float(video.get("fps"))
+            bitrate_bps = (
+                _safe_float(video.get("bitrate"))
+                or _safe_float(meta.get("bitrate"))
+                or _safe_float(meta.get("overallBitrate"))
+            )
+            bitrate_mbps = (bitrate_bps / 1_000_000) if bitrate_bps else None
+
+            guideline_rule, fps_bucket, fps_out_of_guideline = _match_guideline(height, fps)
+
+            if (
+                guideline_rule
+                and not recommended_info_set
+                and (
+                    not limits.max_resolution_height
+                    or (
+                        limits.max_resolution_height >= guideline_rule["min_height"]
+                        and limits.max_resolution_height <= guideline_rule["max_height"]
+                    )
+                )
+            ):
+                result["recommended"] = {
+                    "resolution": guideline_rule["label"],
+                    "fps": guideline_rule["fps"],
+                    "min_bitrate_mbps": guideline_rule["min_bitrate_mbps"],
+                    "max_bitrate_mbps": guideline_rule["max_bitrate_mbps"],
+                    "target_bitrate_mbps": guideline_rule["target_bitrate_mbps"],
+                }
+                recommended_info_set = True
+
+            if limits.max_resolution_height and height and height > limits.max_resolution_height:
+                add_violation(
+                    "resolution_exceeded",
+                    "Video resolution exceeds your plan limit.",
+                    current=f"{height}p",
+                    allowed=f"{limits.max_resolution_height}p",
+                )
+
+            if limits.max_fps and fps and fps > limits.max_fps:
+                add_violation(
+                    "fps_exceeded",
+                    "Frame rate exceeds the allowed value.",
+                    current=f"{fps:.2f} FPS",
+                    allowed=f"{limits.max_fps} FPS",
+                )
+
+            if fps is None:
+                add_violation(
+                    "fps_out_of_range",
+                    "Frame rate could not be detected. Encode the video using the recommended frame rate.",
+                    current=None,
+                    allowed=f"{guideline_rule['fps']} FPS" if guideline_rule else f"{limits.max_fps or 30} FPS",
+                )
+            elif fps_bucket and limits.max_fps and fps_bucket > limits.max_fps:
+                add_violation(
+                    "fps_out_of_range",
+                    "Frame rate exceeds the allowed value.",
+                    current=f"{fps:.2f} FPS",
+                    allowed=f"{limits.max_fps} FPS",
+                )
+            elif fps_bucket is not None and fps_out_of_guideline:
+                add_violation(
+                    "fps_out_of_range",
+                    "Frame rate must match YouTube guidance.",
+                    current=f"{fps:.2f} FPS",
+                    allowed=f"{guideline_rule['fps']} FPS" if guideline_rule else f"{limits.max_fps or 30} FPS",
+                )
+
+            if not guideline_rule:
+                add_violation(
+                    "guideline_missing",
+                    "No quality guideline found for this resolution within your plan.",
+                    current=f"{height}p" if height else None,
+                    allowed=f"{limits.max_resolution_height}p @ {limits.max_fps or 30} FPS"
+                    if limits.max_resolution_height
+                    else "1080p @ 30 FPS",
+                )
+
+            if bitrate_mbps is None:
+                add_violation(
+                    "bitrate_missing",
+                    "Bitrate metadata is missing. Revalidate or re-encode the file.",
+                )
+            else:
+                if guideline_rule:
+                    min_allowed = guideline_rule["min_bitrate_mbps"]
+                    max_allowed = guideline_rule["max_bitrate_mbps"]
+                    if bitrate_mbps < min_allowed or bitrate_mbps > max_allowed:
+                        add_violation(
+                            "bitrate_out_of_range",
+                            "Video bitrate must stay within the YouTube guideline range.",
+                            current=_format_bitrate(bitrate_mbps),
+                            allowed=f"{min_allowed}–{max_allowed} Mbps",
+                        )
+
+                if limits.max_video_bitrate_mbps and bitrate_mbps > limits.max_video_bitrate_mbps:
+                    add_violation(
+                        "bitrate_out_of_range",
+                        "Video bitrate exceeds the allowed value.",
+                        current=_format_bitrate(bitrate_mbps),
+                        allowed=f"≤ {limits.max_video_bitrate_mbps} Mbps",
+                    )
+
+        if result["violations"]:
+            result["ok"] = False
+            if "recommended" not in result:
+                fallback_rule = None
+                if limits.max_resolution_height:
+                    fallback_rule = next(
+                        (
+                            entry
+                            for entry in guidance_table
+                            if entry["max_height"] == limits.max_resolution_height
+                            and (not limits.max_fps or entry["fps"] == limits.max_fps)
+                        ),
+                        None,
+                    )
+
+                result["recommended"] = {
+                    "resolution": fallback_rule["label"]
+                    if fallback_rule
+                    else (f"{limits.max_resolution_height}p" if limits.max_resolution_height else None),
+                    "fps": fallback_rule["fps"] if fallback_rule else limits.max_fps,
+                    "min_bitrate_mbps": fallback_rule["min_bitrate_mbps"] if fallback_rule else None,
+                    "max_bitrate_mbps": fallback_rule["max_bitrate_mbps"]
+                    if fallback_rule
+                    else limits.max_video_bitrate_mbps,
+                    "target_bitrate_mbps": fallback_rule["target_bitrate_mbps"] if fallback_rule else None,
+                }
+
+        return result
     
     async def check_playlists_limit(self) -> bool:
         """

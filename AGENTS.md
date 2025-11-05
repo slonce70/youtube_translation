@@ -1,19 +1,43 @@
 # Repository Guidelines
 
+This repository delivers the multi-tenant YouTube streaming platform through a FastAPI backend, a Next.js frontend, and tusd upload helpers.
+
 ## Project Structure & Module Organization
-The backend FastAPI service lives in `backend/`, with domain logic under `backend/app`, routers in `backend/app/api/routes`, schemas in `backend/app/schemas`, and shared utilities in `backend/app/core`. Backend tests reside in `backend/tests`, and alembic migrations are tracked in `backend/migrations`. The Next.js frontend is in `frontend/`, where pages sit in `frontend/src/app`, reusable UI in `frontend/src/components`, and data helpers in `frontend/src/lib`. Docker orchestration assets live in `docker/`, while helper scripts (`start-backend.sh`, `start-frontend.sh`, `start-tusd.sh`) boot individual services.
+
+- `backend/app` holds FastAPI routers (`api/`), domain services (`core/`, `streaming/`), Pydantic schemas, and SQL models; migrations reside in `backend/migrations`, tests in `backend/tests/`.
+- `frontend/src` uses the App Router with UI elements inside `components/`, utilities in `lib/`, and locale assets under `i18n/` and `messages/`.
+- `docs/` contains architecture notes, `docker/` covers deployment manifests, and root scripts `start-*.sh` plus the `Makefile` manage local workflows.
 
 ## Build, Test, and Development Commands
-Run `make dev` for the full stack (backend on 8000, frontend on 3000, tusd on 1080). Use `make dev-backend` for backend-only work and `npm run dev` from `frontend/` for the web client. Before merging, execute `make build` to simulate production. Focused checks include `make test-backend` for pytest, `make lint` for Ruff/Black, and `make type-check` for TypeScript validation.
+
+Prefer the Makefile shortcuts:
+
+```bash
+make dev              # start FastAPI, Next.js, and tusd together
+make test             # run pytest and Jest suites
+make lint             # ruff + black + eslint
+make type-check       # mypy + TypeScript checks
+make migrate          # apply database migrations
+```
+
+Use underlying commands as needed: `pytest -v`, `npm run dev`, `npm test`, or `python3 apply_migrations.py`.
 
 ## Coding Style & Naming Conventions
-Python code follows PEP 8 with four-space indentation and type hints. Keep filenames snake_case (`transcript_service.py`) and expose FastAPI dependencies through `backend/app/core`. Frontend components live in PascalCase files (`StreamDashboard.tsx`), with hooks/helpers in camelCase. When extracting Tailwind class sets, prefer `tailwind-merge` utilities. Format code via `make lint-fix` when bulk changes accumulate.
+
+- Backend code uses Python 3.11+, four-space indentation, type hints, and `snake_case` modules; enforce style with `ruff`, `black`, and `mypy`. Classes (SQLAlchemy, Pydantic, enums) stay in `PascalCase`.
+- Frontend TypeScript keeps functional React components, Tailwind utility classes, and `camelCase` variables. `npm run lint` and `npm run type-check` must be clean before review.
+- Keep `backend/.env.example` and `frontend/.env.example` updated when adding configuration.
 
 ## Testing Guidelines
-Pytest is configured via `backend/pytest.ini`; add unit tests beside features under `backend/tests/test_<feature>.py`. Favor async tests for async endpoints and tag heavier suites as `@pytest.mark.integration` so they can be excluded with `pytest -m "not integration"`. Capture expected fixtures or sample payloads in dedicated modules rather than inline literals.
+
+Place pytest modules in `backend/tests/` alongside route or service names (e.g., `test_stream_routes.py`); run coverage with `make test-backend-coverage` when touching critical flows. Frontend behavior tests belong near their components or in `frontend/src/__tests__`, using Jest and Testing Library with the helpers defined in `jest.setup.ts`. Pull requests must pass `make test`.
 
 ## Commit & Pull Request Guidelines
-Follow conventional commits (`feat: add upload workflow`, `fix: handle tusd errors`) and keep subjects under 72 characters. Each pull request should summarize scope, link issues, note environment changes, and include validation steps (for example, `make lint`, `make test-backend`, `npm run lint`). Attach screenshots or recordings for UI updates and mention any migrations or config updates explicitly.
+
+- Follow Conventional Commits as in history (`feat(streams): …`, `fix: …`); group refactors under `chore:` and config changes under `build:` or `ci:`.
+- PRs need a concise summary, linked issue, screenshots for UI changes, and the list of verification commands run (`make lint`, `make test`, migrations). Document new environment variables and reference doc updates when applicable.
+- Rebase onto `main` before review and keep PRs small; include design notes in `docs/` if the change alters architecture.
 
 ## Security & Configuration Tips
-Environment variables load through `backend/app/core/config.py`; never commit `.env` files and document new keys in PRs. Verify FFmpeg and tusd paths when running outside Docker images. Before releases, run `make security-audit` to surface dependency issues and rotate any Supabase keys tied to authentication changes.
+
+Store secrets only in `backend/.env` and `frontend/.env.local`, not in Git. Validate `TUSD_HMAC_SECRET`, FFmpeg paths, and Supabase credentials before `make dev`. Rotate tokens regularly and run `make security-audit` ahead of releases.

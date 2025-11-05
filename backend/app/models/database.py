@@ -60,6 +60,10 @@ class SubscriptionTierLimits(Base):
     analytics_enabled = Column(Boolean, default=False)
     team_collaboration_enabled = Column(Boolean, default=False)
     log_retention_days = Column(Integer, default=7)
+    max_resolution_height = Column(Integer)
+    max_fps = Column(Integer)
+    max_video_bitrate_mbps = Column(Integer)
+    enforce_stream_quality = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 

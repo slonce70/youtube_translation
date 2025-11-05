@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useTranslations } from 'next-intl'
+import { useRouter } from 'next/navigation'
 
 import { api } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
@@ -38,6 +39,8 @@ import type {
   StreamLogsResponse,
   CreateStreamPayload,
   StreamStatusValue,
+  StreamStatusResponse,
+  StreamQualityResponse,
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
 
@@ -64,10 +67,21 @@ const statusVariantMap: Record<StreamStatusValue, 'success' | 'info' | 'warning'
 
 export default function StreamingPage() {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const { user } = useDashboardContext()
   const streamingToasts = useTranslations('streaming.toasts')
   const streamingStatus = useTranslations('streaming.status')
   const tStreaming = useTranslations('streaming.page')
+
+  const violationTranslationKey: Record<string, string> = {
+    resolution_exceeded: 'streams.quality.violations.resolution',
+    fps_exceeded: 'streams.quality.violations.fps',
+    fps_out_of_range: 'streams.quality.violations.fpsRange',
+    bitrate_out_of_range: 'streams.quality.violations.bitrateRange',
+    bitrate_missing: 'streams.quality.violations.bitrateMissing',
+    guideline_missing: 'streams.quality.violations.guidelineMissing',
+    missing_metadata: 'streams.quality.violations.missingMetadata',
+  }
 
   // Channels (Destinations) state
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
@@ -197,14 +211,31 @@ export default function StreamingPage() {
     },
   })
 
-  const startStreamMutation = useMutation({
-    mutationFn: (streamId: string) => api.streams.start(streamId),
-    onSuccess: () => {
+  type StartStreamVariables = { streamId: string; streamName?: string | null }
+
+  const [qualityGate, setQualityGate] = useState<{ streamName?: string | null; quality: StreamQualityResponse } | null>(null)
+
+  const startStreamMutation = useMutation<StreamStatusResponse, Error & { quality?: StreamQualityResponse }, StartStreamVariables>({
+    mutationFn: async ({ streamId }: StartStreamVariables) => {
+      const quality = await api.streams.quality(streamId)
+      if (!quality.ok) {
+        const error = new Error('quality_rejected') as Error & { quality: StreamQualityResponse }
+        error.quality = quality
+        throw error
+      }
+      return api.streams.start(streamId)
+    },
+    onSuccess: (_, variables) => {
       toast.success(streamingToasts('stream.started'))
       queryClient.invalidateQueries({ queryKey: ['streams'] })
     },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
+    onError: (error: Error & { quality?: StreamQualityResponse }, variables) => {
+      if (error.quality && !error.quality.ok) {
+        setQualityGate({ streamName: variables?.streamName, quality: error.quality })
+        return
+      }
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message }))
+    },
   })
 
   const stopStreamMutation = useMutation({
@@ -510,7 +541,12 @@ export default function StreamingPage() {
                             <Button
                               size="sm"
                               isLoading={startStreamMutation.isPending}
-                              onClick={() => startStreamMutation.mutate(stream.id)}
+                              onClick={() =>
+                                startStreamMutation.mutate({
+                                  streamId: stream.id,
+                                  streamName: stream.name,
+                                })
+                              }
                             >
                               <Play className="w-4 h-4 mr-2" />
                               {tStreaming('streams.buttons.start')}
@@ -659,6 +695,135 @@ export default function StreamingPage() {
         </div>
       )}
 
+      {qualityGate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
+          <Card className="w-full max-w-2xl animate-scale-in">
+            <CardHeader>
+              <CardTitle>{tStreaming('streams.quality.title')}</CardTitle>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {tStreaming('streams.quality.description', {
+                  name: qualityGate.streamName || tStreaming('streams.untitled'),
+                })}
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {tStreaming('streams.quality.limits.resolution')}
+                  </p>
+                  <p className="text-base font-semibold text-slate-900 dark:text-white">
+                    {qualityGate.quality.limits.max_resolution_height
+                      ? `${qualityGate.quality.limits.max_resolution_height}p`
+                      : tStreaming('streams.quality.limits.unlimited')}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {tStreaming('streams.quality.limits.fps')}
+                  </p>
+                  <p className="text-base font-semibold text-slate-900 dark:text-white">
+                    {qualityGate.quality.limits.max_fps ?? tStreaming('streams.quality.limits.unlimited')}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {tStreaming('streams.quality.limits.bitrate')}
+                  </p>
+                  <p className="text-base font-semibold text-slate-900 dark:text-white">
+                    {qualityGate.quality.limits.max_video_bitrate_mbps
+                      ? `${qualityGate.quality.limits.max_video_bitrate_mbps} Mbps`
+                      : tStreaming('streams.quality.limits.unlimited')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-primary-200 dark:border-primary-700/60 bg-primary-50/60 dark:bg-primary-900/30 p-4">
+                <p className="text-sm font-semibold text-primary-700 dark:text-primary-300">
+                  {tStreaming('streams.quality.recommended.title')}
+                </p>
+                {(() => {
+                  const recommendation = qualityGate.quality.recommended
+                  const resolution =
+                    recommendation?.resolution ??
+                    `${qualityGate.quality.limits.max_resolution_height ?? 1080}p`
+                  const fpsValue =
+                    recommendation?.fps ??
+                    qualityGate.quality.limits.max_fps ??
+                    30
+                  const minBitrate =
+                    recommendation?.min_bitrate_mbps ?? null
+                  const maxBitrate =
+                    recommendation?.max_bitrate_mbps ??
+                    qualityGate.quality.limits.max_video_bitrate_mbps ??
+                    null
+                  const targetBitrate =
+                    recommendation?.target_bitrate_mbps ?? maxBitrate ?? minBitrate
+                  const formatValue = (value: number | null) =>
+                    value != null ? value.toString() : '—'
+
+                  return (
+                    <p className="text-sm text-primary-700 dark:text-primary-300 mt-1">
+                      {tStreaming('streams.quality.recommended.description', {
+                        resolution,
+                        fps: fpsValue.toString(),
+                        min: formatValue(minBitrate),
+                        max: formatValue(maxBitrate),
+                        target: formatValue(targetBitrate),
+                      })}
+                    </p>
+                  )
+                })()}
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  {tStreaming('streams.quality.detailsHeading')}
+                </h4>
+                <div className="space-y-3">
+                  {qualityGate.quality.violations.map((violation) => {
+                    const messageKey = violationTranslationKey[violation.code] ?? 'streams.quality.violations.default'
+                    return (
+                      <div
+                        key={`${violation.code}-${violation.asset_id ?? violation.position}`}
+                        className="rounded-lg border border-error-200 dark:border-error-700 bg-error-50/80 dark:bg-error-900/20 p-3"
+                      >
+                        <p className="text-sm font-semibold text-error-700 dark:text-error-300">
+                          {violation.filename ||
+                            tStreaming('streams.quality.unknownAsset', { index: violation.position + 1 })}
+                        </p>
+                        <p className="text-sm text-error-700 dark:text-error-300 mt-1">
+                          {tStreaming(messageKey as any, {
+                            current: violation.current ?? '—',
+                            allowed: violation.allowed ?? '—',
+                          })}
+                        </p>
+                        <p className="text-xs text-error-600/80 dark:text-error-400/80 mt-1">
+                          {violation.message}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </CardContent>
+            <div className="flex justify-end gap-3 px-6 pb-6">
+              <Button variant="secondary" onClick={() => setQualityGate(null)}>
+                {tStreaming('streams.quality.cta.close')}
+              </Button>
+              <Button
+                onClick={() => {
+                  setQualityGate(null)
+                  router.push('/dashboard/library')
+                }}
+              >
+                {tStreaming('streams.quality.cta.library')}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Create Stream Modal */}
       {showCreateStream && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
@@ -745,28 +910,45 @@ export default function StreamingPage() {
                             key={destination.id}
                             type="button"
                             onClick={() => toggleDestination(destination.id)}
-                            className={`w-full text-left p-3 rounded-lg border transition-all ${
+                            className={cn(
+                              'w-full rounded-lg border p-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-success-500',
                               isSelected
-                                ? 'border-success-500 bg-success-50 dark:bg-success-900/20'
+                                ? 'border-success-500 bg-success-100 text-success-900 dark:border-success-400 dark:bg-success-900/40 dark:text-success-100'
                                 : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                            }`}
+                            )}
                           >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="font-medium text-sm text-slate-900 dark:text-white">{destination.name}</p>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                                    {destination.rtmps_url.split('/').slice(0, 3).join('/')}
-                                  </p>
-                                </div>
-                                <Badge variant={isSelected ? 'success' : 'secondary'}>
-                                  {isSelected
-                                    ? tStreaming('channels.badge.selected')
-                                    : tStreaming('channels.badge.tapToSelect')}
-                                </Badge>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p
+                                  className={cn(
+                                    'font-medium text-sm',
+                                    isSelected
+                                      ? 'text-success-900 dark:text-success-100'
+                                      : 'text-slate-900 dark:text-white'
+                                  )}
+                                >
+                                  {destination.name}
+                                </p>
+                                <p
+                                  className={cn(
+                                    'text-xs',
+                                    isSelected
+                                      ? 'text-success-800 dark:text-success-300'
+                                      : 'text-slate-500 dark:text-slate-400'
+                                  )}
+                                >
+                                  {destination.rtmps_url.split('/').slice(0, 3).join('/')}
+                                </p>
                               </div>
-                            </button>
-                          )
-                        })
+                              <Badge variant={isSelected ? 'success' : 'secondary'}>
+                                {isSelected
+                                  ? tStreaming('channels.badge.selected')
+                                  : tStreaming('channels.badge.tapToSelect')}
+                              </Badge>
+                            </div>
+                          </button>
+                        )
+                      })
                     ) : (
                       <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4">
                         <div className="text-left">
