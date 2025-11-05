@@ -10,29 +10,31 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { LoadingState } from '@/components/LoadingState'
+import { useTranslations } from 'next-intl'
 
 const adminNavItems = [
-  { href: '/admin', label: 'Dashboard', icon: Activity },
-  { href: '/admin/users', label: 'Users', icon: Users },
-  { href: '/admin/streams', label: 'Streams', icon: Radio },
-  { href: '/admin/alerts', label: 'Alerts', icon: AlertTriangle },
-  { href: '/admin/settings', label: 'Settings', icon: Settings },
-]
+  { href: '/admin', labelKey: 'dashboard', icon: Activity },
+  { href: '/admin/users', labelKey: 'users', icon: Users },
+  { href: '/admin/streams', labelKey: 'streams', icon: Radio },
+  { href: '/admin/alerts', labelKey: 'alerts', icon: AlertTriangle },
+  { href: '/admin/settings', labelKey: 'settings', icon: Settings },
+] as const
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
+  const layout = useTranslations('admin.layout')
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
   const [user, setUser] = useState<AdminAccessResponse | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [errorMessageKey, setErrorMessageKey] = useState<string | null>(null)
 
   useEffect(() => {
     let isMounted = true
 
     const checkAdminAccess = async () => {
       setLoading(true)
-      setErrorMessage(null)
+      setErrorMessageKey(null)
 
       const { data: { session } } = await supabase.auth.getSession()
 
@@ -66,10 +68,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         if (message.toLowerCase().includes('admin access required') || message.includes('403')) {
           setIsAdmin(false)
-          setErrorMessage('Admin access required')
+          setErrorMessageKey('errors.accessRequired')
         } else {
           setIsAdmin(false)
-          setErrorMessage('Unable to verify admin access. Please try again.')
+          setErrorMessageKey('errors.verifyFailed')
         }
       } finally {
         if (isMounted) {
@@ -85,7 +87,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [router])
 
   if (loading) {
-    return <LoadingState text="Checking admin access..." />
+    return <LoadingState text={layout('checkingAccess')} />
   }
 
   if (!isAdmin) {
@@ -93,15 +95,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <Shield className="w-16 h-16 text-error-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
+          <h1 className="text-2xl font-bold mb-2">{layout('accessDenied.title')}</h1>
           <p className="text-slate-600 dark:text-slate-400 mb-4">
-            {errorMessage ?? "You don't have permission to access the admin panel."}
+            {layout(errorMessageKey ?? 'errors.default')}
           </p>
           <button
             onClick={() => router.push('/dashboard')}
             className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
           >
-            Back to Dashboard
+            {layout('accessDenied.cta')}
           </button>
         </div>
       </div>
@@ -119,20 +121,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Shield className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold gradient-text">Admin Panel</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">System Management</p>
+                <h1 className="text-xl font-bold gradient-text">{layout('header.title')}</h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{layout('header.subtitle')}</p>
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
               <span className="text-sm text-slate-600 dark:text-slate-300">
-                {user?.email ?? 'Admin'}
+                {user?.email ?? layout('userFallback')}
               </span>
               <button
                 onClick={() => router.push('/dashboard')}
                 className="text-sm text-primary-600 hover:text-primary-700"
               >
-                Exit Admin
+                {layout('actions.exit')}
               </button>
             </div>
           </div>
@@ -160,7 +162,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     whileTap={{ scale: 0.98 }}
                   >
                     <Icon className="w-5 h-5" />
-                    <span className="font-medium">{item.label}</span>
+                    <span className="font-medium">{layout(`nav.${item.labelKey}`)}</span>
                   </motion.div>
                 </Link>
               )

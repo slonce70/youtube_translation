@@ -1,0 +1,15 @@
+{
+  "app": {
+    "name": "YouTube Multi-Channel Streaming",
+    "description": "24/7 сервіс трансляцій для кількох YouTube-каналів"
+  },
+  "status": {
+    "loading": "Завантаження...",
+    "redirecting": "Перенаправлення..."
+  },
+  "actions": {
+    "confirm": "Підтвердити",
+    "cancel": "Скасувати",
+    "close": "Закрити"
+  }
+}

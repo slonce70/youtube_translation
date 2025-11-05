@@ -1,0 +1,119 @@
+{
+  "status": {
+    "running": "В эфире",
+    "stopped": "Остановлено",
+    "starting": "Запускается",
+    "stopping": "Останавливается",
+    "error": "Ошибка"
+  },
+  "toasts": {
+    "destination": {
+      "created": "Канал создан",
+      "updated": "Канал обновлён",
+      "deleted": "Канал удалён"
+    },
+    "stream": {
+      "created": "Трансляция создана",
+      "started": "Трансляция запущена",
+      "stopped": "Трансляция остановлена",
+      "deleted": "Трансляция удалена"
+    },
+    "errors": {
+      "selectPlaylist": "Выберите плейлист",
+      "selectDestination": "Выберите хотя бы одно направление"
+    },
+    "generic": {
+      "errorWithMessage": "Ошибка: {message}"
+    }
+  },
+  "page": {
+    "loading": "Загрузка трансляций...",
+    "fetching": "Загружаем список трансляций...",
+    "header": {
+      "title": "Трансляции",
+      "description": "Управляйте каналами и прямыми эфирами",
+      "goLive": "В эфир"
+    },
+    "channels": {
+      "title": "Каналы",
+      "add": "Добавить канал",
+      "badge": {
+        "active": "Активен",
+        "disabled": "Выключен",
+        "selected": "Выбрано",
+        "tapToSelect": "Нажмите, чтобы выбрать"
+      },
+      "actions": {
+        "edit": "Редактировать",
+        "delete": "Удалить"
+      },
+      "empty": {
+        "title": "Каналов пока нет",
+        "cta": "Добавить канал"
+      },
+      "stats": {
+        "total": "Всего каналов",
+        "active": "Активных каналов"
+      },
+      "form": {
+        "newTitle": "Новый канал",
+        "editTitle": "Редактировать канал",
+        "nameLabel": "Название",
+        "namePlaceholder": "Мой YouTube-канал",
+        "urlLabel": "RTMPS URL",
+        "keyLabel": "Ключ трансляции",
+        "keepExisting": "(оставьте пустым, чтобы сохранить текущий)",
+        "keyHint": "Ключ шифруется и хранится безопасно",
+        "enabled": "Включен",
+        "cancel": "Отмена",
+        "create": "Создать",
+        "update": "Обновить",
+        "confirmDelete": "Удалить этот канал?"
+      }
+    },
+    "streams": {
+      "title": "Прямые трансляции",
+      "new": "Новая трансляция",
+      "untitled": "Без названия",
+      "labels": {
+        "playlist": "Плейлист",
+        "status": "Статус",
+        "created": "Создано"
+      },
+      "unknownPlaylist": "Неизвестный плейлист",
+      "buttons": {
+        "logs": "Логи",
+        "stop": "Остановить",
+        "start": "Запустить"
+      },
+      "empty": {
+        "title": "Активных трансляций нет",
+        "description": "Создайте конфигурацию трансляции, чтобы выйти в эфир",
+        "cta": "Создать первую трансляцию"
+      },
+      "stats": {
+        "active": "Активные трансляции",
+        "total": "Всего трансляций",
+        "concurrent": "Параллельный лимит"
+      },
+      "form": {
+        "title": "Создать трансляцию",
+        "nameLabel": "Название трансляции",
+        "namePlaceholder": "Моя крутая трансляция",
+        "playlistLabel": "Плейлист",
+        "playlistItems": "{count, plural, one {# элемент} few {# элемента} many {# элементов} other {# элементов}}",
+        "playlistNoneTitle": "Плейлисты отсутствуют",
+        "playlistNoneDescription": "Сначала создайте плейлист в разделе \"Библиотека\".",
+        "destinationsLabel": "Направления",
+        "destinationsNoneTitle": "Нет активных направлений",
+        "destinationsNoneDescription": "Добавьте направление в боковой панели \"Каналы\".",
+        "cancel": "Отмена",
+        "create": "Создать трансляцию"
+      },
+      "logs": {
+        "title": "Логи трансляции",
+        "empty": "Логи недоступны"
+      }
+    }
+  }
+}

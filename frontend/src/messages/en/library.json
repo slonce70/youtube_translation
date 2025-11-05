@@ -1,0 +1,192 @@
+{
+  "toasts": {
+    "upload": {
+      "finalizing": "Finalizing upload…",
+      "processed": "Upload processed",
+      "refreshFailed": "Failed to refresh assets: {message}",
+      "failed": "Upload failed: {message}"
+    },
+    "asset": {
+      "deleted": "Asset deleted",
+      "updated": "Asset updated",
+      "renameEmpty": "Filename cannot be empty",
+      "validationRefreshed": "Validation refreshed",
+      "download": "Starting download for {name}"
+    },
+    "playlist": {
+      "created": "Playlist created",
+      "updated": "Playlist updated",
+      "deleted": "Playlist deleted"
+    },
+    "generic": {
+      "comingSoon": "{feature} is coming soon.",
+      "errorWithMessage": "Error: {message}"
+    }
+  },
+  "page": {
+    "loading": "Loading library...",
+    "header": {
+      "title": "Library",
+      "description": "Manage your video assets and playlists"
+    },
+    "tabs": {
+      "assets": "Videos ({count})",
+      "playlists": "Playlists ({count})"
+    },
+    "assets": {
+      "title": "Video Assets",
+      "upload": "Upload Video",
+      "badges": {
+        "ready": "Ready for streaming",
+        "needsEncoding": "Needs re-encoding",
+        "bitrateOk": "Bitrate OK",
+        "bitrateCheck": "Check bitrate"
+      },
+      "recommendations": "Recommendations: {label} → {details}",
+      "metadata": {
+        "video": "Video",
+        "audio": "Audio",
+        "channels": "{count} channels"
+      },
+      "empty": {
+        "title": "No assets yet",
+        "description": "Upload your first video asset to get started",
+        "cta": "Upload Asset"
+      },
+      "details": {
+        "hide": "Hide technical details",
+        "show": "Show technical details"
+      },
+      "menu": {
+        "srLabel": "Asset actions"
+      }
+    },
+    "playlists": {
+      "title": "Playlists",
+      "actions": {
+        "create": "Create Playlist",
+        "createShort": "Create",
+        "update": "Update",
+        "editTitle": "Edit Playlist",
+        "newTitle": "New Playlist",
+        "editButton": "Edit",
+        "delete": "Delete",
+        "remove": "Remove"
+      },
+      "fields": {
+        "name": "Name",
+        "namePlaceholder": "My Playlist",
+        "description": "Description",
+        "descriptionPlaceholder": "Optional description...",
+        "loop": "Loop playlist",
+        "assets": "Assets in Playlist",
+        "selectAsset": "Select asset to add..."
+      },
+      "badges": {
+        "loop": "Loop"
+      },
+      "labels": {
+        "items": "{count, plural, one {# item} other {# items}}",
+        "moreItems": "+{count} more items"
+      },
+      "messages": {
+        "unknownAsset": "Unknown asset",
+        "noAssets": "No assets added yet",
+        "noAvailableAssets": "Upload compatible assets to build playlists.",
+        "emptyTitle": "No playlists created yet",
+        "emptyDescription": "Create your first playlist to organize your videos",
+        "emptyCta": "Create your first playlist"
+      }
+    },
+    "stats": {
+      "videos": "Total Videos",
+      "playlists": "Playlists",
+      "storage": "Storage Used"
+    },
+    "rename": {
+      "title": "Rename asset",
+      "description": "Update the display name for easier management.",
+      "label": "New filename",
+      "save": "Save changes"
+    },
+    "validation": {
+      "title": "Validation details",
+      "description": "Technical metadata and recommendations for {filename}.",
+      "loading": "Revalidating asset…",
+      "unavailable": "Validation results unavailable. Try again in a moment.",
+      "close": "Close"
+    }
+  },
+  "uploadModal": {
+    "title": "Upload video assets",
+    "description": "Drag and drop files or pick them manually. We'll inspect codecs, resolution, and bitrate right away to flag potential YouTube Live issues.",
+    "actions": {
+      "close": "Close",
+      "clear": "Clear queue",
+      "start": "Start upload",
+      "remove": "Remove file from queue"
+    },
+    "info": {
+      "title": "Google recommendations for live encoder bitrate and resolution",
+      "link": "View documentation"
+    },
+    "dropzone": {
+      "instructions": "Drag & drop files here or <button>browse from disk</button>",
+      "hint": "Supported formats: MP4, MOV, MKV, FLV, WMV, AVI. Maximum size: 10 GB per file."
+    },
+    "stats": {
+      "total": "Files total: {count}",
+      "overall": "Overall progress: {progress}%"
+    },
+    "status": {
+      "label": "Status:",
+      "values": {
+        "pending": "preparing",
+        "ready": "ready to upload",
+        "uploading": "uploading",
+        "processing": "processing",
+        "complete": "done",
+        "error": "error"
+      }
+    },
+    "media": {
+      "video": "Video",
+      "audio": "Audio",
+      "channels": "{count, plural, one {# channel} other {# channels}}"
+    },
+    "progress": {
+      "uploaded": "Uploaded {uploaded} of {total}"
+    },
+    "recommendations": {
+      "summary": "Recommendations: {label} → {details}",
+      "success": "File parameters align with live streaming recommendations.",
+      "label": "{resolution}, {fps} FPS",
+      "details": "{min}–{max} Mbps · target {target} Mbps",
+      "normalizedFps": "Normalized frame rate: {fps} FPS"
+    },
+    "warnings": {
+      "metadataUnavailable": "Unable to extract technical metadata locally. The server validator will double-check after upload.",
+      "bitrateRange": "Video bitrate is outside the recommended range. For {resolution} at {fps} FPS, aim for {min}–{max} Mbps (target {target} Mbps).",
+      "fpsOutOfGuideline": "Detected frame rate falls outside the recommended 30 or 60 FPS for live streams."
+    },
+    "errors": {
+      "metadataHelper": "Couldn't load the MediaInfo helper. We'll refresh metadata after the upload completes."
+    },
+    "table": {
+      "title": "YouTube live encoding guidance",
+      "columns": {
+        "resolution": "Resolution",
+        "frameRate": "Frame rate",
+        "minimum": "Minimum",
+        "maximum": "Maximum",
+        "recommended": "Recommended"
+      }
+    },
+    "overlay": {
+      "processing": "Finalising upload and refreshing your media library…"
+    },
+    "empty": {
+      "description": "No files in the queue yet. Add a video to analyse its parameters before uploading."
+    }
+  }
+}

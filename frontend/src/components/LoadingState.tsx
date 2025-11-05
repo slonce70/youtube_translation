@@ -2,12 +2,16 @@
 
 import { motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 interface LoadingStateProps {
   text?: string
 }
 
-export function LoadingState({ text = 'Loading...' }: LoadingStateProps) {
+export function LoadingState({ text }: LoadingStateProps) {
+  const status = useTranslations('common.status')
+  const message = text ?? status('loading')
+
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="text-center">
@@ -27,7 +31,7 @@ export function LoadingState({ text = 'Loading...' }: LoadingStateProps) {
           transition={{ delay: 0.2 }}
           className="mt-4 text-slate-600 dark:text-slate-400"
         >
-          {text}
+          {message}
         </motion.p>
       </div>
     </div>

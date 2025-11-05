@@ -1,0 +1,36 @@
+{
+  "header": {
+    "badge": "Account",
+    "title": "Profile & Security",
+    "description": "Update how your workspace shows up across dashboards and keep your credentials in sync."
+  },
+  "profileForm": {
+    "title": "Profile information",
+    "displayNameLabel": "Display name",
+    "displayNamePlaceholder": "How teammates see you",
+    "emailLabel": "Email",
+    "save": "Save changes",
+    "saving": "Saving"
+  },
+  "passwordForm": {
+    "title": "Update password",
+    "currentLabel": "Current password",
+    "currentPlaceholder": "Optional re-auth",
+    "newLabel": "New password",
+    "newPlaceholder": "At least 8 characters",
+    "confirmLabel": "Confirm password",
+    "guideline": "Strong passwords combine lowercase, uppercase, numbers, and symbols. Updating your password will sign out other active sessions.",
+    "submit": "Update password",
+    "submitting": "Updating"
+  },
+  "toasts": {
+    "profileUpdated": "Profile updated",
+    "profileUpdateError": "Unable to update profile",
+    "passwordUpdated": "Password updated",
+    "passwordUpdateError": "Unable to change password",
+    "passwordTooShort": "Password must be at least 8 characters long",
+    "passwordMismatch": "Passwords do not match",
+    "missingEmail": "Missing email on account",
+    "currentIncorrect": "Current password is incorrect"
+  }
+}

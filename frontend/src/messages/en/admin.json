@@ -1,0 +1,321 @@
+{
+  "metadata": {
+    "title": "Admin",
+    "description": "Monitor users, alerts, and streams across the platform."
+  },
+  "users": {
+    "header": {
+      "title": "User Management",
+      "description": "Manage user accounts and subscriptions"
+    },
+    "actions": {
+      "export": "Export"
+    },
+    "stats": {
+      "total": "Total Users",
+      "active": "Active",
+      "suspended": "Suspended",
+      "paid": "Paid Plans"
+    },
+    "filters": {
+      "searchPlaceholder": "Search users by email or name...",
+      "tier": {
+        "all": "All Tiers",
+        "free": "Free",
+        "pro": "Pro",
+        "business": "Business",
+        "enterprise": "Enterprise"
+      },
+      "status": {
+        "all": "All Status",
+        "active": "Active",
+        "suspended": "Suspended"
+      }
+    },
+    "list": {
+      "title": "Users ({count})",
+      "loading": "Loading users...",
+      "empty": "No users found",
+      "noName": "N/A",
+      "badges": {
+        "suspended": "Suspended"
+      },
+      "actions": {
+        "suspend": "Suspend",
+        "unsuspend": "Unsuspend"
+      },
+      "fields": {
+        "storageUsed": "Storage Used",
+        "streamHours": "Stream Hours",
+        "status": "Status",
+        "joined": "Joined",
+        "lastLogin": "Last login"
+      },
+      "values": {
+        "storage": "{value} GB",
+        "streamHours": "{value} hrs",
+        "joined": "Joined {time}",
+        "lastLogin": "Last login {time}",
+        "neverLoggedIn": "Never logged in"
+      }
+    },
+    "tiers": {
+      "free": "Free",
+      "pro": "Pro",
+      "business": "Business",
+      "enterprise": "Enterprise"
+    },
+    "subscriptionStatus": {
+      "active": "Active",
+      "trialing": "Trialing",
+      "past_due": "Past due",
+      "canceled": "Canceled",
+      "incomplete": "Incomplete",
+      "incomplete_expired": "Incomplete expired",
+      "unknown": "Unknown"
+    },
+    "prompts": {
+      "suspendReason": "Enter suspension reason for {email}:",
+      "unsuspendConfirm": "Are you sure you want to unsuspend this user?"
+    },
+    "toasts": {
+      "suspendSuccess": "User suspended successfully",
+      "suspendError": "Failed to suspend user",
+      "unsuspendSuccess": "User unsuspended successfully",
+      "unsuspendError": "Failed to unsuspend user"
+    }
+  },
+  "alerts": {
+    "header": {
+      "title": "System Alerts",
+      "description": "Monitor and resolve system alerts"
+    },
+    "stats": {
+      "total": "Total Alerts",
+      "unresolved": "Unresolved",
+      "critical": "Critical",
+      "resolved": "Resolved"
+    },
+    "filters": {
+      "searchPlaceholder": "Search alerts by message or user...",
+      "severity": {
+        "all": "All Severity",
+        "critical": "Critical",
+        "warning": "Warning"
+      },
+      "status": {
+        "all": "All Status",
+        "unresolved": "Unresolved",
+        "resolved": "Resolved"
+      }
+    },
+    "list": {
+      "loading": "Loading alerts...",
+      "empty": "No alerts found",
+      "fields": {
+        "type": "Type",
+        "user": "User",
+        "created": "Created",
+        "resolved": "Resolved"
+      },
+      "badges": {
+        "resolved": "Resolved"
+      },
+      "severity": {
+        "critical": "Critical",
+        "warning": "Warning"
+      },
+      "resolvedBy": " by {user}",
+      "resolvedAgo": "Resolved {time}",
+      "title": "Alerts ({count})"
+    },
+    "buttons": {
+      "resolve": "Resolve",
+      "resolved": "Resolved"
+    },
+    "prompts": {
+      "resolve": "Resolve alert: \"{message}\"\n\nEnter resolution notes (optional):"
+    },
+    "toasts": {
+      "resolveSuccess": "Alert resolved successfully",
+      "resolveError": "Failed to resolve alert"
+    }
+  },
+  "streams": {
+    "header": {
+      "title": "Streams Monitoring",
+      "description": "Monitor all active streams across all users"
+    },
+    "stats": {
+      "total": "Total Streams",
+      "running": "Running",
+      "errors": "Errors",
+      "stopped": "Stopped"
+    },
+    "filters": {
+      "searchPlaceholder": "Search streams by name or user...",
+      "status": {
+        "all": "All Status",
+        "running": "Running",
+        "error": "Error",
+        "stopped": "Stopped"
+      }
+    },
+    "list": {
+      "loading": "Loading streams...",
+      "empty": "No streams found",
+      "fields": {
+        "user": "User",
+        "playlistId": "Playlist ID",
+        "destinations": "Destinations",
+        "started": "Started",
+        "created": "Created"
+      },
+      "values": {
+        "destinations": "{count} channels",
+        "notStarted": "Not started"
+      },
+      "status": {
+        "running": "Running",
+        "error": "Error",
+        "stopped": "Stopped"
+      },
+      "title": "Streams ({count})"
+    },
+    "buttons": {
+      "forceStop": "Force Stop"
+    },
+    "prompts": {
+      "forceStop": "Are you sure you want to force stop stream \"{name}\"?"
+    },
+    "toasts": {
+      "forceStopSuccess": "Stream stopped successfully",
+      "forceStopError": "Failed to stop stream"
+    }
+  },
+  "layout": {
+    "checkingAccess": "Checking admin access...",
+    "accessDenied": {
+      "title": "Access Denied",
+      "description": "You don't have permission to access the admin panel.",
+      "cta": "Back to Dashboard"
+    },
+    "header": {
+      "title": "Admin Panel",
+      "subtitle": "System Management"
+    },
+    "nav": {
+      "dashboard": "Dashboard",
+      "users": "Users",
+      "streams": "Streams",
+      "alerts": "Alerts",
+      "settings": "Settings"
+    },
+    "actions": {
+      "exit": "Exit Admin"
+    },
+    "errors": {
+      "accessRequired": "Admin access required",
+      "verifyFailed": "Unable to verify admin access. Please try again.",
+      "default": "You don't have permission to access the admin panel."
+    },
+    "userFallback": "Admin"
+  },
+  "dashboard": {
+    "header": {
+      "title": "Admin Dashboard",
+      "description": "System overview and monitoring"
+    },
+    "stats": {
+      "totalUsers": "Total Users",
+      "activeStreams": "Active Streams",
+      "unresolvedAlerts": "Unresolved Alerts",
+      "systemHealth": "System Health",
+      "systemHealthValue": "{value}%"
+    },
+    "userStats": {
+      "title": "User Statistics",
+      "total": "Total Users",
+      "active": "Active Users",
+      "suspended": "Suspended",
+      "activityLabel": "User Activity",
+      "activityPercent": "{value}%"
+    },
+    "streamStats": {
+      "title": "Stream Statistics",
+      "total": "Total Streams",
+      "active": "Active Now",
+      "errors": "Errors",
+      "usageLabel": "Stream Usage",
+      "usagePercent": "{value}%"
+    },
+    "recentUsers": {
+      "title": "Recent Users",
+      "loading": "Loading users...",
+      "empty": "No users yet",
+      "signedUp": "Signed up {time}"
+    },
+    "recentAlerts": {
+      "title": "Recent Alerts",
+      "loading": "Loading alerts...",
+      "empty": "No alerts",
+      "userTime": "{user} • {time}"
+    },
+    "badges": {
+      "suspended": "Suspended",
+      "active": "Active"
+    },
+    "systemResources": {
+      "title": "System Resources",
+      "storageUsage": "Storage Usage",
+      "storageSummary": "{used} TB / {total} TB",
+      "actions": {
+        "viewUsers": "View All Users",
+        "monitorStreams": "Monitor Streams",
+        "resolveAlerts": "Resolve Alerts"
+      }
+    }
+  },
+  "settings": {
+    "header": {
+      "title": "Admin Settings",
+      "description": "Configure system settings and preferences"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "emailAlerts": {
+        "label": "Email Alerts",
+        "description": "Receive email for critical alerts"
+      },
+      "userSignups": {
+        "label": "User Signups",
+        "description": "Notify on new user registrations"
+      },
+      "save": "Save Settings"
+    },
+    "security": {
+      "title": "Security",
+      "twoFactor": {
+        "label": "Two-Factor Auth",
+        "description": "Enable 2FA for admin accounts"
+      },
+      "loginAudit": {
+        "label": "Login Audit",
+        "description": "Log all admin login attempts"
+      },
+      "save": "Save Settings"
+    },
+    "database": {
+      "title": "Database",
+      "description": "Database maintenance and backup settings",
+      "cleanup": "Run Cleanup",
+      "backup": "Create Backup"
+    },
+    "email": {
+      "title": "Email Configuration",
+      "description": "Configure email service provider and templates",
+      "configure": "Configure SMTP",
+      "test": "Test Email"
+    }
+  }
+}

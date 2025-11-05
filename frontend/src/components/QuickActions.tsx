@@ -4,57 +4,45 @@ import { motion } from 'framer-motion'
 import { Upload, Play, ListPlus, TvMinimal, Settings, BarChart3 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card'
 import { useRouter } from 'next/navigation'
-
-interface QuickAction {
-  label: string
-  description: string
-  icon: React.ComponentType<{ className?: string }>
-  action: () => void
-  gradient: string
-}
+import { useTranslations } from 'next-intl'
 
 export function QuickActions() {
   const router = useRouter()
+  const t = useTranslations('dashboard.quickActions')
 
-  const actions: QuickAction[] = [
+  const actions = [
     {
-      label: 'Upload Video',
-      description: 'Add new video to library',
+      key: 'upload' as const,
       icon: Upload,
       action: () => router.push('/dashboard/library?tab=assets'),
       gradient: 'from-blue-500 to-cyan-500',
     },
     {
-      label: 'Go Live',
-      description: 'Start streaming now',
+      key: 'goLive' as const,
       icon: Play,
       action: () => router.push('/dashboard/streaming'),
       gradient: 'from-purple-500 to-pink-500',
     },
     {
-      label: 'Create Playlist',
-      description: 'Build a new playlist',
+      key: 'createPlaylist' as const,
       icon: ListPlus,
       action: () => router.push('/dashboard/library?tab=playlists'),
       gradient: 'from-amber-500 to-orange-500',
     },
     {
-      label: 'Add Channel',
-      description: 'Connect YouTube channel',
+      key: 'addChannel' as const,
       icon: TvMinimal,
       action: () => router.push('/dashboard/streaming'),
       gradient: 'from-emerald-500 to-green-500',
     },
     {
-      label: 'View Library',
-      description: 'Browse videos & playlists',
+      key: 'viewLibrary' as const,
       icon: BarChart3,
       action: () => router.push('/dashboard/library'),
       gradient: 'from-indigo-500 to-violet-500',
     },
     {
-      label: 'Manage Streams',
-      description: 'Control live streams',
+      key: 'manageStreams' as const,
       icon: Settings,
       action: () => router.push('/dashboard/streaming'),
       gradient: 'from-slate-500 to-slate-600',
@@ -64,15 +52,17 @@ export function QuickActions() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Quick Actions</CardTitle>
+        <CardTitle>{t('title')}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {actions.map((action, index) => {
             const Icon = action.icon
+            const label = t(`actions.${action.key}.label`)
+            const description = t(`actions.${action.key}.description`)
             return (
               <motion.button
-                key={action.label}
+                key={action.key}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: index * 0.05 }}
@@ -90,11 +80,11 @@ export function QuickActions() {
 
                   <div className="flex min-w-0 flex-col text-left">
                     <h3 className="font-semibold text-base text-slate-900 dark:text-white">
-                      {action.label}
+                      {label}
                     </h3>
 
                     <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                      {action.description}
+                      {description}
                     </p>
                   </div>
                 </div>

@@ -7,6 +7,7 @@ import Uppy from '@uppy/core'
 import type { UploadResult } from '@uppy/core'
 import Tus from '@uppy/tus'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 import { 
   Upload, ListVideo, Plus, CheckCircle, XCircle, Clock, 
   List, PlayCircle, CalendarClock, Edit, Trash2, ChevronDown, ChevronUp, Loader2, X 
@@ -170,6 +171,9 @@ export default function LibraryPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { user } = useDashboardContext()
+  const libraryToasts = useTranslations('library.toasts')
+  const tLibrary = useTranslations('library.page')
+  const actionLabels = useTranslations('common.actions')
 
   // Tab management with URL sync
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'assets')
@@ -242,17 +246,17 @@ export default function LibraryPage() {
       }
 
       setIsProcessingUpload(true)
-      const toastId = toast.loading('Finalizing upload…')
+      const toastId = toast.loading(libraryToasts('upload.finalizing'))
 
       try {
         await queryClient.invalidateQueries({ queryKey: ['assets'] })
         await queryClient.refetchQueries({ queryKey: ['assets'], type: 'active' })
 
-        toast.success('Upload processed', { id: toastId })
+        toast.success(libraryToasts('upload.processed'), { id: toastId })
         setIsUploadOpen(false)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
-        toast.error(`Failed to refresh assets: ${message}`, { id: toastId })
+        toast.error(libraryToasts('upload.refreshFailed', { message }), { id: toastId })
       } finally {
         uppy.cancelAll()
         const fileIds = uppy.getFiles().map((file) => file.id)
@@ -264,7 +268,7 @@ export default function LibraryPage() {
     }
 
     const handleError = (error: Error) => {
-      toast.error(`Upload failed: ${error.message}`)
+      toast.error(libraryToasts('upload.failed', { message: error.message }))
     }
 
     uppy.on('complete', handleComplete)
@@ -278,7 +282,7 @@ export default function LibraryPage() {
         uppy.removePlugin(plugin)
       }
     }
-  }, [queryClient, tusEndpoint, uppy])
+  }, [libraryToasts, queryClient, tusEndpoint, uppy])
 
   useEffect(() => {
     if (user?.id) {
@@ -306,10 +310,10 @@ export default function LibraryPage() {
     mutationFn: (assetId: string) => api.assets.delete(assetId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assets'] })
-      toast.success('Asset deleted')
+      toast.success(libraryToasts('asset.deleted'))
     },
     onError: (error: Error) => {
-      toast.error(error.message)
+      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
     },
   })
 
@@ -319,7 +323,7 @@ export default function LibraryPage() {
       await queryClient.invalidateQueries({ queryKey: ['assets'] })
     },
     onError: (error: Error) => {
-      toast.error(error.message)
+      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
     },
   })
 
@@ -328,17 +332,17 @@ export default function LibraryPage() {
       api.assets.update(id, data),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['assets'] })
-      toast.success('Asset updated')
+      toast.success(libraryToasts('asset.updated'))
     },
     onError: (error: Error) => {
-      toast.error(error.message)
+      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
     },
   })
 
   const downloadLinkMutation = useMutation({
     mutationFn: (assetId: string) => api.assets.createDownloadLink(assetId),
     onError: (error: Error) => {
-      toast.error(error.message)
+      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
     },
   })
 
@@ -346,10 +350,11 @@ export default function LibraryPage() {
     mutationFn: (data: PlaylistCreatePayload) => api.playlists.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['playlists'] })
-      toast.success('Playlist created')
+      toast.success(libraryToasts('playlist.created'))
       resetPlaylistForm()
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) =>
+      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message })),
   })
 
   const updatePlaylistMutation = useMutation({
@@ -364,19 +369,21 @@ export default function LibraryPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['playlists'] })
-      toast.success('Playlist updated')
+      toast.success(libraryToasts('playlist.updated'))
       resetPlaylistForm()
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) =>
+      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message })),
   })
 
   const deletePlaylistMutation = useMutation({
     mutationFn: (playlistId: string) => api.playlists.delete(playlistId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['playlists'] })
-      toast.success('Playlist deleted')
+      toast.success(libraryToasts('playlist.deleted'))
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) =>
+      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message })),
   })
 
   // Handlers
@@ -412,7 +419,7 @@ export default function LibraryPage() {
     if (!assetBeingRenamed) return
     const trimmed = renameValue.trim()
     if (!trimmed) {
-      toast.error('Filename cannot be empty')
+      toast.error(libraryToasts('asset.renameEmpty'))
       return
     }
     try {
@@ -420,7 +427,7 @@ export default function LibraryPage() {
       closeRenameModal()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update asset'
-      toast.error(message)
+      toast.error(libraryToasts('generic.errorWithMessage', { message }))
     }
   }
 
@@ -434,11 +441,11 @@ export default function LibraryPage() {
       if (updated) {
         setCheckModalAsset(updated)
         setCheckModalInfo(deriveAssetDisplayInfo(updated))
-        toast.success('Validation refreshed')
+        toast.success(libraryToasts('asset.validationRefreshed'))
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to validate asset'
-      toast.error(message)
+      toast.error(libraryToasts('generic.errorWithMessage', { message }))
       setCheckModalAsset(null)
       setCheckModalInfo(null)
     } finally {
@@ -458,17 +465,17 @@ export default function LibraryPage() {
     try {
       const link = await downloadLinkMutation.mutateAsync(asset.id)
       window.open(link.download_url, '_blank', 'noopener,noreferrer')
-      toast.info(`Starting download for ${asset.filename}`)
+      toast.info(libraryToasts('asset.download', { name: asset.filename }))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to generate download link'
-      toast.error(message)
+      toast.error(libraryToasts('generic.errorWithMessage', { message }))
     } finally {
       setDownloadAssetId(null)
     }
   }
 
   const handleNotImplemented = (feature: string) => {
-    toast.info(`${feature} is coming soon.`)
+    toast.info(libraryToasts('generic.comingSoon', { feature }))
   }
 
   const resetPlaylistForm = () => {
@@ -540,7 +547,7 @@ export default function LibraryPage() {
   const totalStorage = assets?.reduce((sum, asset) => sum + asset.size_bytes, 0) || 0
 
   if (!user) {
-    return <LoadingState text="Loading library..." />
+    return <LoadingState text={tLibrary('loading')} />
   }
 
   return (
@@ -548,9 +555,9 @@ export default function LibraryPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold gradient-text mb-2">Library</h2>
+          <h2 className="text-3xl font-bold gradient-text mb-2">{tLibrary('header.title')}</h2>
           <p className="text-slate-600 dark:text-slate-400">
-            Manage your video assets and playlists
+            {tLibrary('header.description')}
           </p>
         </div>
       </div>
@@ -560,11 +567,11 @@ export default function LibraryPage() {
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="assets" className="flex items-center space-x-2">
             <Upload className="w-4 h-4" />
-            <span>Videos ({totalAssets})</span>
+            <span>{tLibrary('tabs.assets', { count: totalAssets })}</span>
           </TabsTrigger>
           <TabsTrigger value="playlists" className="flex items-center space-x-2">
             <ListVideo className="w-4 h-4" />
-            <span>Playlists ({totalPlaylists})</span>
+            <span>{tLibrary('tabs.playlists', { count: totalPlaylists })}</span>
           </TabsTrigger>
         </TabsList>
 
@@ -572,10 +579,10 @@ export default function LibraryPage() {
         <TabsContent value="assets" className="mt-6">
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Video Assets</h3>
+              <h3 className="text-lg font-semibold">{tLibrary('assets.title')}</h3>
               <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
                 <Plus className="w-4 h-4" />
-                Upload Video
+                {tLibrary('assets.upload')}
               </Button>
             </div>
 
@@ -623,19 +630,19 @@ export default function LibraryPage() {
                                   {asset.compatible_for_copy ? (
                                     <>
                                       <CheckCircle className="w-3 h-3 mr-1" />
-                                      Ready for streaming
+                                      {tLibrary('assets.badges.ready')}
                                     </>
                                   ) : (
                                     <>
                                       <XCircle className="w-3 h-3 mr-1" />
-                                      Needs re-encoding
+                                      {tLibrary('assets.badges.needsEncoding')}
                                     </>
                                   )}
                                 </Badge>
                                 {info.bitrateStatus === 'within' ? (
-                                  <Badge variant="success">Bitrate OK</Badge>
+                                  <Badge variant="success">{tLibrary('assets.badges.bitrateOk')}</Badge>
                                 ) : info.bitrateStatus === 'outside' ? (
-                                  <Badge variant="warning">Check bitrate</Badge>
+                                  <Badge variant="warning">{tLibrary('assets.badges.bitrateCheck')}</Badge>
                                 ) : null}
                               </div>
                             </div>
@@ -665,7 +672,9 @@ export default function LibraryPage() {
                             className="flex items-center gap-2 text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400"
                           >
                             {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            {isExpanded ? 'Hide technical details' : 'Show technical details'}
+                            {isExpanded
+                              ? tLibrary('assets.details.hide')
+                              : tLibrary('assets.details.show')}
                           </button>
                         </div>
 
@@ -674,7 +683,7 @@ export default function LibraryPage() {
                             <div className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
                                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                  Video
+                                  {tLibrary('assets.metadata.video')}
                                 </span>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                   <Badge variant="secondary">{info.videoCodec?.toUpperCase() ?? '—'}</Badge>
@@ -692,7 +701,7 @@ export default function LibraryPage() {
 
                               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
                                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                  Audio
+                                  {tLibrary('assets.metadata.audio')}
                                 </span>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                   <Badge variant="secondary">{info.audioCodec?.toUpperCase() ?? '—'}</Badge>
@@ -702,7 +711,7 @@ export default function LibraryPage() {
                                   {info.audioChannels ? (
                                     <>
                                       <span>·</span>
-                                      <span>{info.audioChannels} channels</span>
+                                      <span>{tLibrary('assets.metadata.channels', { count: info.audioChannels })}</span>
                                     </>
                                   ) : null}
                                 </div>
@@ -713,7 +722,10 @@ export default function LibraryPage() {
                               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                                 <CheckCircle className="w-4 h-4 text-primary-500" />
                                 <span>
-                                  Recommendations: {info.recommendationLabel} → {info.recommendationDetails}
+                                  {tLibrary('assets.recommendations', {
+                                    label: info.recommendationLabel,
+                                    details: info.recommendationDetails,
+                                  })}
                                 </span>
                               </div>
                             ) : null}
@@ -746,15 +758,15 @@ export default function LibraryPage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-                      No assets yet
+                      {tLibrary('assets.empty.title')}
                     </h3>
                     <p className="text-slate-500 dark:text-slate-400 mb-4">
-                      Upload your first video asset to get started
+                      {tLibrary('assets.empty.description')}
                     </p>
                   </div>
                   <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
                     <Upload className="w-4 h-4" />
-                    Upload Asset
+                    {tLibrary('assets.empty.cta')}
                   </Button>
                 </div>
               </Card>
@@ -766,41 +778,45 @@ export default function LibraryPage() {
         <TabsContent value="playlists" className="mt-6">
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Playlists</h3>
+              <h3 className="text-lg font-semibold">{tLibrary('playlists.title')}</h3>
               <Button onClick={() => setShowCreatePlaylist(true)} className="gap-2">
                 <Plus className="w-4 h-4" />
-                Create Playlist
+                {tLibrary('playlists.actions.create')}
               </Button>
             </div>
 
             {showCreatePlaylist && (
               <Card className="animate-scale-in">
                 <CardHeader>
-                  <CardTitle>{editingPlaylistId ? 'Edit Playlist' : 'New Playlist'}</CardTitle>
+                  <CardTitle>
+                    {editingPlaylistId
+                      ? tLibrary('playlists.actions.editTitle')
+                      : tLibrary('playlists.actions.newTitle')}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={handleSubmitPlaylist} className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Name
+                        {tLibrary('playlists.fields.name')}
                       </label>
                       <Input
                         type="text"
                         required
                         value={playlistForm.name}
                         onChange={(e) => setPlaylistForm({ ...playlistForm, name: e.target.value })}
-                        placeholder="My Playlist"
+                        placeholder={tLibrary('playlists.fields.namePlaceholder')}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Description
+                        {tLibrary('playlists.fields.description')}
                       </label>
                       <textarea
                         value={playlistForm.description}
                         onChange={(e) => setPlaylistForm({ ...playlistForm, description: e.target.value })}
                         rows={3}
-                        placeholder="Optional description..."
+                        placeholder={tLibrary('playlists.fields.descriptionPlaceholder')}
                         className="block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors"
                       />
                     </div>
@@ -812,12 +828,12 @@ export default function LibraryPage() {
                         className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
                       />
                       <label className="ml-2 block text-sm text-slate-700 dark:text-slate-300">
-                        Loop playlist
+                        {tLibrary('playlists.fields.loop')}
                       </label>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Assets in Playlist
+                        {tLibrary('playlists.fields.assets')}
                       </label>
                       {playlistForm.items.length > 0 ? (
                         <ul className="space-y-2 mb-4">
@@ -829,14 +845,14 @@ export default function LibraryPage() {
                                 className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg"
                               >
                                 <span className="text-sm text-slate-900 dark:text-white">
-                                  {index + 1}. {asset?.filename || 'Unknown asset'}
+                                  {index + 1}. {asset?.filename || tLibrary('playlists.messages.unknownAsset')}
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => removeAssetFromPlaylist(index)}
                                   className="text-error-600 hover:text-error-800 dark:text-error-400 dark:hover:text-error-300 text-sm font-medium"
                                 >
-                                  Remove
+                                  {tLibrary('playlists.actions.remove')}
                                 </button>
                               </li>
                             )
@@ -844,7 +860,7 @@ export default function LibraryPage() {
                         </ul>
                       ) : (
                         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                          No assets added yet
+                          {tLibrary('playlists.messages.noAssets')}
                         </p>
                       )}
 
@@ -860,7 +876,7 @@ export default function LibraryPage() {
                           defaultValue=""
                         >
                           <option value="" disabled>
-                            Select asset to add...
+                            {tLibrary('playlists.fields.selectAsset')}
                           </option>
                           {availableAssets.map((asset) => (
                             <option key={asset.id} value={asset.id}>
@@ -870,19 +886,21 @@ export default function LibraryPage() {
                         </select>
                       ) : (
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Upload compatible assets to build playlists.
+                          {tLibrary('playlists.messages.noAvailableAssets')}
                         </p>
                       )}
                     </div>
                     <div className="flex justify-end gap-3">
                       <Button type="button" onClick={resetPlaylistForm} variant="secondary">
-                        Cancel
+                        {actionLabels('cancel')}
                       </Button>
                       <Button
                         type="submit"
                         isLoading={createPlaylistMutation.isPending || updatePlaylistMutation.isPending}
                       >
-                        {editingPlaylistId ? 'Update' : 'Create'}
+                        {editingPlaylistId
+                          ? tLibrary('playlists.actions.update')
+                          : tLibrary('playlists.actions.createShort')}
                       </Button>
                     </div>
                   </form>
@@ -907,7 +925,7 @@ export default function LibraryPage() {
                             {playlist.loop && (
                               <Badge variant="secondary" className="gap-1">
                                 <PlayCircle className="h-3 w-3" />
-                                Loop
+                                {tLibrary('playlists.badges.loop')}
                               </Badge>
                             )}
                           </div>
@@ -917,7 +935,7 @@ export default function LibraryPage() {
                             </p>
                           )}
                           <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                            <span className="font-medium">{playlist.items?.length || 0}</span> items
+                            {tLibrary('playlists.labels.items', { count: playlist.items?.length || 0 })}
                           </div>
                           {playlist.items && playlist.items.length > 0 && (
                             <ul className="mt-4 space-y-2 text-sm text-slate-600 dark:text-slate-400">
@@ -926,12 +944,12 @@ export default function LibraryPage() {
                                   <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
                                     {index + 1}.
                                   </span>
-                                  {assetsMap.get(item.asset_id)?.filename || 'Unknown asset'}
+                                  {assetsMap.get(item.asset_id)?.filename || tLibrary('playlists.messages.unknownAsset')}
                                 </li>
                               ))}
                               {playlist.items.length > 3 && (
                                 <li className="text-slate-400 dark:text-slate-500 italic">
-                                  +{playlist.items.length - 3} more items
+                                  {tLibrary('playlists.labels.moreItems', { count: playlist.items.length - 3 })}
                                 </li>
                               )}
                             </ul>
@@ -945,7 +963,7 @@ export default function LibraryPage() {
                             className="gap-2"
                           >
                             <Edit className="h-4 w-4" />
-                            Edit
+                            {tLibrary('playlists.actions.editButton')}
                           </Button>
                           <Button
                             onClick={() => handleDeletePlaylist(playlist.id)}
@@ -955,7 +973,7 @@ export default function LibraryPage() {
                             className="gap-2"
                           >
                             <Trash2 className="h-4 w-4" />
-                            Delete
+                            {tLibrary('playlists.actions.delete')}
                           </Button>
                         </div>
                       </div>
@@ -968,14 +986,14 @@ export default function LibraryPage() {
                 <CardContent>
                   <List className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-600 mb-4" />
                   <p className="text-lg font-medium text-slate-900 dark:text-white mb-2">
-                    No playlists created yet
+                    {tLibrary('playlists.messages.emptyTitle')}
                   </p>
                   <p className="text-slate-600 dark:text-slate-400 mb-6">
-                    Create your first playlist to organize your videos
+                    {tLibrary('playlists.messages.emptyDescription')}
                   </p>
                   <Button onClick={() => setShowCreatePlaylist(true)} className="gap-2">
                     <Plus className="h-4 w-4" />
-                    Create your first playlist
+                    {tLibrary('playlists.messages.emptyCta')}
                   </Button>
                 </CardContent>
               </Card>
@@ -990,7 +1008,7 @@ export default function LibraryPage() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold gradient-text">{totalAssets}</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Total Videos</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tLibrary('stats.videos')}</p>
             </div>
           </CardContent>
         </Card>
@@ -999,7 +1017,7 @@ export default function LibraryPage() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold gradient-text">{totalPlaylists}</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Playlists</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tLibrary('stats.playlists')}</p>
             </div>
           </CardContent>
         </Card>
@@ -1008,7 +1026,7 @@ export default function LibraryPage() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold gradient-text">{formatBytes(totalStorage)}</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Storage Used</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tLibrary('stats.storage')}</p>
             </div>
           </CardContent>
         </Card>
@@ -1028,14 +1046,14 @@ export default function LibraryPage() {
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Rename asset</h3>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{tLibrary('rename.title')}</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Update the display name for easier management.
+                    {tLibrary('rename.description')}
                   </p>
                 </div>
                 <Button variant="ghost" size="icon" onClick={closeRenameModal}>
                   <X className="h-5 w-5" />
-                  <span className="sr-only">Close</span>
+                  <span className="sr-only">{actionLabels('close')}</span>
                 </Button>
               </div>
 
@@ -1048,16 +1066,16 @@ export default function LibraryPage() {
               >
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    New filename
+                    {tLibrary('rename.label')}
                   </label>
                   <Input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="secondary" onClick={closeRenameModal}>
-                    Cancel
+                    {actionLabels('cancel')}
                   </Button>
                   <Button type="submit" isLoading={updateAssetMutation.isPending} className="gap-2">
-                    Save changes
+                    {tLibrary('rename.save')}
                   </Button>
                 </div>
               </form>
@@ -1072,39 +1090,41 @@ export default function LibraryPage() {
             <CardContent className="p-6 space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Validation details</h3>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{tLibrary('validation.title')}</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Technical metadata and recommendations for {checkModalAsset.filename}.
+                    {tLibrary('validation.description', { filename: checkModalAsset.filename })}
                   </p>
                 </div>
                 <Button variant="ghost" size="icon" onClick={closeCheckModal}>
                   <X className="h-5 w-5" />
-                  <span className="sr-only">Close</span>
+                  <span className="sr-only">{actionLabels('close')}</span>
                 </Button>
               </div>
 
               {isCheckModalLoading ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500 dark:text-slate-400">
                   <Loader2 className="h-6 w-6 animate-spin" />
-                  <p>Revalidating asset…</p>
+                  <p>{tLibrary('validation.loading')}</p>
                 </div>
               ) : checkModalInfo ? (
                 <div className="space-y-4 text-sm text-slate-600 dark:text-slate-300">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={checkModalAsset.compatible_for_copy ? 'success' : 'error'}>
-                      {checkModalAsset.compatible_for_copy ? 'Ready for streaming' : 'Needs re-encoding'}
+                      {checkModalAsset.compatible_for_copy
+                        ? tLibrary('assets.badges.ready')
+                        : tLibrary('assets.badges.needsEncoding')}
                     </Badge>
                     {checkModalInfo.bitrateStatus === 'within' ? (
-                      <Badge variant="success">Bitrate OK</Badge>
+                      <Badge variant="success">{tLibrary('assets.badges.bitrateOk')}</Badge>
                     ) : checkModalInfo.bitrateStatus === 'outside' ? (
-                      <Badge variant="warning">Check bitrate</Badge>
+                      <Badge variant="warning">{tLibrary('assets.badges.bitrateCheck')}</Badge>
                     ) : null}
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Video
+                        {tLibrary('assets.metadata.video')}
                       </span>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <Badge variant="secondary">{checkModalInfo.videoCodec?.toUpperCase() ?? '—'}</Badge>
@@ -1122,7 +1142,7 @@ export default function LibraryPage() {
 
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Audio
+                        {tLibrary('assets.metadata.audio')}
                       </span>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <Badge variant="secondary">{checkModalInfo.audioCodec?.toUpperCase() ?? '—'}</Badge>
@@ -1132,7 +1152,7 @@ export default function LibraryPage() {
                         {checkModalInfo.audioChannels ? (
                           <>
                             <span>·</span>
-                            <span>{checkModalInfo.audioChannels} channels</span>
+                            <span>{tLibrary('assets.metadata.channels', { count: checkModalInfo.audioChannels })}</span>
                           </>
                         ) : null}
                       </div>
@@ -1143,7 +1163,10 @@ export default function LibraryPage() {
                     <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                       <CheckCircle className="w-4 h-4 text-primary-500" />
                       <span>
-                        Recommendations: {checkModalInfo.recommendationLabel} → {checkModalInfo.recommendationDetails}
+                        {tLibrary('assets.recommendations', {
+                          label: checkModalInfo.recommendationLabel,
+                          details: checkModalInfo.recommendationDetails,
+                        })}
                       </span>
                     </div>
                   ) : null}
@@ -1161,12 +1184,12 @@ export default function LibraryPage() {
                 </div>
               ) : (
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Validation results unavailable. Try again in a moment.
+                  {tLibrary('validation.unavailable')}
                 </p>
               )}
 
               <div className="flex justify-end">
-                <Button onClick={closeCheckModal}>Close</Button>
+                <Button onClick={closeCheckModal}>{tLibrary('validation.close')}</Button>
               </div>
             </CardContent>
           </Card>

@@ -1,0 +1,321 @@
+{
+  "metadata": {
+    "title": "Админ-панель",
+    "description": "Мониторинг пользователей, уведомлений и трансляций по всей платформе."
+  },
+  "users": {
+    "header": {
+      "title": "Управление пользователями",
+      "description": "Управляйте аккаунтами и подписками пользователей"
+    },
+    "actions": {
+      "export": "Экспорт"
+    },
+    "stats": {
+      "total": "Всего пользователей",
+      "active": "Активные",
+      "suspended": "Заблокированные",
+      "paid": "Платные планы"
+    },
+    "filters": {
+      "searchPlaceholder": "Поиск пользователей по email или имени...",
+      "tier": {
+        "all": "Все тарифы",
+        "free": "Free",
+        "pro": "Pro",
+        "business": "Business",
+        "enterprise": "Enterprise"
+      },
+      "status": {
+        "all": "Все статусы",
+        "active": "Активные",
+        "suspended": "Заблокированные"
+      }
+    },
+    "list": {
+      "title": "Пользователи ({count})",
+      "loading": "Загрузка пользователей...",
+      "empty": "Пользователи не найдены",
+      "noName": "Н/Д",
+      "badges": {
+        "suspended": "Заблокирован"
+      },
+      "actions": {
+        "suspend": "Заблокировать",
+        "unsuspend": "Разблокировать"
+      },
+      "fields": {
+        "storageUsed": "Используемое хранилище",
+        "streamHours": "Часы трансляций",
+        "status": "Статус",
+        "joined": "Зарегистрирован",
+        "lastLogin": "Последний вход"
+      },
+      "values": {
+        "storage": "{value} ГБ",
+        "streamHours": "{value} ч",
+        "joined": "Зарегистрирован {time}",
+        "lastLogin": "Последний вход {time}",
+        "neverLoggedIn": "Еще не входил"
+      }
+    },
+    "tiers": {
+      "free": "Free",
+      "pro": "Pro",
+      "business": "Business",
+      "enterprise": "Enterprise"
+    },
+    "subscriptionStatus": {
+      "active": "Активна",
+      "trialing": "Пробный период",
+      "past_due": "Просрочено",
+      "canceled": "Отменено",
+      "incomplete": "Неполная",
+      "incomplete_expired": "Неполная (истекла)",
+      "unknown": "Неизвестно"
+    },
+    "prompts": {
+      "suspendReason": "Укажите причину блокировки для {email}:",
+      "unsuspendConfirm": "Разблокировать этого пользователя?"
+    },
+    "toasts": {
+      "suspendSuccess": "Пользователь заблокирован",
+      "suspendError": "Не удалось заблокировать пользователя",
+      "unsuspendSuccess": "Пользователь разблокирован",
+      "unsuspendError": "Не удалось разблокировать пользователя"
+    }
+  },
+  "alerts": {
+    "header": {
+      "title": "Системные уведомления",
+      "description": "Отслеживайте и закрывайте системные уведомления"
+    },
+    "stats": {
+      "total": "Всего уведомлений",
+      "unresolved": "Нерешенные",
+      "critical": "Критичные",
+      "resolved": "Закрытые"
+    },
+    "filters": {
+      "searchPlaceholder": "Поиск уведомлений по тексту или пользователю...",
+      "severity": {
+        "all": "Все уровни",
+        "critical": "Критичные",
+        "warning": "Предупреждения"
+      },
+      "status": {
+        "all": "Все статусы",
+        "unresolved": "Нерешенные",
+        "resolved": "Закрытые"
+      }
+    },
+    "list": {
+      "loading": "Загрузка уведомлений...",
+      "empty": "Уведомления не найдены",
+      "fields": {
+        "type": "Тип",
+        "user": "Пользователь",
+        "created": "Создано",
+        "resolved": "Закрыто"
+      },
+      "badges": {
+        "resolved": "Закрыто"
+      },
+      "severity": {
+        "critical": "Критичный",
+        "warning": "Предупреждение"
+      },
+      "resolvedBy": " пользователем {user}",
+      "resolvedAgo": "Закрыто {time}",
+      "title": "Оповещения ({count})"
+    },
+    "buttons": {
+      "resolve": "Закрыть",
+      "resolved": "Закрыто"
+    },
+    "prompts": {
+      "resolve": "Закрыть уведомление: \"{message}\"\n\nВведите комментарий (необязательно):"
+    },
+    "toasts": {
+      "resolveSuccess": "Уведомление закрыто",
+      "resolveError": "Не удалось закрыть уведомление"
+    }
+  },
+  "streams": {
+    "header": {
+      "title": "Мониторинг трансляций",
+      "description": "Отслеживайте трансляции всех пользователей"
+    },
+    "stats": {
+      "total": "Всего трансляций",
+      "running": "Активные",
+      "errors": "С ошибками",
+      "stopped": "Остановлены"
+    },
+    "filters": {
+      "searchPlaceholder": "Поиск трансляций по названию или пользователю...",
+      "status": {
+        "all": "Все статусы",
+        "running": "Активные",
+        "error": "С ошибкой",
+        "stopped": "Остановлены"
+      }
+    },
+    "list": {
+      "loading": "Загрузка трансляций...",
+      "empty": "Трансляции не найдены",
+      "fields": {
+        "user": "Пользователь",
+        "playlistId": "ID плейлиста",
+        "destinations": "Направления",
+        "started": "Запущено",
+        "created": "Создано"
+      },
+      "values": {
+        "destinations": "{count} каналов",
+        "notStarted": "Еще не запускалась"
+      },
+      "status": {
+        "running": "Активна",
+        "error": "С ошибкой",
+        "stopped": "Остановлена"
+      },
+      "title": "Трансляции ({count})"
+    },
+    "buttons": {
+      "forceStop": "Принудительно остановить"
+    },
+    "prompts": {
+      "forceStop": "Принудительно остановить трансляцию \"{name}\"?"
+    },
+    "toasts": {
+      "forceStopSuccess": "Трансляция остановлена",
+      "forceStopError": "Не удалось остановить трансляцию"
+    }
+  },
+  "layout": {
+    "checkingAccess": "Проверка доступа администратора...",
+    "accessDenied": {
+      "title": "Доступ запрещен",
+      "description": "У вас нет прав доступа к админ-панели.",
+      "cta": "Вернуться в панель"
+    },
+    "header": {
+      "title": "Админ-панель",
+      "subtitle": "Управление системой"
+    },
+    "nav": {
+      "dashboard": "Панель",
+      "users": "Пользователи",
+      "streams": "Трансляции",
+      "alerts": "Оповещения",
+      "settings": "Настройки"
+    },
+    "actions": {
+      "exit": "Выйти из админки"
+    },
+    "errors": {
+      "accessRequired": "Требуется доступ администратора",
+      "verifyFailed": "Не удалось подтвердить доступ администратора. Повторите попытку.",
+      "default": "У вас нет прав доступа к админ-панели."
+    },
+    "userFallback": "Админ"
+  },
+  "dashboard": {
+    "header": {
+      "title": "Админ-панель",
+      "description": "Обзор системы и мониторинг"
+    },
+    "stats": {
+      "totalUsers": "Всего пользователей",
+      "activeStreams": "Активные трансляции",
+      "unresolvedAlerts": "Нерешенные оповещения",
+      "systemHealth": "Состояние системы",
+      "systemHealthValue": "{value}%"
+    },
+    "userStats": {
+      "title": "Статистика пользователей",
+      "total": "Всего пользователей",
+      "active": "Активные пользователи",
+      "suspended": "Заблокированные",
+      "activityLabel": "Активность пользователей",
+      "activityPercent": "{value}%"
+    },
+    "streamStats": {
+      "title": "Статистика трансляций",
+      "total": "Всего трансляций",
+      "active": "Сейчас активны",
+      "errors": "Ошибки",
+      "usageLabel": "Нагрузка трансляций",
+      "usagePercent": "{value}%"
+    },
+    "recentUsers": {
+      "title": "Недавние пользователи",
+      "loading": "Загрузка пользователей...",
+      "empty": "Пока нет пользователей",
+      "signedUp": "Зарегистрировался {time}"
+    },
+    "recentAlerts": {
+      "title": "Недавние оповещения",
+      "loading": "Загрузка оповещений...",
+      "empty": "Оповещений нет",
+      "userTime": "{user} • {time}"
+    },
+    "badges": {
+      "suspended": "Заблокирован",
+      "active": "Активен"
+    },
+    "systemResources": {
+      "title": "Ресурсы системы",
+      "storageUsage": "Использование хранилища",
+      "storageSummary": "{used} ТБ / {total} ТБ",
+      "actions": {
+        "viewUsers": "Посмотреть всех пользователей",
+        "monitorStreams": "Мониторить трансляции",
+        "resolveAlerts": "Закрыть оповещения"
+      }
+    }
+  },
+  "settings": {
+    "header": {
+      "title": "Настройки админки",
+      "description": "Управляйте системными настройками и параметрами"
+    },
+    "notifications": {
+      "title": "Оповещения",
+      "emailAlerts": {
+        "label": "Email-оповещения",
+        "description": "Получать письма о критических событиях"
+      },
+      "userSignups": {
+        "label": "Регистрация пользователей",
+        "description": "Уведомлять о новых регистрациях"
+      },
+      "save": "Сохранить настройки"
+    },
+    "security": {
+      "title": "Безопасность",
+      "twoFactor": {
+        "label": "Двухфакторная аутентификация",
+        "description": "Включить 2FA для админ-аккаунтов"
+      },
+      "loginAudit": {
+        "label": "Аудит входов",
+        "description": "Логировать все входы администраторов"
+      },
+      "save": "Сохранить настройки"
+    },
+    "database": {
+      "title": "База данных",
+      "description": "Обслуживание базы и резервные копии",
+      "cleanup": "Очистить",
+      "backup": "Создать резервную копию"
+    },
+    "email": {
+      "title": "Email-конфигурация",
+      "description": "Настройка email-сервиса и шаблонов",
+      "configure": "Настроить SMTP",
+      "test": "Тестовое письмо"
+    }
+  }
+}

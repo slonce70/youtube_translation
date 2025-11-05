@@ -21,6 +21,7 @@ import {
   Settings,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useTranslations } from 'next-intl'
 
 import { api } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
@@ -61,17 +62,12 @@ const statusVariantMap: Record<StreamStatusValue, 'success' | 'info' | 'warning'
   error: 'error',
 }
 
-const statusLabelMap: Record<StreamStatusValue, string> = {
-  running: 'Live',
-  stopped: 'Stopped',
-  starting: 'Starting',
-  stopping: 'Stopping',
-  error: 'Error',
-}
-
 export default function StreamingPage() {
   const queryClient = useQueryClient()
   const { user } = useDashboardContext()
+  const streamingToasts = useTranslations('streaming.toasts')
+  const streamingStatus = useTranslations('streaming.status')
+  const tStreaming = useTranslations('streaming.page')
 
   // Channels (Destinations) state
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
@@ -147,10 +143,11 @@ export default function StreamingPage() {
     mutationFn: (data: DestinationFormState) => api.destinations.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['destinations'] })
-      toast.success('Channel created')
+      toast.success(streamingToasts('destination.created'))
       resetChannelForm()
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
   })
 
   const updateDestinationMutation = useMutation({
@@ -167,19 +164,21 @@ export default function StreamingPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['destinations'] })
-      toast.success('Channel updated')
+      toast.success(streamingToasts('destination.updated'))
       resetChannelForm()
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
   })
 
   const deleteDestinationMutation = useMutation({
     mutationFn: (destinationId: string) => api.destinations.delete(destinationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['destinations'] })
-      toast.success('Channel deleted')
+      toast.success(streamingToasts('destination.deleted'))
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
   })
 
   // Stream Mutations
@@ -189,43 +188,46 @@ export default function StreamingPage() {
       return api.streams.create(payload)
     },
     onSuccess: () => {
-      toast.success('Stream created')
+      toast.success(streamingToasts('stream.created'))
       queryClient.invalidateQueries({ queryKey: ['streams'] })
       resetStreamForm()
     },
     onError: (error: Error) => {
-      toast.error(error.message)
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message }))
     },
   })
 
   const startStreamMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.start(streamId),
     onSuccess: () => {
-      toast.success('Stream started')
+      toast.success(streamingToasts('stream.started'))
       queryClient.invalidateQueries({ queryKey: ['streams'] })
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
   })
 
   const stopStreamMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.stop(streamId),
     onSuccess: () => {
-      toast.info('Stream stopped')
+      toast.info(streamingToasts('stream.stopped'))
       queryClient.invalidateQueries({ queryKey: ['streams'] })
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
   })
 
   const deleteStreamMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.delete(streamId),
     onSuccess: (_, streamId) => {
-      toast.success('Stream deleted')
+      toast.success(streamingToasts('stream.deleted'))
       if (viewingLogs === streamId) {
         setViewingLogs(null)
       }
       queryClient.invalidateQueries({ queryKey: ['streams'] })
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
   })
 
   // Handlers
@@ -266,7 +268,7 @@ export default function StreamingPage() {
   }
 
   const handleDeleteChannel = (destinationId: string) => {
-    if (confirm('Are you sure you want to delete this channel?')) {
+    if (confirm(tStreaming('channels.form.confirmDelete'))) {
       deleteDestinationMutation.mutate(destinationId)
     }
   }
@@ -275,12 +277,12 @@ export default function StreamingPage() {
     event.preventDefault()
 
     if (!streamForm.playlist_id) {
-      toast.error('Select a playlist')
+      toast.error(streamingToasts('errors.selectPlaylist'))
       return
     }
 
     if (streamForm.destination_ids.length === 0) {
-      toast.error('Select at least one destination')
+      toast.error(streamingToasts('errors.selectDestination'))
       return
     }
 
@@ -296,11 +298,11 @@ export default function StreamingPage() {
   }
 
   const renderStatusBadge = (status: StreamStatusValue) => (
-    <Badge variant={statusVariantMap[status]}>{statusLabelMap[status]}</Badge>
+    <Badge variant={statusVariantMap[status]}>{streamingStatus(status)}</Badge>
   )
 
   if (!user) {
-    return <LoadingState text="Loading streaming..." />
+    return <LoadingState text={tStreaming('loading')} />
   }
 
   return (
@@ -308,12 +310,12 @@ export default function StreamingPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold gradient-text mb-2">Streaming</h2>
-          <p className="text-slate-600 dark:text-slate-400">Manage channels and live streams</p>
+          <h2 className="text-3xl font-bold gradient-text mb-2">{tStreaming('header.title')}</h2>
+          <p className="text-slate-600 dark:text-slate-400">{tStreaming('header.description')}</p>
         </div>
         <Button onClick={() => setShowCreateStream(true)} className="flex items-center space-x-2">
           <Play className="w-4 h-4" />
-          <span>Go Live</span>
+          <span>{tStreaming('header.goLive')}</span>
         </Button>
       </div>
 
@@ -325,7 +327,7 @@ export default function StreamingPage() {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div className="flex items-center space-x-2">
                 <TvMinimal className="w-5 h-5" />
-                <CardTitle className="text-base">Channels</CardTitle>
+                <CardTitle className="text-base">{tStreaming('channels.title')}</CardTitle>
               </div>
               <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setShowChannelForm(true)}>
                 <Plus className="w-4 h-4" />
@@ -363,7 +365,9 @@ export default function StreamingPage() {
                             </p>
                           </div>
                           <Badge variant={destination.enabled ? 'success' : 'secondary'} className="ml-2">
-                            {destination.enabled ? 'Active' : 'Disabled'}
+                            {destination.enabled
+                              ? tStreaming('channels.badge.active')
+                              : tStreaming('channels.badge.disabled')}
                           </Badge>
                         </div>
                         <div className="flex gap-1 mt-2">
@@ -377,7 +381,7 @@ export default function StreamingPage() {
                             }}
                           >
                             <Edit className="w-3 h-3 mr-1" />
-                            Edit
+                            {tStreaming('channels.actions.edit')}
                           </Button>
                           <Button
                             size="sm"
@@ -389,7 +393,7 @@ export default function StreamingPage() {
                             }}
                           >
                             <Trash2 className="w-3 h-3 mr-1" />
-                            Delete
+                            {tStreaming('channels.actions.delete')}
                           </Button>
                         </div>
                       </div>
@@ -398,16 +402,16 @@ export default function StreamingPage() {
 
                   <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => setShowChannelForm(true)}>
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Channel
+                    {tStreaming('channels.add')}
                   </Button>
                 </>
               ) : (
                 <div className="text-center py-8">
                   <TvMinimal className="w-12 h-12 mx-auto text-slate-400 mb-3" />
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">No channels added</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">{tStreaming('channels.empty.title')}</p>
                   <Button size="sm" variant="outline" className="w-full" onClick={() => setShowChannelForm(true)}>
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Channel
+                    {tStreaming('channels.add')}
                   </Button>
                 </div>
               )}
@@ -419,11 +423,11 @@ export default function StreamingPage() {
             <CardContent className="pt-6">
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">Total Channels</span>
+                  <span className="text-sm text-slate-600 dark:text-slate-400">{tStreaming('channels.stats.total')}</span>
                   <span className="text-lg font-bold">{destinations?.length || 0}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">Active Channels</span>
+                  <span className="text-sm text-slate-600 dark:text-slate-400">{tStreaming('channels.stats.active')}</span>
                   <span className="text-lg font-bold text-success-600">
                     {destinations?.filter((c) => c.enabled).length || 0}
                   </span>
@@ -439,16 +443,16 @@ export default function StreamingPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Radio className="w-5 h-5" />
-                <CardTitle>Live Streams</CardTitle>
+                <CardTitle>{tStreaming('streams.title')}</CardTitle>
               </div>
               <Button className="flex items-center space-x-2" onClick={() => setShowCreateStream(true)}>
                 <Plus className="w-4 h-4" />
-                <span>New Stream</span>
+                <span>{tStreaming('streams.new')}</span>
               </Button>
             </CardHeader>
             <CardContent>
               {isLoadingStreams ? (
-                <LoadingState text="Fetching streams..." />
+                <LoadingState text={tStreaming('fetching')} />
               ) : streams && streams.length > 0 ? (
                 <div className="space-y-4">
                   {streams.map((stream) => (
@@ -461,21 +465,21 @@ export default function StreamingPage() {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-3 mb-2">
-                            <h3 className="text-lg font-semibold">{stream.name || 'Untitled Stream'}</h3>
+                            <h3 className="text-lg font-semibold">{stream.name || tStreaming('streams.untitled')}</h3>
                             {renderStatusBadge(stream.status)}
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                             <div>
-                              <p className="text-slate-500 dark:text-slate-400">Playlist</p>
-                              <p className="font-medium">{playlistMap.get(stream.playlist_id)?.name || 'Unknown playlist'}</p>
+                              <p className="text-slate-500 dark:text-slate-400">{tStreaming('streams.labels.playlist')}</p>
+                              <p className="font-medium">{playlistMap.get(stream.playlist_id)?.name || tStreaming('streams.unknownPlaylist')}</p>
                             </div>
                             <div>
-                              <p className="text-slate-500 dark:text-slate-400">Status</p>
-                              <p className="font-medium">{statusLabelMap[stream.status]}</p>
+                              <p className="text-slate-500 dark:text-slate-400">{tStreaming('streams.labels.status')}</p>
+                              <p className="font-medium">{streamingStatus(stream.status)}</p>
                             </div>
                             <div>
-                              <p className="text-slate-500 dark:text-slate-400">Created</p>
+                              <p className="text-slate-500 dark:text-slate-400">{tStreaming('streams.labels.created')}</p>
                               <p className="font-medium">{formatDistanceToNow(new Date(stream.created_at), { addSuffix: true })}</p>
                             </div>
                           </div>
@@ -490,7 +494,7 @@ export default function StreamingPage() {
 
                         <div className="flex items-center space-x-2 ml-4">
                           <Button size="sm" variant="outline" onClick={() => setViewingLogs(stream.id)}>
-                            Logs
+                            {tStreaming('streams.buttons.logs')}
                           </Button>
                           {stream.status === 'running' ? (
                             <Button
@@ -500,7 +504,7 @@ export default function StreamingPage() {
                               onClick={() => stopStreamMutation.mutate(stream.id)}
                             >
                               <Square className="w-4 h-4 mr-2" />
-                              Stop
+                              {tStreaming('streams.buttons.stop')}
                             </Button>
                           ) : (
                             <Button
@@ -509,7 +513,7 @@ export default function StreamingPage() {
                               onClick={() => startStreamMutation.mutate(stream.id)}
                             >
                               <Play className="w-4 h-4 mr-2" />
-                              Start
+                              {tStreaming('streams.buttons.start')}
                             </Button>
                           )}
                           <Button
@@ -528,13 +532,13 @@ export default function StreamingPage() {
               ) : (
                 <div className="text-center py-16">
                   <Radio className="w-16 h-16 mx-auto text-slate-400 mb-4" />
-                  <p className="text-slate-600 dark:text-slate-400 mb-4">No active streams</p>
+                  <p className="text-slate-600 dark:text-slate-400 mb-4">{tStreaming('streams.empty.title')}</p>
                   <p className="text-sm text-slate-500 dark:text-slate-500 mb-6">
-                    Create a stream configuration to start broadcasting
+                    {tStreaming('streams.empty.description')}
                   </p>
                   <Button variant="primary" size="lg" onClick={() => setShowCreateStream(true)}>
                     <Plus className="w-5 h-5 mr-2" />
-                    Create Your First Stream
+                    {tStreaming('streams.empty.cta')}
                   </Button>
                 </div>
               )}
@@ -549,7 +553,7 @@ export default function StreamingPage() {
                   <p className="text-3xl font-bold text-success-600">
                     {streams?.filter((s) => s.status === 'running').length || 0}
                   </p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Active Streams</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tStreaming('streams.stats.active')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -558,7 +562,7 @@ export default function StreamingPage() {
               <CardContent className="pt-6">
                 <div className="text-center">
                   <p className="text-3xl font-bold gradient-text">{streams?.length || 0}</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Total Streams</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tStreaming('streams.stats.total')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -569,7 +573,7 @@ export default function StreamingPage() {
                   <p className="text-3xl font-bold gradient-text">
                     {streams?.filter((s) => s.status === 'running').length || 0}/{enabledDestinations.length || 0}
                   </p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Concurrent Limit</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tStreaming('streams.stats.concurrent')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -582,22 +586,28 @@ export default function StreamingPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
           <Card className="w-full max-w-lg animate-scale-in">
             <CardHeader>
-              <CardTitle>{editingChannelId ? 'Edit Channel' : 'New Channel'}</CardTitle>
+              <CardTitle>
+                {editingChannelId ? tStreaming('channels.form.editTitle') : tStreaming('channels.form.newTitle')}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmitChannel} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Name</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    {tStreaming('channels.form.nameLabel')}
+                  </label>
                   <Input
                     type="text"
                     required
                     value={channelForm.name}
                     onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })}
-                    placeholder="My YouTube Channel"
+                    placeholder={tStreaming('channels.form.namePlaceholder')}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">RTMPS URL</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    {tStreaming('channels.form.urlLabel')}
+                  </label>
                   <Input
                     type="text"
                     required
@@ -607,7 +617,8 @@ export default function StreamingPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    Stream Key {editingChannelId && '(leave empty to keep existing)'}
+                    {tStreaming('channels.form.keyLabel')}{' '}
+                    {editingChannelId ? tStreaming('channels.form.keepExisting') : ''}
                   </label>
                   <Input
                     type="password"
@@ -617,7 +628,7 @@ export default function StreamingPage() {
                     placeholder="xxxx-xxxx-xxxx-xxxx"
                   />
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Your stream key is encrypted and stored securely
+                    {tStreaming('channels.form.keyHint')}
                   </p>
                 </div>
                 <div className="flex items-center">
@@ -627,17 +638,19 @@ export default function StreamingPage() {
                     onChange={(e) => setChannelForm({ ...channelForm, enabled: e.target.checked })}
                     className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
                   />
-                  <label className="ml-2 block text-sm text-slate-700 dark:text-slate-300">Enabled</label>
+                  <label className="ml-2 block text-sm text-slate-700 dark:text-slate-300">
+                    {tStreaming('channels.form.enabled')}
+                  </label>
                 </div>
                 <div className="flex justify-end gap-3">
                   <Button type="button" onClick={resetChannelForm} variant="secondary">
-                    Cancel
+                    {tStreaming('channels.form.cancel')}
                   </Button>
                   <Button
                     type="submit"
                     isLoading={createDestinationMutation.isPending || updateDestinationMutation.isPending}
                   >
-                    {editingChannelId ? 'Update' : 'Create'}
+                    {editingChannelId ? tStreaming('channels.form.update') : tStreaming('channels.form.create')}
                   </Button>
                 </div>
               </form>
@@ -651,21 +664,25 @@ export default function StreamingPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
           <Card className="w-full max-w-2xl animate-scale-in">
             <CardHeader>
-              <CardTitle>Create Stream</CardTitle>
+              <CardTitle>{tStreaming('streams.form.title')}</CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmitStream} className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Stream Name</label>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {tStreaming('streams.form.nameLabel')}
+                  </label>
                   <Input
-                    placeholder="My awesome stream"
+                    placeholder={tStreaming('streams.form.namePlaceholder')}
                     value={streamForm.name}
                     onChange={(e) => setStreamForm((prev) => ({ ...prev, name: e.target.value }))}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Playlist</label>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {tStreaming('streams.form.playlistLabel')}
+                  </label>
                   <div className="space-y-2">
                     {playlists && playlists.length > 0 ? (
                       playlists.map((playlist) => (
@@ -687,10 +704,14 @@ export default function StreamingPage() {
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="font-medium text-sm text-slate-900 dark:text-white">{playlist.name}</p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400">{playlist.items.length} items</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                {tStreaming('streams.form.playlistItems', { count: playlist.items.length })}
+                              </p>
                             </div>
                             <Badge variant={streamForm.playlist_id === playlist.id ? 'success' : 'secondary'}>
-                              {streamForm.playlist_id === playlist.id ? 'Selected' : 'Tap to select'}
+                              {streamForm.playlist_id === playlist.id
+                                ? tStreaming('channels.badge.selected')
+                                : tStreaming('channels.badge.tapToSelect')}
                             </Badge>
                           </div>
                         </button>
@@ -698,9 +719,11 @@ export default function StreamingPage() {
                     ) : (
                       <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4">
                         <div className="text-left">
-                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">No playlists available</p>
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                            {tStreaming('streams.form.playlistNoneTitle')}
+                          </p>
                           <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Create a playlist first in the Library section.
+                            {tStreaming('streams.form.playlistNoneDescription')}
                           </p>
                         </div>
                         <ListMusic className="w-6 h-6 text-slate-400" />
@@ -710,7 +733,9 @@ export default function StreamingPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Destinations</label>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {tStreaming('streams.form.destinationsLabel')}
+                  </label>
                   <div className="space-y-2">
                     {enabledDestinations.length > 0 ? (
                       enabledDestinations.map((destination) => {
@@ -726,25 +751,31 @@ export default function StreamingPage() {
                                 : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-medium text-sm text-slate-900 dark:text-white">{destination.name}</p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
-                                  {destination.rtmps_url.split('/').slice(0, 3).join('/')}
-                                </p>
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium text-sm text-slate-900 dark:text-white">{destination.name}</p>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {destination.rtmps_url.split('/').slice(0, 3).join('/')}
+                                  </p>
+                                </div>
+                                <Badge variant={isSelected ? 'success' : 'secondary'}>
+                                  {isSelected
+                                    ? tStreaming('channels.badge.selected')
+                                    : tStreaming('channels.badge.tapToSelect')}
+                                </Badge>
                               </div>
-                              <Badge variant={isSelected ? 'success' : 'secondary'}>
-                                {isSelected ? 'Selected' : 'Tap to select'}
-                              </Badge>
-                            </div>
-                          </button>
-                        )
-                      })
+                            </button>
+                          )
+                        })
                     ) : (
                       <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4">
                         <div className="text-left">
-                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">No active destinations</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">Add a destination in the Channels sidebar.</p>
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                            {tStreaming('streams.form.destinationsNoneTitle')}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {tStreaming('streams.form.destinationsNoneDescription')}
+                          </p>
                         </div>
                         <Plus className="w-6 h-6 text-slate-400" />
                       </div>
@@ -754,7 +785,7 @@ export default function StreamingPage() {
 
                 <div className="flex justify-end gap-3">
                   <Button type="button" onClick={resetStreamForm} variant="secondary">
-                    Cancel
+                    {tStreaming('streams.form.cancel')}
                   </Button>
                   <Button
                     type="submit"
@@ -762,7 +793,7 @@ export default function StreamingPage() {
                     isLoading={createStreamMutation.isPending}
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Create Stream
+                    {tStreaming('streams.form.create')}
                   </Button>
                 </div>
               </form>
@@ -777,7 +808,7 @@ export default function StreamingPage() {
           <Card className="w-full max-w-4xl animate-scale-in">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Stream Logs</CardTitle>
+                <CardTitle>{tStreaming('streams.logs.title')}</CardTitle>
                 <Button variant="ghost" size="icon" onClick={() => setViewingLogs(null)}>
                   <X className="w-4 h-4" />
                 </Button>
@@ -788,7 +819,7 @@ export default function StreamingPage() {
                 {logsResponse?.logs?.length ? (
                   logsResponse.logs.map((line, index) => <p key={index}>{line}</p>)
                 ) : (
-                  <p>No logs available</p>
+                  <p>{tStreaming('streams.logs.empty')}</p>
                 )}
               </div>
             </CardContent>

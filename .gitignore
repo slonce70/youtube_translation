@@ -80,3 +80,7 @@ frontend/*.log
 *.key
 stream_keys.txt
 *.tsbuildinfo
+
+# Documentation (temporary fixes/reports)
+FIXES_*.md
+ВИПРАВЛЕННЯ.md

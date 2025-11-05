@@ -2,15 +2,19 @@
 
 import { useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocale, useTranslations } from 'next-intl'
+import { formatDistanceToNow } from 'date-fns'
+import type { Locale as DateFnsLocale } from 'date-fns'
+import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
 import { motion } from 'framer-motion'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card'
 import { Radio, Play, Square, Loader2, AlertTriangle, ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
-import { formatDistanceToNow } from 'date-fns'
-import type { Stream } from '@/lib/types'
+
 import { api } from '@/lib/api'
+import type { Stream } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 interface StreamControlWidgetProps {
@@ -18,16 +22,25 @@ interface StreamControlWidgetProps {
   loading?: boolean
 }
 
-const statusStyles: Record<string, { label: string; badge: 'success' | 'info' | 'warning' | 'error' }> = {
-  running: { label: 'Live', badge: 'success' },
-  stopped: { label: 'Stopped', badge: 'info' },
-  starting: { label: 'Starting', badge: 'warning' },
-  stopping: { label: 'Stopping', badge: 'warning' },
-  error: { label: 'Error', badge: 'error' },
+const statusBadges: Record<string, 'success' | 'info' | 'warning' | 'error'> = {
+  running: 'success',
+  stopped: 'info',
+  starting: 'warning',
+  stopping: 'warning',
+  error: 'error',
+}
+
+const dateLocales: Record<string, DateFnsLocale> = {
+  en: enUS,
+  ru,
+  uk: ukLocale,
 }
 
 export function StreamControlWidget({ streams, loading }: StreamControlWidgetProps) {
   const queryClient = useQueryClient()
+  const t = useTranslations('dashboard.streamControl')
+  const locale = useLocale()
+  const dateLocale = dateLocales[locale] ?? enUS
 
   const startMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.start(streamId),
@@ -44,23 +57,25 @@ export function StreamControlWidget({ streams, loading }: StreamControlWidgetPro
     [streams]
   )
 
+  const header = (
+    <CardHeader className="flex flex-row items-center justify-between space-y-0">
+      <div>
+        <CardTitle>{t('title')}</CardTitle>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t('subtitle')}</p>
+      </div>
+      <Link
+        href="/dashboard/streaming"
+        className="inline-flex items-center text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
+      >
+        {t('manageAll')}
+        <ArrowUpRight className="ml-1 h-4 w-4" />
+      </Link>
+    </CardHeader>
+  )
+
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <div>
-          <CardTitle>Live Stream Controls</CardTitle>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Monitor status and quickly toggle your stream
-          </p>
-        </div>
-        <Link
-          href="/dashboard/streaming"
-          className="inline-flex items-center text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
-        >
-          Manage All
-          <ArrowUpRight className="ml-1 h-4 w-4" />
-        </Link>
-      </CardHeader>
+      {header}
       <CardContent>
         {loading ? (
           <div className="space-y-3">
@@ -73,30 +88,32 @@ export function StreamControlWidget({ streams, loading }: StreamControlWidgetPro
             <div className="p-3 rounded-full bg-slate-100 dark:bg-slate-800 mb-3">
               <Radio className="h-6 w-6 text-slate-500" />
             </div>
-            <p className="font-medium text-slate-700 dark:text-slate-200">No streams yet</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Create your first stream to control it directly from the dashboard.
-            </p>
+            <p className="font-medium text-slate-700 dark:text-slate-200">{t('empty.title')}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('empty.description')}</p>
             <Link
               href="/dashboard/streaming"
               className="mt-4 inline-flex items-center text-sm font-semibold text-primary-600 dark:text-primary-400 hover:underline"
             >
-              Set up stream
+              {t('empty.cta')}
             </Link>
           </div>
         ) : (
           <div className="space-y-3">
             {activeStreams.slice(0, 3).map((stream, index) => {
-              const status = statusStyles[stream.status] ?? { label: stream.status, badge: 'info' }
+              const badgeVariant = statusBadges[stream.status] ?? 'info'
+              const statusLabel = stream.status in statusBadges ? t(`status.${stream.status}`) : stream.status
               const isMutating =
                 (startMutation.isPending && startMutation.variables === stream.id) ||
                 (stopMutation.isPending && stopMutation.variables === stream.id)
               const anyPending = startMutation.isPending || stopMutation.isPending
               const isRunning = stream.status === 'running'
               const startedAt = stream.started_at ? new Date(stream.started_at) : null
-              const startedLabel = startedAt
-                ? `Live ${formatDistanceToNow(startedAt, { addSuffix: true })}`
-                : 'Idle'
+              const relativeTime = startedAt
+                ? formatDistanceToNow(startedAt, { addSuffix: true, locale: dateLocale })
+                : null
+              const startedLabel = relativeTime
+                ? t('labels.liveSince', { time: relativeTime })
+                : t('labels.idle')
 
               return (
                 <motion.div
@@ -115,17 +132,17 @@ export function StreamControlWidget({ streams, loading }: StreamControlWidgetPro
                     </div>
                     <div>
                       <p className="font-semibold text-sm text-slate-900 dark:text-white">
-                        {stream.name || 'Untitled Stream'}
+                        {stream.name || t('labels.untitled')}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{startedLabel}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center space-x-3">
-                    <Badge variant={status.badge}>{status.label}</Badge>
+                    <Badge variant={badgeVariant}>{statusLabel}</Badge>
                     <Button
                       size="sm"
-                      variant={isRunning ? 'secondary' : 'default'}
+                      variant={isRunning ? 'secondary' : 'primary'}
                       onClick={() => (isRunning ? stopMutation.mutate(stream.id) : startMutation.mutate(stream.id))}
                       disabled={anyPending}
                       className="flex items-center"
@@ -135,12 +152,12 @@ export function StreamControlWidget({ streams, loading }: StreamControlWidgetPro
                       ) : isRunning ? (
                         <>
                           <Square className="mr-2 h-3.5 w-3.5" />
-                          Stop
+                          {t('buttons.stop')}
                         </>
                       ) : (
                         <>
                           <Play className="mr-2 h-3.5 w-3.5" />
-                          Go Live
+                          {t('buttons.goLive')}
                         </>
                       )}
                     </Button>
@@ -154,14 +171,14 @@ export function StreamControlWidget({ streams, loading }: StreamControlWidgetPro
                 href="/dashboard/streaming"
                 className="block text-center text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-primary-600"
               >
-                View all streams
+                {t('buttons.viewAll')}
               </Link>
             )}
 
             {(activeStreams ?? []).some((stream) => stream.status === 'error') && (
               <div className="flex items-center space-x-2 rounded-lg bg-error-50 dark:bg-error-900/20 px-3 py-2 text-xs text-error-600 dark:text-error-400">
                 <AlertTriangle className="h-4 w-4" />
-                <span>Some streams require attention</span>
+                <span>{t('labels.attention')}</span>
               </div>
             )}
           </div>

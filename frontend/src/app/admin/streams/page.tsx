@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Radio, Search, Square, Eye, AlertCircle } from 'lucide-react'
+import { Radio, Search, Square } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -10,12 +10,25 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
+import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
+import type { Locale as DateFnsLocale } from 'date-fns'
 import { toast } from 'sonner'
+import { useTranslations, useLocale } from 'next-intl'
 
 export default function StreamsMonitoring() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const queryClient = useQueryClient()
+  const t = useTranslations('admin.streams')
+  const locale = useLocale()
+
+  const dateLocales: Record<string, DateFnsLocale> = {
+    en: enUS,
+    ru,
+    uk: ukLocale,
+  }
+
+  const dateLocale = dateLocales[locale] ?? enUS
 
   const { data: streamsData, isLoading } = useQuery({
     queryKey: ['admin-streams', filterStatus],
@@ -29,15 +42,15 @@ export default function StreamsMonitoring() {
     mutationFn: (streamId: string) => api.admin.streams.forceStop(streamId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-streams'] })
-      toast.success('Stream stopped successfully')
+      toast.success(t('toasts.forceStopSuccess'))
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to stop stream')
+      toast.error(error?.message || t('toasts.forceStopError'))
     },
   })
 
   const handleForceStop = (streamId: string, streamName: string) => {
-    if (confirm(`Are you sure you want to force stop stream "${streamName}"?`)) {
+    if (confirm(t('prompts.forceStop', { name: streamName }))) {
       forceStopMutation.mutate(streamId)
     }
   }
@@ -61,9 +74,9 @@ export default function StreamsMonitoring() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-3xl font-bold gradient-text mb-2">Streams Monitoring</h2>
+        <h2 className="text-3xl font-bold gradient-text mb-2">{t('header.title')}</h2>
         <p className="text-slate-600 dark:text-slate-400">
-          Monitor all active streams across all users
+          {t('header.description')}
         </p>
       </div>
 
@@ -73,7 +86,7 @@ export default function StreamsMonitoring() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold">{streamsData?.length || 0}</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Total Streams</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{t('stats.total')}</p>
             </div>
           </CardContent>
         </Card>
@@ -83,7 +96,7 @@ export default function StreamsMonitoring() {
               <p className="text-3xl font-bold text-success-600">
                 {streamsData?.filter(s => s.status === 'running').length || 0}
               </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Running</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{t('stats.running')}</p>
             </div>
           </CardContent>
         </Card>
@@ -93,7 +106,7 @@ export default function StreamsMonitoring() {
               <p className="text-3xl font-bold text-error-600">
                 {streamsData?.filter(s => s.status === 'error').length || 0}
               </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Errors</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{t('stats.errors')}</p>
             </div>
           </CardContent>
         </Card>
@@ -103,7 +116,7 @@ export default function StreamsMonitoring() {
               <p className="text-3xl font-bold text-slate-600">
                 {streamsData?.filter(s => s.status === 'stopped').length || 0}
               </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Stopped</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{t('stats.stopped')}</p>
             </div>
           </CardContent>
         </Card>
@@ -118,7 +131,7 @@ export default function StreamsMonitoring() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search streams by name or user..."
+                placeholder={t('filters.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -131,10 +144,10 @@ export default function StreamsMonitoring() {
               onChange={(e) => setFilterStatus(e.target.value)}
               className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <option value="all">All Status</option>
-              <option value="running">Running</option>
-              <option value="error">Error</option>
-              <option value="stopped">Stopped</option>
+              <option value="all">{t('filters.status.all')}</option>
+              <option value="running">{t('filters.status.running')}</option>
+              <option value="error">{t('filters.status.error')}</option>
+              <option value="stopped">{t('filters.status.stopped')}</option>
             </select>
           </div>
         </CardContent>
@@ -143,15 +156,15 @@ export default function StreamsMonitoring() {
       {/* Streams List */}
       <Card>
         <CardHeader>
-          <CardTitle>Streams ({filteredStreams.length})</CardTitle>
+          <CardTitle>{t('list.title', { count: filteredStreams.length })}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-12 text-slate-500">Loading streams...</div>
+            <div className="text-center py-12 text-slate-500">{t('list.loading')}</div>
           ) : filteredStreams.length === 0 ? (
             <div className="text-center py-12">
               <Radio className="w-16 h-16 mx-auto text-slate-400 mb-4" />
-              <p className="text-slate-600 dark:text-slate-400">No streams found</p>
+              <p className="text-slate-600 dark:text-slate-400">{t('list.empty')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -176,35 +189,35 @@ export default function StreamsMonitoring() {
                           {stream.status === 'running' && (
                             <span className="w-2 h-2 rounded-full bg-success-500 animate-pulse" />
                           )}
-                          <span className="capitalize">{stream.status}</span>
+                          <span className="capitalize">{t(`list.status.${stream.status}`)}</span>
                         </Badge>
                       </div>
 
                       <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-                        User: {stream.user_email}
+                        {t('list.fields.user')}: {stream.user_email}
                       </p>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
-                          <p className="text-slate-500 dark:text-slate-400">Playlist ID</p>
+                          <p className="text-slate-500 dark:text-slate-400">{t('list.fields.playlistId')}</p>
                           <p className="font-medium text-xs truncate">{stream.playlist_id}</p>
                         </div>
                         <div>
-                          <p className="text-slate-500 dark:text-slate-400">Destinations</p>
-                          <p className="font-medium">{stream.destinations_count} channels</p>
+                          <p className="text-slate-500 dark:text-slate-400">{t('list.fields.destinations')}</p>
+                          <p className="font-medium">{t('list.values.destinations', { count: stream.destinations_count })}</p>
                         </div>
                         <div>
-                          <p className="text-slate-500 dark:text-slate-400">Started</p>
+                          <p className="text-slate-500 dark:text-slate-400">{t('list.fields.started')}</p>
                           <p className="font-medium text-xs">
                             {stream.started_at 
-                              ? formatDistanceToNow(new Date(stream.started_at), { addSuffix: true })
-                              : 'Not started'}
+                              ? formatDistanceToNow(new Date(stream.started_at), { addSuffix: true, locale: dateLocale })
+                              : t('list.values.notStarted')}
                           </p>
                         </div>
                         <div>
-                          <p className="text-slate-500 dark:text-slate-400">Created</p>
+                          <p className="text-slate-500 dark:text-slate-400">{t('list.fields.created')}</p>
                           <p className="font-medium text-xs">
-                            {formatDistanceToNow(new Date(stream.created_at), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(stream.created_at), { addSuffix: true, locale: dateLocale })}
                           </p>
                         </div>
                       </div>
@@ -221,7 +234,7 @@ export default function StreamsMonitoring() {
                           disabled={forceStopMutation.isPending}
                         >
                           <Square className="w-4 h-4" />
-                          <span>Force Stop</span>
+                          <span>{t('buttons.forceStop')}</span>
                         </Button>
                       )}
                     </div>
