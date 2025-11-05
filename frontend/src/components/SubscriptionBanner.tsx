@@ -5,7 +5,7 @@ import { Crown, Sparkles, TrendingUp, X } from 'lucide-react'
 import { Card } from './ui/Card'
 import { Button } from './ui/Button'
 import { Badge } from './ui/Badge'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface SubscriptionBannerProps {
   tier: 'free' | 'pro' | 'business' | 'enterprise'
@@ -48,12 +48,62 @@ const tierInfo = {
   },
 }
 
+const BANNER_STORAGE_KEY = 'subscription-banner-dismissed'
+const BANNER_TTL_MS = 24 * 60 * 60 * 1000
+
+const getStorageKey = (tier: string) => `${BANNER_STORAGE_KEY}:${tier}`
+
 export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionBannerProps) {
-  const [dismissed, setDismissed] = useState(false)
   const info = tierInfo[tier]
   const Icon = info.icon
+  const [visible, setVisible] = useState(() => !info.showUpgrade)
 
-  if (dismissed) {
+  useEffect(() => {
+    if (!info.showUpgrade) {
+      setVisible(true)
+      return
+    }
+
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const raw = window.localStorage.getItem(getStorageKey(tier))
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { timestamp?: number }
+        if (parsed?.timestamp && Date.now() - parsed.timestamp < BANNER_TTL_MS) {
+          setVisible(false)
+          return
+        }
+      } catch {
+        // ignore malformed storage contents and show banner
+      }
+    }
+
+    setVisible(true)
+  }, [tier, info.showUpgrade])
+
+  const persistDismissal = () => {
+    if (!info.showUpgrade || typeof window === 'undefined') {
+      return
+    }
+
+    window.localStorage.setItem(getStorageKey(tier), JSON.stringify({ timestamp: Date.now() }))
+  }
+
+  const handleDismiss = () => {
+    persistDismissal()
+    setVisible(false)
+  }
+
+  const handleUpgradeClick = () => {
+    persistDismissal()
+    onUpgrade?.()
+  }
+
+  if (!visible) {
     return null
   }
 
@@ -103,15 +153,15 @@ export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionB
                     <>
                       <div className="flex items-center space-x-2 text-sm">
                         <div className="w-2 h-2 rounded-full bg-primary-500" />
-                        <span>5 GB Storage</span>
+                        <span>3 GB dedicated memory buffer</span>
                       </div>
                       <div className="flex items-center space-x-2 text-sm">
                         <div className="w-2 h-2 rounded-full bg-primary-500" />
-                        <span>1 Concurrent Stream</span>
+                        <span>8 hours of live streaming per day</span>
                       </div>
                       <div className="flex items-center space-x-2 text-sm">
                         <div className="w-2 h-2 rounded-full bg-primary-500" />
-                        <span>20 Video Assets</span>
+                        <span>1 active stream slot</span>
                       </div>
                     </>
                   )}
@@ -172,7 +222,7 @@ export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionB
                 {info.showUpgrade && (
                   <div className="flex items-center space-x-3">
                     <Button
-                      onClick={onUpgrade}
+                      onClick={handleUpgradeClick}
                       className={`bg-gradient-to-r ${info.color} text-white border-0`}
                     >
                       <TrendingUp className="w-4 h-4 mr-2" />
@@ -188,7 +238,7 @@ export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionB
 
             {/* Dismiss Button */}
             <button
-              onClick={() => setDismissed(true)}
+              onClick={handleDismiss}
               className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <X className="w-5 h-5 text-slate-400" />

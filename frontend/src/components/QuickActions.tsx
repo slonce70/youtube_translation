@@ -67,7 +67,7 @@ export function QuickActions() {
         <CardTitle>Quick Actions</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {actions.map((action, index) => {
             const Icon = action.icon
             return (
@@ -76,26 +76,27 @@ export function QuickActions() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: index * 0.05 }}
-                whileHover={{ scale: 1.05, y: -2 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.03, y: -2 }}
+                whileTap={{ scale: 0.97 }}
                 onClick={action.action}
-                className="group relative p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all bg-white dark:bg-slate-800/50 overflow-hidden"
+                className="group relative flex items-center gap-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all bg-white dark:bg-slate-800/50 overflow-hidden p-4"
               >
                 {/* Gradient background on hover */}
                 <div className={`absolute inset-0 bg-gradient-to-br ${action.gradient} opacity-0 group-hover:opacity-5 transition-opacity`} />
-                
-                <div className="relative">
-                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${action.gradient} flex items-center justify-center mb-3 shadow-lg group-hover:shadow-xl transition-shadow`}>
+                <div className="relative flex w-full items-center gap-4">
+                  <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${action.gradient} shadow-lg group-hover:shadow-xl transition-shadow`}>
                     <Icon className="w-6 h-6 text-white" />
                   </div>
-                  
-                  <h3 className="font-semibold text-sm text-slate-900 dark:text-white mb-1">
-                    {action.label}
-                  </h3>
-                  
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {action.description}
-                  </p>
+
+                  <div className="flex min-w-0 flex-col text-left">
+                    <h3 className="font-semibold text-base text-slate-900 dark:text-white">
+                      {action.label}
+                    </h3>
+
+                    <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {action.description}
+                    </p>
+                  </div>
                 </div>
               </motion.button>
             )

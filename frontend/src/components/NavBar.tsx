@@ -3,43 +3,82 @@
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Library, Radio, LogOut, Menu, X } from 'lucide-react'
+import {
+  Home,
+  Library,
+  Radio,
+  BadgeDollarSign,
+  LogOut,
+  Menu,
+  X,
+  ChevronDown,
+  User,
+  Lock,
+  Shield,
+} from 'lucide-react'
 import { Button } from './ui/Button'
 import { DarkModeToggle } from './DarkModeToggle'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface NavBarProps {
   userEmail?: string
+  userName?: string
   onSignOut: () => void
 }
 
-// NEW: Simplified navigation - 3 sections instead of 5
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
   { href: '/dashboard/library', label: 'Library', icon: Library },
   { href: '/dashboard/streaming', label: 'Streaming', icon: Radio },
+  { href: '/dashboard/plans', label: 'Plans', icon: BadgeDollarSign },
 ]
 
-export function NavBar({ userEmail, onSignOut }: NavBarProps) {
+export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const profileMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!profileMenuOpen) return
+
+    const handleClick = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [profileMenuOpen])
+
+  const displayName = userName || userEmail || 'User'
+  const profileInitial = displayName.charAt(0).toUpperCase()
 
   return (
     <nav className="sticky top-0 z-50 glass border-b border-slate-200/60 dark:border-slate-700/60">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 justify-between items-center">
-          {/* Logo */}
+        <div className="flex h-16 items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center shadow-glow">
-              <Radio className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-xl font-bold gradient-text hidden sm:block">
-              YouTube Streaming
-            </span>
+            <button
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Toggle navigation"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+
+            <Link href="/dashboard" className="flex items-center space-x-2">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center shadow-glow">
+                <Radio className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-xl font-bold gradient-text hidden sm:block">
+                YouTube Streaming
+              </span>
+            </Link>
           </div>
 
-          {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-1">
             {navItems.map((item) => {
               const isActive = pathname === item.href
@@ -75,26 +114,86 @@ export function NavBar({ userEmail, onSignOut }: NavBarProps) {
             })}
           </div>
 
-          {/* User Menu */}
           <div className="flex items-center space-x-4">
             <DarkModeToggle />
-            {userEmail && (
-              <span className="hidden sm:block text-sm text-slate-600 dark:text-slate-300">
-                {userEmail}
-              </span>
-            )}
-            <Button variant="secondary" size="sm" onClick={onSignOut} className="hidden sm:flex items-center space-x-2">
-              <LogOut className="w-4 h-4" />
-              <span>Sign out</span>
-            </Button>
 
-            {/* Mobile menu button */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+            <div className="relative" ref={profileMenuRef}>
+              <button
+                onClick={() => setProfileMenuOpen((open) => !open)}
+                className="flex items-center space-x-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/40 px-2 py-1.5 shadow-sm hover:border-primary-300 dark:hover:border-primary-600 transition"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-accent-500 text-sm font-semibold text-white">
+                  {profileInitial}
+                </div>
+                <div className="hidden sm:block text-left">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{displayName}</p>
+                  {userEmail && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{userEmail}</p>
+                  )}
+                </div>
+                <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${profileMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {profileMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="absolute right-0 mt-3 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg"
+                >
+                  <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{displayName}</p>
+                    {userEmail && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{userEmail}</p>
+                    )}
+                    <p className="mt-1 inline-flex items-center space-x-1 rounded-full bg-primary-50 dark:bg-primary-900/20 px-2 py-0.5 text-[11px] font-medium text-primary-600 dark:text-primary-300">
+                      <Shield className="h-3 w-3" />
+                      <span>Free plan</span>
+                    </p>
+                  </div>
+
+                  <div className="py-2 text-sm">
+                    <Link
+                      href="/dashboard/profile"
+                      onClick={() => setProfileMenuOpen(false)}
+                      className="flex items-center space-x-3 px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    >
+                      <User className="h-4 w-4 text-slate-500" />
+                      <span>Account settings</span>
+                    </Link>
+                    <Link
+                      href="/dashboard/profile#password"
+                      onClick={() => setProfileMenuOpen(false)}
+                      className="flex items-center space-x-3 px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    >
+                      <Lock className="h-4 w-4 text-slate-500" />
+                      <span>Change password</span>
+                    </Link>
+                    <Link
+                      href="/dashboard/plans"
+                      onClick={() => setProfileMenuOpen(false)}
+                      className="flex items-center space-x-3 px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    >
+                      <BadgeDollarSign className="h-4 w-4 text-slate-500" />
+                      <span>Manage plan</span>
+                    </Link>
+                  </div>
+
+                  <div className="border-t border-slate-200 dark:border-slate-800 p-3">
+                    <button
+                      onClick={() => {
+                        setProfileMenuOpen(false)
+                        onSignOut()
+                      }}
+                      className="flex w-full items-center justify-center space-x-2 rounded-lg bg-error-50 dark:bg-error-900/20 px-4 py-2 text-sm font-medium text-error-600 hover:bg-error-100 dark:hover:bg-error-900/30"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>Sign out</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -104,7 +203,7 @@ export function NavBar({ userEmail, onSignOut }: NavBarProps) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden py-4 space-y-2"
+            className="md:hidden mt-4 -mx-4 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900/90 space-y-2"
           >
             {navItems.map((item) => {
               const isActive = pathname === item.href
@@ -131,6 +230,14 @@ export function NavBar({ userEmail, onSignOut }: NavBarProps) {
               {userEmail && (
                 <p className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400">{userEmail}</p>
               )}
+              <Link
+                href="/dashboard/profile"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center space-x-3 px-4 py-3 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <User className="w-5 h-5" />
+                <span>Account settings</span>
+              </Link>
               <button
                 onClick={onSignOut}
                 className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-error-600 hover:bg-error-50 dark:hover:bg-error-900/20"

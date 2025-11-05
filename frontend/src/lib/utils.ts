@@ -36,3 +36,19 @@ export function formatUptime(seconds: number): string {
   
   return parts.join(' ')
 }
+
+export function bytesToGigabytes(bytes: number, fractionDigits = 1): number {
+  const gb = bytes / Math.pow(1024, 3)
+  return parseFloat(gb.toFixed(fractionDigits))
+}
+
+export function formatHoursHuman(hours: number): string {
+  const wholeHours = Math.floor(hours)
+  const minutes = Math.round((hours - wholeHours) * 60)
+
+  if (wholeHours <= 0) {
+    return `${minutes}m`
+  }
+
+  return minutes > 0 ? `${wholeHours}h ${minutes}m` : `${wholeHours}h`
+}
