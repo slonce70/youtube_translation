@@ -18,6 +18,81 @@ class VideoValidator:
     MAX_GOP_SIZE = 120  # 4 seconds at 30fps
     RECOMMENDED_GOP_SIZE = 60  # 2 seconds at 30fps
 
+    BITRATE_GUIDANCE = [
+        {
+            "label": "4K / 2160p",
+            "min_height": 2000,
+            "max_height": 2400,
+            "fps": 60,
+            "min_bitrate_mbps": 10,
+            "max_bitrate_mbps": 40,
+            "target_bitrate_mbps": 35,
+        },
+        {
+            "label": "4K / 2160p",
+            "min_height": 2000,
+            "max_height": 2400,
+            "fps": 30,
+            "min_bitrate_mbps": 8,
+            "max_bitrate_mbps": 35,
+            "target_bitrate_mbps": 30,
+        },
+        {
+            "label": "1440p",
+            "min_height": 1300,
+            "max_height": 1999,
+            "fps": 60,
+            "min_bitrate_mbps": 6,
+            "max_bitrate_mbps": 30,
+            "target_bitrate_mbps": 24,
+        },
+        {
+            "label": "1440p",
+            "min_height": 1300,
+            "max_height": 1999,
+            "fps": 30,
+            "min_bitrate_mbps": 5,
+            "max_bitrate_mbps": 25,
+            "target_bitrate_mbps": 15,
+        },
+        {
+            "label": "1080p",
+            "min_height": 1000,
+            "max_height": 1299,
+            "fps": 60,
+            "min_bitrate_mbps": 4,
+            "max_bitrate_mbps": 10,
+            "target_bitrate_mbps": 12,
+        },
+        {
+            "label": "1080p",
+            "min_height": 1000,
+            "max_height": 1299,
+            "fps": 30,
+            "min_bitrate_mbps": 3,
+            "max_bitrate_mbps": 8,
+            "target_bitrate_mbps": 10,
+        },
+        {
+            "label": "720p",
+            "min_height": 700,
+            "max_height": 999,
+            "fps": 60,
+            "min_bitrate_mbps": 3,
+            "max_bitrate_mbps": 8,
+            "target_bitrate_mbps": 6,
+        },
+        {
+            "label": "240p – 720p",
+            "min_height": 200,
+            "max_height": 699,
+            "fps": 30,
+            "min_bitrate_mbps": 3,
+            "max_bitrate_mbps": 8,
+            "target_bitrate_mbps": 4,
+        },
+    ]
+
     def __init__(self, ffprobe_bin: str = "/usr/bin/ffprobe"):
         candidate = Path(ffprobe_bin)
         if candidate.exists():
@@ -183,6 +258,49 @@ class VideoValidator:
                 "bitrate": int(audio_stream.get("bit_rate", 0))
             }
 
+        recommendation, fps_bucket, fps_out_of_guideline = self._match_bitrate_guidance(
+            info.get("video", {}).get("height"),
+            info.get("video", {}).get("fps"),
+        )
+
+        warnings: list[str] = []
+
+        if recommendation:
+            bitrate_source = info.get("video", {}).get("bitrate") or info.get("bitrate")
+            bitrate_status = "unknown"
+            if bitrate_source:
+                bitrate_mbps = bitrate_source / 1_000_000
+                if (
+                    recommendation["min_bitrate_mbps"]
+                    <= bitrate_mbps
+                    <= recommendation["max_bitrate_mbps"]
+                ):
+                    bitrate_status = "within"
+                else:
+                    bitrate_status = "outside"
+                    warnings.append(
+                        "Video bitrate is outside the recommended range "
+                        f"({recommendation['min_bitrate_mbps']}–{recommendation['max_bitrate_mbps']} Mbps, "
+                        f"target {recommendation['target_bitrate_mbps']} Mbps)."
+                    )
+
+            info["recommendation"] = {
+                "label": recommendation["label"],
+                "fps": recommendation["fps"],
+                "min_bitrate_mbps": recommendation["min_bitrate_mbps"],
+                "max_bitrate_mbps": recommendation["max_bitrate_mbps"],
+                "target_bitrate_mbps": recommendation["target_bitrate_mbps"],
+                "normalized_fps": fps_bucket,
+                "fps_out_of_guideline": fps_out_of_guideline,
+                "bitrate_status": bitrate_status,
+            }
+
+        if fps_out_of_guideline:
+            warnings.append("Frame rate differs from the recommended 30 or 60 fps for live streaming.")
+
+        if warnings:
+            info["warnings"] = warnings
+
         return info
 
     def _parse_fps(self, fps_str: str) -> float:
@@ -194,3 +312,41 @@ class VideoValidator:
             return float(fps_str)
         except:
             return 0.0
+
+    def _normalize_fps(self, fps_value: float | None) -> tuple[int | None, bool]:
+        """Map numeric fps into the 30/60 buckets and flag out-of-guideline values."""
+        if not fps_value or fps_value <= 0:
+            return None, True
+
+        diff_30 = abs(fps_value - 30)
+        diff_60 = abs(fps_value - 60)
+
+        if diff_30 <= 3:
+            return 30, False
+        if diff_60 <= 5:
+            return 60, False
+
+        if diff_30 < diff_60:
+            return 30, True
+        return 60, True
+
+    def _match_bitrate_guidance(self, height: int | None, fps_value: float | None):
+        """Find the best matching bitrate recommendation for provided height/fps."""
+        if not height:
+            return None, None, True
+
+        fps_bucket, fps_out_of_guideline = self._normalize_fps(fps_value)
+
+        for entry in self.BITRATE_GUIDANCE:
+            if (
+                height >= entry["min_height"]
+                and height <= entry["max_height"]
+                and (fps_bucket is None or entry["fps"] == fps_bucket)
+            ):
+                return entry, fps_bucket, fps_out_of_guideline
+
+        for entry in self.BITRATE_GUIDANCE:
+            if height >= entry["min_height"] and height <= entry["max_height"]:
+                return entry, fps_bucket, fps_out_of_guideline
+
+        return None, fps_bucket, fps_out_of_guideline

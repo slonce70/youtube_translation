@@ -5,7 +5,7 @@ Endpoints for admin panel: user management, stream monitoring, system alerts.
 Only accessible by users with is_admin=True.
 """
 
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, update
 from typing import List, Optional
@@ -16,9 +16,9 @@ import logging
 from app.api.deps import require_user
 from app.models.database import (
     UserProfile, SubscriptionTierLimits, AdminAction, SystemAlert, 
-    Stream, Asset, Playlist, Destination, UserActivityLog
+    Stream, StreamDestination, Asset, Playlist, Destination, UserActivityLog
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -30,6 +30,7 @@ router = APIRouter()
 
 class UserListItem(BaseModel):
     """User list item for admin panel"""
+    model_config = ConfigDict(from_attributes=True)
     user_id: UUID
     email: str
     full_name: Optional[str]
@@ -82,6 +83,7 @@ class ChangeTierRequest(BaseModel):
 
 class StreamListItem(BaseModel):
     """Stream list item for monitoring"""
+    model_config = ConfigDict(from_attributes=True)
     stream_id: UUID
     user_id: UUID
     user_email: str
@@ -240,11 +242,12 @@ async def log_admin_action(
 
 @router.get("/users", response_model=List[UserListItem])
 async def list_users(
-    tier: Optional[str] = None,
-    status: Optional[str] = None,
-    suspended: Optional[bool] = None,
-    limit: int = 100,
-    offset: int = 0,
+    tier: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    suspended: Optional[bool] = Query(None),
+    is_suspended: Optional[bool] = Query(None, alias="is_suspended"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     admin_deps: tuple = Depends(require_admin)
 ):
     """
@@ -262,15 +265,30 @@ async def list_users(
             query = query.where(UserProfile.subscription_tier == tier)
         if status:
             query = query.where(UserProfile.subscription_status == status)
-        if suspended is not None:
-            query = query.where(UserProfile.is_suspended == suspended)
+        suspended_filter = suspended if suspended is not None else is_suspended
+        if suspended_filter is not None:
+            query = query.where(UserProfile.is_suspended == suspended_filter)
         
         query = query.order_by(desc(UserProfile.created_at)).limit(limit).offset(offset)
         
         result = await db.execute(query)
         users = result.scalars().all()
-        
-        return users
+
+        return [
+            UserListItem(
+                user_id=user.user_id,
+                email=user.email,
+                full_name=user.full_name,
+                subscription_tier=user.subscription_tier,
+                subscription_status=user.subscription_status,
+                is_suspended=user.is_suspended,
+                current_storage_bytes=user.current_storage_bytes or 0,
+                total_stream_hours=user.total_stream_hours or 0,
+                created_at=user.created_at,
+                last_login_at=user.last_login_at,
+            )
+            for user in users
+        ]
         
     except Exception as e:
         logger.exception(f"Error listing users: {e}")
@@ -575,9 +593,10 @@ async def change_user_tier(
 
 @router.get("/streams/all", response_model=List[StreamListItem])
 async def list_all_streams(
-    status_filter: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0,
+    status: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status_filter"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     admin_deps: tuple = Depends(require_admin)
 ):
     """
@@ -602,30 +621,40 @@ async def list_all_streams(
             .join(UserProfile, Stream.user_id == UserProfile.user_id)
         )
         
-        if status_filter:
-            query = query.where(Stream.status == status_filter)
+        effective_status = status if status is not None else status_filter
+        if effective_status:
+            query = query.where(Stream.status == effective_status)
         
         query = query.order_by(desc(Stream.created_at)).limit(limit).offset(offset)
         
         result = await db.execute(query)
         rows = result.all()
-        
-        # Get destination counts for each stream
-        streams = []
-        for row in rows:
-            # Count destinations (simplified, assumes StreamDestination table)
-            streams.append(StreamListItem(
+
+        stream_ids = [row[0] for row in rows]
+        destination_counts = {}
+        if stream_ids:
+            dest_result = await db.execute(
+                select(StreamDestination.stream_id, func.count(StreamDestination.id))
+                .where(StreamDestination.stream_id.in_(stream_ids))
+                .group_by(StreamDestination.stream_id)
+            )
+            destination_counts = {stream_id: count for stream_id, count in dest_result.all()}
+
+        streams = [
+            StreamListItem(
                 stream_id=row[0],
                 user_id=row[1],
                 user_email=row[2],
-                name=row[3],
+                name=row[3] or "Unnamed stream",
                 status=row[4],
                 playlist_id=row[5],
-                destinations_count=0,  # TODO: Add actual count from StreamDestination
+                destinations_count=destination_counts.get(row[0], 0),
                 started_at=row[6],
-                created_at=row[7]
-            ))
-        
+                created_at=row[7],
+            )
+            for row in rows
+        ]
+
         return streams
         
     except Exception as e:
@@ -678,7 +707,10 @@ async def force_stop_stream(
         
         logger.info(f"Stream {stream_id} force stopped by admin {admin_user_id}")
         
-        return {"status": "success", "message": "Stream stopped"}
+        return {
+            "stream_id": str(stream_id),
+            "status": stream.status,
+        }
         
     except HTTPException:
         raise
@@ -793,9 +825,12 @@ async def resolve_alert(
         alert.resolved = True
         alert.resolved_at = datetime.utcnow()
         alert.resolved_by = admin_user_id
-        
+
+        details = alert.details or {}
         if request.resolution_notes:
-            alert.details['resolution_notes'] = request.resolution_notes
+            details['resolution_notes'] = request.resolution_notes
+        alert.details = details
+        alert.resolution_notes = request.resolution_notes
         
         await log_admin_action(
             db, admin_user_id, 'resolve_alert',
@@ -807,10 +842,29 @@ async def resolve_alert(
         )
         
         await db.commit()
-        
+        await db.refresh(alert)
+
+        user_email = None
+        if alert.user_id:
+            email_result = await db.execute(
+                select(UserProfile.email).where(UserProfile.user_id == alert.user_id)
+            )
+            user_email = email_result.scalar_one_or_none()
+
         logger.info(f"Alert {alert_id} resolved by admin {admin_user_id}")
-        
-        return {"status": "success", "message": "Alert resolved"}
+
+        return AlertListItem(
+            alert_id=alert.id,
+            user_id=alert.user_id,
+            user_email=user_email or "Unknown user",
+            alert_type=alert.alert_type,
+            severity=alert.severity,
+            message=alert.message,
+            resolved=alert.resolved,
+            created_at=alert.created_at,
+            resolved_at=alert.resolved_at,
+            resolved_by=alert.resolved_by,
+        )
         
     except HTTPException:
         raise

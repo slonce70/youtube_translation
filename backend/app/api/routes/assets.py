@@ -1,16 +1,23 @@
 from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from typing import List
+from typing import List, Tuple
 from pathlib import Path
 import asyncio
 import json
 from uuid import UUID
 import logging
+import base64
+import hashlib
+import hmac
+import time
+from datetime import datetime, timezone
+
+from fastapi.responses import FileResponse
 
 from app.api.deps import require_user
 from app.models.database import Asset
-from app.schemas.api import AssetResponse, AssetCreate
+from app.schemas.api import AssetResponse, AssetCreate, AssetUpdate, AssetDownloadLinkResponse
 from app.streaming.validator import VideoValidator
 from app.core.config import settings
 from app.core.database import get_db
@@ -26,6 +33,94 @@ except FileNotFoundError as exc:
     logger.error("FFprobe binary not available: %s", exc)
     validator = None
 
+
+def apply_stream_summary_fields(asset: Asset, stream_meta: dict | None) -> None:
+    """Populate summary columns (codec, bitrate, resolution) from ffprobe meta."""
+    if not stream_meta:
+        return
+
+    video_meta = stream_meta.get("video") if isinstance(stream_meta, dict) else None
+    audio_meta = stream_meta.get("audio") if isinstance(stream_meta, dict) else None
+
+    try:
+        resolution_width = int(video_meta.get("width")) if video_meta and video_meta.get("width") else None
+        resolution_height = int(video_meta.get("height")) if video_meta and video_meta.get("height") else None
+    except (TypeError, ValueError):
+        resolution_width = resolution_height = None
+
+    if video_meta and video_meta.get("codec"):
+        asset.video_codec = str(video_meta.get("codec"))
+
+    if audio_meta and audio_meta.get("codec"):
+        asset.audio_codec = str(audio_meta.get("codec"))
+
+    if resolution_width and resolution_height:
+        asset.resolution = f"{resolution_width}x{resolution_height}"
+
+    bitrate_source = None
+    if isinstance(stream_meta, dict):
+        bitrate_source = stream_meta.get("bitrate")
+
+    if not bitrate_source and video_meta:
+        bitrate_source = video_meta.get("bitrate")
+    if not bitrate_source and audio_meta:
+        bitrate_source = audio_meta.get("bitrate")
+
+    try:
+        if bitrate_source:
+            asset.bitrate = int(bitrate_source)
+    except (TypeError, ValueError):
+        pass
+
+    fps_value = None
+    if video_meta and video_meta.get("fps"):
+        try:
+            fps_value = float(video_meta.get("fps"))
+        except (TypeError, ValueError):
+            fps_value = None
+
+    if fps_value is not None:
+        asset.fps = int(round(fps_value))
+
+
+def _sign_download_payload(payload: str) -> str:
+    signature = hmac.new(
+        settings.download_token_secret.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return signature
+
+
+def generate_download_token(asset_id: UUID, user_id: UUID) -> Tuple[str, int]:
+    expires_at = int(time.time()) + settings.download_token_ttl_seconds
+    payload = f"{asset_id}:{user_id}:{expires_at}"
+    signature = _sign_download_payload(payload)
+    token_bytes = f"{payload}:{signature}".encode("utf-8")
+    token = base64.urlsafe_b64encode(token_bytes).decode("utf-8")
+    return token, expires_at
+
+
+def parse_download_token(token: str) -> Tuple[UUID, UUID, int]:
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        parts = decoded.split(":")
+        if len(parts) != 4:
+            raise ValueError("invalid token format")
+        asset_id_str, user_id_str, expires_at_str, signature = parts
+        payload = ":".join(parts[:3])
+        expected_signature = _sign_download_payload(payload)
+        if not hmac.compare_digest(signature, expected_signature):
+            raise ValueError("invalid signature")
+        expires_at = int(expires_at_str)
+        if expires_at < int(time.time()):
+            raise ValueError("token expired")
+        return UUID(asset_id_str), UUID(user_id_str), expires_at
+    except Exception as exc:  # pylint: disable=broad-except
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired download token",
+        ) from exc
 
 @router.get("/", response_model=List[AssetResponse])
 async def list_assets(
@@ -79,6 +174,9 @@ async def create_asset(
             compatible_for_copy=asset_data.compatible_for_copy,
             validation_errors=asset_data.validation_errors
         )
+
+        if isinstance(asset_data.meta, dict):
+            apply_stream_summary_fields(asset, asset_data.meta)
         
         db.add(asset)
         await db.commit()
@@ -97,6 +195,51 @@ async def create_asset(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create asset: {str(e)}"
         )
+
+
+@router.patch("/{asset_id}", response_model=AssetResponse)
+async def update_asset(
+    asset_id: UUID,
+    asset_update: AssetUpdate,
+    user_deps: tuple = Depends(require_user)
+):
+    """Update asset metadata (currently supports renaming)."""
+    db, user_id = user_deps
+
+    try:
+        query = select(Asset).where(Asset.id == asset_id, Asset.user_id == user_id)
+        result = await db.execute(query)
+        asset = result.scalar_one_or_none()
+
+        if asset is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asset not found",
+            )
+
+        updated = False
+
+        if asset_update.filename is not None and asset_update.filename.strip():
+            asset.filename = asset_update.filename.strip()
+            updated = True
+
+        if not updated:
+            return asset
+
+        await db.commit()
+        await db.refresh(asset)
+        logger.info("Updated asset %s metadata for user %s", asset.id, user_id)
+        return asset
+
+    except HTTPException:
+        raise
+    except Exception as exc:  # pylint: disable=broad-except
+        await db.rollback()
+        logger.exception("Failed to update asset %s: %s", asset_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update asset",
+        ) from exc
 
 
 @router.post("/upload-complete")
@@ -296,6 +439,8 @@ async def handle_upload_complete(
                     validation_errors=validation_result.get("validation_errors", []),
                 )
 
+                apply_stream_summary_fields(asset, stream_info)
+
                 db.add(asset)
                 await db.commit()
                 await db.refresh(asset)
@@ -317,6 +462,8 @@ async def handle_upload_complete(
             "compatible_for_copy": validation_result["compatible_for_copy"],
             "validation_errors": validation_result.get("validation_errors", []),
             "meta": stream_info,
+            "warnings": stream_info.get("warnings", []),
+            "recommendation": stream_info.get("recommendation"),
         }
 
         if created_asset:
@@ -330,6 +477,132 @@ async def handle_upload_complete(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process upload: {str(e)}"
         )
+
+
+@router.post("/{asset_id}/check", response_model=AssetResponse)
+async def revalidate_asset(
+    asset_id: UUID,
+    user_deps: tuple = Depends(require_user)
+):
+    """Re-run validation for an existing asset and refresh stored metadata."""
+    if validator is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Video validator is not available on the server.",
+        )
+
+    db, user_id = user_deps
+
+    query = select(Asset).where(Asset.id == asset_id, Asset.user_id == user_id)
+    result = await db.execute(query)
+    asset = result.scalar_one_or_none()
+
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found",
+        )
+
+    file_path = Path(asset.storage_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset file missing on disk",
+        )
+
+    try:
+        validation_result = await validator.validate_file(file_path)
+        meta = validation_result.get("meta", {})
+        stream_info = validator.get_stream_info(meta)
+
+        asset.meta = stream_info
+        asset.size_bytes = file_path.stat().st_size
+        asset.duration_seconds = stream_info.get("duration")
+        asset.compatible_for_copy = validation_result["compatible_for_copy"]
+        asset.validation_errors = validation_result.get("validation_errors", [])
+
+        apply_stream_summary_fields(asset, stream_info)
+
+        await db.commit()
+        await db.refresh(asset)
+        return asset
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Error during asset revalidation: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to revalidate asset",
+        ) from exc
+
+
+@router.post("/{asset_id}/download-link", response_model=AssetDownloadLinkResponse)
+async def create_download_link(
+    asset_id: UUID,
+    request: Request,
+    user_deps: tuple = Depends(require_user),
+):
+    """Generate a short-lived download URL for the asset."""
+    db, user_id = user_deps
+
+    query = select(Asset).where(Asset.id == asset_id, Asset.user_id == user_id)
+    result = await db.execute(query)
+    asset = result.scalar_one_or_none()
+
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found",
+        )
+
+    if not Path(asset.storage_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset file missing on disk",
+        )
+
+    token, expires_at = generate_download_token(asset.id, user_id)
+    download_path = router.url_path_for("download_asset_by_token", token=token)
+    download_url = request.url_for("download_asset_by_token", token=token)
+
+    logger.debug("Generated download token for asset %s valid until %s", asset.id, expires_at)
+
+    expires_dt = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+
+    return AssetDownloadLinkResponse(
+        download_url=str(download_url),
+        expires_at=expires_dt,
+    )
+
+
+@router.get("/download/{token}", name="download_asset_by_token")
+async def download_asset_by_token(token: str, db: AsyncSession = Depends(get_db)):
+    """Serve asset file using a signed, time-limited token."""
+    asset_id, user_id, _ = parse_download_token(token)
+
+    query = select(Asset).where(Asset.id == asset_id, Asset.user_id == user_id)
+    result = await db.execute(query)
+    asset = result.scalar_one_or_none()
+
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found",
+        )
+
+    file_path = Path(asset.storage_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset file missing on disk",
+        )
+
+    return FileResponse(
+        file_path,
+        media_type="application/octet-stream",
+        filename=asset.filename,
+    )
 
 
 @router.get("/{asset_id}", response_model=AssetResponse)
@@ -389,11 +662,24 @@ async def delete_asset(
                 detail="Asset not found"
             )
         
-        # Delete file from disk
+        # Delete file from disk along with associated tusd metadata (.info)
         file_path = Path(asset.storage_path)
+        info_candidates = set()
+        if file_path.suffix:
+            info_candidates.add(file_path.with_suffix(file_path.suffix + ".info"))
+        info_candidates.add(file_path.with_name(file_path.name + ".info"))
+
         if file_path.exists():
             file_path.unlink()
             logger.info(f"Deleted file: {file_path}")
+
+        for info_path in info_candidates:
+            if info_path.exists():
+                try:
+                    info_path.unlink()
+                    logger.info("Deleted companion info file: %s", info_path)
+                except Exception as info_err:
+                    logger.warning("Failed to delete info file %s: %s", info_path, info_err)
         
         # Delete from database
         await db.execute(delete(Asset).where(Asset.id == asset_id))

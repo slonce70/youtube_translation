@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     encryption_salt: str = "default_salt_change_in_production_16bytes"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
+    download_token_secret: str = "change_this_download_secret"
+    download_token_ttl_seconds: int = 300  # 5 minutes
 
     # Storage
     upload_dir: str = "/app/uploads"
@@ -42,6 +44,8 @@ class Settings(BaseSettings):
     # FFmpeg
     ffmpeg_bin: str = "/usr/bin/ffmpeg"
     ffprobe_bin: str = "/usr/bin/ffprobe"
+    ffmpeg_auto_restart_attempts: int = 1
+    ffmpeg_restart_backoff_seconds: int = 5
 
     # Monitoring
     sentry_dsn: str = ""

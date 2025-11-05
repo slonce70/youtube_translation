@@ -60,7 +60,7 @@ This reference captures the current request/response contracts for the FastAPI b
 | `GET` | `/api/playlists/{playlist_id}` | User | — | `PlaylistResponse` | 404 if missing. |
 | `PUT` | `/api/playlists/{playlist_id}` | User | `PlaylistUpdate` | `PlaylistResponse` | Updates metadata; items management handled elsewhere. |
 | `DELETE` | `/api/playlists/{playlist_id}` | User | — | `204 No Content` | Cascades delete to `PlaylistItem`. |
-| `POST` | `/api/playlists/{playlist_id}/validate` | User | — | `{ "playlist_id": UUID, "compatible": bool, "assets_count": int }` | Uses `PlaylistBuilder.validate_playlist_assets` to check codec compatibility. |
+| `POST` | `/api/playlists/{playlist_id}/validate` | User | — | `{ "playlist_id": UUID, "compatible": bool, "assets_count": int, "issues": List[ValidationIssue] }` | Returns structured validation issues when assets differ (codec, resolution, pixel format, frame rate, audio). |
 
 ## Destinations Router (`/api/destinations`)
 
@@ -95,4 +95,3 @@ This reference captures the current request/response contracts for the FastAPI b
 - Replace `user_id` query parameter in `GET /api/quota` with `require_user` dependency (plan §1.2).
 - Add pagination + sorting to `admin` list endpoints before data volume grows.
 - Generate machine-readable OpenAPI spec (plan §6) and keep this document in sync via CI check.
-

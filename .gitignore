@@ -79,5 +79,4 @@ frontend/*.log
 *.pem
 *.key
 stream_keys.txt
-backend/.env.example
 *.tsbuildinfo

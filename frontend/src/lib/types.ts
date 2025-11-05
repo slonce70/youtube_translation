@@ -34,6 +34,23 @@ export interface PlaylistItemInput {
   position: number
 }
 
+export interface PlaylistValidationIssue {
+  code: string
+  message: string
+  asset_index: number
+  asset_label: string
+  asset_path?: string
+  expected?: string | number | null
+  found?: string | number | null
+}
+
+export interface PlaylistValidationResponse {
+  playlist_id: string
+  compatible: boolean
+  assets_count: number
+  issues: PlaylistValidationIssue[]
+}
+
 export interface PlaylistCreatePayload {
   name: string
   description?: string
@@ -172,6 +189,11 @@ export interface UploadWebhookResult {
   validation_errors: string[]
   meta: Record<string, unknown>
   asset_id?: string
+}
+
+export interface AssetDownloadLink {
+  download_url: string
+  expires_at: string
 }
 
 // Admin API Types
