@@ -21,6 +21,7 @@ import type {
   AdminAlertListItem,
   AdminActionLog,
   AssetDownloadLink,
+  StreamQualityResponse,
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
@@ -117,6 +118,7 @@ export const api = {
     stop: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/stop`, { method: 'POST' }),
     status: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/status`),
     logs: (id: string, lines?: number) => apiRequest<StreamLogsResponse>(`/streams/${id}/logs`, { params: { lines: lines ?? 100 } }),
+    quality: (id: string) => apiRequest<StreamQualityResponse>(`/streams/${id}/quality`),
   },
 
   metrics: {

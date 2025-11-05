@@ -10,7 +10,13 @@ import logging
 
 from app.api.deps import require_user
 from app.models.database import Stream, StreamDestination, Playlist, Destination, PlaylistItem
-from app.schemas.api import StreamResponse, StreamCreate, StreamStatus, StreamLogsResponse
+from app.schemas.api import (
+    StreamResponse,
+    StreamCreate,
+    StreamStatus,
+    StreamLogsResponse,
+    StreamQualityResponse,
+)
 from fastapi import Query
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.streaming.playlist_builder import PlaylistBuilder
@@ -20,6 +26,25 @@ from app.core.quota import QuotaEnforcer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _load_stream_with_relations(
+    db: AsyncSession, user_id: UUID, stream_id: UUID
+) -> Stream:
+    query = (
+        select(Stream)
+        .where(
+            Stream.id == stream_id,
+            Stream.user_id == user_id,
+        )
+        .options(
+            selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
+            selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
+        )
+    )
+
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
 
 
 @router.get("/", response_model=List[StreamResponse])
@@ -119,6 +144,43 @@ async def create_stream(
         )
 
 
+@router.get("/{stream_id}/quality", response_model=StreamQualityResponse)
+async def stream_quality(
+    stream_id: UUID,
+    user_deps: tuple = Depends(require_user),
+) -> StreamQualityResponse:
+    """Return quality evaluation for a stream's source assets."""
+    db, user_id = user_deps
+
+    stream = await _load_stream_with_relations(db, user_id, stream_id)
+    if not stream:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found",
+        )
+
+    assets_data = [
+        {
+            "path": item.asset.storage_path,
+            "meta": item.asset.meta,
+            "asset_id": str(item.asset.id),
+            "filename": item.asset.filename,
+        }
+        for item in sorted(stream.playlist.items, key=lambda x: x.position)
+    ]
+
+    enforcer = QuotaEnforcer(db, user_id)
+    quality = await enforcer.evaluate_stream_quality(assets_data)
+
+    return StreamQualityResponse(
+        ok=quality["ok"],
+        tier=quality["tier"],
+        limits=quality["limits"],
+        violations=quality["violations"],
+        recommended=quality.get("recommended"),
+    )
+
+
 @router.post("/{stream_id}/start", response_model=StreamStatus)
 async def start_stream(
     stream_id: UUID,
@@ -134,21 +196,8 @@ async def start_stream(
         await enforcer.check_concurrent_streams()
         
         # Get stream with all related data
-        query = (
-            select(Stream)
-            .where(
-                Stream.id == stream_id,
-                Stream.user_id == user_id
-            )
-            .options(
-                selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
-                selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination)
-            )
-        )
-        
-        result = await db.execute(query)
-        stream = result.scalar_one_or_none()
-        
+        stream = await _load_stream_with_relations(db, user_id, stream_id)
+
         if not stream:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -179,6 +228,16 @@ async def start_stream(
             }
             for item in sorted(stream.playlist.items, key=lambda x: x.position)
         ]
+
+        quality = await enforcer.evaluate_stream_quality(assets_data)
+        if not quality["ok"]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "quality_rejected",
+                    **quality,
+                },
+            )
 
         compatible, issues = PlaylistBuilder.validate_playlist_assets(assets_data)
         if not compatible:

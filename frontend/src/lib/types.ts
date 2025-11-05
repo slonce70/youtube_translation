@@ -123,6 +123,39 @@ export interface StreamLogsResponse {
   logs: string[]
 }
 
+export interface StreamQualityViolation {
+  code: string
+  message: string
+  asset_id?: string | null
+  filename?: string | null
+  position: number
+  current?: string | null
+  allowed?: string | null
+}
+
+export interface StreamQualityLimits {
+  max_resolution_height?: number | null
+  max_fps?: number | null
+  max_video_bitrate_mbps?: number | null
+  enforce_stream_quality: boolean
+}
+
+export interface StreamQualityRecommendation {
+  resolution?: string | null
+  fps?: number | null
+  min_bitrate_mbps?: number | null
+  max_bitrate_mbps?: number | null
+  target_bitrate_mbps?: number | null
+}
+
+export interface StreamQualityResponse {
+  ok: boolean
+  tier: string
+  limits: StreamQualityLimits
+  violations: StreamQualityViolation[]
+  recommended?: StreamQualityRecommendation | null
+}
+
 export interface MetricsResponse {
   system: {
     cpu: {

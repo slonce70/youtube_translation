@@ -177,6 +177,39 @@ class StreamLogsResponse(BaseModel):
     total_lines: int
 
 
+class StreamQualityViolation(BaseModel):
+    code: str
+    message: str
+    asset_id: Optional[UUID] = None
+    filename: Optional[str] = None
+    position: int
+    current: Optional[str] = None
+    allowed: Optional[str] = None
+
+
+class StreamQualityLimits(BaseModel):
+    max_resolution_height: Optional[int] = None
+    max_fps: Optional[int] = None
+    max_video_bitrate_mbps: Optional[int] = None
+    enforce_stream_quality: bool = True
+
+
+class StreamQualityRecommendation(BaseModel):
+    resolution: Optional[str] = None
+    fps: Optional[int] = None
+    min_bitrate_mbps: Optional[float] = None
+    max_bitrate_mbps: Optional[float] = None
+    target_bitrate_mbps: Optional[float] = None
+
+
+class StreamQualityResponse(BaseModel):
+    ok: bool
+    tier: str
+    limits: StreamQualityLimits
+    violations: List[StreamQualityViolation]
+    recommended: Optional[StreamQualityRecommendation] = None
+
+
 # Pagination
 class PaginatedResponse(BaseModel):
     items: List[dict]

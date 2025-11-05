@@ -113,6 +113,36 @@
       "logs": {
         "title": "Stream Logs",
         "empty": "No logs available"
+      },
+      "quality": {
+        "title": "Quality requirements not met",
+        "description": "Update your source files before starting \"{name}\".",
+        "limits": {
+          "resolution": "Max Resolution",
+          "fps": "Max Frame Rate",
+          "bitrate": "Max Bitrate",
+          "unlimited": "Not limited"
+        },
+        "recommended": {
+          "title": "Recommended settings",
+          "description": "Encode at {resolution} · {fps} FPS · {min}–{max} Mbps (target {target} Mbps)."
+        },
+        "detailsHeading": "What needs attention",
+        "unknownAsset": "Asset #{index}",
+        "violations": {
+          "resolution": "Current resolution {current}; allowed {allowed}.",
+          "fps": "Current frame rate {current}; allowed {allowed}.",
+          "fpsRange": "Frame rate must match {allowed}.",
+          "bitrateRange": "Current bitrate {current}; allowed range {allowed}.",
+          "bitrateMissing": "Bitrate metadata is missing. Re-run validation after encoding.",
+          "guidelineMissing": "Plan requires encoding at {allowed}.",
+          "missingMetadata": "Metadata is missing. Re-run validation for this asset.",
+          "default": "Review this file before streaming."
+        },
+        "cta": {
+          "close": "Close",
+          "library": "Open library"
+        }
       }
     }
   }
