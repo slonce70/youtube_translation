@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Tuple, Any
 
 from app.core.config import settings
 
@@ -50,7 +50,7 @@ class PlaylistBuilder:
             raise
 
     @staticmethod
-    def validate_playlist_assets(assets: List[Dict]) -> bool:
+    def validate_playlist_assets(assets: List[Dict]) -> Tuple[bool, List[Dict[str, Any]]]:
         """
         Validate that all assets in playlist have compatible parameters.
         
@@ -64,50 +64,151 @@ class PlaylistBuilder:
             assets: List of asset dicts with 'meta' key containing stream info
             
         Returns:
-            True if all assets are compatible
+            Tuple of (is_valid, issues). Issues is a list of dicts with details.
         """
+        issues: List[Dict[str, Any]] = []
+
+        def asset_label(index: int, asset: Dict) -> str:
+            return (
+                asset.get("filename")
+                or asset.get("name")
+                or asset.get("path")
+                or f"asset #{index + 1}"
+            )
+
+        def add_issue(code: str, message: str, index: int, asset: Dict, **context):
+            entry = {
+                "code": code,
+                "message": message,
+                "asset_index": index,
+                "asset_label": asset_label(index, asset),
+            }
+            if asset.get("path"):
+                entry["asset_path"] = asset["path"]
+            entry.update({k: v for k, v in context.items() if v is not None})
+            issues.append(entry)
+
         if not assets:
-            return False
-        
+            add_issue(
+                "empty_playlist",
+                "Playlist must contain at least one asset.",
+                0,
+                {},
+            )
+            return False, issues
+
         if len(assets) == 1:
-            return True
-        
-        # Get reference parameters from first asset
-        first = assets[0].get("meta", {})
-        first_video = first.get("video", {})
-        first_audio = first.get("audio", {})
-        
-        # Check all other assets
-        for asset in assets[1:]:
-            meta = asset.get("meta", {})
-            video = meta.get("video", {})
-            audio = meta.get("audio", {})
-            
-            # Check video parameters
+            meta = assets[0].get("meta")
+            if not meta:
+                logger.warning("Single asset playlist missing metadata; skipping compatibility checks")
+            else:
+                logger.info("Single asset playlist validated successfully")
+            return True, issues
+
+        first = assets[0].get("meta") or {}
+        first_video = first.get("video") or {}
+        first_audio = first.get("audio") or {}
+
+        if not first_video or not first_audio:
+            add_issue(
+                "missing_metadata",
+                "Reference asset metadata is incomplete.",
+                0,
+                assets[0],
+            )
+            return False, issues
+
+        for index, asset in enumerate(assets[1:], start=1):
+            meta = asset.get("meta") or {}
+            video = meta.get("video") or {}
+            audio = meta.get("audio") or {}
+
+            if not video or not audio:
+                add_issue(
+                    "missing_metadata",
+                    "Asset metadata is required for validation.",
+                    index,
+                    asset,
+                )
+                continue
+
             if video.get("codec") != first_video.get("codec"):
                 logger.error("Incompatible video codecs in playlist")
-                return False
-            
-            if video.get("width") != first_video.get("width") or \
-               video.get("height") != first_video.get("height"):
+                add_issue(
+                    "video_codec_mismatch",
+                    "Video codec does not match reference asset.",
+                    index,
+                    asset,
+                    expected=first_video.get("codec"),
+                    found=video.get("codec"),
+                )
+
+            if (
+                video.get("width") != first_video.get("width")
+                or video.get("height") != first_video.get("height")
+            ):
                 logger.error("Incompatible resolutions in playlist")
-                return False
-            
+                add_issue(
+                    "resolution_mismatch",
+                    "Video resolution does not match reference asset.",
+                    index,
+                    asset,
+                    expected=f"{first_video.get('width')}x{first_video.get('height')}",
+                    found=f"{video.get('width')}x{video.get('height')}",
+                )
+
             if video.get("pix_fmt") != first_video.get("pix_fmt"):
                 logger.error("Incompatible pixel formats in playlist")
-                return False
-            
-            # Check audio parameters
+                add_issue(
+                    "pixel_format_mismatch",
+                    "Pixel format does not match reference asset.",
+                    index,
+                    asset,
+                    expected=first_video.get("pix_fmt"),
+                    found=video.get("pix_fmt"),
+                )
+
+            if (
+                first_video.get("fps") is not None
+                and video.get("fps") is not None
+                and video.get("fps") != first_video.get("fps")
+            ):
+                logger.error("Incompatible frame rates in playlist")
+                add_issue(
+                    "frame_rate_mismatch",
+                    "Frame rate does not match reference asset.",
+                    index,
+                    asset,
+                    expected=first_video.get("fps"),
+                    found=video.get("fps"),
+                )
+
             if audio.get("codec") != first_audio.get("codec"):
                 logger.error("Incompatible audio codecs in playlist")
-                return False
-            
+                add_issue(
+                    "audio_codec_mismatch",
+                    "Audio codec does not match reference asset.",
+                    index,
+                    asset,
+                    expected=first_audio.get("codec"),
+                    found=audio.get("codec"),
+                )
+
             if audio.get("sample_rate") != first_audio.get("sample_rate"):
                 logger.error("Incompatible audio sample rates in playlist")
-                return False
-        
-        logger.info("All playlist assets are compatible")
-        return True
+                add_issue(
+                    "audio_sample_rate_mismatch",
+                    "Audio sample rate does not match reference asset.",
+                    index,
+                    asset,
+                    expected=first_audio.get("sample_rate"),
+                    found=audio.get("sample_rate"),
+                )
+
+        is_valid = len(issues) == 0
+        if is_valid:
+            logger.info("All playlist assets are compatible")
+        return is_valid, issues
 
     @staticmethod
     async def combine_to_transport_stream(

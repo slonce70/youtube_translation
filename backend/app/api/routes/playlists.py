@@ -8,12 +8,35 @@ import logging
 
 from app.api.deps import require_user
 from app.models.database import Playlist, PlaylistItem, Asset
-from app.schemas.api import PlaylistResponse, PlaylistCreate, PlaylistUpdate
-from app.streaming.playlist_builder import PlaylistBuilder
+from app.schemas.api import (
+    PlaylistResponse,
+    PlaylistCreate,
+    PlaylistUpdate,
+    PlaylistItemResponse,
+)
 from app.core.quota import QuotaEnforcer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _playlist_to_response(playlist: Playlist) -> PlaylistResponse:
+    """Преобразует ORM-плейлист в Pydantic-модель без ленивых загрузок."""
+    items = sorted(list(playlist.items or []), key=lambda item: item.position)
+    item_models = [
+        PlaylistItemResponse.model_validate(item, from_attributes=True)
+        for item in items
+    ]
+
+    return PlaylistResponse(
+        id=playlist.id,
+        name=playlist.name,
+        description=playlist.description,
+        loop=playlist.loop,
+        created_at=playlist.created_at,
+        updated_at=playlist.updated_at,
+        items=item_models,
+    )
 
 
 @router.get("/", response_model=List[PlaylistResponse])
@@ -31,9 +54,12 @@ async def list_playlists(
         )
         
         result = await db.execute(query)
-        playlists = result.scalars().all()
+        playlists = result.scalars().unique().all()
+
+        # Материализуем отношения до закрытия сессии
+        responses = [_playlist_to_response(playlist) for playlist in playlists]
         
-        return playlists
+        return responses
         
     except Exception as e:
         logger.error(f"Error listing playlists: {e}")
@@ -91,14 +117,11 @@ async def create_playlist(
             db.add(item)
         
         await db.commit()
-        await db.refresh(playlist)
-        
-        # Load items
-        await db.refresh(playlist, ["items"])
+        await db.refresh(playlist, attribute_names=["items"])
         
         logger.info(f"Created playlist {playlist.id} for user {user_id}")
         
-        return playlist
+        return _playlist_to_response(playlist)
         
     except HTTPException:
         raise
@@ -138,7 +161,7 @@ async def get_playlist(
                 detail="Playlist not found"
             )
         
-        return playlist
+        return _playlist_to_response(playlist)
         
     except HTTPException:
         raise
@@ -161,9 +184,13 @@ async def update_playlist(
     
     try:
         # Get playlist
-        query = select(Playlist).where(
-            Playlist.id == playlist_id,
-            Playlist.user_id == user_id
+        query = (
+            select(Playlist)
+            .where(
+                Playlist.id == playlist_id,
+                Playlist.user_id == user_id
+            )
+            .options(selectinload(Playlist.items))
         )
         result = await db.execute(query)
         playlist = result.scalar_one_or_none()
@@ -183,9 +210,9 @@ async def update_playlist(
             playlist.loop = playlist_data.loop
         
         await db.commit()
-        await db.refresh(playlist)
+        await db.refresh(playlist, attribute_names=["items"])
         
-        return playlist
+        return _playlist_to_response(playlist)
         
     except HTTPException:
         raise
@@ -275,18 +302,21 @@ async def validate_playlist(
         assets_data = [
             {
                 "path": item.asset.storage_path,
-                "meta": item.asset.meta
+                "meta": item.asset.meta,
+                "asset_id": str(item.asset.id),
+                "filename": item.asset.filename,
             }
             for item in sorted(playlist.items, key=lambda x: x.position)
         ]
         
         # Validate compatibility
-        is_compatible = PlaylistBuilder.validate_playlist_assets(assets_data)
+        is_compatible, issues = PlaylistBuilder.validate_playlist_assets(assets_data)
         
         return {
             "playlist_id": playlist_id,
             "compatible": is_compatible,
-            "assets_count": len(assets_data)
+            "assets_count": len(assets_data),
+            "issues": issues,
         }
         
     except HTTPException:

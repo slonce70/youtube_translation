@@ -171,9 +171,25 @@ async def start_stream(
         
         # Build playlist
         assets_data = [
-            {"path": item.asset.storage_path}
+            {
+                "path": item.asset.storage_path,
+                "meta": item.asset.meta,
+                "asset_id": str(item.asset.id),
+                "filename": item.asset.filename,
+            }
             for item in sorted(stream.playlist.items, key=lambda x: x.position)
         ]
+
+        compatible, issues = PlaylistBuilder.validate_playlist_assets(assets_data)
+        if not compatible:
+            logger.warning("Playlist %s failed validation: %s", stream.playlist_id, issues)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "Playlist assets are incompatible",
+                    "issues": issues,
+                },
+            )
         
         PlaylistBuilder.build_playlist_file(assets_data, playlist_file, stream.playlist.loop)
         
@@ -199,7 +215,12 @@ async def start_stream(
             str(stream_id),
             playlist_file,
             destinations,
-            log_file
+            log_file,
+            metadata={
+                "user_id": user_id,
+                "stream_id": str(stream.id),
+                "playlist_id": str(stream.playlist_id),
+            },
         )
         
         if not success:

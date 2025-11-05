@@ -13,12 +13,14 @@ import type {
   CreateAssetPayload,
   DestinationCreatePayload,
   DestinationUpdatePayload,
+  PlaylistValidationResponse,
   AdminAccessResponse,
   AdminUserListItem,
   AdminUserDetail,
   AdminStreamListItem,
   AdminAlertListItem,
   AdminActionLog,
+  AssetDownloadLink,
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
@@ -76,6 +78,11 @@ export const api = {
     get: (id: string) => apiRequest<Asset>(`/assets/${id}`),
     create: (data: CreateAssetPayload) => apiRequest<Asset>('/assets', { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: string) => apiRequest<void>(`/assets/${id}`, { method: 'DELETE' }),
+    update: (id: string, data: Partial<Pick<Asset, 'filename'>>) =>
+      apiRequest<Asset>(`/assets/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    revalidate: (id: string) => apiRequest<Asset>(`/assets/${id}/check`, { method: 'POST' }),
+    createDownloadLink: (id: string) =>
+      apiRequest<AssetDownloadLink>(`/assets/${id}/download-link`, { method: 'POST' }),
   },
 
   playlists: {
@@ -86,7 +93,7 @@ export const api = {
     update: (id: string, data: PlaylistUpdatePayload) =>
       apiRequest<Playlist>(`/playlists/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiRequest<void>(`/playlists/${id}`, { method: 'DELETE' }),
-    validate: (id: string) => apiRequest<Record<string, unknown>>(`/playlists/${id}/validate`),
+    validate: (id: string) => apiRequest<PlaylistValidationResponse>(`/playlists/${id}/validate`),
   },
 
   destinations: {
@@ -125,7 +132,18 @@ export const api = {
         is_suspended?: boolean
         limit?: number
         offset?: number
-      }) => apiRequest<AdminUserListItem[]>('/admin/users', { params }),
+      }) => {
+        const queryParams: Record<string, any> | undefined = params
+          ? { ...params }
+          : undefined
+
+        if (queryParams && 'is_suspended' in queryParams) {
+          queryParams.suspended = queryParams.is_suspended
+          delete queryParams.is_suspended
+        }
+
+        return apiRequest<AdminUserListItem[]>('/admin/users', { params: queryParams })
+      },
       get: (userId: string) => apiRequest<AdminUserDetail>(`/admin/users/${userId}`),
       suspend: (userId: string, reason: string) =>
         apiRequest<AdminUserDetail>(`/admin/users/${userId}/suspend`, {

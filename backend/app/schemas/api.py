@@ -18,6 +18,10 @@ class AssetCreate(AssetBase):
     validation_errors: Optional[List[str]] = None
 
 
+class AssetUpdate(BaseModel):
+    filename: Optional[str] = None
+
+
 class AssetResponse(AssetBase):
     model_config = ConfigDict(from_attributes=True)
     
@@ -30,6 +34,11 @@ class AssetResponse(AssetBase):
     validation_errors: Optional[List[str]]
     created_at: datetime
     updated_at: datetime
+
+
+class AssetDownloadLinkResponse(BaseModel):
+    download_url: str
+    expires_at: datetime
 
 
 # Playlist schemas

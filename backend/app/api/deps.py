@@ -98,6 +98,15 @@ def clear_user_cache() -> None:
         _user_cache.clear()
 
 
+def invalidate_cached_user(token: Optional[str]) -> None:
+    """Remove a single cached Supabase user entry."""
+    if not token or not _cache_enabled():
+        return
+
+    with _cache_lock:
+        _user_cache.pop(token, None)
+
+
 async def _fetch_supabase_user(token: str):
     """Fetch user details from Supabase auth in a thread to avoid blocking."""
     return await asyncio.to_thread(supabase.auth.get_user, token)

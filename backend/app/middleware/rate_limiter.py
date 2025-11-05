@@ -73,14 +73,19 @@ class RateLimiter:
         self.default_limit = 60
         self.default_window = 60
         
-        # Endpoint-specific limits (requests per minute)
+        # Endpoint-specific limits (requests per window)
         self.limits = {
-            "/api/auth/login": (5, 60),           # 5 requests per minute
-            "/api/auth/register": (3, 60),        # 3 requests per minute
-            "/api/streams/start": (10, 60),       # 10 streams start per minute
-            "/api/streams/stop": (20, 60),        # 20 streams stop per minute
-            "/api/assets/upload": (20, 60),       # 20 upload requests per minute
-            "/api/admin": (30, 60),               # 30 admin requests per minute
+            "/api/auth/login": (5, 60),                    # 5 login attempts per minute
+            "/api/auth/logout": (20, 60),                  # 20 logout requests per minute
+            "/api/auth/register": (3, 60),                 # 3 registration attempts per minute
+            "/api/streams/start": (3, 120),                # 3 stream starts per 2 minutes
+            "/api/streams/stop": (10, 60),                 # 10 stream stops per minute
+            "/api/streams/status": (60, 60),               # status polling limit
+            "/api/assets/upload": (30, 60),                # raw upload chunk notifications
+            "/api/assets/upload-complete": (12, 60),       # finalization webhook handler
+            "/api/admin/alerts": (8, 60),                  # alert triage calls
+            "/api/admin/users": (12, 60),                  # admin user management
+            "/api/admin": (20, 60),                        # general admin prefix fallback
         }
     
     def _get_client_key(self, request: Request) -> str:

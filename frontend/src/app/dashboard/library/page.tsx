@@ -6,12 +6,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Uppy from '@uppy/core'
 import type { UploadResult } from '@uppy/core'
 import Tus from '@uppy/tus'
-import Dashboard from '@uppy/react/dashboard'
 import { toast } from 'sonner'
 import { 
-  Upload, ListVideo, Plus, Trash2, CheckCircle, XCircle, Clock, X, 
-  Loader2, List, Edit, PlayCircle 
+  Upload, ListVideo, Plus, CheckCircle, XCircle, Clock, 
+  List, PlayCircle, CalendarClock, Edit, Trash2, ChevronDown, ChevronUp, Loader2, X 
 } from 'lucide-react'
+import { format } from 'date-fns'
 
 import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
@@ -22,13 +22,148 @@ import { Badge } from '@/components/ui/Badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
 import { Input } from '@/components/ui/Input'
 import type { Asset, Playlist, PlaylistCreatePayload, PlaylistItemInput, PlaylistUpdatePayload } from '@/lib/types'
+import { UploadModal } from '@/components/upload/UploadModal'
+import { matchBitrateRecommendation } from '@/lib/videoRecommendations'
+import { AssetActionsMenu } from '@/components/AssetActionsMenu'
 import { useDashboardContext } from '../dashboard-context'
 
-// Uppy styles
-import '@uppy/core/css/style.css'
-import '@uppy/dashboard/css/style.css'
-
 type PlaylistFormState = PlaylistCreatePayload & { description: string }
+
+type AssetDisplayInfo = {
+  videoCodec?: string
+  videoBitrate?: number
+  videoWidth?: number
+  videoHeight?: number
+  videoFps?: number
+  audioCodec?: string
+  audioBitrate?: number
+  audioSampleRate?: number
+  audioChannels?: number
+  warnings: string[]
+  recommendationLabel?: string
+  recommendationDetails?: string
+  bitrateStatus: 'within' | 'outside' | 'unknown'
+}
+
+const formatBitrateDisplay = (bps?: number): string => {
+  if (!bps || !Number.isFinite(bps)) return '—'
+  if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(2)} Mbps`
+  if (bps >= 1_000) return `${(bps / 1_000).toFixed(0)} Kbps`
+  return `${bps.toFixed(0)} bit/s`
+}
+
+const formatFpsDisplay = (fps?: number): string => {
+  if (!fps || !Number.isFinite(fps)) return '—'
+  return fps % 1 === 0 ? `${fps.toFixed(0)} FPS` : `${fps.toFixed(2)} FPS`
+}
+
+const formatSampleRateDisplay = (hz?: number): string => {
+  if (!hz || !Number.isFinite(hz)) return '—'
+  if (hz >= 1000) return `${(hz / 1000).toFixed(0)} kHz`
+  return `${hz.toFixed(0)} Hz`
+}
+
+const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
+  const meta = (asset.meta ?? {}) as Record<string, any>
+  const video = (meta?.video ?? {}) as Record<string, any>
+  const audio = (meta?.audio ?? {}) as Record<string, any>
+  const backendWarnings = Array.isArray(meta?.warnings) ? (meta.warnings as string[]) : []
+  const backendRecommendation = meta?.recommendation as
+    | {
+        label?: string
+        fps?: number
+        min_bitrate_mbps?: number
+        max_bitrate_mbps?: number
+        target_bitrate_mbps?: number
+        bitrate_status?: string
+        normalized_fps?: number | null
+        fps_out_of_guideline?: boolean
+      }
+    | undefined
+
+  const safeNumber = (value: any): number | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string') {
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? parsed : undefined
+    }
+    return undefined
+  }
+
+  const warnings = [...(asset.validation_errors ?? []), ...backendWarnings]
+  let recommendation = matchBitrateRecommendation(
+    safeNumber(video.height),
+    safeNumber(video.fps)
+  )
+
+  if (backendRecommendation?.label && backendRecommendation.min_bitrate_mbps) {
+    recommendation = {
+      rule: {
+        resolutionLabel: backendRecommendation.label,
+        minHeight: 0,
+        maxHeight: Number.MAX_SAFE_INTEGER,
+        fps: (backendRecommendation.normalized_fps as 30 | 60 | undefined) ?? 30,
+        minBitrateMbps: backendRecommendation.min_bitrate_mbps,
+        maxBitrateMbps:
+          backendRecommendation.max_bitrate_mbps ?? backendRecommendation.min_bitrate_mbps,
+        targetBitrateMbps:
+          backendRecommendation.target_bitrate_mbps ?? backendRecommendation.min_bitrate_mbps,
+      },
+      normalizedFps: (backendRecommendation.normalized_fps as 30 | 60 | null) ?? null,
+      fpsOutOfGuideline: Boolean(backendRecommendation.fps_out_of_guideline),
+    }
+  }
+
+  let bitrateStatus: AssetDisplayInfo['bitrateStatus'] =
+    backendRecommendation?.bitrate_status === 'within'
+      ? 'within'
+      : backendRecommendation?.bitrate_status === 'outside'
+      ? 'outside'
+      : 'unknown'
+
+  const videoBitrate = safeNumber(video.bitrate)
+  if (recommendation.rule && videoBitrate && bitrateStatus === 'unknown') {
+    const bitrateMbps = videoBitrate / 1_000_000
+    if (
+      bitrateMbps >= recommendation.rule.minBitrateMbps &&
+      bitrateMbps <= recommendation.rule.maxBitrateMbps
+    ) {
+      bitrateStatus = 'within'
+    } else {
+      bitrateStatus = 'outside'
+      warnings.push(
+        `Video bitrate is outside the recommended range (${recommendation.rule.minBitrateMbps.toFixed(0)}–${recommendation.rule.maxBitrateMbps.toFixed(0)} Mbps, target ${recommendation.rule.targetBitrateMbps.toFixed(0)} Mbps).`
+      )
+    }
+  }
+
+  if (
+    (backendRecommendation?.fps_out_of_guideline ?? recommendation.fpsOutOfGuideline) &&
+    !warnings.some((warning) => warning.toLowerCase().includes('frame rate'))
+  ) {
+    warnings.push('Frame rate differs from the recommended 30 or 60 fps for live streaming.')
+  }
+
+  return {
+    videoCodec: video.codec,
+    videoBitrate,
+    videoWidth: safeNumber(video.width),
+    videoHeight: safeNumber(video.height),
+    videoFps: safeNumber(video.fps),
+    audioCodec: audio.codec,
+    audioBitrate: safeNumber(audio.bitrate),
+    audioSampleRate: safeNumber(audio.sample_rate),
+    audioChannels: safeNumber(audio.channels),
+    warnings,
+    recommendationLabel: recommendation.rule
+      ? `${recommendation.rule.resolutionLabel}, ${recommendation.rule.fps} FPS`
+      : undefined,
+    recommendationDetails: recommendation.rule
+      ? `${recommendation.rule.minBitrateMbps.toFixed(0)}–${recommendation.rule.maxBitrateMbps.toFixed(0)} Mbps · target ${recommendation.rule.targetBitrateMbps.toFixed(0)} Mbps`
+      : undefined,
+    bitrateStatus,
+  }
+}
 
 export default function LibraryPage() {
   const searchParams = useSearchParams()
@@ -54,6 +189,14 @@ export default function LibraryPage() {
   // Assets state
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [isProcessingUpload, setIsProcessingUpload] = useState(false)
+  const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set())
+  const [assetBeingRenamed, setAssetBeingRenamed] = useState<Asset | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [checkingAssetId, setCheckingAssetId] = useState<string | null>(null)
+  const [downloadAssetId, setDownloadAssetId] = useState<string | null>(null)
+  const [checkModalAsset, setCheckModalAsset] = useState<Asset | null>(null)
+  const [checkModalInfo, setCheckModalInfo] = useState<AssetDisplayInfo | null>(null)
+  const [isCheckModalLoading, setIsCheckModalLoading] = useState(false)
 
   // Playlists state
   const [showCreatePlaylist, setShowCreatePlaylist] = useState(false)
@@ -170,6 +313,35 @@ export default function LibraryPage() {
     },
   })
 
+  const revalidateAssetMutation = useMutation({
+    mutationFn: (assetId: string) => api.assets.revalidate(assetId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['assets'] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const updateAssetMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { filename?: string } }) =>
+      api.assets.update(id, data),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['assets'] })
+      toast.success('Asset updated')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const downloadLinkMutation = useMutation({
+    mutationFn: (assetId: string) => api.assets.createDownloadLink(assetId),
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
   const createPlaylistMutation = useMutation({
     mutationFn: (data: PlaylistCreatePayload) => api.playlists.create(data),
     onSuccess: () => {
@@ -212,6 +384,91 @@ export default function LibraryPage() {
     if (confirm('Are you sure you want to delete this asset?')) {
       deleteAssetMutation.mutate(assetId)
     }
+  }
+
+  const toggleAssetDetails = (assetId: string) => {
+    setExpandedAssets((prev) => {
+      const next = new Set(prev)
+      if (next.has(assetId)) {
+        next.delete(assetId)
+      } else {
+        next.add(assetId)
+      }
+      return next
+    })
+  }
+
+  const handleRenameAsset = (asset: Asset) => {
+    setAssetBeingRenamed(asset)
+    setRenameValue(asset.filename)
+  }
+
+  const closeRenameModal = () => {
+    setAssetBeingRenamed(null)
+    setRenameValue('')
+  }
+
+  const submitRename = async () => {
+    if (!assetBeingRenamed) return
+    const trimmed = renameValue.trim()
+    if (!trimmed) {
+      toast.error('Filename cannot be empty')
+      return
+    }
+    try {
+      await updateAssetMutation.mutateAsync({ id: assetBeingRenamed.id, data: { filename: trimmed } })
+      closeRenameModal()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update asset'
+      toast.error(message)
+    }
+  }
+
+  const handleCheckAsset = async (asset: Asset) => {
+    setCheckingAssetId(asset.id)
+    setCheckModalAsset(asset)
+    setCheckModalInfo(null)
+    setIsCheckModalLoading(true)
+    try {
+      const updated = await revalidateAssetMutation.mutateAsync(asset.id)
+      if (updated) {
+        setCheckModalAsset(updated)
+        setCheckModalInfo(deriveAssetDisplayInfo(updated))
+        toast.success('Validation refreshed')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to validate asset'
+      toast.error(message)
+      setCheckModalAsset(null)
+      setCheckModalInfo(null)
+    } finally {
+      setCheckingAssetId(null)
+      setIsCheckModalLoading(false)
+    }
+  }
+
+  const closeCheckModal = () => {
+    setCheckModalAsset(null)
+    setCheckModalInfo(null)
+    setIsCheckModalLoading(false)
+  }
+
+  const handleDownloadAsset = async (asset: Asset) => {
+    setDownloadAssetId(asset.id)
+    try {
+      const link = await downloadLinkMutation.mutateAsync(asset.id)
+      window.open(link.download_url, '_blank', 'noopener,noreferrer')
+      toast.info(`Starting download for ${asset.filename}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to generate download link'
+      toast.error(message)
+    } finally {
+      setDownloadAssetId(null)
+    }
+  }
+
+  const handleNotImplemented = (feature: string) => {
+    toast.info(`${feature} is coming soon.`)
   }
 
   const resetPlaylistForm = () => {
@@ -326,66 +583,160 @@ export default function LibraryPage() {
               <LoadingState />
             ) : assets && assets.length > 0 ? (
               <div className="grid gap-4">
-                {assets.map((asset) => (
-                  <Card key={asset.id} className="animate-slide-up">
-                    <CardContent className="py-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0 space-y-3">
-                          <div className="flex items-center space-x-3">
-                            <Upload className="w-5 h-5 text-primary-500 flex-shrink-0" />
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
-                              {asset.filename}
-                            </h3>
-                          </div>
+                {assets.map((asset) => {
+                  const info = deriveAssetDisplayInfo(asset)
+                  const uploadedAt = format(new Date(asset.created_at), 'MMM d, yyyy • HH:mm')
+                  const isExpanded = expandedAssets.has(asset.id)
 
-                          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
-                            <div className="flex items-center">
-                              <Clock className="w-4 h-4 mr-1" />
-                              {formatBytes(asset.size_bytes)}
+                  return (
+                    <Card key={asset.id} className="animate-slide-up">
+                      <CardContent className="py-6 space-y-4">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div className="flex flex-1 items-start gap-3 min-w-0">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary-100 to-accent-100 dark:from-primary-900/30 dark:to-accent-900/20">
+                              <Upload className="w-5 h-5 text-primary-500" />
                             </div>
-                            {asset.duration_seconds ? (
-                              <div>{formatDuration(asset.duration_seconds)}</div>
-                            ) : null}
-                            {asset.compatible_for_copy ? (
-                              <Badge variant="success">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                Compatible
-                              </Badge>
-                            ) : (
-                              <Badge variant="error">
-                                <XCircle className="w-3 h-3 mr-1" />
-                                Needs Transcode
-                              </Badge>
-                            )}
-                          </div>
-
-                          {asset.validation_errors && asset.validation_errors.length > 0 && (
-                            <div className="mt-3 space-y-1">
-                              {asset.validation_errors.map((error, index) => (
-                                <div
-                                  key={index}
-                                  className="flex items-start text-sm text-error-600 dark:text-error-400"
-                                >
-                                  <XCircle className="w-4 h-4 mr-1 mt-0.5 flex-shrink-0" />
-                                  <span>{error}</span>
+                            <div className="flex-1 min-w-0 space-y-2">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <h3 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
+                                  {asset.filename}
+                                </h3>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="w-4 h-4" />
+                                  <span>{formatBytes(asset.size_bytes)}</span>
+                                  {asset.duration_seconds ? (
+                                    <>
+                                      <span>•</span>
+                                      <span>{formatDuration(asset.duration_seconds)}</span>
+                                    </>
+                                  ) : null}
                                 </div>
-                              ))}
+                                <div className="flex items-center gap-2">
+                                  <CalendarClock className="w-4 h-4" />
+                                  <span>{uploadedAt}</span>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant={asset.compatible_for_copy ? 'success' : 'error'}>
+                                  {asset.compatible_for_copy ? (
+                                    <>
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      Ready for streaming
+                                    </>
+                                  ) : (
+                                    <>
+                                      <XCircle className="w-3 h-3 mr-1" />
+                                      Needs re-encoding
+                                    </>
+                                  )}
+                                </Badge>
+                                {info.bitrateStatus === 'within' ? (
+                                  <Badge variant="success">Bitrate OK</Badge>
+                                ) : info.bitrateStatus === 'outside' ? (
+                                  <Badge variant="warning">Check bitrate</Badge>
+                                ) : null}
+                              </div>
                             </div>
-                          )}
+                          </div>
+                          <AssetActionsMenu
+                            onEdit={() => handleRenameAsset(asset)}
+                            onDelete={() => handleDeleteAsset(asset.id)}
+                            onCheck={() => handleCheckAsset(asset)}
+                            onPlaylists={() => handleNotImplemented('Playlists')}
+                            onOptimize={() => handleNotImplemented('Optimization')}
+                            onMove={() => handleNotImplemented('Move')}
+                            onDownload={() => handleDownloadAsset(asset)}
+                            isDeleting={
+                              deleteAssetMutation.isPending && deleteAssetMutation.variables === asset.id
+                            }
+                            isChecking={checkingAssetId === asset.id}
+                            isGeneratingDownload={
+                              downloadAssetId === asset.id && downloadLinkMutation.isPending
+                            }
+                          />
                         </div>
 
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleDeleteAsset(asset.id)}
-                          isLoading={deleteAssetMutation.isPending}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                        <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => toggleAssetDetails(asset.id)}
+                            className="flex items-center gap-2 text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400"
+                          >
+                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            {isExpanded ? 'Hide technical details' : 'Show technical details'}
+                          </button>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                            <div className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                  Video
+                                </span>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <Badge variant="secondary">{info.videoCodec?.toUpperCase() ?? '—'}</Badge>
+                                  <span>{formatBitrateDisplay(info.videoBitrate)}</span>
+                                  <span>·</span>
+                                  <span>
+                                    {info.videoWidth && info.videoHeight
+                                      ? `${info.videoWidth}×${info.videoHeight}`
+                                      : '—'}
+                                  </span>
+                                  <span>·</span>
+                                  <span>{formatFpsDisplay(info.videoFps)}</span>
+                                </div>
+                              </div>
+
+                              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                  Audio
+                                </span>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <Badge variant="secondary">{info.audioCodec?.toUpperCase() ?? '—'}</Badge>
+                                  <span>{formatBitrateDisplay(info.audioBitrate)}</span>
+                                  <span>·</span>
+                                  <span>{formatSampleRateDisplay(info.audioSampleRate)}</span>
+                                  {info.audioChannels ? (
+                                    <>
+                                      <span>·</span>
+                                      <span>{info.audioChannels} channels</span>
+                                    </>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+
+                            {info.recommendationLabel ? (
+                              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                <CheckCircle className="w-4 h-4 text-primary-500" />
+                                <span>
+                                  Recommendations: {info.recommendationLabel} → {info.recommendationDetails}
+                                </span>
+                              </div>
+                            ) : null}
+
+                            {info.warnings.length > 0 && (
+                              <div className="space-y-2">
+                                {info.warnings.map((warning, index) => (
+                                  <div
+                                    key={index}
+                                    className="flex items-start text-sm text-error-600 dark:text-error-400"
+                                  >
+                                    <XCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                                    <span>{warning}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
               </div>
             ) : (
               <Card className="text-center py-16">
@@ -664,44 +1015,159 @@ export default function LibraryPage() {
       </div>
 
       {/* Upload Modal */}
-      {isUploadOpen && (
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        uppy={uppy}
+        isProcessingUpload={isProcessingUpload}
+      />
+
+      {assetBeingRenamed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-3xl animate-scale-in">
-            <CardContent className="p-6 relative">
-              <div className="flex items-center justify-between mb-6">
+          <Card className="w-full max-w-md shadow-2xl">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    Upload Assets
-                  </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                    Videos will be automatically validated. Compatible files will appear in your assets list.
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Rename asset</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Update the display name for easier management.
                   </p>
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setIsUploadOpen(false)}
-                  disabled={isProcessingUpload}
-                  className="gap-2"
-                >
-                  <X className="w-4 h-4" />
-                  Close
+                <Button variant="ghost" size="icon" onClick={closeRenameModal}>
+                  <X className="h-5 w-5" />
+                  <span className="sr-only">Close</span>
                 </Button>
               </div>
-              <Dashboard
-                uppy={uppy}
-                proudlyDisplayPoweredByUppy={false}
-                width="100%"
-                height="420px"
-              />
-              {isProcessingUpload && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                    Finalizing upload…
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  submitRename()
+                }}
+                className="space-y-4"
+              >
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    New filename
+                  </label>
+                  <Input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="secondary" onClick={closeRenameModal}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" isLoading={updateAssetMutation.isPending} className="gap-2">
+                    Save changes
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {checkModalAsset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
+          <Card className="w-full max-w-2xl shadow-2xl">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Validation details</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Technical metadata and recommendations for {checkModalAsset.filename}.
                   </p>
                 </div>
+                <Button variant="ghost" size="icon" onClick={closeCheckModal}>
+                  <X className="h-5 w-5" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </div>
+
+              {isCheckModalLoading ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500 dark:text-slate-400">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <p>Revalidating asset…</p>
+                </div>
+              ) : checkModalInfo ? (
+                <div className="space-y-4 text-sm text-slate-600 dark:text-slate-300">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={checkModalAsset.compatible_for_copy ? 'success' : 'error'}>
+                      {checkModalAsset.compatible_for_copy ? 'Ready for streaming' : 'Needs re-encoding'}
+                    </Badge>
+                    {checkModalInfo.bitrateStatus === 'within' ? (
+                      <Badge variant="success">Bitrate OK</Badge>
+                    ) : checkModalInfo.bitrateStatus === 'outside' ? (
+                      <Badge variant="warning">Check bitrate</Badge>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Video
+                      </span>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">{checkModalInfo.videoCodec?.toUpperCase() ?? '—'}</Badge>
+                        <span>{formatBitrateDisplay(checkModalInfo.videoBitrate)}</span>
+                        <span>·</span>
+                        <span>
+                          {checkModalInfo.videoWidth && checkModalInfo.videoHeight
+                            ? `${checkModalInfo.videoWidth}×${checkModalInfo.videoHeight}`
+                            : '—'}
+                        </span>
+                        <span>·</span>
+                        <span>{formatFpsDisplay(checkModalInfo.videoFps)}</span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Audio
+                      </span>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">{checkModalInfo.audioCodec?.toUpperCase() ?? '—'}</Badge>
+                        <span>{formatBitrateDisplay(checkModalInfo.audioBitrate)}</span>
+                        <span>·</span>
+                        <span>{formatSampleRateDisplay(checkModalInfo.audioSampleRate)}</span>
+                        {checkModalInfo.audioChannels ? (
+                          <>
+                            <span>·</span>
+                            <span>{checkModalInfo.audioChannels} channels</span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  {checkModalInfo.recommendationLabel ? (
+                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      <CheckCircle className="w-4 h-4 text-primary-500" />
+                      <span>
+                        Recommendations: {checkModalInfo.recommendationLabel} → {checkModalInfo.recommendationDetails}
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {checkModalInfo.warnings.length > 0 && (
+                    <div className="space-y-2">
+                      {checkModalInfo.warnings.map((warning, index) => (
+                        <div key={index} className="flex items-start text-sm text-error-600 dark:text-error-400">
+                          <XCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                          <span>{warning}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Validation results unavailable. Try again in a moment.
+                </p>
               )}
+
+              <div className="flex justify-end">
+                <Button onClick={closeCheckModal}>Close</Button>
+              </div>
             </CardContent>
           </Card>
         </div>

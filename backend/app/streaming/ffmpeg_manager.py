@@ -1,10 +1,18 @@
 import asyncio
 import logging
 import signal
-from pathlib import Path
-from typing import Dict, List, Optional
+from collections import deque
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
 import aiofiles
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.core.config import settings
+from app.core.database import async_session_maker
+from app.models.database import SystemAlert
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +31,9 @@ class FFmpegStreamManager:
         stream_id: str,
         playlist_file: Path,
         destinations: List[Dict[str, str]],
-        log_file: Optional[Path] = None
+        log_file: Optional[Path] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        restart: bool = False,
     ) -> bool:
         """
         Start streaming to multiple YouTube channels using FFmpeg tee muxer.
@@ -33,6 +43,8 @@ class FFmpegStreamManager:
             playlist_file: Path to concat demuxer playlist file
             destinations: List of dicts with 'url' and 'key' for each YouTube channel
             log_file: Optional path to log file
+            metadata: Optional extra context (user_id, stream metadata) for monitoring
+            restart: Internal flag used when auto-restarting a failed stream
             
         Returns:
             True if stream started successfully
@@ -57,12 +69,24 @@ class FFmpegStreamManager:
             )
 
             # Store process and metadata
+            existing_info = self.stream_info.get(stream_id, {}) if restart else {}
+            recent_errors = existing_info.get("recent_errors") if restart else None
+            combined_metadata = dict(existing_info.get("metadata", {})) if restart else {}
+
+            if metadata:
+                combined_metadata.update(metadata)
+
             self.active_streams[stream_id] = process
             self.stream_info[stream_id] = {
                 "started_at": datetime.utcnow(),
                 "pid": process.pid,
                 "destinations_count": len(destinations),
-                "log_file": str(log_file) if log_file else None
+                "log_file": str(log_file) if log_file else None,
+                "playlist_file": str(playlist_file),
+                "destinations": [dict(dest) for dest in destinations],
+                "restart_attempts": existing_info.get("restart_attempts", 0) if restart else 0,
+                "metadata": combined_metadata,
+                "recent_errors": recent_errors if recent_errors is not None else deque(maxlen=20),
             }
 
             logger.info(f"Stream {stream_id} started with PID {process.pid}")
@@ -213,21 +237,174 @@ class FFmpegStreamManager:
                 asyncio.create_task(self._write_logs_to_file(stream_id, process, log_file))
             
             returncode = await process.wait()
+
+            info = self.stream_info.get(stream_id)
+            if info is not None:
+                info["last_exit_code"] = returncode
+                info["last_finished_at"] = datetime.utcnow()
             
             if returncode == 0:
                 logger.info(f"Stream {stream_id} exited normally")
+                async with self._cleanup_lock:
+                    self.active_streams.pop(stream_id, None)
+                    self.stream_info.pop(stream_id, None)
             else:
                 logger.error(f"Stream {stream_id} exited with code {returncode}")
-            
-            # Cleanup
-            async with self._cleanup_lock:
-                if stream_id in self.active_streams:
-                    del self.active_streams[stream_id]
-                if stream_id in self.stream_info:
-                    del self.stream_info[stream_id]
+                await self._handle_stream_failure(stream_id, returncode)
 
         except Exception as e:
             logger.exception(f"Error monitoring stream {stream_id}: {e}")
+
+    async def _handle_stream_failure(self, stream_id: str, returncode: int):
+        """Handle non-zero FFmpeg exit codes with alerts and optional restart."""
+        info = self.stream_info.get(stream_id, {})
+        metadata = info.get("metadata") or {}
+        recent_errors_store = info.get("recent_errors")
+        if isinstance(recent_errors_store, deque):
+            recent_errors = list(recent_errors_store)[-10:]
+        elif isinstance(recent_errors_store, list):
+            recent_errors = recent_errors_store[-10:]
+        else:
+            recent_errors = []
+
+        if recent_errors:
+            logger.error(
+                "Recent FFmpeg stderr for %s:\n%s",
+                stream_id,
+                "\n".join(recent_errors[-5:]),
+            )
+
+        attempts = info.get("restart_attempts", 0)
+        max_attempts = max(settings.ffmpeg_auto_restart_attempts, 0)
+        will_restart = max_attempts > 0 and attempts < max_attempts
+
+        await self._create_system_alert(
+            stream_id=stream_id,
+            metadata=metadata,
+            returncode=returncode,
+            recent_errors=recent_errors,
+            restart_attempts=attempts,
+            will_restart=will_restart,
+        )
+
+        if will_restart:
+            info["restart_attempts"] = attempts + 1
+            info["last_failure_at"] = datetime.utcnow()
+            playlist_file = info.get("playlist_file")
+            destinations = info.get("destinations")
+            log_file = info.get("log_file")
+
+            try:
+                await asyncio.sleep(max(settings.ffmpeg_restart_backoff_seconds, 0))
+            except Exception:
+                pass
+
+            async with self._cleanup_lock:
+                self.active_streams.pop(stream_id, None)
+
+            if playlist_file and destinations:
+                try:
+                    playlist_path = Path(playlist_file)
+                    if not playlist_path.exists():
+                        logger.error(
+                            "Cannot auto restart stream %s: playlist file missing (%s)",
+                            stream_id,
+                            playlist_path,
+                        )
+                    else:
+                        restart_success = await self.start_stream(
+                            stream_id,
+                            playlist_path,
+                            [dict(dest) for dest in destinations],
+                            Path(log_file) if log_file else None,
+                            metadata=metadata,
+                            restart=True,
+                        )
+                        if restart_success:
+                            logger.info(
+                                "Auto restart succeeded for stream %s (attempt %s/%s)",
+                                stream_id,
+                                info["restart_attempts"],
+                                max_attempts,
+                            )
+                            return
+                        else:
+                            logger.error("Auto restart failed for stream %s", stream_id)
+                except Exception:
+                    logger.exception(f"Failed to auto restart stream {stream_id}")
+            else:
+                logger.error("Missing restart metadata for stream %s", stream_id)
+
+            # Escalate if restart attempt failed or could not start
+            await self._create_system_alert(
+                stream_id=stream_id,
+                metadata=metadata,
+                returncode=returncode,
+                recent_errors=recent_errors,
+                restart_attempts=info.get("restart_attempts", attempts + 1),
+                will_restart=False,
+            )
+
+        async with self._cleanup_lock:
+            self.active_streams.pop(stream_id, None)
+            self.stream_info.pop(stream_id, None)
+
+    async def _create_system_alert(
+        self,
+        stream_id: str,
+        metadata: Dict[str, Any],
+        returncode: int,
+        recent_errors: List[str],
+        restart_attempts: int,
+        will_restart: bool,
+    ):
+        """Persist a system alert when FFmpeg exits unexpectedly."""
+        severity = "warning" if will_restart else "critical"
+
+        user_uuid: Optional[UUID] = None
+        raw_user_id = metadata.get("user_id")
+        if raw_user_id:
+            try:
+                user_uuid = UUID(str(raw_user_id))
+            except ValueError:
+                logger.debug(
+                    "Unable to parse user_id %s for FFmpeg alert on stream %s",
+                    raw_user_id,
+                    stream_id,
+                )
+
+        stream_uuid: Optional[UUID] = None
+        try:
+            stream_uuid = UUID(str(stream_id))
+        except ValueError:
+            logger.debug("Stream ID %s is not a UUID; storing alert without FK", stream_id)
+
+        alert = SystemAlert(
+            alert_type="ffmpeg_failure",
+            severity=severity,
+            user_id=user_uuid,
+            stream_id=stream_uuid,
+            message=f"FFmpeg process for stream {stream_id} exited with code {returncode}",
+            details={
+                "returncode": returncode,
+                "recent_errors": recent_errors,
+                "restart_attempts": restart_attempts,
+                "will_restart": will_restart,
+            },
+        )
+
+        try:
+            async with async_session_maker() as session:
+                session.add(alert)
+                await session.commit()
+            logger.info(
+                "Created %s alert for stream %s (attempt %s)",
+                severity,
+                stream_id,
+                restart_attempts,
+            )
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to persist FFmpeg alert for stream %s: %s", stream_id, exc)
 
     async def _write_logs_to_file(
         self,
@@ -245,6 +422,16 @@ class FFmpegStreamManager:
                     if not line:
                         break
                     await f.write(line)
+                    try:
+                        decoded = line.decode(errors="ignore").strip()
+                    except Exception:
+                        decoded = ""
+                    if decoded:
+                        info = self.stream_info.get(stream_id)
+                        if info:
+                            recent_errors = info.get("recent_errors")
+                            if isinstance(recent_errors, deque):
+                                recent_errors.append(decoded)
                     
         except Exception as e:
             logger.exception(f"Error writing logs for stream {stream_id}: {e}")
