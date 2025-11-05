@@ -20,7 +20,8 @@
     },
     "errors": {
       "selectPlaylist": "Select a playlist",
-      "selectDestination": "Select at least one destination"
+      "selectDestination": "Select at least one destination",
+      "selectAssets": "Select at least one asset"
     },
     "generic": {
       "errorWithMessage": "Error: {message}"
@@ -100,6 +101,11 @@
         "title": "Create Stream",
         "nameLabel": "Stream Name",
         "namePlaceholder": "My awesome stream",
+        "sourceLabel": "Source",
+        "sourceToggle": {
+          "playlist": "Playlist",
+          "assets": "Assets"
+        },
         "playlistLabel": "Playlist",
         "playlistItems": "{count, plural, one {# item} other {# items}}",
         "playlistNoneTitle": "No playlists available",
@@ -107,6 +113,10 @@
         "destinationsLabel": "Destinations",
         "destinationsNoneTitle": "No active destinations",
         "destinationsNoneDescription": "Add a destination in the Channels sidebar.",
+        "assetsLabel": "Choose Assets",
+        "assetTapToSelect": "Tap to select",
+        "assetSelectedOrder": "Added as #{index}",
+        "assetsNoneDescription": "No assets available. Upload videos in the Library first.",
         "cancel": "Cancel",
         "create": "Create Stream"
       },
@@ -125,7 +135,8 @@
         },
         "recommended": {
           "title": "Recommended settings",
-          "description": "Encode at {resolution} · {fps} FPS · {min}–{max} Mbps (target {target} Mbps)."
+          "description": "Encode at {resolution} · {fps} FPS using {videoCodec} video and {audioCodec} audio. Keep bitrate {bitrateRange}{targetClause}.",
+          "targetClause": " (target {target} Mbps)"
         },
         "detailsHeading": "What needs attention",
         "unknownAsset": "Asset #{index}",
@@ -133,7 +144,7 @@
           "resolution": "Current resolution {current}; allowed {allowed}.",
           "fps": "Current frame rate {current}; allowed {allowed}.",
           "fpsRange": "Frame rate must match {allowed}.",
-          "bitrateRange": "Current bitrate {current}; allowed range {allowed}.",
+          "bitrateRange": "Current bitrate {current}; adhere to {allowed}.",
           "bitrateMissing": "Bitrate metadata is missing. Re-run validation after encoding.",
           "guidelineMissing": "Plan requires encoding at {allowed}.",
           "missingMetadata": "Metadata is missing. Re-run validation for this asset.",

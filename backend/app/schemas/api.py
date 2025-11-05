@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
@@ -76,6 +76,7 @@ class PlaylistUpdate(BaseModel):
 class PlaylistResponse(PlaylistBase):
     model_config = ConfigDict(from_attributes=True)
     
+    user_id: UUID
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -115,8 +116,22 @@ class StreamBase(BaseModel):
 
 
 class StreamCreate(StreamBase):
-    playlist_id: UUID
+    playlist_id: Optional[UUID] = None
+    asset_ids: Optional[List[UUID]] = None
     destination_ids: List[UUID]
+
+    @model_validator(mode="after")
+    def validate_source(cls, model):
+        playlist_id = model.playlist_id
+        asset_ids = model.asset_ids
+
+        if bool(playlist_id) == bool(asset_ids):
+            raise ValueError("Provide either playlist_id or asset_ids when creating a stream")
+
+        if asset_ids is not None and len(asset_ids) == 0:
+            raise ValueError("asset_ids must contain at least one asset")
+
+        return model
 
 
 class StreamUpdate(BaseModel):
@@ -128,7 +143,8 @@ class StreamResponse(StreamBase):
     model_config = ConfigDict(from_attributes=True)
     
     id: UUID
-    playlist_id: UUID
+    playlist_id: Optional[UUID]
+    source_type: str
     status: str
     pid: Optional[int]
     log_path: Optional[str]
@@ -137,6 +153,7 @@ class StreamResponse(StreamBase):
     stopped_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+    stream_assets: List['StreamAssetLink'] = []
 
 
 class StreamStatus(BaseModel):
@@ -145,6 +162,14 @@ class StreamStatus(BaseModel):
     uptime_seconds: Optional[int] = 0
     is_running: bool
     error_message: Optional[str] = None
+
+
+class StreamAssetLink(BaseModel):
+    asset_id: UUID
+    position: int
+
+
+StreamResponse.model_rebuild()
 
 
 # Stream event schemas
@@ -188,6 +213,7 @@ class StreamQualityViolation(BaseModel):
 
 
 class StreamQualityLimits(BaseModel):
+    min_video_bitrate_mbps: Optional[int] = None
     max_resolution_height: Optional[int] = None
     max_fps: Optional[int] = None
     max_video_bitrate_mbps: Optional[int] = None

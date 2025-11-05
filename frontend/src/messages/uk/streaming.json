@@ -20,7 +20,8 @@
     },
     "errors": {
       "selectPlaylist": "Оберіть плейлист",
-      "selectDestination": "Оберіть принаймні один напрямок"
+      "selectDestination": "Оберіть принаймні один напрямок",
+      "selectAssets": "Оберіть хоча б один файл"
     },
     "generic": {
       "errorWithMessage": "Помилка: {message}"
@@ -100,6 +101,11 @@
         "title": "Створити трансляцію",
         "nameLabel": "Назва трансляції",
         "namePlaceholder": "Мій класний стрім",
+        "sourceLabel": "Джерело",
+        "sourceToggle": {
+          "playlist": "Плейлист",
+          "assets": "Файли"
+        },
         "playlistLabel": "Плейлист",
         "playlistItems": "{count, plural, one {# елемент} few {# елементи} many {# елементів} other {# елементів}}",
         "playlistNoneTitle": "Плейлистів немає",
@@ -107,6 +113,10 @@
         "destinationsLabel": "Напрямки",
         "destinationsNoneTitle": "Немає активних напрямків",
         "destinationsNoneDescription": "Додайте напрямок у бічній панелі \"Канали\".",
+        "assetsLabel": "Обрати файли",
+        "assetTapToSelect": "Натисніть, щоб обрати",
+        "assetSelectedOrder": "Додано як №{index}",
+        "assetsNoneDescription": "Немає доступних файлів. Завантажте відео у розділі \"Бібліотека\".",
         "cancel": "Скасувати",
         "create": "Створити трансляцію"
       },
@@ -125,7 +135,8 @@
         },
         "recommended": {
           "title": "Рекомендовані налаштування",
-          "description": "Кодуйте у {resolution} · {fps} FPS · {min}–{max} Мбіт/с (ціль {target} Мбіт/с)."
+          "description": "Кодуйте у {resolution} · {fps} FPS з відео {videoCodec} та аудіо {audioCodec}. Дотримуйтеся бітрейту {bitrateRange}{targetClause}.",
+          "targetClause": " (ціль {target} Мбіт/с)"
         },
         "detailsHeading": "Що потрібно виправити",
         "unknownAsset": "Файл #{index}",
@@ -133,7 +144,7 @@
           "resolution": "Поточна роздільна здатність {current}; дозволено {allowed}.",
           "fps": "Поточна частота кадрів {current}; дозволено {allowed}.",
           "fpsRange": "Частота кадрів має відповідати {allowed}.",
-          "bitrateRange": "Поточний бітрейт {current}; допустимий діапазон {allowed}.",
+          "bitrateRange": "Поточний бітрейт {current}; дотримуйтеся {allowed}.",
           "bitrateMissing": "Не вдалось отримати бітрейт. Перекодуйте файл і повторіть перевірку.",
           "guidelineMissing": "Для вашого тарифу потрібно {allowed}.",
           "missingMetadata": "Немає метаданих. Повторно перевірте файл.",

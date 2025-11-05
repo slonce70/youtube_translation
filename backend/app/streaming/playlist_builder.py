@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Tuple, Any, Optional
 
 from app.core.config import settings
 
@@ -9,6 +9,37 @@ logger = logging.getLogger(__name__)
 
 class PlaylistBuilder:
     """Builds FFmpeg concat demuxer playlist files"""
+
+    def __init__(self, streams_dir: Optional[Path | str] = None):
+        self.streams_dir = Path(streams_dir) if streams_dir else Path(settings.stream_dir)
+
+    async def build_playlist(self, playlist_id: str, assets: List[Dict[str, Any]]) -> Path:
+        """Create a playlist file for the provided assets inside the configured streams directory."""
+
+        if not assets:
+            raise ValueError("Playlist asset list is empty")
+
+        normalized_assets: List[Dict[str, Any]] = []
+        for index, asset in enumerate(assets):
+            try:
+                file_path = Path(asset["file_path"])
+            except KeyError as exc:
+                raise ValueError("Asset entry is missing 'file_path'") from exc
+
+            if not file_path.exists():
+                raise FileNotFoundError(f"Asset file not found: {file_path}")
+
+            normalized_assets.append({"path": str(file_path)})
+
+        try:
+            self.streams_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            logger.exception("Failed to prepare streams directory %s", self.streams_dir)
+            raise
+
+        output_file = self.streams_dir / f"{playlist_id}.txt"
+        PlaylistBuilder.build_playlist_file(normalized_assets, output_file, loop=True)
+        return output_file
 
     @staticmethod
     def build_playlist_file(

@@ -1,13 +1,14 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from typing import List
 from uuid import UUID
 import logging
 
 from app.api.deps import require_user
-from app.models.database import Playlist, PlaylistItem, Asset
+from app.models.database import Playlist, PlaylistItem, Asset, Stream
 from app.schemas.api import (
     PlaylistResponse,
     PlaylistCreate,
@@ -29,6 +30,7 @@ def _playlist_to_response(playlist: Playlist) -> PlaylistResponse:
     ]
 
     return PlaylistResponse(
+        user_id=playlist.user_id,
         id=playlist.id,
         name=playlist.name,
         description=playlist.description,
@@ -248,6 +250,19 @@ async def delete_playlist(
                 detail="Playlist not found"
             )
         
+        # Ensure playlist is not in use by any streams before deletion
+        in_use_query = select(Stream.id).where(
+            Stream.playlist_id == playlist_id,
+            Stream.user_id == user_id
+        ).limit(1)
+        in_use_result = await db.execute(in_use_query)
+
+        if in_use_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot delete playlist while streams are using it"
+            )
+
         # Delete playlist (items will cascade)
         await db.execute(delete(Playlist).where(Playlist.id == playlist_id))
         await db.commit()
@@ -256,6 +271,15 @@ async def delete_playlist(
         
     except HTTPException:
         raise
+    except IntegrityError as e:
+        await db.rollback()
+        logger.warning(
+            "Integrity error when deleting playlist %s: %s", playlist_id, e
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete playlist while related records exist"
+        )
     except Exception as e:
         await db.rollback()
         logger.error(f"Error deleting playlist: {e}")

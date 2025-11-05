@@ -1,127 +1,263 @@
 {
   "page": {
     "header": {
-      "badge": "Выберите тариф под ваш стрим",
+      "badge": "Выберите тариф под ваш эфир",
       "title": "Тарифы и цены",
-      "description": "Начните с бесплатного тарифа, а затем увеличивайте память, эфирное время и направления по мере роста эфиров. Все тарифы включают аналитику, умное кодирование и мгновенную синхронизацию с YouTube."
+      "description": "Начните с бесплатного плана, затем увеличивайте память, время эфира и направления. Все тарифы включают аналитику, умное кодирование и моментальную синхронизацию с YouTube."
     },
-  "plans": {
-    "free": {
-      "name": "Free",
-      "price": "$0",
-      "period": "навсегда",
-      "summary": "Запускайте первые трансляции с ограничениями, которые удерживают расходы.",
-      "highlights": [
-        "Буфер памяти 3 ГБ",
-        "8 часов трансляции в день",
-        "1 направление"
-      ],
-      "badge": "Текущий",
-      "ctaLabel": "Включено"
+    "qualityToggle": {
+      "fhd": "Full HD",
+      "uhd": "4K Ultra HD"
     },
-    "creator": {
-      "name": "Creator",
-      "price": "$29",
-      "period": "в месяц",
-      "summary": "Длинные эфиры и дополнительные направления для авторов, растящих аудиторию.",
-      "highlights": [
-        "Буфер 12 ГБ",
-        "24 часа в сутки",
-        "3 направления"
-      ],
-      "badge": "Популярный",
-      "ctaLabel": "Запросить апгрейд"
+    "plans": {
+      "free": {
+        "name": "Free",
+        "price": "$0",
+        "period": "навсегда",
+        "summary": "Оцените платформу с одним Full HD потоком и базовыми инструментами.",
+        "highlights": [
+          "Буфер 3 ГБ",
+          "8 часов эфира в сутки",
+          "1 активный стрим",
+          "1080p @ 30 FPS"
+        ],
+        "badge": "Текущий",
+        "ctaLabel": "Включено"
+      },
+      "fhd_start": {
+        "name": "FHD Start",
+        "price": "$10",
+        "period": "в месяц",
+        "summary": "Один Full HD поток с минимальными требованиями — следующий шаг после free.",
+        "highlights": [
+          "1 параллельный стрим",
+          "1080p @ 30 FPS",
+          "50 ГБ хранилища"
+        ],
+        "ctaLabel": "Запросить апгрейд"
+      },
+      "fhd_flow": {
+        "name": "FHD Flow",
+        "price": "$20",
+        "period": "в месяц",
+        "summary": "Для авторов с двумя потоками в 60 FPS и расширенным буфером.",
+        "highlights": [
+          "2 параллельных стрима",
+          "1080p @ 60 FPS",
+          "100 ГБ хранилища",
+          "Приоритетная e-mail поддержка"
+        ],
+        "badge": "Популярный",
+        "ctaLabel": "Запросить апгрейд"
+      },
+      "fhd_boost": {
+        "name": "FHD Boost",
+        "price": "$35",
+        "period": "в месяц",
+        "summary": "Команды со студийным качеством и четырьмя параллельными потоками.",
+        "highlights": [
+          "4 параллельных стрима",
+          "До 1080p @ 60 FPS",
+          "200 ГБ хранилища",
+          "Автоматизация и плейлисты"
+        ],
+        "ctaLabel": "Связаться с нами"
+      },
+      "uhd_start": {
+        "name": "4K Start",
+        "price": "$69",
+        "period": "в месяц",
+        "summary": "Один 4K60 поток без компромиссов для премиальных трансляций.",
+        "highlights": [
+          "1 параллельный стрим",
+          "До 4K @ 60 FPS",
+          "200 ГБ хранилища",
+          "H.264 или HEVC"
+        ],
+        "badge": "Для live-событий",
+        "ctaLabel": "Запросить апгрейд"
+      },
+      "uhd_flow": {
+        "name": "4K Flow",
+        "price": "$109",
+        "period": "в месяц",
+        "summary": "Два UHD-потока с расширенным хранилищем для мультикам-форматов.",
+        "highlights": [
+          "2 параллельных стрима",
+          "До 4K @ 60 FPS",
+          "400 ГБ хранилища",
+          "Поддержка в тот же день"
+        ],
+        "ctaLabel": "Запросить апгрейд"
+      },
+      "uhd_boost": {
+        "name": "4K Boost",
+        "price": "$159",
+        "period": "в месяц",
+        "summary": "Четыре параллельных UHD-канала для конференций и многоязычных эфирів.",
+        "highlights": [
+          "4 параллельных стрима",
+          "Любое разрешение до 4K60",
+          "800 ГБ хранилища",
+          "Выделенный менеджер успеха"
+        ],
+        "ctaLabel": "Связаться с нами"
+      }
     },
-    "studio": {
-      "name": "Studio",
-      "price": "$79",
-      "period": "в месяц",
-      "summary": "Продакшн-команды, которым нужны параллельные эфиры, плейлисты и автоматизация.",
-      "highlights": [
-        "Буфер 32 ГБ",
-        "Трансляция 24/7",
-        "8 направлений"
-      ],
-      "ctaLabel": "Свяжитесь с нами"
-    },
-    "enterprise": {
-      "name": "Enterprise",
-      "price": "Свяжемся",
-      "period": "индивидуально",
-      "summary": "Масштабирование по регионам с SSO, выделенной поддержкой и white-label решениями.",
-      "highlights": [
-        "Выделенная команда аккаунта",
-        "Неограниченные направления",
-        "Индивидуальные SLA"
-      ],
-      "ctaLabel": "Заказать демо"
-    }
-  },
-  "comparison": {
-    "title": "Сравните возможности",
-    "featureHeader": "Опция",
-    "rows": {
-      "memoryBuffer": {
-        "label": "Буфер памяти",
-        "values": {
-          "free": "3 ГБ",
-          "creator": "12 ГБ",
-          "studio": "32 ГБ",
-          "enterprise": "64 ГБ"
-        }
+    "comparison": {
+      "title": "Сравните возможности",
+      "featureHeader": "Опция",
+      "qualityLabels": {
+        "fhd": "Full HD тарифы",
+        "uhd": "4K тарифы"
       },
-      "dailyStreaming": {
-        "label": "Суточный лимит трансляций",
-        "values": {
-          "free": "8 часов",
-          "creator": "24 часа",
-          "studio": "24/7",
-          "enterprise": "24/7"
-        }
-      },
-      "concurrentStreams": {
-        "label": "Параллельные трансляции",
-        "values": {
-          "free": "1",
-          "creator": "3",
-          "studio": "6",
-          "enterprise": "Без ограничений"
-        }
-      },
-      "destinations": {
-        "label": "Направления",
-        "values": {
-          "free": "1",
-          "creator": "6",
-          "studio": "12",
-          "enterprise": "Без ограничений"
-        }
-      },
-      "prioritySupport": {
-        "label": "Приоритетная поддержка",
-        "values": {
-          "free": "Сообщество",
-          "creator": "Ответ по email за 24 часа",
-          "studio": "В течение дня",
-          "enterprise": "Персональный менеджер"
+      "qualities": {
+        "fhd": {
+          "rows": {
+            "resolution": {
+              "label": "Максимальное разрешение",
+              "values": {
+                "free": "720p @ 30 FPS",
+                "fhd_start": "1080p @ 30 FPS",
+                "fhd_flow": "1080p @ 60 FPS",
+                "fhd_boost": "1080p @ 60 FPS"
+              }
+            },
+            "concurrent": {
+              "label": "Параллельные стримы",
+              "values": {
+                "free": "1",
+                "fhd_start": "1",
+                "fhd_flow": "2",
+                "fhd_boost": "4"
+              }
+            },
+          "storage": {
+            "label": "Хранилище",
+            "values": {
+              "free": "3 ГБ",
+              "fhd_start": "50 ГБ",
+              "fhd_flow": "100 ГБ",
+              "fhd_boost": "200 ГБ"
+            }
+          },
+            "audio": {
+              "label": "Качество аудио",
+              "values": {
+                "free": "AAC 128 кбит/с",
+                "fhd_start": "AAC 192 кбит/с",
+                "fhd_flow": "AAC 256 кбит/с",
+                "fhd_boost": "AAC 320 кбит/с"
+              }
+            },
+            "destinations": {
+              "label": "Направления",
+              "values": {
+                "free": "1",
+                "fhd_start": "3",
+                "fhd_flow": "6",
+                "fhd_boost": "10"
+              }
+            }
+          },
+          "booleanRows": {
+            "calendar": {
+              "label": "Календарь и планирование",
+              "values": {
+                "free": false,
+                "fhd_start": false,
+                "fhd_flow": true,
+                "fhd_boost": true
+              }
+            },
+            "branding": {
+              "label": "Кастомный брендинг",
+              "values": {
+                "free": false,
+                "fhd_start": false,
+                "fhd_flow": true,
+                "fhd_boost": true
+              }
+            }
+          }
+        },
+        "uhd": {
+          "rows": {
+            "resolution": {
+              "label": "Максимальное разрешение",
+              "values": {
+                "free": "720p @ 30 FPS",
+                "uhd_start": "4K @ 60 FPS",
+                "uhd_flow": "4K @ 60 FPS",
+                "uhd_boost": "4K @ 60 FPS"
+              }
+            },
+            "concurrent": {
+              "label": "Параллельные стримы",
+              "values": {
+                "free": "1",
+                "uhd_start": "1",
+                "uhd_flow": "2",
+                "uhd_boost": "4"
+              }
+            },
+          "storage": {
+            "label": "Хранилище",
+            "values": {
+              "free": "3 ГБ",
+              "uhd_start": "200 ГБ",
+              "uhd_flow": "400 ГБ",
+              "uhd_boost": "800 ГБ"
+            }
+          },
+            "audio": {
+              "label": "Качество аудио",
+              "values": {
+                "free": "AAC 128 кбит/с",
+                "uhd_start": "AAC 256 кбит/с",
+                "uhd_flow": "AAC 320 кбит/с",
+                "uhd_boost": "AAC 320 кбит/с + 5.1"
+              }
+            },
+            "destinations": {
+              "label": "Направления",
+              "values": {
+                "free": "1",
+                "uhd_start": "4",
+                "uhd_flow": "8",
+                "uhd_boost": "12"
+              }
+            }
+          },
+          "booleanRows": {
+            "calendar": {
+              "label": "Календарь и планирование",
+              "values": {
+                "free": false,
+                "uhd_start": true,
+                "uhd_flow": true,
+                "uhd_boost": true
+              }
+            },
+            "branding": {
+              "label": "Кастомный брендинг",
+              "values": {
+                "free": false,
+                "uhd_start": true,
+                "uhd_flow": true,
+                "uhd_boost": true
+              }
+            }
+          }
         }
       }
     },
-    "booleanRows": {
-      "streamCalendar": {
-        "label": "Календарь и планирование трансляций"
-      },
-      "customWatermark": {
-        "label": "Настройка водяного знака"
-      }
-    }
-  },
-  "faq": {
-    "title": "Вопросы?",
-    "description": "Скоро появится автоматическое повышение тарифов. Пока напишите нам — мы включим подходящий уровень для вашей команды.",
-    "email": "Написать в поддержку",
-    "call": "Назначить звонок",
-    "brief": "Посмотреть бриф для Enterprise"
+    "faq": {
+      "title": "Вопросы?",
+      "description": "Автоматические апгрейды появятся скоро. Напишите нам — подберём подходящий уровень для вашей команды.",
+      "email": "Написать в поддержку",
+      "call": "Запланировать звонок",
+      "brief": "Посмотреть Enterprise-бриф"
     }
   }
 }

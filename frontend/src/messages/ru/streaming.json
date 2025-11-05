@@ -20,7 +20,8 @@
     },
     "errors": {
       "selectPlaylist": "Выберите плейлист",
-      "selectDestination": "Выберите хотя бы одно направление"
+      "selectDestination": "Выберите хотя бы одно направление",
+      "selectAssets": "Выберите хотя бы один файл"
     },
     "generic": {
       "errorWithMessage": "Ошибка: {message}"
@@ -100,6 +101,11 @@
         "title": "Создать трансляцию",
         "nameLabel": "Название трансляции",
         "namePlaceholder": "Моя крутая трансляция",
+        "sourceLabel": "Источник",
+        "sourceToggle": {
+          "playlist": "Плейлист",
+          "assets": "Файлы"
+        },
         "playlistLabel": "Плейлист",
         "playlistItems": "{count, plural, one {# элемент} few {# элемента} many {# элементов} other {# элементов}}",
         "playlistNoneTitle": "Плейлисты отсутствуют",
@@ -107,6 +113,10 @@
         "destinationsLabel": "Направления",
         "destinationsNoneTitle": "Нет активных направлений",
         "destinationsNoneDescription": "Добавьте направление в боковой панели \"Каналы\".",
+        "assetsLabel": "Выберите файлы",
+        "assetTapToSelect": "Нажмите, чтобы выбрать",
+        "assetSelectedOrder": "Добавлено как №{index}",
+        "assetsNoneDescription": "Нет доступных файлов. Сначала загрузите видео в разделе \"Библиотека\".",
         "cancel": "Отмена",
         "create": "Создать трансляцию"
       },
@@ -125,7 +135,8 @@
         },
         "recommended": {
           "title": "Рекомендованные настройки",
-          "description": "Кодируйте в {resolution} · {fps} FPS · {min}–{max} Мбит/с (целевое {target} Мбит/с)."
+          "description": "Кодируйте в {resolution} · {fps} FPS с видео {videoCodec} и аудио {audioCodec}. Держите битрейт {bitrateRange}{targetClause}.",
+          "targetClause": " (целевой {target} Мбит/с)"
         },
         "detailsHeading": "Что нужно исправить",
         "unknownAsset": "Файл #{index}",
@@ -133,7 +144,7 @@
           "resolution": "Текущее разрешение {current}; допустимо {allowed}.",
           "fps": "Текущая частота кадров {current}; допустимо {allowed}.",
           "fpsRange": "Частота кадров должна соответствовать {allowed}.",
-          "bitrateRange": "Текущий битрейт {current}; допустимый диапазон {allowed}.",
+          "bitrateRange": "Текущий битрейт {current}; соблюдайте {allowed}.",
           "bitrateMissing": "Не удалось получить битрейт. Перекодируйте файл и повторите проверку.",
           "guidelineMissing": "Для вашего тарифа требуется {allowed}.",
           "missingMetadata": "Нет метаданных. Выполните повторную проверку файла.",

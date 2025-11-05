@@ -50,6 +50,9 @@ class FFmpegStreamManager:
         Returns:
             True if stream started successfully
         """
+        if not destinations:
+            raise ValueError("At least one destination is required to start streaming")
+
         try:
             if stream_id in self.active_streams:
                 logger.warning(f"Stream {stream_id} is already running")

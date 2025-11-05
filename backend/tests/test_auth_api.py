@@ -79,7 +79,7 @@ async def test_login_success(api_client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_login_invalid_credentials(api_client, monkeypatch):
-    dummy_auth = DummyAuth(raise_error=AuthInvalidCredentialsError())
+    dummy_auth = DummyAuth(raise_error=AuthInvalidCredentialsError("Invalid login credentials"))
     monkeypatch.setattr(
         auth_routes,
         "_create_supabase_client",

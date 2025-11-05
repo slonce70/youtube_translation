@@ -60,6 +60,7 @@ class SubscriptionTierLimits(Base):
     analytics_enabled = Column(Boolean, default=False)
     team_collaboration_enabled = Column(Boolean, default=False)
     log_retention_days = Column(Integer, default=7)
+    min_video_bitrate_mbps = Column(Integer)
     max_resolution_height = Column(Integer)
     max_fps = Column(Integer)
     max_video_bitrate_mbps = Column(Integer)
@@ -186,7 +187,8 @@ class Stream(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     
-    playlist_id = Column(UUID(as_uuid=True), ForeignKey("playlists.id", ondelete="RESTRICT"), nullable=False)
+    playlist_id = Column(UUID(as_uuid=True), ForeignKey("playlists.id", ondelete="RESTRICT"), nullable=True)
+    source_type = Column(Text, nullable=False, default="playlist")
     name = Column(Text)
     status = Column(Text, default="stopped", index=True)
     pid = Column(Integer)
@@ -204,10 +206,12 @@ class Stream(Base):
     # Relationships
     playlist = relationship("Playlist", back_populates="streams")
     stream_destinations = relationship("StreamDestination", back_populates="stream", cascade="all, delete-orphan")
+    stream_assets = relationship("StreamAsset", back_populates="stream", cascade="all, delete-orphan", order_by="StreamAsset.position")
     events = relationship("StreamEvent", back_populates="stream", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint("status IN ('stopped', 'starting', 'running', 'error', 'stopping')", name='check_status'),
+        CheckConstraint("source_type IN ('playlist', 'assets')", name='check_source_type'),
     )
 
 
@@ -222,6 +226,23 @@ class StreamDestination(Base):
     # Relationships
     stream = relationship("Stream", back_populates="stream_destinations")
     destination = relationship("Destination", back_populates="stream_destinations")
+
+
+class StreamAsset(Base):
+    __tablename__ = "stream_assets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id", ondelete="CASCADE"), nullable=False, index=True)
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    position = Column(Integer, nullable=False, default=0)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    stream = relationship("Stream", back_populates="stream_assets")
+    asset = relationship("Asset")
+
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="check_stream_asset_position"),
+    )
 
 
 class StreamEvent(Base):
