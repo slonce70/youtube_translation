@@ -1,159 +1,241 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { HardDrive, Clock3, Radio, Video, Lightbulb } from 'lucide-react'
 import { api } from '@/lib/api'
-import { formatBytes, formatUptime } from '@/lib/utils'
-import { Cpu, HardDrive, Radio, Zap } from 'lucide-react'
+import { formatBytes, formatHoursHuman } from '@/lib/utils'
 import { StatCard } from '@/components/StatCard'
 import { LoadingState } from '@/components/LoadingState'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import { QuotaWidget } from '@/components/QuotaWidget'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { SubscriptionBanner } from '@/components/SubscriptionBanner'
 import { QuickActions } from '@/components/QuickActions'
+import { StreamControlWidget } from '@/components/StreamControlWidget'
+import { PlanLimitsCard } from '@/components/PlanLimitsCard'
+import { Progress } from '@/components/ui/Progress'
 import { useDashboardContext } from './dashboard-context'
+import type { MetricsResponse, Stream, Asset } from '@/lib/types'
+
+const STORAGE_LIMIT_GB = 3
+const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * Math.pow(1024, 3)
+const DAILY_STREAMING_LIMIT_HOURS = 8
+const CONCURRENT_STREAM_LIMIT = 1
+
+const formatHoursLabel = (hours: number) => formatHoursHuman(Math.max(0, hours))
 
 export default function DashboardPage() {
   const { user } = useDashboardContext()
 
-  const { data: metrics, isLoading: metricsLoading } = useQuery({
+  const { data: metrics, isLoading: metricsLoading } = useQuery<MetricsResponse>({
     queryKey: ['metrics'],
     queryFn: api.metrics.get,
     refetchInterval: 5000,
     enabled: !!user,
   })
 
+  const { data: streams, isLoading: streamsLoading } = useQuery<Stream[]>({
+    queryKey: ['streams'],
+    queryFn: api.streams.list,
+    refetchInterval: 5000,
+    enabled: !!user,
+  })
+
+  const { data: assets, isLoading: assetsLoading } = useQuery<Asset[]>({
+    queryKey: ['assets', 'dashboard'],
+    queryFn: api.assets.list,
+    enabled: !!user,
+    staleTime: 30_000,
+  })
+
+  const usage = useMemo(() => {
+    const now = new Date()
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    const activeStreams = (streams ?? []).filter((stream) => stream.status === 'running')
+
+    const activeSeconds = activeStreams.reduce((total, stream) => {
+      if (!stream.started_at) return total
+      const startedAt = new Date(stream.started_at)
+      const effectiveStart = startedAt < startOfDay ? startOfDay : startedAt
+      const diffSeconds = (now.getTime() - effectiveStart.getTime()) / 1000
+      return diffSeconds > 0 ? total + diffSeconds : total
+    }, 0)
+
+    const hoursUsed = activeSeconds / 3600
+    const hoursUsagePercent = Math.min(100, (hoursUsed / DAILY_STREAMING_LIMIT_HOURS) * 100)
+
+    const storageUsedBytes = (assets ?? []).reduce((total, asset) => total + (asset.size_bytes ?? 0), 0)
+    const storageUsagePercent = Math.min(100, (storageUsedBytes / STORAGE_LIMIT_BYTES) * 100)
+
+    const streamUsagePercent = Math.min(
+      100,
+      (activeStreams.length / CONCURRENT_STREAM_LIMIT) * 100
+    )
+
+    return {
+      activeStreams,
+      assetsCount: assets?.length ?? 0,
+      hoursUsed,
+      hoursRemaining: Math.max(0, DAILY_STREAMING_LIMIT_HOURS - hoursUsed),
+      hoursUsagePercent: Number.isFinite(hoursUsagePercent) ? hoursUsagePercent : 0,
+      storageUsedBytes,
+      storageRemainingBytes: Math.max(0, STORAGE_LIMIT_BYTES - storageUsedBytes),
+      storageUsagePercent: Number.isFinite(storageUsagePercent) ? storageUsagePercent : 0,
+      streamUsagePercent: Number.isFinite(streamUsagePercent) ? streamUsagePercent : 0,
+    }
+  }, [assets, streams])
+
+  const initialLoading =
+    !metrics && !streams && !assets && (metricsLoading || streamsLoading || assetsLoading)
+
+  if (initialLoading) {
+    return <LoadingState />
+  }
+
+  const statCards = [
+    {
+      title: 'Storage used',
+      value: `${formatBytes(usage.storageUsedBytes)} / ${STORAGE_LIMIT_GB} GB`,
+      icon: HardDrive,
+      gradient: 'from-primary-500 to-cyan-500',
+    },
+    {
+      title: 'Streaming time left',
+      value: formatHoursLabel(usage.hoursRemaining),
+      icon: Clock3,
+      gradient: 'from-purple-500 to-pink-500',
+    },
+    {
+      title: 'Active streams',
+      value: `${usage.activeStreams.length} / ${CONCURRENT_STREAM_LIMIT}`,
+      icon: Radio,
+      gradient: 'from-success-500 to-emerald-500',
+    },
+    {
+      title: 'Library assets',
+      value: usage.assetsCount,
+      icon: Video,
+      gradient: 'from-amber-500 to-orange-500',
+    },
+  ]
+
   return (
-    <div>
-      <div className="mb-8">
+    <div className="space-y-8">
+      <div>
         <h2 className="text-3xl font-bold gradient-text mb-2">Dashboard</h2>
-        <p className="text-slate-600 dark:text-slate-400">Monitor your streaming infrastructure</p>
+        <p className="text-slate-600 dark:text-slate-400">
+          Keep an eye on your limits and jump back into streaming in a click.
+        </p>
       </div>
 
-      {/* NEW: Subscription Banner */}
-      <div className="mb-6">
-        <SubscriptionBanner tier="free" onUpgrade={() => console.log('Upgrade clicked')} />
+      <SubscriptionBanner
+        tier="free"
+        onUpgrade={() => window.location.assign('/dashboard/plans')}
+      />
+
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {statCards.map((card, index) => (
+          <StatCard
+            key={card.title}
+            title={card.title}
+            value={card.value}
+            icon={card.icon}
+            gradient={card.gradient}
+            delay={index * 0.05}
+          />
+        ))}
       </div>
 
-      {/* NEW: Quick Actions */}
-      <div className="mb-6">
-        <QuickActions />
-      </div>
-
-      {metricsLoading ? (
-        <LoadingState />
-      ) : metrics ? (
-        <>
-          {/* Metrics Grid */}
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-            <StatCard
-              title="CPU Usage"
-              value={`${metrics.system.cpu.percent.toFixed(1)}%`}
-              icon={Cpu}
-              gradient="from-primary-500 to-purple-500"
-              delay={0}
-            />
-            <StatCard
-              title="Memory Usage"
-              value={`${metrics.system.memory.percent.toFixed(1)}%`}
-              icon={HardDrive}
-              gradient="from-accent-500 to-cyan-500"
-              delay={0.1}
-            />
-            <StatCard
-              title="Active Streams"
-              value={metrics.streams.active_streams}
-              icon={Radio}
-              gradient="from-success-500 to-emerald-500"
-              delay={0.2}
-            />
-            <StatCard
-              title="Capacity"
-              value={`+${metrics.capacity.estimated_additional_capacity}`}
-              icon={Zap}
-              gradient="from-warning-500 to-orange-500"
-              delay={0.3}
-            />
-          </div>
-
-          {/* System Info + Quota Widget */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>System Information</CardTitle>
-                </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">CPU Cores</p>
-                    <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">{metrics.system.cpu.count}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Memory Available</p>
-                    <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">{metrics.system.memory.available_gb.toFixed(2)} GB</p>
-                  </div>
-                  {metrics.system.disk && (
-                    <>
-                      <div>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Disk Space</p>
-                        <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
-                          {metrics.system.disk.free_gb.toFixed(2)} GB free / {metrics.system.disk.total_gb.toFixed(2)} GB
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Disk Usage</p>
-                        <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">{metrics.system.disk.percent.toFixed(1)}%</p>
-                      </div>
-                    </>
-                  )}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="space-y-6 xl:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Usage overview</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div>
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <span>Library storage</span>
+                  <span>{formatBytes(usage.storageUsedBytes)} used</span>
                 </div>
-              </CardContent>
-              </Card>
-            </div>
+                <Progress value={usage.storageUsagePercent} className="mt-2" indicatorClassName={usage.storageUsagePercent >= 90 ? 'bg-error-500' : undefined} />
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                  Remaining {formatBytes(usage.storageRemainingBytes)} of {STORAGE_LIMIT_GB} GB
+                </p>
+              </div>
 
-            {/* NEW: Quota Widget */}
-            <div className="lg:col-span-1">
-              <QuotaWidget
-                quota={{
-                  storage: { used_gb: 2.5, limit_gb: 5, percent: 50 },
-                  streams: { active: 0, limit: 1, percent: 0 },
-                  assets: { count: 5, limit: 20, percent: 25 },
-                  playlists: { count: 1, limit: 3, percent: 33 },
-                  destinations: { count: 1, limit: 2, percent: 50 },
-                  tier: 'free'
-                }}
-              />
-            </div>
-          </div>
+              <div>
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <span>Daily streaming time</span>
+                  <span>{formatHoursLabel(usage.hoursUsed)} used</span>
+                </div>
+                <Progress value={usage.hoursUsagePercent} className="mt-2" indicatorClassName={usage.hoursUsagePercent >= 90 ? 'bg-error-500' : undefined} />
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                  Remaining {formatHoursLabel(usage.hoursRemaining)} of {formatHoursLabel(DAILY_STREAMING_LIMIT_HOURS)}
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <span>Concurrent stream slot</span>
+                  <span>{usage.activeStreams.length} of {CONCURRENT_STREAM_LIMIT}</span>
+                </div>
+                <Progress value={usage.streamUsagePercent} className="mt-2" indicatorClassName={usage.streamUsagePercent >= 90 ? 'bg-error-500' : undefined} />
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                  Upgrade to run parallel broadcasts or add redundancy destinations.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <QuickActions />
+
+          <StreamControlWidget streams={streams} loading={streamsLoading} />
+        </div>
+
+        <div className="space-y-6">
+          <PlanLimitsCard
+            storageUsedBytes={usage.storageUsedBytes}
+            storageLimitBytes={STORAGE_LIMIT_BYTES}
+            storageUsagePercent={usage.storageUsagePercent}
+            hoursUsed={usage.hoursUsed}
+            hoursLimit={DAILY_STREAMING_LIMIT_HOURS}
+            hoursUsagePercent={usage.hoursUsagePercent}
+            activeStreams={usage.activeStreams.length}
+            streamLimit={CONCURRENT_STREAM_LIMIT}
+            assetsCount={usage.assetsCount}
+          />
 
           <Card>
             <CardHeader>
-              <CardTitle>Stream Status</CardTitle>
+              <CardTitle>Streaming checklist</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center p-4 rounded-xl bg-success-50 dark:bg-success-900/20">
-                  <p className="text-sm font-medium text-success-600 dark:text-success-400 mb-2">Running</p>
-                  <p className="text-3xl font-bold text-success-700 dark:text-success-300">{metrics.streams.active_streams}</p>
+            <CardContent className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
+              <div className="flex items-start space-x-3">
+                <Lightbulb className="h-4 w-4 text-primary-500 mt-0.5" />
+                <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-200">Warm up your feed</p>
+                  <p>Use Go Live a few minutes early to confirm ingest quality before the audience arrives.</p>
                 </div>
-                <div className="text-center p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">Stopped</p>
-                  <p className="text-3xl font-bold text-slate-700 dark:text-slate-300">{metrics.streams.idle_streams}</p>
+              </div>
+              <div className="flex items-start space-x-3">
+                <Lightbulb className="h-4 w-4 text-primary-500 mt-0.5" />
+                <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-200">Rotate uploads</p>
+                  <p>Archive older assets once you finish streaming to reclaim storage for new content.</p>
                 </div>
-                <div className="text-center p-4 rounded-xl bg-error-50 dark:bg-error-900/20">
-                  <p className="text-sm font-medium text-error-600 dark:text-error-400 mb-2">Error</p>
-                  <p className="text-3xl font-bold text-error-700 dark:text-error-300">{metrics.streams.error_streams}</p>
+              </div>
+              <div className="flex items-start space-x-3">
+                <Lightbulb className="h-4 w-4 text-primary-500 mt-0.5" />
+                <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-200">Plan the next upgrade</p>
+                  <p>Hit Compare plans whenever you get close to limits so live events never pause for capacity.</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-        </>
-      ) : (
-        <Card className="text-center py-12">
-          <p className="text-slate-500 dark:text-slate-400">No metrics available</p>
-        </Card>
-      )}
+        </div>
+      </div>
     </div>
   )
 }

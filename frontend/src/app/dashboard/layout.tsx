@@ -54,15 +54,26 @@ export default function DashboardLayout({ children }: Props) {
     router.replace('/login')
   }
 
+  const refreshUser = async () => {
+    const { data } = await supabase.auth.getUser()
+    if (data.user) {
+      setUser(data.user)
+    }
+  }
+
   if (loading) {
     return <LoadingState text="Loading dashboard..." />
   }
 
   return (
     <ErrorBoundary>
-      <DashboardContext.Provider value={{ user, signOut: handleSignOut }}>
+      <DashboardContext.Provider value={{ user, signOut: handleSignOut, refreshUser }}>
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-          <NavBar userEmail={user?.email ?? ''} onSignOut={handleSignOut} />
+          <NavBar
+            userEmail={user?.email ?? ''}
+            userName={user?.user_metadata?.display_name ?? user?.email ?? ''}
+            onSignOut={handleSignOut}
+          />
           <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
             {children}
           </main>

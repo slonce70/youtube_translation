@@ -5,6 +5,7 @@ import { createContext, useContext } from 'react'
 type DashboardContextValue = {
   user: any
   signOut: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 export const DashboardContext = createContext<DashboardContextValue | undefined>(undefined)
