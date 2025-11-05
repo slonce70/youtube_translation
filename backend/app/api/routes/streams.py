@@ -9,7 +9,7 @@ from datetime import datetime
 import logging
 
 from app.api.deps import require_user
-from app.models.database import Stream, StreamDestination, Playlist, Destination, PlaylistItem
+from app.models.database import Stream, StreamDestination, Playlist, Destination, PlaylistItem, StreamAsset, Asset
 from app.schemas.api import (
     StreamResponse,
     StreamCreate,
@@ -39,12 +39,52 @@ async def _load_stream_with_relations(
         )
         .options(
             selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
+            selectinload(Stream.stream_assets).selectinload(StreamAsset.asset),
             selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
         )
     )
 
     result = await db.execute(query)
     return result.scalar_one_or_none()
+
+
+def _extract_stream_assets(stream: Stream):
+    if stream.source_type == "playlist":
+        if not stream.playlist:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Playlist is missing for this stream",
+            )
+        items = sorted(stream.playlist.items, key=lambda x: x.position)
+        assets_data = [
+            {
+                "path": item.asset.storage_path,
+                "meta": item.asset.meta,
+                "asset_id": str(item.asset.id),
+                "filename": item.asset.filename,
+            }
+            for item in items
+        ]
+        loop_enabled = stream.playlist.loop
+    else:
+        links = sorted(stream.stream_assets, key=lambda x: x.position)
+        if not links:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No assets linked to the stream",
+            )
+        assets_data = [
+            {
+                "path": link.asset.storage_path,
+                "meta": link.asset.meta,
+                "asset_id": str(link.asset.id),
+                "filename": link.asset.filename,
+            }
+            for link in links
+        ]
+        loop_enabled = True
+
+    return assets_data, loop_enabled
 
 
 @router.get("/", response_model=List[StreamResponse])
@@ -55,7 +95,14 @@ async def list_streams(
     db, user_id = user_deps
     
     try:
-        query = select(Stream).where(Stream.user_id == user_id)
+        query = (
+            select(Stream)
+            .where(Stream.user_id == user_id)
+            .options(
+                selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
+                selectinload(Stream.stream_assets).selectinload(StreamAsset.asset),
+            )
+        )
         
         result = await db.execute(query)
         streams = result.scalars().all()
@@ -79,59 +126,108 @@ async def create_stream(
     db, user_id = user_deps
     
     try:
-        # Verify playlist belongs to user
-        playlist_query = select(Playlist).where(
-            Playlist.id == stream_data.playlist_id,
-            Playlist.user_id == user_id
-        )
-        result = await db.execute(playlist_query)
-        playlist = result.scalar_one_or_none()
-        
-        if not playlist:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Playlist not found"
+        playlist = None
+        selected_assets: List[Asset] = []
+
+        if stream_data.playlist_id:
+            playlist_query = select(Playlist).where(
+                Playlist.id == stream_data.playlist_id,
+                Playlist.user_id == user_id
             )
-        
-        # Create stream
+            result = await db.execute(playlist_query)
+            playlist = result.scalar_one_or_none()
+
+            if not playlist:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Playlist not found"
+                )
+        else:
+            asset_ids = stream_data.asset_ids or []
+            if not asset_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="At least one asset must be selected"
+                )
+
+            assets_query = select(Asset).where(
+                Asset.user_id == user_id,
+                Asset.id.in_(asset_ids)
+            )
+            result = await db.execute(assets_query)
+            fetched_assets = result.scalars().all()
+
+            if len(fetched_assets) != len(set(asset_ids)):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="One or more assets were not found"
+                )
+
+            # Preserve order from payload
+            asset_lookup = {str(asset.id): asset for asset in fetched_assets}
+            try:
+                selected_assets = [asset_lookup[str(asset_id)] for asset_id in asset_ids]
+            except KeyError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Asset selection contains duplicates or invalid IDs"
+                )
+
+        source_type = "playlist" if playlist else "assets"
+
         stream = Stream(
             user_id=user_id,
-            playlist_id=stream_data.playlist_id,
+            playlist_id=playlist.id if playlist else None,
+            source_type=source_type,
             name=stream_data.name,
             status="stopped"
         )
-        
+
         db.add(stream)
-        await db.flush()  # Get stream ID
-        
-        # Add stream destinations
+        await db.flush()
+
+        if source_type == "assets":
+            for position, asset in enumerate(selected_assets):
+                stream_asset = StreamAsset(
+                    stream_id=stream.id,
+                    asset_id=asset.id,
+                    position=position
+                )
+                db.add(stream_asset)
+
         for dest_id in stream_data.destination_ids:
-            # Verify destination belongs to user
             dest_query = select(Destination).where(
                 Destination.id == dest_id,
                 Destination.user_id == user_id
             )
             dest_result = await db.execute(dest_query)
             destination = dest_result.scalar_one_or_none()
-            
+
             if not destination:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Destination {dest_id} not found"
                 )
-            
+
             stream_dest = StreamDestination(
                 stream_id=stream.id,
                 destination_id=dest_id
             )
             db.add(stream_dest)
-        
+
         await db.commit()
-        await db.refresh(stream)
-        
+
+        loaded_stream = await _load_stream_with_relations(db, user_id, stream.id)
+        if not loaded_stream:
+            logger.error("Stream %s not found after creation for user %s", stream.id, user_id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Stream created but could not be loaded"
+            )
+
         logger.info(f"Created stream {stream.id} for user {user_id}")
-        
-        return stream
+
+        return loaded_stream
         
     except HTTPException:
         raise
@@ -159,15 +255,7 @@ async def stream_quality(
             detail="Stream not found",
         )
 
-    assets_data = [
-        {
-            "path": item.asset.storage_path,
-            "meta": item.asset.meta,
-            "asset_id": str(item.asset.id),
-            "filename": item.asset.filename,
-        }
-        for item in sorted(stream.playlist.items, key=lambda x: x.position)
-    ]
+    assets_data, _ = _extract_stream_assets(stream)
 
     enforcer = QuotaEnforcer(db, user_id)
     quality = await enforcer.evaluate_stream_quality(assets_data)
@@ -218,16 +306,7 @@ async def start_stream(
         playlist_file = stream_dir / "playlist.txt"
         log_file = stream_dir / "stream.log"
         
-        # Build playlist
-        assets_data = [
-            {
-                "path": item.asset.storage_path,
-                "meta": item.asset.meta,
-                "asset_id": str(item.asset.id),
-                "filename": item.asset.filename,
-            }
-            for item in sorted(stream.playlist.items, key=lambda x: x.position)
-        ]
+        assets_data, loop_enabled = _extract_stream_assets(stream)
 
         quality = await enforcer.evaluate_stream_quality(assets_data)
         if not quality["ok"]:
@@ -241,7 +320,7 @@ async def start_stream(
 
         compatible, issues = PlaylistBuilder.validate_playlist_assets(assets_data)
         if not compatible:
-            logger.warning("Playlist %s failed validation: %s", stream.playlist_id, issues)
+            logger.warning("Stream %s failed validation: %s", stream_id, issues)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
@@ -250,7 +329,7 @@ async def start_stream(
                 },
             )
         
-        PlaylistBuilder.build_playlist_file(assets_data, playlist_file, stream.playlist.loop)
+        PlaylistBuilder.build_playlist_file(assets_data, playlist_file, loop_enabled)
         
         # Prepare destinations with decrypted keys
         destinations = []
@@ -278,7 +357,7 @@ async def start_stream(
             metadata={
                 "user_id": user_id,
                 "stream_id": str(stream.id),
-                "playlist_id": str(stream.playlist_id),
+                "playlist_id": str(stream.playlist_id) if stream.playlist_id else None,
             },
         )
         

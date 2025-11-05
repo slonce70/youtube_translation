@@ -35,6 +35,7 @@ import type {
   Playlist,
   Destination,
   DestinationUpdatePayload,
+  Asset,
   Stream,
   StreamLogsResponse,
   CreateStreamPayload,
@@ -46,7 +47,8 @@ import { useDashboardContext } from '../dashboard-context'
 
 type StreamFormState = {
   name: string
-  playlist_id: string
+  playlist_id: string | null
+  asset_ids: string[]
   destination_ids: string[]
 }
 
@@ -55,6 +57,18 @@ type DestinationFormState = {
   rtmps_url: string
   stream_key: string
   enabled: boolean
+}
+
+type QualityViolation = StreamQualityResponse['violations'][number]
+
+type GroupedQualityViolation = {
+  assetKey: string
+  filename: string | null
+  position: number
+  issues: Array<{
+    violation: QualityViolation
+    details: string[]
+  }>
 }
 
 const statusVariantMap: Record<StreamStatusValue, 'success' | 'info' | 'warning' | 'error'> = {
@@ -83,6 +97,86 @@ export default function StreamingPage() {
     missing_metadata: 'streams.quality.violations.missingMetadata',
   }
 
+  const [qualityGate, setQualityGate] = useState<{
+    streamName?: string | null
+    quality: StreamQualityResponse
+  } | null>(null)
+
+  const groupedQualityViolations = useMemo<GroupedQualityViolation[]>(() => {
+    if (!qualityGate?.quality?.violations?.length) {
+      return []
+    }
+
+    const groups = new Map<
+      string,
+      {
+        assetKey: string
+        filename: string | null
+        position: number
+        issues: Map<
+          string,
+          {
+            violation: QualityViolation
+            details: string[]
+          }
+        >
+      }
+    >()
+
+    qualityGate.quality.violations.forEach((violation, index) => {
+      const assetKey =
+        violation.asset_id ??
+        violation.filename ??
+        (typeof violation.position === 'number'
+          ? `position-${violation.position}`
+          : `index-${index}`)
+
+      if (!groups.has(assetKey)) {
+        groups.set(assetKey, {
+          assetKey,
+          filename: violation.filename ?? null,
+          position: typeof violation.position === 'number' ? violation.position : index,
+          issues: new Map(),
+        })
+      }
+
+      const group = groups.get(assetKey)!
+
+      if (typeof violation.position === 'number' && violation.position < group.position) {
+        group.position = violation.position
+      }
+      const issueKey = violation.code ?? `code-${group.issues.size}`
+      const existingIssue = group.issues.get(issueKey)
+
+      if (!existingIssue) {
+        group.issues.set(issueKey, {
+          violation,
+          details: violation.message ? [violation.message] : [],
+        })
+        return
+      }
+
+      const existingHasContext =
+        existingIssue.violation.allowed != null || existingIssue.violation.current != null
+      const newHasContext = violation.allowed != null || violation.current != null
+
+      if (!existingHasContext && newHasContext) {
+        existingIssue.violation = { ...violation }
+      }
+
+      if (violation.message && !existingIssue.details.includes(violation.message)) {
+        existingIssue.details.push(violation.message)
+      }
+    })
+
+    return Array.from(groups.values())
+      .map(({ issues, ...rest }) => ({
+        ...rest,
+        issues: Array.from(issues.values()),
+      }))
+      .sort((a, b) => a.position - b.position)
+  }, [qualityGate?.quality?.violations])
+
   // Channels (Destinations) state
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [showChannelForm, setShowChannelForm] = useState(false)
@@ -97,9 +191,11 @@ export default function StreamingPage() {
   // Streams state
   const [viewingLogs, setViewingLogs] = useState<string | null>(null)
   const [showCreateStream, setShowCreateStream] = useState(false)
+  const [sourceMode, setSourceMode] = useState<'playlist' | 'assets'>('playlist')
   const [streamForm, setStreamForm] = useState<StreamFormState>({
     name: '',
-    playlist_id: '',
+    playlist_id: null,
+    asset_ids: [],
     destination_ids: [],
   })
 
@@ -123,6 +219,12 @@ export default function StreamingPage() {
     enabled: !!user,
   })
 
+  const { data: assets, isLoading: isLoadingAssets } = useQuery<Asset[]>({
+    queryKey: ['assets'],
+    queryFn: () => api.assets.list(),
+    enabled: !!user,
+  })
+
   const { data: logsResponse } = useQuery<StreamLogsResponse>({
     queryKey: ['stream-logs', viewingLogs],
     queryFn: () => api.streams.logs(viewingLogs!, 200),
@@ -141,10 +243,10 @@ export default function StreamingPage() {
   )
 
   useEffect(() => {
-    if (playlists && playlists.length > 0 && !streamForm.playlist_id) {
+    if (sourceMode === 'playlist' && playlists && playlists.length > 0 && !streamForm.playlist_id) {
       setStreamForm((prev) => ({ ...prev, playlist_id: playlists[0].id }))
     }
-  }, [playlists, streamForm.playlist_id])
+  }, [sourceMode, playlists, streamForm.playlist_id])
 
   useEffect(() => {
     if (enabledDestinations.length > 0 && streamForm.destination_ids.length === 0) {
@@ -198,7 +300,17 @@ export default function StreamingPage() {
   // Stream Mutations
   const createStreamMutation = useMutation({
     mutationFn: (data: StreamFormState) => {
-      const payload: CreateStreamPayload = { ...data }
+      const payload: CreateStreamPayload = {
+        name: data.name,
+        destination_ids: data.destination_ids,
+      }
+
+      if (sourceMode === 'playlist') {
+        payload.playlist_id = data.playlist_id ?? undefined
+      } else {
+        payload.asset_ids = data.asset_ids
+      }
+
       return api.streams.create(payload)
     },
     onSuccess: () => {
@@ -212,8 +324,6 @@ export default function StreamingPage() {
   })
 
   type StartStreamVariables = { streamId: string; streamName?: string | null }
-
-  const [qualityGate, setQualityGate] = useState<{ streamName?: string | null; quality: StreamQualityResponse } | null>(null)
 
   const startStreamMutation = useMutation<StreamStatusResponse, Error & { quality?: StreamQualityResponse }, StartStreamVariables>({
     mutationFn: async ({ streamId }: StartStreamVariables) => {
@@ -274,7 +384,8 @@ export default function StreamingPage() {
   }
 
   const resetStreamForm = () => {
-    setStreamForm({ name: '', playlist_id: '', destination_ids: [] })
+    setSourceMode('playlist')
+    setStreamForm({ name: '', playlist_id: playlists && playlists.length > 0 ? playlists[0].id : null, asset_ids: [], destination_ids: [] })
     setShowCreateStream(false)
   }
 
@@ -285,6 +396,29 @@ export default function StreamingPage() {
     } else {
       createDestinationMutation.mutate(channelForm)
     }
+  }
+
+  const handleSourceModeChange = (mode: 'playlist' | 'assets') => {
+    setSourceMode(mode)
+    setStreamForm((prev) => ({
+      ...prev,
+      playlist_id:
+        mode === 'playlist'
+          ? playlists && playlists.length > 0
+            ? playlists[0].id
+            : null
+          : null,
+      asset_ids: [],
+    }))
+  }
+
+  const toggleAssetSelection = (assetId: string) => {
+    setStreamForm((prev) => {
+      if (prev.asset_ids.includes(assetId)) {
+        return { ...prev, asset_ids: prev.asset_ids.filter((id) => id !== assetId) }
+      }
+      return { ...prev, asset_ids: [...prev.asset_ids, assetId] }
+    })
   }
 
   const handleEditChannel = (destination: Destination) => {
@@ -307,8 +441,13 @@ export default function StreamingPage() {
   const handleSubmitStream = (event: React.FormEvent) => {
     event.preventDefault()
 
-    if (!streamForm.playlist_id) {
-      toast.error(streamingToasts('errors.selectPlaylist'))
+    if (sourceMode === 'playlist') {
+      if (!streamForm.playlist_id) {
+        toast.error(streamingToasts('errors.selectPlaylist'))
+        return
+      }
+    } else if (streamForm.asset_ids.length === 0) {
+      toast.error(streamingToasts('errors.selectAssets'))
       return
     }
 
@@ -751,25 +890,46 @@ export default function StreamingPage() {
                     recommendation?.fps ??
                     qualityGate.quality.limits.max_fps ??
                     30
-                  const minBitrate =
-                    recommendation?.min_bitrate_mbps ?? null
+                  const minBitrate = recommendation?.min_bitrate_mbps ?? null
                   const maxBitrate =
                     recommendation?.max_bitrate_mbps ??
                     qualityGate.quality.limits.max_video_bitrate_mbps ??
                     null
-                  const targetBitrate =
-                    recommendation?.target_bitrate_mbps ?? maxBitrate ?? minBitrate
-                  const formatValue = (value: number | null) =>
-                    value != null ? value.toString() : '—'
+                  const targetBitrate = recommendation?.target_bitrate_mbps ?? null
+                  const videoCodec = recommendation?.video_codec ?? 'H.264'
+                  const audioCodec = recommendation?.audio_codec ?? 'AAC'
+
+                  const formatValue = (value: number | null) => {
+                    if (value == null) return null
+                    const trimmed = value.toFixed(2).replace(/\.00$/, '')
+                    return trimmed
+                  }
+
+                  const rangeText = (() => {
+                    const min = formatValue(minBitrate)
+                    const max = formatValue(maxBitrate)
+
+                    if (min && max) return `${min}–${max} Mbps`
+                    if (min) return `≥ ${min} Mbps`
+                    if (max) return `≤ ${max} Mbps`
+                    return '—'
+                  })()
+
+                  const targetClause = targetBitrate != null
+                    ? tStreaming('streams.quality.recommended.targetClause', {
+                        target: formatValue(targetBitrate) ?? '—',
+                      })
+                    : ''
 
                   return (
                     <p className="text-sm text-primary-700 dark:text-primary-300 mt-1">
                       {tStreaming('streams.quality.recommended.description', {
                         resolution,
                         fps: fpsValue.toString(),
-                        min: formatValue(minBitrate),
-                        max: formatValue(maxBitrate),
-                        target: formatValue(targetBitrate),
+                        videoCodec,
+                        audioCodec,
+                        bitrateRange: rangeText,
+                        targetClause,
                       })}
                     </p>
                   )
@@ -781,29 +941,36 @@ export default function StreamingPage() {
                   {tStreaming('streams.quality.detailsHeading')}
                 </h4>
                 <div className="space-y-3">
-                  {qualityGate.quality.violations.map((violation) => {
-                    const messageKey = violationTranslationKey[violation.code] ?? 'streams.quality.violations.default'
-                    return (
-                      <div
-                        key={`${violation.code}-${violation.asset_id ?? violation.position}`}
-                        className="rounded-lg border border-error-200 dark:border-error-700 bg-error-50/80 dark:bg-error-900/20 p-3"
-                      >
-                        <p className="text-sm font-semibold text-error-700 dark:text-error-300">
-                          {violation.filename ||
-                            tStreaming('streams.quality.unknownAsset', { index: violation.position + 1 })}
-                        </p>
-                        <p className="text-sm text-error-700 dark:text-error-300 mt-1">
-                          {tStreaming(messageKey as any, {
-                            current: violation.current ?? '—',
-                            allowed: violation.allowed ?? '—',
-                          })}
-                        </p>
-                        <p className="text-xs text-error-600/80 dark:text-error-400/80 mt-1">
-                          {violation.message}
-                        </p>
+                  {groupedQualityViolations.map((group) => (
+                    <div
+                      key={group.assetKey}
+                      className="rounded-lg border border-error-200 dark:border-error-700 bg-error-50/80 dark:bg-error-900/20 p-3"
+                    >
+                      <p className="text-sm font-semibold text-error-700 dark:text-error-300">
+                        {group.filename ??
+                          tStreaming('streams.quality.unknownAsset', { index: group.position + 1 })}
+                      </p>
+
+                      <div className="mt-2 space-y-2">
+                        {group.issues.map(({ violation }, issueIndex) => {
+                          const messageKey =
+                            violationTranslationKey[violation.code ?? ''] ??
+                            'streams.quality.violations.default'
+
+                          return (
+                            <div key={`${group.assetKey}-${violation.code ?? issueIndex}`}>
+                              <p className="text-sm text-error-700 dark:text-error-300">
+                                {tStreaming(messageKey as any, {
+                                  current: violation.current ?? '—',
+                                  allowed: violation.allowed ?? '—',
+                                })}
+                              </p>
+                            </div>
+                          )
+                        })}
                       </div>
-                    )
-                  })}
+                    </div>
+                  ))}
                 </div>
               </div>
             </CardContent>
@@ -846,56 +1013,128 @@ export default function StreamingPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    {tStreaming('streams.form.playlistLabel')}
+                    {tStreaming('streams.form.sourceLabel')}
                   </label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant={sourceMode === 'playlist' ? 'primary' : 'secondary'}
+                      onClick={() => handleSourceModeChange('playlist')}
+                    >
+                      {tStreaming('streams.form.sourceToggle.playlist')}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={sourceMode === 'assets' ? 'primary' : 'secondary'}
+                      onClick={() => handleSourceModeChange('assets')}
+                    >
+                      {tStreaming('streams.form.sourceToggle.assets')}
+                    </Button>
+                  </div>
+                </div>
+
+                {sourceMode === 'playlist' ? (
                   <div className="space-y-2">
-                    {playlists && playlists.length > 0 ? (
-                      playlists.map((playlist) => (
-                        <button
-                          key={playlist.id}
-                          type="button"
-                          onClick={() =>
-                            setStreamForm((prev) => ({
-                              ...prev,
-                              playlist_id: playlist.id,
-                            }))
-                          }
-                          className={`w-full text-left p-3 rounded-lg border transition-all ${
-                            streamForm.playlist_id === playlist.id
-                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                              : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium text-sm text-slate-900 dark:text-white">{playlist.name}</p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400">
-                                {tStreaming('streams.form.playlistItems', { count: playlist.items.length })}
-                              </p>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      {tStreaming('streams.form.playlistLabel')}
+                    </label>
+                    <div className="space-y-2">
+                      {playlists && playlists.length > 0 ? (
+                        playlists.map((playlist) => (
+                          <button
+                            key={playlist.id}
+                            type="button"
+                            onClick={() =>
+                              setStreamForm((prev) => ({
+                                ...prev,
+                                playlist_id: playlist.id,
+                              }))
+                            }
+                            className={`w-full text-left p-3 rounded-lg border transition-all ${
+                              streamForm.playlist_id === playlist.id
+                                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-sm text-slate-900 dark:text-white">{playlist.name}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  {tStreaming('streams.form.playlistItems', { count: playlist.items.length })}
+                                </p>
+                              </div>
+                              <Badge variant={streamForm.playlist_id === playlist.id ? 'success' : 'secondary'}>
+                                {streamForm.playlist_id === playlist.id
+                                  ? tStreaming('channels.badge.selected')
+                                  : tStreaming('channels.badge.tapToSelect')}
+                              </Badge>
                             </div>
-                            <Badge variant={streamForm.playlist_id === playlist.id ? 'success' : 'secondary'}>
-                              {streamForm.playlist_id === playlist.id
-                                ? tStreaming('channels.badge.selected')
-                                : tStreaming('channels.badge.tapToSelect')}
-                            </Badge>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4">
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                              {tStreaming('streams.form.playlistNoneTitle')}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {tStreaming('streams.form.playlistNoneDescription')}
+                            </p>
                           </div>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4">
-                        <div className="text-left">
-                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                            {tStreaming('streams.form.playlistNoneTitle')}
-                          </p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {tStreaming('streams.form.playlistNoneDescription')}
-                          </p>
+                          <ListMusic className="w-6 h-6 text-slate-400" />
                         </div>
-                        <ListMusic className="w-6 h-6 text-slate-400" />
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      {tStreaming('streams.form.assetsLabel')}
+                    </label>
+                    {isLoadingAssets ? (
+                      <LoadingState text={tStreaming('loading')} />
+                    ) : assets && assets.length > 0 ? (
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {assets.map((asset) => {
+                          const selectedIndex = streamForm.asset_ids.indexOf(asset.id)
+                          const isSelected = selectedIndex !== -1
+                          return (
+                            <button
+                              key={asset.id}
+                              type="button"
+                              onClick={() => toggleAssetSelection(asset.id)}
+                              className={`w-full text-left p-3 rounded-lg border transition-all ${
+                                isSelected
+                                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium text-sm text-slate-900 dark:text-white">{asset.filename}</p>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {isSelected
+                                      ? tStreaming('streams.form.assetSelectedOrder', { index: selectedIndex + 1 })
+                                      : tStreaming('streams.form.assetTapToSelect')}
+                                  </p>
+                                </div>
+                                <Badge variant={isSelected ? 'success' : 'secondary'}>
+                                  {isSelected
+                                    ? tStreaming('channels.badge.selected')
+                                    : tStreaming('channels.badge.tapToSelect')}
+                                </Badge>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4 text-sm text-slate-600 dark:text-slate-300">
+                        {tStreaming('streams.form.assetsNoneDescription')}
                       </div>
                     )}
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -971,7 +1210,11 @@ export default function StreamingPage() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={!streamForm.playlist_id || streamForm.destination_ids.length === 0}
+                    disabled={
+                      (sourceMode === 'playlist' && !streamForm.playlist_id) ||
+                      (sourceMode === 'assets' && streamForm.asset_ids.length === 0) ||
+                      streamForm.destination_ids.length === 0
+                    }
                     isLoading={createStreamMutation.isPending}
                   >
                     <Plus className="w-4 h-4 mr-2" />

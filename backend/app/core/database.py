@@ -91,12 +91,72 @@ async def get_db_context():
 async def init_db():
     """Initialize database - create tables if they don't exist"""
     from app.models.database import Base
-    
+
     async with engine.begin() as conn:
         # await conn.run_sync(Base.metadata.drop_all)  # Uncomment to drop all tables
         await conn.run_sync(Base.metadata.create_all)
-    
+        await _apply_schema_patches(conn)
+
     logger.info("Database initialized")
+
+
+async def _apply_schema_patches(conn):
+    """Apply idempotent schema updates for new columns."""
+    await conn.execute(
+        text(
+            """
+            ALTER TABLE subscription_tier_limits
+            ADD COLUMN IF NOT EXISTS max_resolution_height INTEGER,
+            ADD COLUMN IF NOT EXISTS max_fps INTEGER,
+            ADD COLUMN IF NOT EXISTS max_video_bitrate_mbps INTEGER,
+            ADD COLUMN IF NOT EXISTS min_video_bitrate_mbps INTEGER,
+            ADD COLUMN IF NOT EXISTS enforce_stream_quality BOOLEAN DEFAULT TRUE
+            """
+        )
+    )
+
+    # Ensure defaults for existing rows
+    await conn.execute(
+        text(
+            """
+            UPDATE subscription_tier_limits
+            SET
+                enforce_stream_quality = COALESCE(enforce_stream_quality, TRUE)
+            """
+        )
+    )
+
+    # Free tier defaults aligned with YouTube FullHD recommendations
+    await conn.execute(
+        text(
+            """
+            UPDATE subscription_tier_limits
+            SET
+                max_resolution_height = COALESCE(max_resolution_height, 1080),
+                max_fps = COALESCE(max_fps, 30),
+                min_video_bitrate_mbps = COALESCE(min_video_bitrate_mbps, 3),
+                max_video_bitrate_mbps = COALESCE(max_video_bitrate_mbps, 10)
+            WHERE tier = 'free'
+            """
+        )
+    )
+
+    # Higher tiers keep wide limits unless explicitly set later
+    await conn.execute(
+        text(
+            """
+            UPDATE subscription_tier_limits
+            SET enforce_stream_quality = TRUE
+            WHERE enforce_stream_quality IS NULL
+            """
+        )
+    )
+
+
+async def apply_schema_patches():
+    """Public helper to run schema patches outside init_db."""
+    async with engine.begin() as conn:
+        await _apply_schema_patches(conn)
 
 
 async def close_db():

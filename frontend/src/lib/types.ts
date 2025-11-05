@@ -96,9 +96,15 @@ export type StreamStatusValue =
   | 'stopping'
   | 'error'
 
+export interface StreamAssetLink {
+  asset_id: string
+  position: number
+}
+
 export interface Stream {
   id: string
-  playlist_id: string
+  playlist_id: string | null
+  source_type: 'playlist' | 'assets'
   name?: string | null
   status: StreamStatusValue
   pid?: number | null
@@ -108,6 +114,7 @@ export interface Stream {
   stopped_at?: string | null
   created_at: string
   updated_at: string
+  stream_assets?: StreamAssetLink[]
 }
 
 export interface StreamStatusResponse {
@@ -134,6 +141,7 @@ export interface StreamQualityViolation {
 }
 
 export interface StreamQualityLimits {
+  min_video_bitrate_mbps?: number | null
   max_resolution_height?: number | null
   max_fps?: number | null
   max_video_bitrate_mbps?: number | null
@@ -146,6 +154,8 @@ export interface StreamQualityRecommendation {
   min_bitrate_mbps?: number | null
   max_bitrate_mbps?: number | null
   target_bitrate_mbps?: number | null
+  video_codec?: string | null
+  audio_codec?: string | null
 }
 
 export interface StreamQualityResponse {
@@ -199,8 +209,9 @@ export interface MetricsResponse {
 
 export interface CreateStreamPayload {
   name?: string
-  playlist_id: string
   destination_ids: string[]
+  playlist_id?: string
+  asset_ids?: string[]
 }
 
 export interface CreateAssetPayload {

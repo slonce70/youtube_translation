@@ -5,114 +5,232 @@
       "title": "Plans & Pricing",
       "description": "Start on the Free tier, then scale memory, airtime, and destinations as your shows grow. All plans include analytics, smart encoding, and instant YouTube sync."
     },
+  "qualityToggle": {
+    "fhd": "Full HD",
+    "uhd": "4K Ultra HD"
+  },
   "plans": {
     "free": {
       "name": "Free",
       "price": "$0",
       "period": "forever",
-      "summary": "Launch your first streams with guardrails that keep costs down.",
+      "summary": "Test the platform with one Full HD stream and essential tooling.",
       "highlights": [
-        "3 GB memory buffer",
-        "8 hours of streaming per day",
-        "1 destination"
+        "3 GB circular buffer",
+        "8 hours of output per day",
+        "1 active stream",
+        "1080p @ 30 FPS passthrough"
       ],
       "badge": "Current",
       "ctaLabel": "Included"
     },
-    "creator": {
-      "name": "Creator",
-      "price": "$29",
+    "fhd_start": {
+      "name": "FHD Start",
+      "price": "$10",
       "period": "per month",
-      "summary": "Longer events and additional destinations for creators growing an audience.",
+      "summary": "Single Full HD stream with room to grow once you outgrow the free tier.",
       "highlights": [
-        "12 GB buffer",
-        "24 hours daily streaming",
-        "3 destinations"
+        "1 concurrent stream",
+        "1080p @ 30 FPS",
+        "50 GB storage pool"
+      ],
+      "ctaLabel": "Request upgrade"
+    },
+    "fhd_flow": {
+      "name": "FHD Flow",
+      "price": "$20",
+      "period": "per month",
+      "summary": "Creators running parallel shows at smooth 60 FPS with more buffer.",
+      "highlights": [
+        "2 concurrent streams",
+        "1080p @ 60 FPS",
+        "100 GB storage pool",
+        "Priority e-mail support"
       ],
       "badge": "Popular",
       "ctaLabel": "Request upgrade"
     },
-    "studio": {
-      "name": "Studio",
-      "price": "$79",
+    "fhd_boost": {
+      "name": "FHD Boost",
+      "price": "$35",
       "period": "per month",
-      "summary": "Production teams that need parallel streams, playlists, and automation.",
+      "summary": "Studios needing four parallel Full HD feeds and automation hooks.",
       "highlights": [
-        "32 GB buffer",
-        "24/7 streaming",
-        "8 destinations"
+        "4 concurrent streams",
+        "Up to 1080p @ 60 FPS",
+        "200 GB storage pool",
+        "Automation & playlist triggers"
       ],
       "ctaLabel": "Talk to us"
     },
-    "enterprise": {
-      "name": "Enterprise",
-      "price": "Let's chat",
-      "period": "custom",
-      "summary": "Scale across regions with SSO, dedicated support, and white-label experiences.",
+    "uhd_start": {
+      "name": "4K Start",
+      "price": "$69",
+      "period": "per month",
+      "summary": "One uncompromised 4K60 passthrough stream for premium broadcasts.",
       "highlights": [
-        "Dedicated account team",
-        "Unlimited destinations",
-        "Custom SLAs"
+        "1 concurrent stream",
+        "Up to 4K @ 60 FPS",
+        "200 GB storage pool",
+        "H.264 or HEVC passthrough"
       ],
-      "ctaLabel": "Book a demo"
+      "badge": "Best for live events",
+      "ctaLabel": "Request upgrade"
+    },
+    "uhd_flow": {
+      "name": "4K Flow",
+      "price": "$109",
+      "period": "per month",
+      "summary": "Dual 4K pipelines with expanded storage for multi-camera shows.",
+      "highlights": [
+        "2 concurrent streams",
+        "Up to 4K @ 60 FPS",
+        "400 GB storage pool",
+        "Email + same-day support"
+      ],
+      "ctaLabel": "Request upgrade"
+    },
+    "uhd_boost": {
+      "name": "4K Boost",
+      "price": "$159",
+      "period": "per month",
+      "summary": "Four parallel UHD feeds, ready for conferences and multilingual output.",
+      "highlights": [
+        "4 concurrent streams",
+        "Any resolution up to 4K60",
+        "800 GB storage pool",
+        "Dedicated success manager"
+      ],
+      "ctaLabel": "Talk to us"
     }
   },
   "comparison": {
     "title": "Compare what's inside",
     "featureHeader": "Feature",
-    "rows": {
-      "memoryBuffer": {
-        "label": "Memory buffer",
-        "values": {
-          "free": "3 GB",
-          "creator": "12 GB",
-          "studio": "32 GB",
-          "enterprise": "64 GB"
-        }
-      },
-      "dailyStreaming": {
-        "label": "Daily streaming limit",
-        "values": {
-          "free": "8 hours",
-          "creator": "24 hours",
-          "studio": "24/7",
-          "enterprise": "24/7"
-        }
-      },
-      "concurrentStreams": {
-        "label": "Concurrent streams",
-        "values": {
-          "free": "1",
-          "creator": "3",
-          "studio": "6",
-          "enterprise": "Unlimited"
-        }
-      },
-      "destinations": {
-        "label": "Destinations",
-        "values": {
-          "free": "1",
-          "creator": "6",
-          "studio": "12",
-          "enterprise": "Unlimited"
-        }
-      },
-      "prioritySupport": {
-        "label": "Priority support",
-        "values": {
-          "free": "Community",
-          "creator": "Email within 24h",
-          "studio": "Same-day",
-          "enterprise": "Dedicated CSM"
-        }
-      }
+    "qualityLabels": {
+      "fhd": "Full HD plans",
+      "uhd": "4K plans"
     },
-    "booleanRows": {
-      "streamCalendar": {
-        "label": "Stream calendar & scheduling"
+    "qualities": {
+      "fhd": {
+        "rows": {
+          "resolution": {
+            "label": "Max resolution",
+            "values": {
+              "free": "720p @ 30 FPS",
+              "fhd_start": "1080p @ 30 FPS",
+              "fhd_flow": "1080p @ 60 FPS",
+              "fhd_boost": "1080p @ 60 FPS"
+            }
+          },
+          "concurrent": {
+            "label": "Concurrent streams",
+            "values": {
+              "free": "1",
+              "fhd_start": "1",
+              "fhd_flow": "2",
+              "fhd_boost": "4"
+            }
+          },
+          "storage": {
+            "label": "Included storage",
+            "values": {
+              "free": "3 GB",
+              "fhd_start": "50 GB",
+              "fhd_flow": "100 GB",
+              "fhd_boost": "200 GB"
+            }
+          },
+          "destinations": {
+            "label": "Destinations",
+            "values": {
+              "free": "1",
+              "fhd_start": "3",
+              "fhd_flow": "6",
+              "fhd_boost": "10"
+            }
+          }
+        },
+        "booleanRows": {
+          "calendar": {
+            "label": "Stream calendar & scheduling",
+            "values": {
+              "free": false,
+              "fhd_start": false,
+              "fhd_flow": true,
+              "fhd_boost": true
+            }
+          },
+          "branding": {
+            "label": "Custom on-stream branding",
+            "values": {
+              "free": false,
+              "fhd_start": false,
+              "fhd_flow": true,
+              "fhd_boost": true
+            }
+          }
+        }
       },
-      "customWatermark": {
-        "label": "Custom watermark control"
+      "uhd": {
+        "rows": {
+          "resolution": {
+            "label": "Max resolution",
+            "values": {
+              "free": "720p @ 30 FPS",
+              "uhd_start": "4K @ 60 FPS",
+              "uhd_flow": "4K @ 60 FPS",
+              "uhd_boost": "4K @ 60 FPS"
+            }
+          },
+          "concurrent": {
+            "label": "Concurrent streams",
+            "values": {
+              "free": "1",
+              "uhd_start": "1",
+              "uhd_flow": "2",
+              "uhd_boost": "4"
+            }
+          },
+          "storage": {
+            "label": "Included storage",
+            "values": {
+              "free": "3 GB",
+              "uhd_start": "200 GB",
+              "uhd_flow": "400 GB",
+              "uhd_boost": "800 GB"
+            }
+          },
+          "destinations": {
+            "label": "Destinations",
+            "values": {
+              "free": "1",
+              "uhd_start": "4",
+              "uhd_flow": "8",
+              "uhd_boost": "12"
+            }
+          }
+        },
+        "booleanRows": {
+          "calendar": {
+            "label": "Stream calendar & scheduling",
+            "values": {
+              "free": false,
+              "uhd_start": true,
+              "uhd_flow": true,
+              "uhd_boost": true
+            }
+          },
+          "branding": {
+            "label": "Custom on-stream branding",
+            "values": {
+              "free": false,
+              "uhd_start": true,
+              "uhd_flow": true,
+              "uhd_boost": true
+            }
+          }
+        }
       }
     }
   },

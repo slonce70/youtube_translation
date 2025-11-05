@@ -3,7 +3,9 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,8 @@ class VideoValidator:
             "min_bitrate_mbps": 10,
             "max_bitrate_mbps": 40,
             "target_bitrate_mbps": 35,
+            "video_codec": "H.264",
+            "audio_codec": "AAC",
         },
         {
             "label": "4K / 2160p",
@@ -36,6 +40,8 @@ class VideoValidator:
             "min_bitrate_mbps": 8,
             "max_bitrate_mbps": 35,
             "target_bitrate_mbps": 30,
+            "video_codec": "H.264",
+            "audio_codec": "AAC",
         },
         {
             "label": "1440p",
@@ -45,6 +51,8 @@ class VideoValidator:
             "min_bitrate_mbps": 6,
             "max_bitrate_mbps": 30,
             "target_bitrate_mbps": 24,
+            "video_codec": "H.264",
+            "audio_codec": "AAC",
         },
         {
             "label": "1440p",
@@ -54,6 +62,8 @@ class VideoValidator:
             "min_bitrate_mbps": 5,
             "max_bitrate_mbps": 25,
             "target_bitrate_mbps": 15,
+            "video_codec": "H.264",
+            "audio_codec": "AAC",
         },
         {
             "label": "1080p",
@@ -63,6 +73,8 @@ class VideoValidator:
             "min_bitrate_mbps": 4,
             "max_bitrate_mbps": 12,
             "target_bitrate_mbps": 12,
+            "video_codec": "H.264",
+            "audio_codec": "AAC",
         },
         {
             "label": "1080p",
@@ -72,22 +84,33 @@ class VideoValidator:
             "min_bitrate_mbps": 3,
             "max_bitrate_mbps": 10,
             "target_bitrate_mbps": 10,
+            "video_codec": "H.264",
+            "audio_codec": "AAC",
         },
     ]
 
-    def __init__(self, ffprobe_bin: str = "/usr/bin/ffprobe"):
-        candidate = Path(ffprobe_bin)
-        if candidate.exists():
-            self.ffprobe_bin = ffprobe_bin
-        else:
-            detected = shutil.which("ffprobe")
-            if detected:
-                logger.info("Using ffprobe binary at %s", detected)
-                self.ffprobe_bin = detected
-            else:
-                raise FileNotFoundError(
-                    "ffprobe binary not found. Install FFmpeg or set FFMPEG_BIN/FFPROBE_BIN in .env"
-                )
+    def __init__(self, ffprobe_bin: Optional[str] = None):
+        if ffprobe_bin:
+            candidate = Path(ffprobe_bin)
+            if not candidate.exists():
+                raise FileNotFoundError(f"ffprobe binary not found: {ffprobe_bin}")
+            self.ffprobe_bin = str(candidate)
+            return
+
+        default_candidate = Path(settings.ffprobe_bin)
+        if default_candidate.exists():
+            self.ffprobe_bin = str(default_candidate)
+            return
+
+        detected = shutil.which("ffprobe")
+        if detected:
+            logger.info("Using ffprobe binary at %s", detected)
+            self.ffprobe_bin = detected
+            return
+
+        raise FileNotFoundError(
+            "ffprobe binary not found. Install FFmpeg or set FFMPEG_BIN/FFPROBE_BIN in .env"
+        )
 
     async def validate_file(self, file_path: Path) -> Dict[str, Any]:
         """

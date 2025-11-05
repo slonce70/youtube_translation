@@ -27,6 +27,9 @@ MIGRATIONS = [
     'migrations/007_remove_projects.sql',
     'migrations/008_update_admin_alert_fk.sql',
     'migrations/009_update_user_fk.sql',
+    'migrations/010_stream_quality_limits.sql',
+    'migrations/011_stream_source_type.sql',
+    'migrations/012_stream_assets.sql',
 ]
 
 
@@ -123,7 +126,47 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     result = await conn.execute(query)
     status['009'] = result.scalar()
-    
+
+    # Check stream quality columns (migration 010)
+    query = text("""
+        SELECT COUNT(*) = 5
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'subscription_tier_limits'
+          AND column_name IN (
+              'max_resolution_height',
+              'max_fps',
+              'max_video_bitrate_mbps',
+              'min_video_bitrate_mbps',
+              'enforce_stream_quality'
+          )
+    """)
+    result = await conn.execute(query)
+    status['010'] = result.scalar()
+
+    # Check stream source type support (migration 011)
+    query = text("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name = 'source_type'
+        )
+    """)
+    result = await conn.execute(query)
+    status['011'] = result.scalar()
+
+    # Check stream assets mapping (migration 012)
+    query = text("""
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'stream_assets'
+        )
+    """)
+    result = await conn.execute(query)
+    status['012'] = result.scalar()
+
     return status
 
 
@@ -290,6 +333,74 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         result = await conn.execute(query)
         return result.scalar()
+
+    elif migration_num == '010':
+        # Ensure quality limit columns are present
+        query = text("""
+            SELECT COUNT(*) = 5
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'subscription_tier_limits'
+              AND column_name IN (
+                  'max_resolution_height',
+                  'max_fps',
+                  'max_video_bitrate_mbps',
+                  'min_video_bitrate_mbps',
+                  'enforce_stream_quality'
+              )
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
+
+    elif migration_num == '011':
+        # Ensure streams have source_type column populated
+        query = text("""
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name = 'source_type'
+        """)
+        result = await conn.execute(query)
+        if result.scalar() == 0:
+            return False
+
+        # Ensure existing rows defaulted to playlist
+        query = text("""
+            SELECT COUNT(*)
+            FROM streams
+            WHERE source_type IS NULL
+        """)
+        result = await conn.execute(query)
+        return result.scalar() == 0
+
+    elif migration_num == '012':
+        # Ensure stream_assets table exists with indexes
+        query = text("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = 'stream_assets'
+            )
+        """)
+        result = await conn.execute(query)
+        if not result.scalar():
+            return False
+
+        # Ensure stream_id reference is enforced (index exists)
+        query = text("""
+            SELECT COUNT(*)
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'stream_assets'
+              AND indexname IN (
+                  'idx_stream_assets_stream_id',
+                  'idx_stream_assets_asset_id',
+                  'idx_stream_assets_stream_position'
+              )
+        """)
+        result = await conn.execute(query)
+        return result.scalar() == 3
 
     return False
 

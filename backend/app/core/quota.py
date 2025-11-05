@@ -231,6 +231,7 @@ class QuotaEnforcer:
             "limits": {
                 "max_resolution_height": limits.max_resolution_height,
                 "max_fps": limits.max_fps,
+                "min_video_bitrate_mbps": limits.min_video_bitrate_mbps,
                 "max_video_bitrate_mbps": limits.max_video_bitrate_mbps,
                 "enforce_stream_quality": limits.enforce_stream_quality,
             },
@@ -360,6 +361,34 @@ class QuotaEnforcer:
 
             guideline_rule, fps_bucket, fps_out_of_guideline = _match_guideline(height, fps)
 
+            tier_min_bitrate = limits.min_video_bitrate_mbps
+            tier_max_bitrate = limits.max_video_bitrate_mbps
+
+            guideline_min = guideline_rule["min_bitrate_mbps"] if guideline_rule else None
+            guideline_max = guideline_rule["max_bitrate_mbps"] if guideline_rule else None
+            guideline_target = guideline_rule["target_bitrate_mbps"] if guideline_rule else None
+
+            actual_min_bitrate = guideline_min
+            actual_max_bitrate = guideline_max
+
+            if tier_min_bitrate is not None:
+                actual_min_bitrate = max(actual_min_bitrate or tier_min_bitrate, tier_min_bitrate)
+            if tier_max_bitrate is not None:
+                actual_max_bitrate = min(actual_max_bitrate or tier_max_bitrate, tier_max_bitrate)
+
+            if (
+                actual_min_bitrate is not None
+                and actual_max_bitrate is not None
+                and actual_min_bitrate > actual_max_bitrate
+            ):
+                actual_max_bitrate = actual_min_bitrate
+
+            if guideline_target is not None:
+                if actual_min_bitrate is not None and guideline_target < actual_min_bitrate:
+                    guideline_target = actual_min_bitrate
+                if actual_max_bitrate is not None and guideline_target > actual_max_bitrate:
+                    guideline_target = actual_max_bitrate
+
             if (
                 guideline_rule
                 and not recommended_info_set
@@ -374,9 +403,9 @@ class QuotaEnforcer:
                 result["recommended"] = {
                     "resolution": guideline_rule["label"],
                     "fps": guideline_rule["fps"],
-                    "min_bitrate_mbps": guideline_rule["min_bitrate_mbps"],
-                    "max_bitrate_mbps": guideline_rule["max_bitrate_mbps"],
-                    "target_bitrate_mbps": guideline_rule["target_bitrate_mbps"],
+                    "min_bitrate_mbps": actual_min_bitrate,
+                    "max_bitrate_mbps": actual_max_bitrate,
+                    "target_bitrate_mbps": guideline_target,
                 }
                 recommended_info_set = True
 
@@ -434,23 +463,53 @@ class QuotaEnforcer:
                     "Bitrate metadata is missing. Revalidate or re-encode the file.",
                 )
             else:
-                if guideline_rule:
-                    min_allowed = guideline_rule["min_bitrate_mbps"]
-                    max_allowed = guideline_rule["max_bitrate_mbps"]
-                    if bitrate_mbps < min_allowed or bitrate_mbps > max_allowed:
+                min_allowed = actual_min_bitrate
+                max_allowed = actual_max_bitrate
+
+                if min_allowed is not None or max_allowed is not None:
+                    out_of_range = False
+                    if min_allowed is not None and bitrate_mbps < min_allowed:
+                        out_of_range = True
+                    if max_allowed is not None and bitrate_mbps > max_allowed:
+                        out_of_range = True
+
+                    if out_of_range:
+                        target_text = None
+                        if guideline_rule and guideline_rule.get("target_bitrate_mbps") is not None:
+                            target_text = f"{guideline_rule['target_bitrate_mbps']} Mbps"
+
+                        if target_text:
+                            allowed_text = target_text
+                        elif min_allowed is not None and max_allowed is not None:
+                            allowed_text = f"{min_allowed}–{max_allowed} Mbps"
+                        elif min_allowed is not None:
+                            allowed_text = f"≥ {min_allowed} Mbps"
+                        elif max_allowed is not None:
+                            allowed_text = f"≤ {max_allowed} Mbps"
+                        else:
+                            allowed_text = "recommended range"
+
                         add_violation(
                             "bitrate_out_of_range",
-                            "Video bitrate must stay within the YouTube guideline range.",
+                            "Video bitrate must stay within the recommended range.",
                             current=_format_bitrate(bitrate_mbps),
-                            allowed=f"{min_allowed}–{max_allowed} Mbps",
+                            allowed=allowed_text,
                         )
 
-                if limits.max_video_bitrate_mbps and bitrate_mbps > limits.max_video_bitrate_mbps:
+                if tier_min_bitrate is not None and bitrate_mbps < tier_min_bitrate:
+                    add_violation(
+                        "bitrate_out_of_range",
+                        "Video bitrate is below your plan's minimum.",
+                        current=_format_bitrate(bitrate_mbps),
+                        allowed=f"≥ {tier_min_bitrate} Mbps",
+                    )
+
+                if tier_max_bitrate is not None and bitrate_mbps > tier_max_bitrate:
                     add_violation(
                         "bitrate_out_of_range",
                         "Video bitrate exceeds the allowed value.",
                         current=_format_bitrate(bitrate_mbps),
-                        allowed=f"≤ {limits.max_video_bitrate_mbps} Mbps",
+                        allowed=f"≤ {tier_max_bitrate} Mbps",
                     )
 
         if result["violations"]:
@@ -473,11 +532,13 @@ class QuotaEnforcer:
                     if fallback_rule
                     else (f"{limits.max_resolution_height}p" if limits.max_resolution_height else None),
                     "fps": fallback_rule["fps"] if fallback_rule else limits.max_fps,
-                    "min_bitrate_mbps": fallback_rule["min_bitrate_mbps"] if fallback_rule else None,
-                    "max_bitrate_mbps": fallback_rule["max_bitrate_mbps"]
-                    if fallback_rule
-                    else limits.max_video_bitrate_mbps,
-                    "target_bitrate_mbps": fallback_rule["target_bitrate_mbps"] if fallback_rule else None,
+                    "min_bitrate_mbps": fallback_rule.get("min_bitrate_mbps") if fallback_rule else limits.min_video_bitrate_mbps,
+                    "max_bitrate_mbps": fallback_rule.get("max_bitrate_mbps") if fallback_rule else limits.max_video_bitrate_mbps,
+                    "target_bitrate_mbps": fallback_rule.get("target_bitrate_mbps") if fallback_rule else None,
+                    "video_codec": fallback_rule.get("video_codec") if fallback_rule else "H.264",
+                    "audio_codec": fallback_rule.get("audio_codec") if fallback_rule else "AAC",
+                    "protocol": fallback_rule.get("protocol") if fallback_rule else "RTMP/RTMPS",
+                    "keyframe_interval_seconds": fallback_rule.get("keyframe_interval_seconds") if fallback_rule else 2,
                 }
 
         return result

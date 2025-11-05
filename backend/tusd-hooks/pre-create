@@ -60,14 +60,17 @@ CURL_EXIT_CODE=$?
 set -e
 
 if [ $CURL_EXIT_CODE -ne 0 ]; then
-    echo "[pre-create] ERROR: Failed to connect to backend API (code $CURL_EXIT_CODE)" >&2
-    BODY="Upload rejected: quota service unavailable"
-    echo "{\"HTTPResponse\":{\"StatusCode\":503,\"Body\":\"$BODY\",\"Headers\":{\"Content-Type\":\"text/plain\"}}}" >&1
-    exit 1
+    echo "[pre-create] WARNING: Failed to connect to backend API (code $CURL_EXIT_CODE). Allowing upload." >&2
+    exit 0
 fi
 
 RESPONSE_BODY=${HTTP_RESPONSE%HTTPSTATUS:*}
 HTTP_STATUS=${HTTP_RESPONSE##*HTTPSTATUS:}
+
+if [ "$HTTP_STATUS" -ge 500 ]; then
+    echo "[pre-create] WARNING: Backend quota endpoint returned $HTTP_STATUS. Allowing upload." >&2
+    exit 0
+fi
 
 if [ "$HTTP_STATUS" -ne 200 ]; then
     REASON=$(echo "$RESPONSE_BODY" | jq -r '.detail // .reason // "Quota check failed"' 2>/dev/null)

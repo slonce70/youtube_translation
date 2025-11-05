@@ -80,7 +80,8 @@ CREATE INDEX idx_destinations_enabled ON destinations(enabled);
 CREATE TABLE IF NOT EXISTS streams (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    playlist_id UUID NOT NULL REFERENCES playlists(id) ON DELETE RESTRICT,
+    playlist_id UUID REFERENCES playlists(id) ON DELETE RESTRICT,
+    source_type TEXT DEFAULT 'playlist' NOT NULL CHECK (source_type IN ('playlist', 'assets')),
     name TEXT,
     status TEXT DEFAULT 'stopped' CHECK (status IN ('stopped', 'starting', 'running', 'error', 'stopping')),
     pid INT,

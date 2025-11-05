@@ -89,7 +89,8 @@ class StreamListItem(BaseModel):
     user_email: str
     name: str
     status: str
-    playlist_id: UUID
+    playlist_id: Optional[UUID]
+    source_type: str
     destinations_count: int
     started_at: Optional[datetime]
     created_at: datetime
@@ -615,6 +616,7 @@ async def list_all_streams(
                 Stream.name,
                 Stream.status,
                 Stream.playlist_id,
+                Stream.source_type,
                 Stream.started_at,
                 Stream.created_at
             )
@@ -648,9 +650,10 @@ async def list_all_streams(
                 name=row[3] or "Unnamed stream",
                 status=row[4],
                 playlist_id=row[5],
+                source_type=row[6],
                 destinations_count=destination_counts.get(row[0], 0),
-                started_at=row[6],
-                created_at=row[7],
+                started_at=row[7],
+                created_at=row[8],
             )
             for row in rows
         ]

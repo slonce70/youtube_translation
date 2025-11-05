@@ -27,6 +27,9 @@ Use underlying commands as needed: `pytest -v`, `npm run dev`, `npm test`, or `p
 - Backend code uses Python 3.11+, four-space indentation, type hints, and `snake_case` modules; enforce style with `ruff`, `black`, and `mypy`. Classes (SQLAlchemy, Pydantic, enums) stay in `PascalCase`.
 - Frontend TypeScript keeps functional React components, Tailwind utility classes, and `camelCase` variables. `npm run lint` and `npm run type-check` must be clean before review.
 - Keep `backend/.env.example` and `frontend/.env.example` updated when adding configuration.
+- Interface localization ships in three languages (en, uk, ru). Any new UI strings must land in all three message bundles before merging.
+- Prefer the smallest viable code changes and avoid gratuitous abstractions so diffs stay lean and reviewable.
+- Maintain the established project structure when adding files; place new modules alongside related code paths rather than inventing new top-level directories.
 
 ## Testing Guidelines
 

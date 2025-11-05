@@ -52,7 +52,7 @@ app.include_router(monitoring.router, prefix="/api/monitoring", tags=["monitorin
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
-    from app.core.database import check_db_connection
+    from app.core.database import check_db_connection, apply_schema_patches
     
     logger.info("Starting YouTube Multi-Channel Streaming Service")
     logger.info(f"FFmpeg: {settings.ffmpeg_bin}")
@@ -61,6 +61,7 @@ async def startup_event():
     
     # Check database connection
     await check_db_connection()
+    await apply_schema_patches()
     
     # Start periodic cleanup task for rate limiter
     asyncio.create_task(cleanup_rate_limiter())
