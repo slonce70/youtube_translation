@@ -1,0 +1,17 @@
+{
+  "supabase": {
+    "invalidCredentials": "Invalid email or password",
+    "emailNotConfirmed": "Please confirm your email address before signing in.",
+    "userAlreadyRegistered": "An account already exists for this email.",
+    "rateLimited": "Too many requests. Please try again shortly.",
+    "passwordTooWeak": "Password must meet the minimum complexity requirements.",
+    "missingEmail": "Email address is required to perform this action.",
+    "currentPasswordIncorrect": "Current password is incorrect."
+  },
+  "boundary": {
+    "title": "Something went wrong",
+    "unknown": "Unknown error",
+    "reload": "Reload page",
+    "back": "Back to dashboard"
+  }
+}

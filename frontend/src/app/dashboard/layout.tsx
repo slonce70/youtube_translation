@@ -62,7 +62,7 @@ export default function DashboardLayout({ children }: Props) {
   }
 
   if (loading) {
-    return <LoadingState text="Loading dashboard..." />
+    return <LoadingState />
   }
 
   return (

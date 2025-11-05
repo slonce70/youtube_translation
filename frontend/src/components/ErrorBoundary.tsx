@@ -3,6 +3,7 @@
 import React from 'react'
 import { Button } from './ui/Button'
 import { AlertCircle } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 interface ErrorBoundaryProps {
   children: React.ReactNode
@@ -13,8 +14,13 @@ interface ErrorBoundaryState {
   error: Error | null
 }
 
-export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
+interface ErrorBoundaryInnerProps {
+  children: React.ReactNode
+  translate: ReturnType<typeof useTranslations>
+}
+
+class ErrorBoundaryInner extends React.Component<ErrorBoundaryInnerProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryInnerProps) {
     super(props)
     this.state = { hasError: false, error: null }
   }
@@ -33,6 +39,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   render() {
+    const t = this.props.translate
+
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center p-8 bg-slate-50 dark:bg-slate-950">
@@ -43,10 +51,10 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             
             <div className="space-y-2">
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                Что-то пошло не так
+                {t('title')}
               </h2>
               <p className="text-slate-600 dark:text-slate-400">
-                {this.state.error?.message || 'Неизвестная ошибка'}
+                {this.state.error?.message || t('unknown')}
               </p>
             </div>
 
@@ -64,7 +72,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 variant="primary"
                 className="w-full"
               >
-                Перезагрузить страницу
+                {t('reload')}
               </Button>
               
               <Button
@@ -72,7 +80,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 variant="secondary"
                 className="w-full"
               >
-                Вернуться на главную
+                {t('back')}
               </Button>
             </div>
           </div>
@@ -82,4 +90,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
     return this.props.children
   }
+}
+
+export function ErrorBoundary({ children }: ErrorBoundaryProps) {
+  const t = useTranslations('errors.boundary')
+  return <ErrorBoundaryInner translate={t}>{children}</ErrorBoundaryInner>
 }

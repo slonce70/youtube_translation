@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
+import { translateSupabaseError } from '@/i18n/errorMessages'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -11,6 +13,9 @@ import { toast } from 'sonner'
 
 export default function ProfilePage() {
   const { user, refreshUser } = useDashboardContext()
+  const t = useTranslations('profile')
+  const toasts = useTranslations('profile.toasts')
+  const supabaseErrors = useTranslations('errors.supabase')
   const [displayName, setDisplayName] = useState('')
   const [profileLoading, setProfileLoading] = useState(false)
 
@@ -39,9 +44,17 @@ export default function ProfilePage() {
       if (error) throw error
 
       await refreshUser()
-      toast.success('Profile updated')
+      toast.success(toasts('profileUpdated'))
     } catch (error: any) {
-      toast.error(error.message || 'Unable to update profile')
+      const message = error instanceof Error ? error.message : null
+      const translated = translateSupabaseError(error, supabaseErrors)
+      if (translated) {
+        toast.error(translated)
+      } else if (message === 'Missing email on account') {
+        toast.error(toasts('missingEmail'))
+      } else {
+        toast.error(message ?? toasts('profileUpdateError'))
+      }
     } finally {
       setProfileLoading(false)
     }
@@ -51,12 +64,12 @@ export default function ProfilePage() {
     event.preventDefault()
     if (!user) return
     if (!newPassword || newPassword.length < 8) {
-      toast.error('Password must be at least 8 characters long')
+      toast.error(toasts('passwordTooShort'))
       return
     }
 
     if (newPassword !== confirmPassword) {
-      toast.error('Passwords do not match')
+      toast.error(toasts('passwordMismatch'))
       return
     }
 
@@ -81,12 +94,22 @@ export default function ProfilePage() {
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
 
-      toast.success('Password updated')
+      toast.success(toasts('passwordUpdated'))
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
     } catch (error: any) {
-      toast.error(error.message || 'Unable to change password')
+      const message = error instanceof Error ? error.message : null
+      const translated = translateSupabaseError(error, supabaseErrors)
+      if (translated) {
+        toast.error(translated)
+      } else if (message === 'Missing email on account') {
+        toast.error(toasts('missingEmail'))
+      } else if (message === 'Current password is incorrect') {
+        toast.error(toasts('currentIncorrect'))
+      } else {
+        toast.error(message ?? toasts('passwordUpdateError'))
+      }
     } finally {
       setPasswordLoading(false)
     }
@@ -96,43 +119,41 @@ export default function ProfilePage() {
     <div className="space-y-10">
       <div className="max-w-2xl">
         <Badge variant="secondary" className="mb-3 inline-flex items-center space-x-1">
-          <span>Account</span>
+          <span>{t('header.badge')}</span>
         </Badge>
-        <h1 className="text-3xl font-bold gradient-text mb-2">Profile &amp; Security</h1>
-        <p className="text-slate-600 dark:text-slate-400">
-          Update how your workspace shows up across dashboards and keep your credentials in sync.
-        </p>
+        <h1 className="text-3xl font-bold gradient-text mb-2">{t('header.title')}</h1>
+        <p className="text-slate-600 dark:text-slate-400">{t('header.description')}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Profile information</CardTitle>
+            <CardTitle>{t('profileForm.title')}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleProfileSubmit} className="grid gap-6 md:grid-cols-2">
               <div className="md:col-span-1">
                 <label htmlFor="displayName" className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
-                  Display name
+                  {t('profileForm.displayNameLabel')}
                 </label>
                 <Input
                   id="displayName"
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="How teammates see you"
+                  placeholder={t('profileForm.displayNamePlaceholder')}
                 />
               </div>
 
               <div className="md:col-span-1">
                 <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
-                  Email
+                  {t('profileForm.emailLabel')}
                 </label>
                 <Input id="email" value={user?.email ?? ''} disabled readOnly />
               </div>
 
               <div className="md:col-span-2 flex justify-end">
-                <Button type="submit" isLoading={profileLoading} loadingText="Saving">
-                  Save changes
+                <Button type="submit" isLoading={profileLoading} loadingText={t('profileForm.saving')}>
+                  {t('profileForm.save')}
                 </Button>
               </div>
             </form>
@@ -141,39 +162,39 @@ export default function ProfilePage() {
 
         <Card id="password" className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Update password</CardTitle>
+            <CardTitle>{t('passwordForm.title')}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePasswordSubmit} className="grid gap-6 md:grid-cols-3">
               <div className="md:col-span-1">
                 <label htmlFor="currentPassword" className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
-                  Current password
+                  {t('passwordForm.currentLabel')}
                 </label>
                 <Input
                   id="currentPassword"
                   type="password"
                   value={currentPassword}
                   onChange={(event) => setCurrentPassword(event.target.value)}
-                  placeholder="Optional re-auth"
+                  placeholder={t('passwordForm.currentPlaceholder')}
                 />
               </div>
 
               <div className="md:col-span-1">
                 <label htmlFor="newPassword" className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
-                  New password
+                  {t('passwordForm.newLabel')}
                 </label>
                 <Input
                   id="newPassword"
                   type="password"
                   value={newPassword}
                   onChange={(event) => setNewPassword(event.target.value)}
-                  placeholder="At least 8 characters"
+                  placeholder={t('passwordForm.newPlaceholder')}
                 />
               </div>
 
               <div className="md:col-span-1">
                 <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
-                  Confirm password
+                  {t('passwordForm.confirmLabel')}
                 </label>
                 <Input
                   id="confirmPassword"
@@ -185,10 +206,10 @@ export default function ProfilePage() {
 
               <div className="md:col-span-3 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Strong passwords combine lowercase, uppercase, numbers, and symbols. Updating your password will sign out other active sessions.
+                  {t('passwordForm.guideline')}
                 </p>
-                <Button type="submit" isLoading={passwordLoading} loadingText="Updating">
-                  Update password
+                <Button type="submit" isLoading={passwordLoading} loadingText={t('passwordForm.submitting')}>
+                  {t('passwordForm.submit')}
                 </Button>
               </div>
             </form>

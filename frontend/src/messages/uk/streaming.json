@@ -1,0 +1,119 @@
+{
+  "status": {
+    "running": "В ефірі",
+    "stopped": "Зупинено",
+    "starting": "Запускається",
+    "stopping": "Зупиняється",
+    "error": "Помилка"
+  },
+  "toasts": {
+    "destination": {
+      "created": "Канал створено",
+      "updated": "Канал оновлено",
+      "deleted": "Канал видалено"
+    },
+    "stream": {
+      "created": "Трансляцію створено",
+      "started": "Трансляцію запущено",
+      "stopped": "Трансляцію зупинено",
+      "deleted": "Трансляцію видалено"
+    },
+    "errors": {
+      "selectPlaylist": "Оберіть плейлист",
+      "selectDestination": "Оберіть принаймні один напрямок"
+    },
+    "generic": {
+      "errorWithMessage": "Помилка: {message}"
+    }
+  },
+  "page": {
+    "loading": "Завантаження трансляцій...",
+    "fetching": "Завантажуємо список трансляцій...",
+    "header": {
+      "title": "Трансляції",
+      "description": "Керуйте каналами та прямими ефірами",
+      "goLive": "У ефір"
+    },
+    "channels": {
+      "title": "Канали",
+      "add": "Додати канал",
+      "badge": {
+        "active": "Активний",
+        "disabled": "Вимкнено",
+        "selected": "Обрано",
+        "tapToSelect": "Натисніть, щоб обрати"
+      },
+      "actions": {
+        "edit": "Редагувати",
+        "delete": "Видалити"
+      },
+      "empty": {
+        "title": "Ще немає каналів",
+        "cta": "Додати канал"
+      },
+      "stats": {
+        "total": "Усього каналів",
+        "active": "Активних каналів"
+      },
+      "form": {
+        "newTitle": "Новий канал",
+        "editTitle": "Редагувати канал",
+        "nameLabel": "Назва",
+        "namePlaceholder": "Мій YouTube-канал",
+        "urlLabel": "RTMPS URL",
+        "keyLabel": "Ключ трансляції",
+        "keepExisting": "(залиште порожнім, щоб зберегти)",
+        "keyHint": "Ключ шифрується та зберігається безпечно",
+        "enabled": "Увімкнено",
+        "cancel": "Скасувати",
+        "create": "Створити",
+        "update": "Оновити",
+        "confirmDelete": "Видалити цей канал?"
+      }
+    },
+    "streams": {
+      "title": "Прямі трансляції",
+      "new": "Нова трансляція",
+      "untitled": "Без назви",
+      "labels": {
+        "playlist": "Плейлист",
+        "status": "Статус",
+        "created": "Створено"
+      },
+      "unknownPlaylist": "Невідомий плейлист",
+      "buttons": {
+        "logs": "Логи",
+        "stop": "Зупинити",
+        "start": "Запустити"
+      },
+      "empty": {
+        "title": "Активних трансляцій немає",
+        "description": "Створіть конфігурацію трансляції, щоб розпочати ефір",
+        "cta": "Створити першу трансляцію"
+      },
+      "stats": {
+        "active": "Активні трансляції",
+        "total": "Усього трансляцій",
+        "concurrent": "Паралельний ліміт"
+      },
+      "form": {
+        "title": "Створити трансляцію",
+        "nameLabel": "Назва трансляції",
+        "namePlaceholder": "Мій класний стрім",
+        "playlistLabel": "Плейлист",
+        "playlistItems": "{count, plural, one {# елемент} few {# елементи} many {# елементів} other {# елементів}}",
+        "playlistNoneTitle": "Плейлистів немає",
+        "playlistNoneDescription": "Спершу створіть плейлист у розділі \"Бібліотека\".",
+        "destinationsLabel": "Напрямки",
+        "destinationsNoneTitle": "Немає активних напрямків",
+        "destinationsNoneDescription": "Додайте напрямок у бічній панелі \"Канали\".",
+        "cancel": "Скасувати",
+        "create": "Створити трансляцію"
+      },
+      "logs": {
+        "title": "Логи трансляції",
+        "empty": "Журнали відсутні"
+      }
+    }
+  }
+}

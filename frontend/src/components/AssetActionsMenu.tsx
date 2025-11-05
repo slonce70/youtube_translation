@@ -15,6 +15,7 @@ import {
 
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
+import { useTranslations } from 'next-intl'
 
 interface AssetActionsMenuProps {
   onEdit?: () => void
@@ -56,6 +57,7 @@ export function AssetActionsMenu({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const tLibraryMenu = useTranslations('library.page.assets.menu')
 
   useEffect(() => {
     if (!open) return
@@ -228,7 +230,7 @@ export function AssetActionsMenu({
         aria-expanded={open}
       >
         <MoreVertical className="w-4 h-4" />
-        <span className="sr-only">Asset actions</span>
+        <span className="sr-only">{tLibraryMenu('srLabel')}</span>
       </Button>
 
       {open && menuPosition &&

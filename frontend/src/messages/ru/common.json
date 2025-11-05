@@ -1,0 +1,15 @@
+{
+  "app": {
+    "name": "YouTube Multi-Channel Streaming",
+    "description": "Круглосуточный сервис трансляций для нескольких YouTube-каналов"
+  },
+  "status": {
+    "loading": "Загрузка...",
+    "redirecting": "Перенаправление..."
+  },
+  "actions": {
+    "confirm": "Подтвердить",
+    "cancel": "Отменить",
+    "close": "Закрыть"
+  }
+}

@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslations } from 'next-intl'
 import { HardDrive, Clock3, Radio, Video, Lightbulb } from 'lucide-react'
 import { api } from '@/lib/api'
-import { formatBytes, formatHoursHuman } from '@/lib/utils'
+import { formatBytes } from '@/lib/utils'
 import { StatCard } from '@/components/StatCard'
 import { LoadingState } from '@/components/LoadingState'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -21,10 +22,22 @@ const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * Math.pow(1024, 3)
 const DAILY_STREAMING_LIMIT_HOURS = 8
 const CONCURRENT_STREAM_LIMIT = 1
 
-const formatHoursLabel = (hours: number) => formatHoursHuman(Math.max(0, hours))
-
 export default function DashboardPage() {
   const { user } = useDashboardContext()
+  const dashboard = useTranslations('dashboard')
+
+  const formatHoursLabel = useCallback((hours: number) => {
+    const wholeHours = Math.floor(hours)
+    const minutes = Math.round((hours - wholeHours) * 60)
+
+    if (wholeHours <= 0) {
+      return dashboard('timeFormat.minutes', { minutes })
+    }
+
+    return minutes > 0 
+      ? dashboard('timeFormat.hoursAndMinutes', { hours: wholeHours, minutes })
+      : dashboard('timeFormat.hours', { hours: wholeHours })
+  }, [dashboard])
 
   const { data: metrics, isLoading: metricsLoading } = useQuery<MetricsResponse>({
     queryKey: ['metrics'],
@@ -85,6 +98,36 @@ export default function DashboardPage() {
     }
   }, [assets, streams])
 
+  const statCards = useMemo(
+    () => [
+      {
+        title: dashboard('stats.storageUsed'),
+        value: `${formatBytes(usage.storageUsedBytes)} / ${STORAGE_LIMIT_GB} GB`,
+        icon: HardDrive,
+        gradient: 'from-primary-500 to-cyan-500',
+      },
+      {
+        title: dashboard('stats.streamingTimeLeft'),
+        value: formatHoursLabel(usage.hoursRemaining),
+        icon: Clock3,
+        gradient: 'from-purple-500 to-pink-500',
+      },
+      {
+        title: dashboard('stats.activeStreams'),
+        value: `${usage.activeStreams.length} / ${CONCURRENT_STREAM_LIMIT}`,
+        icon: Radio,
+        gradient: 'from-success-500 to-emerald-500',
+      },
+      {
+        title: dashboard('stats.libraryAssets'),
+        value: usage.assetsCount,
+        icon: Video,
+        gradient: 'from-amber-500 to-orange-500',
+      },
+    ],
+    [dashboard, usage, formatHoursLabel]
+  )
+
   const initialLoading =
     !metrics && !streams && !assets && (metricsLoading || streamsLoading || assetsLoading)
 
@@ -92,39 +135,12 @@ export default function DashboardPage() {
     return <LoadingState />
   }
 
-  const statCards = [
-    {
-      title: 'Storage used',
-      value: `${formatBytes(usage.storageUsedBytes)} / ${STORAGE_LIMIT_GB} GB`,
-      icon: HardDrive,
-      gradient: 'from-primary-500 to-cyan-500',
-    },
-    {
-      title: 'Streaming time left',
-      value: formatHoursLabel(usage.hoursRemaining),
-      icon: Clock3,
-      gradient: 'from-purple-500 to-pink-500',
-    },
-    {
-      title: 'Active streams',
-      value: `${usage.activeStreams.length} / ${CONCURRENT_STREAM_LIMIT}`,
-      icon: Radio,
-      gradient: 'from-success-500 to-emerald-500',
-    },
-    {
-      title: 'Library assets',
-      value: usage.assetsCount,
-      icon: Video,
-      gradient: 'from-amber-500 to-orange-500',
-    },
-  ]
-
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-3xl font-bold gradient-text mb-2">Dashboard</h2>
+        <h2 className="text-3xl font-bold gradient-text mb-2">{dashboard('title.heading')}</h2>
         <p className="text-slate-600 dark:text-slate-400">
-          Keep an eye on your limits and jump back into streaming in a click.
+          {dashboard('title.subheading')}
         </p>
       </div>
 
@@ -150,39 +166,50 @@ export default function DashboardPage() {
         <div className="space-y-6 xl:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Usage overview</CardTitle>
+              <CardTitle>{dashboard('usage.heading')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
               <div>
                 <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-                  <span>Library storage</span>
-                  <span>{formatBytes(usage.storageUsedBytes)} used</span>
+                  <span>{dashboard('usage.storageLabel')}</span>
+                  <span>{dashboard('usage.storageUsed', { value: formatBytes(usage.storageUsedBytes) })}</span>
                 </div>
                 <Progress value={usage.storageUsagePercent} className="mt-2" indicatorClassName={usage.storageUsagePercent >= 90 ? 'bg-error-500' : undefined} />
                 <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  Remaining {formatBytes(usage.storageRemainingBytes)} of {STORAGE_LIMIT_GB} GB
+                  {dashboard('usage.storageRemaining', {
+                    remaining: formatBytes(usage.storageRemainingBytes),
+                    limit: `${STORAGE_LIMIT_GB} GB`,
+                  })}
                 </p>
               </div>
 
               <div>
                 <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-                  <span>Daily streaming time</span>
-                  <span>{formatHoursLabel(usage.hoursUsed)} used</span>
+                  <span>{dashboard('usage.dailyStreamingLabel')}</span>
+                  <span>{dashboard('usage.dailyStreamingUsed', {
+                    value: formatHoursLabel(usage.hoursUsed),
+                  })}</span>
                 </div>
                 <Progress value={usage.hoursUsagePercent} className="mt-2" indicatorClassName={usage.hoursUsagePercent >= 90 ? 'bg-error-500' : undefined} />
                 <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  Remaining {formatHoursLabel(usage.hoursRemaining)} of {formatHoursLabel(DAILY_STREAMING_LIMIT_HOURS)}
+                  {dashboard('usage.dailyStreamingRemaining', {
+                    remaining: formatHoursLabel(usage.hoursRemaining),
+                    limit: formatHoursLabel(DAILY_STREAMING_LIMIT_HOURS),
+                  })}
                 </p>
               </div>
 
               <div>
                 <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-                  <span>Concurrent stream slot</span>
-                  <span>{usage.activeStreams.length} of {CONCURRENT_STREAM_LIMIT}</span>
+                  <span>{dashboard('usage.concurrentLabel')}</span>
+                  <span>{dashboard('usage.concurrentValue', {
+                    current: usage.activeStreams.length,
+                    limit: CONCURRENT_STREAM_LIMIT,
+                  })}</span>
                 </div>
                 <Progress value={usage.streamUsagePercent} className="mt-2" indicatorClassName={usage.streamUsagePercent >= 90 ? 'bg-error-500' : undefined} />
                 <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  Upgrade to run parallel broadcasts or add redundancy destinations.
+                  {dashboard('usage.concurrentHint')}
                 </p>
               </div>
             </CardContent>
@@ -208,28 +235,28 @@ export default function DashboardPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Streaming checklist</CardTitle>
+              <CardTitle>{dashboard('checklist.heading')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
               <div className="flex items-start space-x-3">
                 <Lightbulb className="h-4 w-4 text-primary-500 mt-0.5" />
                 <div>
-                  <p className="font-medium text-slate-700 dark:text-slate-200">Warm up your feed</p>
-                  <p>Use Go Live a few minutes early to confirm ingest quality before the audience arrives.</p>
+                  <p className="font-medium text-slate-700 dark:text-slate-200">{dashboard('checklist.items.warmup.title')}</p>
+                  <p>{dashboard('checklist.items.warmup.description')}</p>
                 </div>
               </div>
               <div className="flex items-start space-x-3">
                 <Lightbulb className="h-4 w-4 text-primary-500 mt-0.5" />
                 <div>
-                  <p className="font-medium text-slate-700 dark:text-slate-200">Rotate uploads</p>
-                  <p>Archive older assets once you finish streaming to reclaim storage for new content.</p>
+                  <p className="font-medium text-slate-700 dark:text-slate-200">{dashboard('checklist.items.rotate.title')}</p>
+                  <p>{dashboard('checklist.items.rotate.description')}</p>
                 </div>
               </div>
               <div className="flex items-start space-x-3">
                 <Lightbulb className="h-4 w-4 text-primary-500 mt-0.5" />
                 <div>
-                  <p className="font-medium text-slate-700 dark:text-slate-200">Plan the next upgrade</p>
-                  <p>Hit Compare plans whenever you get close to limits so live events never pause for capacity.</p>
+                  <p className="font-medium text-slate-700 dark:text-slate-200">{dashboard('checklist.items.upgrade.title')}</p>
+                  <p>{dashboard('checklist.items.upgrade.description')}</p>
                 </div>
               </div>
             </CardContent>

@@ -2,11 +2,13 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { supabase } from '@/lib/supabase'
 import { LoadingState } from '@/components/LoadingState'
 
 export default function HomePage() {
   const router = useRouter()
+  const status = useTranslations('common.status')
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -22,5 +24,5 @@ export default function HomePage() {
     checkAuth()
   }, [router])
 
-  return <LoadingState text="Redirecting..." />
+  return <LoadingState text={status('redirecting')} />
 }

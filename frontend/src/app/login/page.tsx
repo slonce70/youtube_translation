@@ -3,25 +3,30 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
+import { useTranslations } from 'next-intl'
 import { supabase } from '@/lib/supabase'
+import { translateSupabaseError } from '@/i18n/errorMessages'
 import { Radio, Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/utils'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [isSignUp, setIsSignUp] = useState(false)
+  const t = useTranslations('auth')
+  const errorT = useTranslations('errors.supabase')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    setError('')
+    setFeedback(null)
 
     try {
       if (isSignUp) {
@@ -30,7 +35,7 @@ export default function LoginPage() {
           password,
         })
         if (error) throw error
-        setError('Check your email for the confirmation link!')
+        setFeedback({ type: 'success', message: t('notifications.checkEmail') })
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -40,7 +45,8 @@ export default function LoginPage() {
         router.push('/dashboard')
       }
     } catch (error: any) {
-      setError(error.message)
+      const translated = translateSupabaseError(error, errorT)
+      setFeedback({ type: 'error', message: translated ?? (error?.message ?? t('notifications.genericError')) })
     } finally {
       setIsLoading(false)
     }
@@ -48,6 +54,9 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+      <div className="absolute top-6 right-6 z-10">
+        <LanguageSwitcher />
+      </div>
       {/* Animated background */}
       <div className="absolute inset-0 -z-10">
         <motion.div
@@ -104,10 +113,10 @@ export default function LoginPage() {
             className="text-center mb-8"
           >
             <h2 className="text-3xl font-bold gradient-text mb-2">
-              {isSignUp ? 'Create Account' : 'Welcome Back'}
+              {isSignUp ? t('title.signUp') : t('title.signIn')}
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              YouTube Multi-Channel Streaming
+              {t('title.subtitle')}
             </p>
           </motion.div>
 
@@ -119,7 +128,7 @@ export default function LoginPage() {
               transition={{ delay: 0.4 }}
             >
               <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Email address
+                {t('form.email')}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -131,7 +140,7 @@ export default function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder={t('form.emailPlaceholder')}
                   className="pl-10"
                 />
               </div>
@@ -143,7 +152,7 @@ export default function LoginPage() {
               transition={{ delay: 0.5 }}
             >
               <label htmlFor="password" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Password
+                {t('form.password')}
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -155,29 +164,29 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={t('form.passwordPlaceholder')}
                   className="pl-10"
                 />
               </div>
             </motion.div>
 
-            {error && (
+            {feedback && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className={cn(
                   'flex items-center space-x-2 rounded-xl p-4',
-                  error.includes('Check your email')
+                  feedback.type === 'success'
                     ? 'bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-400'
                     : 'bg-error-50 dark:bg-error-900/20 text-error-700 dark:text-error-400'
                 )}
               >
-                {error.includes('Check your email') ? (
+                {feedback.type === 'success' ? (
                   <CheckCircle className="w-5 h-5 flex-shrink-0" />
                 ) : (
                   <AlertCircle className="w-5 h-5 flex-shrink-0" />
                 )}
-                <p className="text-sm font-medium">{error}</p>
+                <p className="text-sm font-medium">{feedback.message}</p>
               </motion.div>
             )}
 
@@ -191,7 +200,11 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full"
               >
-                {isLoading ? 'Loading...' : (isSignUp ? 'Create Account' : 'Sign In')}
+                {isLoading
+                  ? t('form.loading')
+                  : isSignUp
+                    ? t('form.submitSignUp')
+                    : t('form.submitSignIn')}
               </Button>
             </motion.div>
 
@@ -205,13 +218,11 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => {
                   setIsSignUp(!isSignUp)
-                  setError('')
+                  setFeedback(null)
                 }}
                 className="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors"
               >
-                {isSignUp
-                  ? 'Already have an account? Sign in'
-                  : "Don't have an account? Sign up"}
+                {isSignUp ? t('toggle.haveAccount') : t('toggle.noAccount')}
               </button>
             </motion.div>
           </form>
@@ -223,7 +234,7 @@ export default function LoginPage() {
           transition={{ delay: 0.8 }}
           className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400"
         >
-          Secure authentication powered by Supabase
+          {t('feedback.supabase')}
         </motion.p>
       </motion.div>
     </div>

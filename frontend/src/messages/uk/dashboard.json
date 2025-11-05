@@ -1,0 +1,209 @@
+{
+  "title": {
+    "heading": "Панель",
+    "subheading": "Стежте за лімітами та повертайтеся до ефірів в один клік."
+  },
+  "stats": {
+    "storageUsed": "Використане сховище",
+    "streamingTimeLeft": "Залишок часу трансляції",
+    "activeStreams": "Активні трансляції",
+    "libraryAssets": "Активи бібліотеки"
+  },
+  "usage": {
+    "heading": "Огляд використання",
+    "storageLabel": "Сховище бібліотеки",
+    "storageUsed": "{value} використано",
+    "storageRemaining": "Залишок {remaining} із {limit}",
+    "dailyStreamingLabel": "Добовий час трансляції",
+    "dailyStreamingUsed": "{value} використано",
+    "dailyStreamingRemaining": "Залишок {remaining} із {limit}",
+    "concurrentLabel": "Слот паралельних трансляцій",
+    "concurrentValue": "{current} з {limit}",
+    "concurrentHint": "Оновіть тариф, щоб запускати паралельні трансляції або додавати резервні напрямки."
+  },
+  "checklist": {
+    "heading": "Чекліст трансляції",
+    "items": {
+      "warmup": {
+        "title": "Розігрійте трансляцію",
+        "description": "Запускайте Go Live за кілька хвилин до старту, щоб переконатися в якості сигналу."
+      },
+      "rotate": {
+        "title": "Оновлюйте завантаження",
+        "description": "Архівуйте старі активи після ефіру, щоб звільнити місце для нового контенту."
+      },
+      "upgrade": {
+        "title": "Плануйте оновлення",
+        "description": "Відкривайте «Порівняти тарифи», щойно наближаєтеся до лімітів, аби ефір не зупинявся."
+      }
+    }
+  },
+  "actions": {
+    "upgrade": "Перейти до тарифів"
+  },
+  "timeFormat": {
+    "hours": "{hours}год",
+    "minutes": "{minutes}хв",
+    "hoursAndMinutes": "{hours}год {minutes}хв"
+  },
+  "metadata": {
+    "title": "Панель",
+    "description": "Стежте за використанням, керуйте ефірами та зберігайте канал онлайн."
+  },
+  "quickActions": {
+    "title": "Швидкі дії",
+    "actions": {
+      "upload": {
+        "label": "Завантажити відео",
+        "description": "Додайте нове відео до бібліотеки"
+      },
+      "goLive": {
+        "label": "Почати ефір",
+        "description": "Розпочніть трансляцію просто зараз"
+      },
+      "createPlaylist": {
+        "label": "Створити плейлист",
+        "description": "Зберіть новий плейлист"
+      },
+      "addChannel": {
+        "label": "Додати канал",
+        "description": "Підключіть канал YouTube"
+      },
+      "viewLibrary": {
+        "label": "Переглянути бібліотеку",
+        "description": "Переглядайте відео та плейлисти"
+      },
+      "manageStreams": {
+        "label": "Керувати трансляціями",
+        "description": "Керуйте ефірами"
+      }
+    }
+  },
+  "subscriptionBanner": {
+    "secondaryAction": "Порівняти тарифи",
+    "dismiss": "Приховати банер",
+    "expires": "Підписка діє до: {date}",
+    "tiers": {
+      "free": {
+        "name": "Free",
+        "message": "Ви використовуєте тариф Free",
+        "cta": "Оновіться, щоб отримати більше можливостей",
+        "primaryAction": "Оновити до Pro",
+        "features": [
+          "Буфер пам'яті 3 ГБ",
+          "8 годин прямого ефіру на день",
+          "1 активний слот трансляції"
+        ]
+      },
+      "pro": {
+        "name": "Pro",
+        "message": "Ви використовуєте тариф Pro",
+        "cta": "Подобається Pro? Розгляньте Business для розширених можливостей",
+        "primaryAction": "Оновити до Business",
+        "features": [
+          "50 ГБ сховища",
+          "5 паралельних трансляцій",
+          "200 відеоактивів"
+        ]
+      },
+      "business": {
+        "name": "Business",
+        "message": "Ви використовуєте тариф Business",
+        "cta": "Преміум-підтримка та необмежені ресурси",
+        "features": [
+          "200 ГБ сховища",
+          "20 паралельних трансляцій",
+          "Пріоритетна підтримка"
+        ]
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "message": "Ви використовуєте тариф Enterprise",
+        "cta": "Дякуємо, що обрали Enterprise",
+        "features": [
+          "Необмежене сховище",
+          "Необмежені трансляції",
+          "Виділена підтримка"
+        ]
+      }
+    }
+  },
+  "streamControl": {
+    "title": "Керування прямими ефірами",
+    "subtitle": "Стежте за статусом і швидко керуйте ефіром",
+    "manageAll": "Керувати всіма",
+    "empty": {
+      "title": "Ще немає трансляцій",
+      "description": "Створіть першу трансляцію, щоб керувати нею прямо з панелі.",
+      "cta": "Налаштувати трансляцію"
+    },
+    "status": {
+      "running": "В ефірі",
+      "stopped": "Зупинено",
+      "starting": "Запускається",
+      "stopping": "Зупиняється",
+      "error": "Помилка"
+    },
+    "buttons": {
+      "stop": "Зупинити",
+      "goLive": "Почати ефір",
+      "viewAll": "Переглянути всі трансляції"
+    },
+    "labels": {
+      "liveSince": "В ефірі {time}",
+      "idle": "Очікує",
+      "attention": "Деякі трансляції потребують уваги",
+      "untitled": "Без назви"
+    }
+  },
+  "planLimits": {
+    "title": "Використання тарифу Free",
+    "subtitle": "Відстежуйте, наскільки ви наблизилися до лімітів",
+    "badge": "Тариф Free",
+    "storage": {
+      "label": "Сховище бібліотеки",
+      "summary": "{used} із {limit}",
+      "remaining": "Залишок {value}",
+      "assets": "Активів у бібліотеці: {count}"
+    },
+    "streaming": {
+      "label": "Добовий час трансляцій",
+      "summary": "{used} із {limit}",
+      "remaining": "Залишок {value}"
+    },
+    "concurrent": {
+      "label": "Паралельні трансляції",
+      "limitReached": "Ліміт вичерпано",
+      "available": "Доступно"
+    },
+    "upgrade": {
+      "title": "Потрібно більше простору?",
+      "description": "Оновіть тариф, щоб розблокувати додаткове сховище, довші ефіри та більше напрямків.",
+      "button": "Порівняти тарифи",
+      "reset": "Добові ліміти скидаються опівночі"
+    }
+  },
+  "quota": {
+    "title": "Використання ресурсів",
+    "badge": "Тариф {tier}",
+    "resources": {
+      "storage": "Сховище",
+      "streams": "Паралельні трансляції",
+      "assets": "Відеоактиви",
+      "playlists": "Плейлисти",
+      "destinations": "Канали"
+    },
+    "tiers": {
+      "free": "Free",
+      "pro": "Pro",
+      "business": "Business",
+      "enterprise": "Enterprise"
+    },
+    "nearLimit": "Наближаєтесь до ліміту",
+    "cta": {
+      "title": "Потрібно більше ресурсів?",
+      "description": "Оновіться до Pro: 50 ГБ сховища, 5 паралельних трансляцій та більше.",
+      "button": "Оновити до Pro"
+    }
+  }
+}

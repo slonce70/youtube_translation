@@ -1,0 +1,209 @@
+{
+  "title": {
+    "heading": "Dashboard",
+    "subheading": "Keep an eye on your limits and jump back into streaming in a click."
+  },
+  "stats": {
+    "storageUsed": "Storage used",
+    "streamingTimeLeft": "Streaming time left",
+    "activeStreams": "Active streams",
+    "libraryAssets": "Library assets"
+  },
+  "usage": {
+    "heading": "Usage overview",
+    "storageLabel": "Library storage",
+    "storageUsed": "{value} used",
+    "storageRemaining": "Remaining {remaining} of {limit}",
+    "dailyStreamingLabel": "Daily streaming time",
+    "dailyStreamingUsed": "{value} used",
+    "dailyStreamingRemaining": "Remaining {remaining} of {limit}",
+    "concurrentLabel": "Concurrent stream slot",
+    "concurrentValue": "{current} of {limit}",
+    "concurrentHint": "Upgrade to run parallel broadcasts or add redundancy destinations."
+  },
+  "checklist": {
+    "heading": "Streaming checklist",
+    "items": {
+      "warmup": {
+        "title": "Warm up your feed",
+        "description": "Go Live a few minutes early to confirm ingest quality before the audience arrives."
+      },
+      "rotate": {
+        "title": "Rotate uploads",
+        "description": "Archive older assets once a stream ends to reclaim storage for new content."
+      },
+      "upgrade": {
+        "title": "Plan the next upgrade",
+        "description": "Hit Compare plans whenever you get close to limits so live events never pause for capacity."
+      }
+    }
+  },
+  "actions": {
+    "upgrade": "Go to plans"
+  },
+  "timeFormat": {
+    "hours": "{hours}h",
+    "minutes": "{minutes}m",
+    "hoursAndMinutes": "{hours}h {minutes}m"
+  },
+  "metadata": {
+    "title": "Dashboard",
+    "description": "Monitor usage, manage streams, and keep your channel online."
+  },
+  "quickActions": {
+    "title": "Quick Actions",
+    "actions": {
+      "upload": {
+        "label": "Upload video",
+        "description": "Add new video to library"
+      },
+      "goLive": {
+        "label": "Go Live",
+        "description": "Start streaming now"
+      },
+      "createPlaylist": {
+        "label": "Create playlist",
+        "description": "Build a new playlist"
+      },
+      "addChannel": {
+        "label": "Add channel",
+        "description": "Connect YouTube channel"
+      },
+      "viewLibrary": {
+        "label": "View library",
+        "description": "Browse videos & playlists"
+      },
+      "manageStreams": {
+        "label": "Manage streams",
+        "description": "Control live streams"
+      }
+    }
+  },
+  "subscriptionBanner": {
+    "secondaryAction": "Compare plans",
+    "dismiss": "Dismiss banner",
+    "expires": "Subscription expires: {date}",
+    "tiers": {
+      "free": {
+        "name": "Free",
+        "message": "You're on the Free plan",
+        "cta": "Upgrade to unlock more features",
+        "primaryAction": "Upgrade to Pro",
+        "features": [
+          "3 GB dedicated memory buffer",
+          "8 hours of live streaming per day",
+          "1 active stream slot"
+        ]
+      },
+      "pro": {
+        "name": "Pro",
+        "message": "You're on the Pro plan",
+        "cta": "Enjoying Pro? Consider Business for advanced features",
+        "primaryAction": "Upgrade to Business",
+        "features": [
+          "50 GB storage",
+          "5 concurrent streams",
+          "200 video assets"
+        ]
+      },
+      "business": {
+        "name": "Business",
+        "message": "You're on the Business plan",
+        "cta": "Premium support and unlimited resources",
+        "features": [
+          "200 GB storage",
+          "20 concurrent streams",
+          "Priority support"
+        ]
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "message": "You're on the Enterprise plan",
+        "cta": "Thank you for choosing Enterprise",
+        "features": [
+          "Unlimited storage",
+          "Unlimited streams",
+          "Dedicated support"
+        ]
+      }
+    }
+  },
+  "streamControl": {
+    "title": "Live Stream Controls",
+    "subtitle": "Monitor status and quickly toggle your stream",
+    "manageAll": "Manage all",
+    "empty": {
+      "title": "No streams yet",
+      "description": "Create your first stream to control it directly from the dashboard.",
+      "cta": "Set up stream"
+    },
+    "status": {
+      "running": "Live",
+      "stopped": "Stopped",
+      "starting": "Starting",
+      "stopping": "Stopping",
+      "error": "Error"
+    },
+    "buttons": {
+      "stop": "Stop",
+      "goLive": "Go Live",
+      "viewAll": "View all streams"
+    },
+    "labels": {
+      "liveSince": "Live {time}",
+      "idle": "Idle",
+      "attention": "Some streams require attention",
+      "untitled": "Untitled stream"
+    }
+  },
+  "planLimits": {
+    "title": "Free plan usage",
+    "subtitle": "Track how close you are to plan limits",
+    "badge": "Free tier",
+    "storage": {
+      "label": "Library storage",
+      "summary": "{used} of {limit}",
+      "remaining": "Remaining {value}",
+      "assets": "Assets in library: {count}"
+    },
+    "streaming": {
+      "label": "Daily streaming time",
+      "summary": "{used} of {limit}",
+      "remaining": "Remaining {value}"
+    },
+    "concurrent": {
+      "label": "Concurrent streams",
+      "limitReached": "Limit reached",
+      "available": "Available"
+    },
+    "upgrade": {
+      "title": "Need more headroom?",
+      "description": "Upgrade to unlock additional storage, longer broadcasts, and more destinations.",
+      "button": "Compare plans",
+      "reset": "Daily limits reset at midnight"
+    }
+  },
+  "quota": {
+    "title": "Resource usage",
+    "badge": "{tier} plan",
+    "resources": {
+      "storage": "Storage",
+      "streams": "Concurrent Streams",
+      "assets": "Video Assets",
+      "playlists": "Playlists",
+      "destinations": "Channels"
+    },
+    "tiers": {
+      "free": "Free",
+      "pro": "Pro",
+      "business": "Business",
+      "enterprise": "Enterprise"
+    },
+    "nearLimit": "Approaching limit",
+    "cta": {
+      "title": "Need more resources?",
+      "description": "Upgrade to Pro for 50GB storage, 5 concurrent streams, and more.",
+      "button": "Upgrade to Pro"
+    }
+  }
+}

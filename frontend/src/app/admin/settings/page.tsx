@@ -1,17 +1,20 @@
 'use client'
 
-import { Settings as SettingsIcon, Bell, Shield, Database, Mail } from 'lucide-react'
+import { Bell, Shield, Database, Mail } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { useTranslations } from 'next-intl'
 
 export default function AdminSettings() {
+  const t = useTranslations('admin.settings')
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-3xl font-bold gradient-text mb-2">Admin Settings</h2>
+        <h2 className="text-3xl font-bold gradient-text mb-2">{t('header.title')}</h2>
         <p className="text-slate-600 dark:text-slate-400">
-          Configure system settings and preferences
+          {t('header.description')}
         </p>
       </div>
 
@@ -22,25 +25,25 @@ export default function AdminSettings() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Bell className="w-5 h-5" />
-              <span>Notifications</span>
+              <span>{t('notifications.title')}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium">Email Alerts</p>
-                <p className="text-sm text-slate-500">Receive email for critical alerts</p>
+                <p className="font-medium">{t('notifications.emailAlerts.label')}</p>
+                <p className="text-sm text-slate-500">{t('notifications.emailAlerts.description')}</p>
               </div>
               <input type="checkbox" className="w-4 h-4" defaultChecked />
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium">User Signups</p>
-                <p className="text-sm text-slate-500">Notify on new user registrations</p>
+                <p className="font-medium">{t('notifications.userSignups.label')}</p>
+                <p className="text-sm text-slate-500">{t('notifications.userSignups.description')}</p>
               </div>
               <input type="checkbox" className="w-4 h-4" />
             </div>
-            <Button size="sm" className="w-full">Save Settings</Button>
+            <Button size="sm" className="w-full">{t('notifications.save')}</Button>
           </CardContent>
         </Card>
 
@@ -49,25 +52,25 @@ export default function AdminSettings() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Shield className="w-5 h-5" />
-              <span>Security</span>
+              <span>{t('security.title')}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium">Two-Factor Auth</p>
-                <p className="text-sm text-slate-500">Enable 2FA for admin accounts</p>
+                <p className="font-medium">{t('security.twoFactor.label')}</p>
+                <p className="text-sm text-slate-500">{t('security.twoFactor.description')}</p>
               </div>
               <input type="checkbox" className="w-4 h-4" defaultChecked />
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium">Login Audit</p>
-                <p className="text-sm text-slate-500">Log all admin login attempts</p>
+                <p className="font-medium">{t('security.loginAudit.label')}</p>
+                <p className="text-sm text-slate-500">{t('security.loginAudit.description')}</p>
               </div>
               <input type="checkbox" className="w-4 h-4" defaultChecked />
             </div>
-            <Button size="sm" className="w-full">Save Settings</Button>
+            <Button size="sm" className="w-full">{t('security.save')}</Button>
           </CardContent>
         </Card>
 
@@ -76,15 +79,15 @@ export default function AdminSettings() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Database className="w-5 h-5" />
-              <span>Database</span>
+              <span>{t('database.title')}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Database maintenance and backup settings
+              {t('database.description')}
             </p>
-            <Button size="sm" variant="secondary" className="w-full">Run Cleanup</Button>
-            <Button size="sm" variant="secondary" className="w-full">Create Backup</Button>
+            <Button size="sm" variant="secondary" className="w-full">{t('database.cleanup')}</Button>
+            <Button size="sm" variant="secondary" className="w-full">{t('database.backup')}</Button>
           </CardContent>
         </Card>
 
@@ -93,15 +96,15 @@ export default function AdminSettings() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Mail className="w-5 h-5" />
-              <span>Email Configuration</span>
+              <span>{t('email.title')}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Configure email service provider and templates
+              {t('email.description')}
             </p>
-            <Button size="sm" variant="secondary" className="w-full">Configure SMTP</Button>
-            <Button size="sm" variant="secondary" className="w-full">Test Email</Button>
+            <Button size="sm" variant="secondary" className="w-full">{t('email.configure')}</Button>
+            <Button size="sm" variant="secondary" className="w-full">{t('email.test')}</Button>
           </CardContent>
         </Card>
       </div>

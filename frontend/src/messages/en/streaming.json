@@ -1,0 +1,119 @@
+{
+  "status": {
+    "running": "Live",
+    "stopped": "Stopped",
+    "starting": "Starting",
+    "stopping": "Stopping",
+    "error": "Error"
+  },
+  "toasts": {
+    "destination": {
+      "created": "Channel created",
+      "updated": "Channel updated",
+      "deleted": "Channel deleted"
+    },
+    "stream": {
+      "created": "Stream created",
+      "started": "Stream started",
+      "stopped": "Stream stopped",
+      "deleted": "Stream deleted"
+    },
+    "errors": {
+      "selectPlaylist": "Select a playlist",
+      "selectDestination": "Select at least one destination"
+    },
+    "generic": {
+      "errorWithMessage": "Error: {message}"
+    }
+  },
+  "page": {
+    "loading": "Loading streaming...",
+    "fetching": "Fetching streams...",
+    "header": {
+      "title": "Streaming",
+      "description": "Manage channels and live streams",
+      "goLive": "Go Live"
+    },
+    "channels": {
+      "title": "Channels",
+      "add": "Add Channel",
+      "badge": {
+        "active": "Active",
+        "disabled": "Disabled",
+        "selected": "Selected",
+        "tapToSelect": "Tap to select"
+      },
+      "actions": {
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "empty": {
+        "title": "No channels added",
+        "cta": "Add Channel"
+      },
+      "stats": {
+        "total": "Total Channels",
+        "active": "Active Channels"
+      },
+      "form": {
+        "newTitle": "New Channel",
+        "editTitle": "Edit Channel",
+        "nameLabel": "Name",
+        "namePlaceholder": "My YouTube Channel",
+        "urlLabel": "RTMPS URL",
+        "keyLabel": "Stream Key",
+        "keepExisting": "(leave empty to keep existing)",
+        "keyHint": "Your stream key is encrypted and stored securely",
+        "enabled": "Enabled",
+        "cancel": "Cancel",
+        "create": "Create",
+        "update": "Update",
+        "confirmDelete": "Are you sure you want to delete this channel?"
+      }
+    },
+    "streams": {
+      "title": "Live Streams",
+      "new": "New Stream",
+      "untitled": "Untitled Stream",
+      "labels": {
+        "playlist": "Playlist",
+        "status": "Status",
+        "created": "Created"
+      },
+      "unknownPlaylist": "Unknown playlist",
+      "buttons": {
+        "logs": "Logs",
+        "stop": "Stop",
+        "start": "Start"
+      },
+      "empty": {
+        "title": "No active streams",
+        "description": "Create a stream configuration to start broadcasting",
+        "cta": "Create Your First Stream"
+      },
+      "stats": {
+        "active": "Active Streams",
+        "total": "Total Streams",
+        "concurrent": "Concurrent Limit"
+      },
+      "form": {
+        "title": "Create Stream",
+        "nameLabel": "Stream Name",
+        "namePlaceholder": "My awesome stream",
+        "playlistLabel": "Playlist",
+        "playlistItems": "{count, plural, one {# item} other {# items}}",
+        "playlistNoneTitle": "No playlists available",
+        "playlistNoneDescription": "Create a playlist first in the Library section.",
+        "destinationsLabel": "Destinations",
+        "destinationsNoneTitle": "No active destinations",
+        "destinationsNoneDescription": "Add a destination in the Channels sidebar.",
+        "cancel": "Cancel",
+        "create": "Create Stream"
+      },
+      "logs": {
+        "title": "Stream Logs",
+        "empty": "No logs available"
+      }
+    }
+  }
+}

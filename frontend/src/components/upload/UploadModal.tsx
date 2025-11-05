@@ -17,6 +17,8 @@ import {
   Trash2,
 } from 'lucide-react'
 
+import { useTranslations } from 'next-intl'
+
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -81,6 +83,8 @@ interface UploadModalProps {
   uppy: Uppy<Record<string, string>, Record<string, any>>
   isProcessingUpload: boolean
 }
+
+type Translate = ReturnType<typeof useTranslations>
 
 interface MediaInfoJson {
   media?: {
@@ -189,7 +193,7 @@ function formatSampleRate(value?: number): string {
   return `${value.toFixed(0)} Hz`
 }
 
-function buildAnalysis(result: MediaInfoJson): UploadAnalysis {
+function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnalysis {
   const tracks = Array.isArray(result.media?.track) ? result.media?.track ?? [] : []
   const general = tracks.find((track) => track['@type'] === 'General') ?? {}
   const videoTrack = tracks.find((track) => track['@type'] === 'Video') ?? {}
@@ -218,13 +222,19 @@ function buildAnalysis(result: MediaInfoJson): UploadAnalysis {
     } else {
       bitrateStatus = 'outside'
       warnings.push(
-        `Video bitrate is outside the recommended range. For ${recommendation.rule.resolutionLabel} at ${recommendation.rule.fps} fps aim for ${recommendation.rule.minBitrateMbps.toFixed(0)}–${recommendation.rule.maxBitrateMbps.toFixed(0)} Mbps (target ${recommendation.rule.targetBitrateMbps.toFixed(0)} Mbps).`
+        translate('warnings.bitrateRange', {
+          resolution: recommendation.rule.resolutionLabel,
+          fps: recommendation.rule.fps,
+          min: recommendation.rule.minBitrateMbps,
+          max: recommendation.rule.maxBitrateMbps,
+          target: recommendation.rule.targetBitrateMbps,
+        })
       )
     }
   }
 
   if (recommendation.fpsOutOfGuideline) {
-    warnings.push('Detected frame rate falls outside the recommended 30 or 60 fps for live streams.')
+    warnings.push(translate('warnings.fpsOutOfGuideline'))
   }
 
   return {
@@ -248,21 +258,33 @@ function buildAnalysis(result: MediaInfoJson): UploadAnalysis {
     warnings,
     bitrateStatus,
     recommendationLabel: recommendation.rule
-      ? `${recommendation.rule.resolutionLabel}, ${recommendation.rule.fps} FPS`
+      ? translate('recommendations.label', {
+          resolution: recommendation.rule.resolutionLabel,
+          fps: recommendation.rule.fps,
+        })
       : undefined,
     recommendationDetails: recommendation.rule
-      ? `${recommendation.rule.minBitrateMbps.toFixed(0)}–${recommendation.rule.maxBitrateMbps.toFixed(0)} Mbps · target ${recommendation.rule.targetBitrateMbps.toFixed(0)} Mbps`
+      ? translate('recommendations.details', {
+          min: recommendation.rule.minBitrateMbps,
+          max: recommendation.rule.maxBitrateMbps,
+          target: recommendation.rule.targetBitrateMbps,
+        })
       : undefined,
     normalizedFpsLabel: recommendation.normalizedFps
-      ? `${recommendation.normalizedFps} FPS`
+      ? translate('recommendations.normalizedFps', { fps: recommendation.normalizedFps })
       : undefined,
   }
 }
 
 export function UploadModal({ isOpen, onClose, uppy, isProcessingUpload }: UploadModalProps) {
+  const t = useTranslations('library.uploadModal')
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([])
   const [isDragActive, setIsDragActive] = useState(false)
   const [mediaInfoError, setMediaInfoError] = useState<string | null>(null)
+  const getStatusLabel = useCallback(
+    (status: UploadStatus) => t(`status.values.${status}` as any),
+    [t]
+  )
 const mediaInfoPromiseRef = useRef<Promise<MediaInfo<'JSON'>> | null>(null)
 const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -293,13 +315,11 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
         .catch((error) => {
           console.error('Failed to initialise MediaInfo', error)
           if (isMountedRef.current) {
-            setMediaInfoError(
-              'Unable to load the MediaInfo helper. Video metadata will be refreshed after the upload completes.'
-            )
+            setMediaInfoError(t('errors.metadataHelper'))
           }
         })
     }
-  }, [])
+  }, [t])
 
   const analyzeFile = useCallback(
     async (file: DashboardFile) => {
@@ -337,7 +357,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
         )
 
         const parsed = JSON.parse(result) as MediaInfoJson
-        const analysis = buildAnalysis(parsed)
+        const analysis = buildAnalysis(parsed, t)
 
         if (isMountedRef.current) {
           setUploadItems((items) =>
@@ -362,9 +382,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                     ...current,
                     status: current.status === 'pending' ? 'ready' : current.status,
                     analysis: {
-                      warnings: [
-                        'Unable to extract technical metadata locally. The server validator will double-check after upload.',
-                      ],
+                      warnings: [t('warnings.metadataUnavailable')],
                       bitrateStatus: 'unknown',
                     },
                   }
@@ -374,7 +392,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
         }
       }
     },
-    []
+    [t]
   )
 
   useEffect(() => {
@@ -605,10 +623,10 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             <div>
               <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                 <Upload className="w-5 h-5 text-primary-500" />
-                Upload video assets
+                {t('title')}
               </h3>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-3xl">
-                Drag and drop files or pick them manually. We will inspect codecs, resolution and bitrate immediately to highlight potential YouTube Live issues.
+                {t('description')}
               </p>
             </div>
             <Button
@@ -619,7 +637,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
               className="gap-2"
             >
               <X className="w-4 h-4" />
-              Close
+              {t('actions.close')}
             </Button>
           </div>
 
@@ -627,7 +645,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             <Info className="w-5 h-5 text-primary-500 mt-0.5" />
             <div className="space-y-1">
               <p className="text-sm font-medium text-primary-700 dark:text-primary-300">
-                Google recommendations for live encoder bitrate and resolution
+                {t('info.title')}
               </p>
               <a
                 href="https://support.google.com/youtube/answer/2853702"
@@ -635,7 +653,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                 rel="noreferrer"
                 className="text-xs text-primary-600 dark:text-primary-400 underline"
               >
-                View documentation
+                {t('info.link')}
               </a>
             </div>
           </div>
@@ -670,43 +688,44 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                 <Upload className="w-7 h-7 text-primary-500" />
               </div>
               <p className="text-base font-medium text-slate-800 dark:text-slate-200">
-                Drag & drop files here or
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="mx-1 text-primary-600 dark:text-primary-400 underline decoration-dotted"
-                >
-                  browse from disk
-                </button>
+                {t.rich('dropzone.instructions', {
+                  button: (chunks) => (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mx-1 text-primary-600 dark:text-primary-400 underline decoration-dotted"
+                    >
+                      {chunks}
+                    </button>
+                  ),
+                })}
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Supported formats: MP4, MOV, MKV, FLV, WMV, AVI. Maximum size: 10 GB per file.
-              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t('dropzone.hint')}</p>
             </div>
           </div>
 
           {uploadItems.length > 0 ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                  <Waves className="w-4 h-4" />
-                  <span>Files total: {uploadItems.length}</span>
-                  <span>·</span>
-                  <span>Overall progress: {overallProgress}%</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={uploadItems.length === 0 || hasBlockingUpload}
-                    onClick={() => setUploadItems([])}
-                  >
-                    Clear queue
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="gap-2"
-                    onClick={handleStartUpload}
+              <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <Waves className="w-4 h-4" />
+                <span>{t('stats.total', { count: uploadItems.length })}</span>
+                <span>·</span>
+                <span>{t('stats.overall', { progress: overallProgress })}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={uploadItems.length === 0 || hasBlockingUpload}
+                  onClick={() => setUploadItems([])}
+                >
+                  {t('actions.clear')}
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-2"
+                  onClick={handleStartUpload}
                     disabled={
                       uploadItems.length === 0 ||
                       uploadItems.every(
@@ -718,7 +737,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                     }
                   >
                     <Upload className="w-4 h-4" />
-                    Start upload
+                    {t('actions.start')}
                   </Button>
                 </div>
               </div>
@@ -739,19 +758,9 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                           <span>{formatBytes(item.size)}</span>
                           <span>·</span>
                           <span>
-                            Status:{' '}
+                            {t('status.label')}{' '}
                             <span className="capitalize text-slate-700 dark:text-slate-300">
-                              {item.status === 'pending'
-                                ? 'preparing'
-                                : item.status === 'ready'
-                                ? 'ready to upload'
-                                : item.status === 'uploading'
-                                ? 'uploading'
-                                : item.status === 'processing'
-                                ? 'processing'
-                                : item.status === 'complete'
-                                ? 'done'
-                                : 'error'}
+                              {getStatusLabel(item.status)}
                             </span>
                           </span>
                         </div>
@@ -761,7 +770,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                         size="icon"
                         onClick={() => handleRemoveItem(item.id)}
                         disabled={item.status === 'uploading' || item.status === 'processing'}
-                        title="Remove file from queue"
+                        title={t('actions.remove')}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -770,7 +779,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-600 dark:text-slate-300">
                       <div className="flex flex-col gap-1 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2">
                         <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Video
+                          {t('media.video')}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="secondary">
@@ -789,7 +798,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                       </div>
                       <div className="flex flex-col gap-1 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2">
                         <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Audio
+                          {t('media.audio')}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="secondary">
@@ -801,7 +810,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                         {item.analysis?.audio?.channels ? (
                           <>
                             <span>·</span>
-                            <span>{item.analysis.audio.channels} channels</span>
+                            <span>{t('media.channels', { count: item.analysis.audio.channels })}</span>
                           </>
                         ) : null}
                       </div>
@@ -812,8 +821,10 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                     <Progress value={item.progress} />
                     <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span>
-                        Uploaded {item.bytesUploaded ? formatBytes(item.bytesUploaded) : '0'} of{' '}
-                        {formatBytes(item.bytesTotal)}
+                        {t('progress.uploaded', {
+                          uploaded: item.bytesUploaded ? formatBytes(item.bytesUploaded) : '0',
+                          total: formatBytes(item.bytesTotal),
+                        })}
                       </span>
                       <span>{item.progress}%</span>
                     </div>
@@ -823,8 +834,10 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                     <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                       <CheckCircle2 className="w-4 h-4 text-primary-500" />
                       <span>
-                        Recommendations: {item.analysis.recommendationLabel} →{' '}
-                        {item.analysis.recommendationDetails}
+                        {t('recommendations.summary', {
+                          label: item.analysis.recommendationLabel,
+                          details: item.analysis.recommendationDetails,
+                        })}
                       </span>
                     </div>
                   ) : null}
@@ -844,7 +857,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                     ) : item.analysis && item.analysis.bitrateStatus === 'within' ? (
                       <div className="flex items-start gap-2 text-sm text-success-600 dark:text-success-400">
                         <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        <span>File parameters align with live streaming recommendations.</span>
+                        <span>{t('recommendations.success')}</span>
                       </div>
                     ) : null}
 
@@ -860,23 +873,23 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             </div>
           ) : (
             <div className="text-center text-sm text-slate-500 dark:text-slate-400">
-              No files in the queue yet. Add a video to analyse its parameters before uploading.
+              {t('empty.description')}
             </div>
           )}
 
           <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
             <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/60 text-sm font-medium text-slate-600 dark:text-slate-300">
-              YouTube live encoding guidance
+              {t('table.title')}
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-sm">
                 <thead className="bg-white dark:bg-slate-900/50 text-slate-500 dark:text-slate-400">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium">Resolution</th>
-                    <th className="px-4 py-3 text-left font-medium">Frame rate</th>
-                    <th className="px-4 py-3 text-left font-medium">Minimum</th>
-                    <th className="px-4 py-3 text-left font-medium">Maximum</th>
-                    <th className="px-4 py-3 text-left font-medium">Recommended</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.resolution')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.frameRate')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.minimum')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.maximum')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.recommended')}</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900/40 divide-y divide-slate-200 dark:divide-slate-800">
@@ -908,7 +921,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-xl">
               <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
               <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                Finalising upload and refreshing your media library…
+                {t('overlay.processing')}
               </p>
             </div>
           )}

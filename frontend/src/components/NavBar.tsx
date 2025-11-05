@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import {
   Home,
   Library,
@@ -13,13 +14,13 @@ import {
   X,
   ChevronDown,
   User,
-  Lock,
   Shield,
 } from 'lucide-react'
 import { Button } from './ui/Button'
 import { DarkModeToggle } from './DarkModeToggle'
 import { cn } from '@/lib/utils'
 import { useEffect, useRef, useState } from 'react'
+import { LanguageSwitcher } from './LanguageSwitcher'
 
 interface NavBarProps {
   userEmail?: string
@@ -28,17 +29,18 @@ interface NavBarProps {
 }
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: Home },
-  { href: '/dashboard/library', label: 'Library', icon: Library },
-  { href: '/dashboard/streaming', label: 'Streaming', icon: Radio },
-  { href: '/dashboard/plans', label: 'Plans', icon: BadgeDollarSign },
-]
+  { href: '/dashboard', labelKey: 'menu.dashboard', icon: Home },
+  { href: '/dashboard/library', labelKey: 'menu.library', icon: Library },
+  { href: '/dashboard/streaming', labelKey: 'menu.streaming', icon: Radio },
+  { href: '/dashboard/plans', labelKey: 'menu.plans', icon: BadgeDollarSign },
+] as const
 
 export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const profileMenuRef = useRef<HTMLDivElement | null>(null)
+  const nav = useTranslations('nav')
 
   useEffect(() => {
     if (!profileMenuOpen) return
@@ -53,7 +55,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [profileMenuOpen])
 
-  const displayName = userName || userEmail || 'User'
+  const displayName = userName || userEmail || nav('profile.fallbackName')
   const profileInitial = displayName.charAt(0).toUpperCase()
 
   return (
@@ -64,7 +66,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
             <button
               onClick={() => setMobileMenuOpen((open) => !open)}
               className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Toggle navigation"
+              aria-label={nav('mobile.toggle')}
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -74,7 +76,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
                 <Radio className="w-6 h-6 text-white" />
               </div>
               <span className="text-xl font-bold gradient-text hidden sm:block">
-                YouTube Streaming
+                {nav('brand.name')}
               </span>
             </Link>
           </div>
@@ -98,7 +100,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
                   >
                     <div className="flex items-center space-x-2">
                       <Icon className="w-4 h-4" />
-                      <span className="text-sm font-medium">{item.label}</span>
+                      <span className="text-sm font-medium">{nav(item.labelKey)}</span>
                     </div>
                     
                     {isActive && (
@@ -116,6 +118,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
 
           <div className="flex items-center space-x-4">
             <DarkModeToggle />
+            <LanguageSwitcher />
 
             <div className="relative" ref={profileMenuRef}>
               <button
@@ -148,7 +151,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
                     )}
                     <p className="mt-1 inline-flex items-center space-x-1 rounded-full bg-primary-50 dark:bg-primary-900/20 px-2 py-0.5 text-[11px] font-medium text-primary-600 dark:text-primary-300">
                       <Shield className="h-3 w-3" />
-                      <span>Free plan</span>
+                      <span>{nav('profile.freePlanBadge')}</span>
                     </p>
                   </div>
 
@@ -159,15 +162,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
                       className="flex items-center space-x-3 px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
                     >
                       <User className="h-4 w-4 text-slate-500" />
-                      <span>Account settings</span>
-                    </Link>
-                    <Link
-                      href="/dashboard/profile#password"
-                      onClick={() => setProfileMenuOpen(false)}
-                      className="flex items-center space-x-3 px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <Lock className="h-4 w-4 text-slate-500" />
-                      <span>Change password</span>
+                      <span>{nav('profile.accountSettings')}</span>
                     </Link>
                     <Link
                       href="/dashboard/plans"
@@ -175,7 +170,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
                       className="flex items-center space-x-3 px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
                     >
                       <BadgeDollarSign className="h-4 w-4 text-slate-500" />
-                      <span>Manage plan</span>
+                      <span>{nav('profile.managePlan')}</span>
                     </Link>
                   </div>
 
@@ -188,7 +183,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
                       className="flex w-full items-center justify-center space-x-2 rounded-lg bg-error-50 dark:bg-error-900/20 px-4 py-2 text-sm font-medium text-error-600 hover:bg-error-100 dark:hover:bg-error-900/30"
                     >
                       <LogOut className="h-4 w-4" />
-                      <span>Sign out</span>
+                      <span>{nav('profile.signOut')}</span>
                     </button>
                   </div>
                 </motion.div>
@@ -220,7 +215,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
                     )}
                   >
                     <Icon className="w-5 h-5" />
-                    <span className="font-medium">{item.label}</span>
+                    <span className="font-medium">{nav(item.labelKey)}</span>
                   </div>
                 </Link>
               )
@@ -236,14 +231,14 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
                 className="flex items-center space-x-3 px-4 py-3 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 <User className="w-5 h-5" />
-                <span>Account settings</span>
+                <span>{nav('profile.accountSettings')}</span>
               </Link>
               <button
                 onClick={onSignOut}
                 className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-error-600 hover:bg-error-50 dark:hover:bg-error-900/20"
               >
                 <LogOut className="w-5 h-5" />
-                <span className="font-medium">Sign out</span>
+                <span className="font-medium">{nav('profile.signOut')}</span>
               </button>
             </div>
           </motion.div>

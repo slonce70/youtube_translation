@@ -1,0 +1,25 @@
+{
+  "brand": {
+    "name": "YouTube Streaming"
+  },
+  "menu": {
+    "dashboard": "Dashboard",
+    "library": "Library",
+    "streaming": "Streaming",
+    "plans": "Plans"
+  },
+  "profile": {
+    "fallbackName": "User",
+    "freePlanBadge": "Free plan",
+    "accountSettings": "Account settings",
+    "changePassword": "Change password",
+    "managePlan": "Manage plan",
+    "signOut": "Sign out"
+  },
+  "mobile": {
+    "toggle": "Toggle navigation"
+  },
+  "language": {
+    "label": "Language"
+  }
+}

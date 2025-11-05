@@ -18,7 +18,7 @@ function renderWithProviders(component: React.ReactNode) {
   const queryClient = new QueryClient()
   return render(
     <QueryClientProvider client={queryClient}>
-      <DashboardContext.Provider value={{ user: { id: 'user-1' }, signOut: jest.fn() }}>
+      <DashboardContext.Provider value={{ user: { id: 'user-1' }, signOut: jest.fn(), refreshUser: jest.fn() }}>
         {component}
       </DashboardContext.Provider>
     </QueryClientProvider>

@@ -6,8 +6,10 @@ import { motion } from 'framer-motion'
 
 export function DarkModeToggle() {
   const [isDark, setIsDark] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
     // Check initial theme
     const theme = localStorage.getItem('theme')
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -30,6 +32,15 @@ export function DarkModeToggle() {
       document.documentElement.classList.remove('dark')
       localStorage.setItem('theme', 'light')
     }
+  }
+
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!mounted) {
+    return (
+      <div className="p-2 w-9 h-9" aria-label="Loading theme toggle">
+        <div className="w-5 h-5" />
+      </div>
+    )
   }
 
   return (

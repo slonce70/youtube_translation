@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/Card'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { cn } from '@/lib/utils'
+import { useTranslations } from 'next-intl'
 
 interface QuotaUsage {
   storage: { used_gb: number; limit_gb: number; percent: number }
@@ -22,11 +23,13 @@ interface QuotaWidgetProps {
 }
 
 export function QuotaWidget({ quota, loading }: QuotaWidgetProps) {
+  const t = useTranslations('dashboard.quota')
+
   if (loading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Resource Usage</CardTitle>
+          <CardTitle>{t('title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4 animate-pulse">
@@ -43,48 +46,56 @@ export function QuotaWidget({ quota, loading }: QuotaWidgetProps) {
     return null
   }
 
-  const resources = [
-    {
-      label: 'Storage',
-      icon: HardDrive,
-      current: `${quota.storage.used_gb} GB`,
-      limit: `${quota.storage.limit_gb} GB`,
-      percent: quota.storage.percent,
-      color: 'from-blue-500 to-cyan-500',
-    },
-    {
-      label: 'Concurrent Streams',
-      icon: Radio,
-      current: quota.streams.active,
-      limit: quota.streams.limit,
-      percent: quota.streams.percent,
-      color: 'from-purple-500 to-pink-500',
-    },
-    {
-      label: 'Video Assets',
-      icon: Upload,
-      current: quota.assets.count,
-      limit: quota.assets.limit,
-      percent: quota.assets.percent,
-      color: 'from-green-500 to-emerald-500',
-    },
-    {
-      label: 'Playlists',
-      icon: ListVideo,
-      current: quota.playlists.count,
-      limit: quota.playlists.limit,
-      percent: quota.playlists.percent,
-      color: 'from-amber-500 to-orange-500',
-    },
-    {
-      label: 'Channels',
-      icon: TvMinimal,
-      current: quota.destinations.count,
-      limit: quota.destinations.limit,
-      percent: quota.destinations.percent,
-      color: 'from-red-500 to-rose-500',
-    },
-  ]
+  const tierKey = quota.tier.toLowerCase()
+  const tierLabel = t(`tiers.${tierKey}` as any)
+
+  const resources = (
+    [
+      {
+        key: 'storage',
+        icon: HardDrive,
+        current: `${quota.storage.used_gb} GB`,
+        limit: `${quota.storage.limit_gb} GB`,
+        percent: quota.storage.percent,
+        color: 'from-blue-500 to-cyan-500',
+      },
+      {
+        key: 'streams',
+        icon: Radio,
+        current: quota.streams.active,
+        limit: quota.streams.limit,
+        percent: quota.streams.percent,
+        color: 'from-purple-500 to-pink-500',
+      },
+      {
+        key: 'assets',
+        icon: Upload,
+        current: quota.assets.count,
+        limit: quota.assets.limit,
+        percent: quota.assets.percent,
+        color: 'from-green-500 to-emerald-500',
+      },
+      {
+        key: 'playlists',
+        icon: ListVideo,
+        current: quota.playlists.count,
+        limit: quota.playlists.limit,
+        percent: quota.playlists.percent,
+        color: 'from-amber-500 to-orange-500',
+      },
+      {
+        key: 'destinations',
+        icon: TvMinimal,
+        current: quota.destinations.count,
+        limit: quota.destinations.limit,
+        percent: quota.destinations.percent,
+        color: 'from-red-500 to-rose-500',
+      },
+    ] as const
+  ).map((resource) => ({
+    ...resource,
+    label: t(`resources.${resource.key}` as any),
+  }))
 
   const getStatusColor = (percent: number) => {
     if (percent >= 90) return 'text-error-600'
@@ -95,9 +106,9 @@ export function QuotaWidget({ quota, loading }: QuotaWidgetProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Resource Usage</CardTitle>
+        <CardTitle>{t('title')}</CardTitle>
         <Badge variant="secondary" className="capitalize">
-          {quota.tier} Plan
+          {t('badge', { tier: tierLabel })}
         </Badge>
       </CardHeader>
       <CardContent>
@@ -108,7 +119,7 @@ export function QuotaWidget({ quota, loading }: QuotaWidgetProps) {
 
             return (
               <motion.div
-                key={resource.label}
+                key={resource.key}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.1 }}
@@ -156,7 +167,7 @@ export function QuotaWidget({ quota, loading }: QuotaWidgetProps) {
                 {isNearLimit && (
                   <p className="text-xs text-warning-600 dark:text-warning-400 mt-2 flex items-center space-x-1">
                     <TrendingUp className="w-3 h-3" />
-                    <span>Approaching limit</span>
+                    <span>{t('nearLimit')}</span>
                   </p>
                 )}
               </motion.div>
@@ -165,15 +176,13 @@ export function QuotaWidget({ quota, loading }: QuotaWidgetProps) {
         </div>
 
         {/* Upgrade CTA */}
-        {quota.tier === 'free' && (
+        {tierKey === 'free' && (
           <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-primary-50 to-accent-50 dark:from-primary-900/20 dark:to-accent-900/20 border border-primary-200 dark:border-primary-800">
-            <p className="text-sm font-medium mb-2">Need more resources?</p>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
-              Upgrade to Pro for 50GB storage, 5 concurrent streams, and more.
-            </p>
+            <p className="text-sm font-medium mb-2">{t('cta.title')}</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">{t('cta.description')}</p>
             <Button size="sm" className="w-full">
               <TrendingUp className="w-4 h-4 mr-2" />
-              Upgrade to Pro
+              {t('cta.button')}
             </Button>
           </div>
         )}

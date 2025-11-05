@@ -1,0 +1,15 @@
+{
+  "app": {
+    "name": "YouTube Multi-Channel Streaming",
+    "description": "24/7 streaming service for multiple YouTube channels"
+  },
+  "status": {
+    "loading": "Loading...",
+    "redirecting": "Redirecting..."
+  },
+  "actions": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "close": "Close"
+  }
+}

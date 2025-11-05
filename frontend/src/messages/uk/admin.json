@@ -1,0 +1,321 @@
+{
+  "metadata": {
+    "title": "Адмін-панель",
+    "description": "Моніторинг користувачів, сповіщень та трансляцій по платформі."
+  },
+  "users": {
+    "header": {
+      "title": "Керування користувачами",
+      "description": "Керуйте обліковими записами та підписками користувачів"
+    },
+    "actions": {
+      "export": "Експорт"
+    },
+    "stats": {
+      "total": "Усього користувачів",
+      "active": "Активні",
+      "suspended": "Заблоковані",
+      "paid": "Платні плани"
+    },
+    "filters": {
+      "searchPlaceholder": "Пошук користувачів за email або ім'ям...",
+      "tier": {
+        "all": "Усі тарифи",
+        "free": "Free",
+        "pro": "Pro",
+        "business": "Business",
+        "enterprise": "Enterprise"
+      },
+      "status": {
+        "all": "Усі статуси",
+        "active": "Активні",
+        "suspended": "Заблоковані"
+      }
+    },
+    "list": {
+      "title": "Користувачі ({count})",
+      "loading": "Завантаження користувачів...",
+      "empty": "Користувачів не знайдено",
+      "noName": "Н/Д",
+      "badges": {
+        "suspended": "Заблоковано"
+      },
+      "actions": {
+        "suspend": "Заблокувати",
+        "unsuspend": "Розблокувати"
+      },
+      "fields": {
+        "storageUsed": "Використане сховище",
+        "streamHours": "Години трансляцій",
+        "status": "Статус",
+        "joined": "Приєднався",
+        "lastLogin": "Останній вхід"
+      },
+      "values": {
+        "storage": "{value} ГБ",
+        "streamHours": "{value} год",
+        "joined": "Приєднався {time}",
+        "lastLogin": "Останній вхід {time}",
+        "neverLoggedIn": "Ще не входив"
+      }
+    },
+    "tiers": {
+      "free": "Free",
+      "pro": "Pro",
+      "business": "Business",
+      "enterprise": "Enterprise"
+    },
+    "subscriptionStatus": {
+      "active": "Активна",
+      "trialing": "Пробний період",
+      "past_due": "Прострочено",
+      "canceled": "Скасовано",
+      "incomplete": "Неповна",
+      "incomplete_expired": "Неповна (прострочена)",
+      "unknown": "Невідомо"
+    },
+    "prompts": {
+      "suspendReason": "Вкажіть причину блокування для {email}:",
+      "unsuspendConfirm": "Розблокувати цього користувача?"
+    },
+    "toasts": {
+      "suspendSuccess": "Користувача заблоковано",
+      "suspendError": "Не вдалося заблокувати користувача",
+      "unsuspendSuccess": "Користувача розблоковано",
+      "unsuspendError": "Не вдалося розблокувати користувача"
+    }
+  },
+  "alerts": {
+    "header": {
+      "title": "Системні сповіщення",
+      "description": "Відстежуйте та закривайте системні сповіщення"
+    },
+    "stats": {
+      "total": "Усього сповіщень",
+      "unresolved": "Невирішені",
+      "critical": "Критичні",
+      "resolved": "Закриті"
+    },
+    "filters": {
+      "searchPlaceholder": "Пошук сповіщень за повідомленням або користувачем...",
+      "severity": {
+        "all": "Усі рівні",
+        "critical": "Критичні",
+        "warning": "Попередження"
+      },
+      "status": {
+        "all": "Усі статуси",
+        "unresolved": "Невирішені",
+        "resolved": "Закриті"
+      }
+    },
+    "list": {
+      "loading": "Завантаження сповіщень...",
+      "empty": "Сповіщень не знайдено",
+      "fields": {
+        "type": "Тип",
+        "user": "Користувач",
+        "created": "Створено",
+        "resolved": "Закрито"
+      },
+      "badges": {
+        "resolved": "Закрито"
+      },
+      "severity": {
+        "critical": "Критичний",
+        "warning": "Попередження"
+      },
+      "resolvedBy": " від {user}",
+      "resolvedAgo": "Закрито {time}",
+      "title": "Сповіщення ({count})"
+    },
+    "buttons": {
+      "resolve": "Закрити",
+      "resolved": "Закрито"
+    },
+    "prompts": {
+      "resolve": "Закрити сповіщення: \"{message}\"\n\nДодайте нотатки (необов'язково):"
+    },
+    "toasts": {
+      "resolveSuccess": "Сповіщення закрито",
+      "resolveError": "Не вдалося закрити сповіщення"
+    }
+  },
+  "streams": {
+    "header": {
+      "title": "Моніторинг трансляцій",
+      "description": "Відстежуйте трансляції всіх користувачів"
+    },
+    "stats": {
+      "total": "Усього трансляцій",
+      "running": "Активні",
+      "errors": "З помилками",
+      "stopped": "Зупинені"
+    },
+    "filters": {
+      "searchPlaceholder": "Пошук трансляцій за назвою або користувачем...",
+      "status": {
+        "all": "Усі статуси",
+        "running": "Активні",
+        "error": "З помилкою",
+        "stopped": "Зупинені"
+      }
+    },
+    "list": {
+      "loading": "Завантаження трансляцій...",
+      "empty": "Трансляцій не знайдено",
+      "fields": {
+        "user": "Користувач",
+        "playlistId": "ID плейлиста",
+        "destinations": "Напрямки",
+        "started": "Запущено",
+        "created": "Створено"
+      },
+      "values": {
+        "destinations": "{count} каналів",
+        "notStarted": "Ще не запускалась"
+      },
+      "status": {
+        "running": "Активна",
+        "error": "З помилкою",
+        "stopped": "Зупинена"
+      },
+      "title": "Трансляції ({count})"
+    },
+    "buttons": {
+      "forceStop": "Примусово зупинити"
+    },
+    "prompts": {
+      "forceStop": "Примусово зупинити трансляцію \"{name}\"?"
+    },
+    "toasts": {
+      "forceStopSuccess": "Трансляцію зупинено",
+      "forceStopError": "Не вдалося зупинити трансляцію"
+    }
+  },
+  "layout": {
+    "checkingAccess": "Перевірка доступу адміністратора...",
+    "accessDenied": {
+      "title": "Доступ заборонено",
+      "description": "У вас немає прав доступу до адмін-панелі.",
+      "cta": "Повернутися до панелі"
+    },
+    "header": {
+      "title": "Адмін-панель",
+      "subtitle": "Керування системою"
+    },
+    "nav": {
+      "dashboard": "Панель",
+      "users": "Користувачі",
+      "streams": "Трансляції",
+      "alerts": "Сповіщення",
+      "settings": "Налаштування"
+    },
+    "actions": {
+      "exit": "Вийти з адміністрування"
+    },
+    "errors": {
+      "accessRequired": "Потрібен доступ адміністратора",
+      "verifyFailed": "Не вдалося перевірити доступ адміністратора. Спробуйте ще раз.",
+      "default": "У вас немає прав доступу до адмін-панелі."
+    },
+    "userFallback": "Адмін"
+  },
+  "dashboard": {
+    "header": {
+      "title": "Адмін-панель",
+      "description": "Огляд системи та моніторинг"
+    },
+    "stats": {
+      "totalUsers": "Усього користувачів",
+      "activeStreams": "Активні трансляції",
+      "unresolvedAlerts": "Невирішені сповіщення",
+      "systemHealth": "Стан системи",
+      "systemHealthValue": "{value}%"
+    },
+    "userStats": {
+      "title": "Статистика користувачів",
+      "total": "Усього користувачів",
+      "active": "Активні користувачі",
+      "suspended": "Заблоковані",
+      "activityLabel": "Активність користувачів",
+      "activityPercent": "{value}%"
+    },
+    "streamStats": {
+      "title": "Статистика трансляцій",
+      "total": "Усього трансляцій",
+      "active": "Активно зараз",
+      "errors": "Помилки",
+      "usageLabel": "Використання трансляцій",
+      "usagePercent": "{value}%"
+    },
+    "recentUsers": {
+      "title": "Останні користувачі",
+      "loading": "Завантаження користувачів...",
+      "empty": "Ще немає користувачів",
+      "signedUp": "Зареєструвався {time}"
+    },
+    "recentAlerts": {
+      "title": "Останні сповіщення",
+      "loading": "Завантаження сповіщень...",
+      "empty": "Немає сповіщень",
+      "userTime": "{user} • {time}"
+    },
+    "badges": {
+      "suspended": "Заблоковано",
+      "active": "Активний"
+    },
+    "systemResources": {
+      "title": "Ресурси системи",
+      "storageUsage": "Використання сховища",
+      "storageSummary": "{used} ТБ / {total} ТБ",
+      "actions": {
+        "viewUsers": "Переглянути всіх користувачів",
+        "monitorStreams": "Моніторити трансляції",
+        "resolveAlerts": "Закрити сповіщення"
+      }
+    }
+  },
+  "settings": {
+    "header": {
+      "title": "Налаштування адмін-панелі",
+      "description": "Керуйте системними налаштуваннями та перевагами"
+    },
+    "notifications": {
+      "title": "Сповіщення",
+      "emailAlerts": {
+        "label": "Email-сповіщення",
+        "description": "Отримуйте листи про критичні сповіщення"
+      },
+      "userSignups": {
+        "label": "Реєстрації користувачів",
+        "description": "Повідомляти про нові реєстрації"
+      },
+      "save": "Зберегти налаштування"
+    },
+    "security": {
+      "title": "Безпека",
+      "twoFactor": {
+        "label": "Двофакторна автентифікація",
+        "description": "Увімкніть 2FA для адмін-акаунтів"
+      },
+      "loginAudit": {
+        "label": "Аудит входів",
+        "description": "Журналювати всі спроби входу адміністратора"
+      },
+      "save": "Зберегти налаштування"
+    },
+    "database": {
+      "title": "База даних",
+      "description": "Обслуговування бази та резервні копії",
+      "cleanup": "Очистити",
+      "backup": "Створити резервну копію"
+    },
+    "email": {
+      "title": "Налаштування email",
+      "description": "Налаштуйте постачальника email та шаблони",
+      "configure": "Налаштувати SMTP",
+      "test": "Тестовий лист"
+    }
+  }
+}

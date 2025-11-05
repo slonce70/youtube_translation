@@ -1,0 +1,127 @@
+{
+  "page": {
+    "header": {
+      "badge": "Pick what fits your stream",
+      "title": "Plans & Pricing",
+      "description": "Start on the Free tier, then scale memory, airtime, and destinations as your shows grow. All plans include analytics, smart encoding, and instant YouTube sync."
+    },
+  "plans": {
+    "free": {
+      "name": "Free",
+      "price": "$0",
+      "period": "forever",
+      "summary": "Launch your first streams with guardrails that keep costs down.",
+      "highlights": [
+        "3 GB memory buffer",
+        "8 hours of streaming per day",
+        "1 destination"
+      ],
+      "badge": "Current",
+      "ctaLabel": "Included"
+    },
+    "creator": {
+      "name": "Creator",
+      "price": "$29",
+      "period": "per month",
+      "summary": "Longer events and additional destinations for creators growing an audience.",
+      "highlights": [
+        "12 GB buffer",
+        "24 hours daily streaming",
+        "3 destinations"
+      ],
+      "badge": "Popular",
+      "ctaLabel": "Request upgrade"
+    },
+    "studio": {
+      "name": "Studio",
+      "price": "$79",
+      "period": "per month",
+      "summary": "Production teams that need parallel streams, playlists, and automation.",
+      "highlights": [
+        "32 GB buffer",
+        "24/7 streaming",
+        "8 destinations"
+      ],
+      "ctaLabel": "Talk to us"
+    },
+    "enterprise": {
+      "name": "Enterprise",
+      "price": "Let's chat",
+      "period": "custom",
+      "summary": "Scale across regions with SSO, dedicated support, and white-label experiences.",
+      "highlights": [
+        "Dedicated account team",
+        "Unlimited destinations",
+        "Custom SLAs"
+      ],
+      "ctaLabel": "Book a demo"
+    }
+  },
+  "comparison": {
+    "title": "Compare what's inside",
+    "featureHeader": "Feature",
+    "rows": {
+      "memoryBuffer": {
+        "label": "Memory buffer",
+        "values": {
+          "free": "3 GB",
+          "creator": "12 GB",
+          "studio": "32 GB",
+          "enterprise": "64 GB"
+        }
+      },
+      "dailyStreaming": {
+        "label": "Daily streaming limit",
+        "values": {
+          "free": "8 hours",
+          "creator": "24 hours",
+          "studio": "24/7",
+          "enterprise": "24/7"
+        }
+      },
+      "concurrentStreams": {
+        "label": "Concurrent streams",
+        "values": {
+          "free": "1",
+          "creator": "3",
+          "studio": "6",
+          "enterprise": "Unlimited"
+        }
+      },
+      "destinations": {
+        "label": "Destinations",
+        "values": {
+          "free": "1",
+          "creator": "6",
+          "studio": "12",
+          "enterprise": "Unlimited"
+        }
+      },
+      "prioritySupport": {
+        "label": "Priority support",
+        "values": {
+          "free": "Community",
+          "creator": "Email within 24h",
+          "studio": "Same-day",
+          "enterprise": "Dedicated CSM"
+        }
+      }
+    },
+    "booleanRows": {
+      "streamCalendar": {
+        "label": "Stream calendar & scheduling"
+      },
+      "customWatermark": {
+        "label": "Custom watermark control"
+      }
+    }
+  },
+  "faq": {
+    "title": "Questions?",
+    "description": "Upgrade flows are launching soon. Until then, drop us a line and we'll unlock the right tier for your workspace.",
+    "email": "Email support",
+    "call": "Schedule a call",
+    "brief": "View enterprise brief"
+    }
+  }
+}

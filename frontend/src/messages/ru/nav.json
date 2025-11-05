@@ -1,0 +1,25 @@
+{
+  "brand": {
+    "name": "YouTube Streaming"
+  },
+  "menu": {
+    "dashboard": "Панель",
+    "library": "Библиотека",
+    "streaming": "Трансляции",
+    "plans": "Тарифы"
+  },
+  "profile": {
+    "fallbackName": "Пользователь",
+    "freePlanBadge": "Бесплатный план",
+    "accountSettings": "Настройки аккаунта",
+    "changePassword": "Сменить пароль",
+    "managePlan": "Управлять тарифом",
+    "signOut": "Выйти"
+  },
+  "mobile": {
+    "toggle": "Открыть меню"
+  },
+  "language": {
+    "label": "Язык"
+  }
+}
