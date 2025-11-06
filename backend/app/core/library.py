@@ -188,42 +188,41 @@ class MediaLibraryService:
         folder_ids: Optional[Sequence[UUID]] = None,
         tag_ids: Optional[Sequence[UUID]] = None,
     ) -> None:
-        folder_ids = folder_ids or []
-        tag_ids = tag_ids or []
-
-        valid_folder_ids = await self._validate_folder_ids(folder_ids, require_tag=False)
-        valid_tag_ids = await self._validate_folder_ids(tag_ids, require_tag=True)
-
-        await self.db.execute(
-            delete(AssetFolderLink).where(
-                AssetFolderLink.asset_id == asset_id,
-                AssetFolderLink.link_type == "folder",
-            )
-        )
-        await self.db.execute(
-            delete(AssetFolderLink).where(
-                AssetFolderLink.asset_id == asset_id,
-                AssetFolderLink.link_type == "tag",
-            )
-        )
-
-        for folder_id in valid_folder_ids:
-            self.db.add(
-                AssetFolderLink(
-                    asset_id=asset_id,
-                    folder_id=folder_id,
-                    link_type="folder",
+        if folder_ids is not None:
+            valid_folder_ids = await self._validate_folder_ids(folder_ids, require_tag=False)
+            await self.db.execute(
+                delete(AssetFolderLink).where(
+                    AssetFolderLink.asset_id == asset_id,
+                    AssetFolderLink.link_type == "folder",
                 )
             )
 
-        for tag_id in valid_tag_ids:
-            self.db.add(
-                AssetFolderLink(
-                    asset_id=asset_id,
-                    folder_id=tag_id,
-                    link_type="tag",
+            for folder_id in valid_folder_ids:
+                self.db.add(
+                    AssetFolderLink(
+                        asset_id=asset_id,
+                        folder_id=folder_id,
+                        link_type="folder",
+                    )
+                )
+
+        if tag_ids is not None:
+            valid_tag_ids = await self._validate_folder_ids(tag_ids, require_tag=True)
+            await self.db.execute(
+                delete(AssetFolderLink).where(
+                    AssetFolderLink.asset_id == asset_id,
+                    AssetFolderLink.link_type == "tag",
                 )
             )
+
+            for tag_id in valid_tag_ids:
+                self.db.add(
+                    AssetFolderLink(
+                        asset_id=asset_id,
+                        folder_id=tag_id,
+                        link_type="tag",
+                    )
+                )
 
         await self.db.flush()
 
