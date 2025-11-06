@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from typing import List, Tuple, Dict, Any, Optional
 from pathlib import Path
 import asyncio
@@ -16,12 +16,21 @@ from datetime import datetime, timezone
 from fastapi.responses import FileResponse
 
 from app.api.deps import require_user
-from app.models.database import Asset
+from app.models.database import (
+    Asset,
+    Playlist,
+    PlaylistItem,
+    Stream,
+    StreamAsset,
+    SystemAlert,
+    UserActivityLog,
+)
 from app.schemas.api import AssetResponse, AssetCreate, AssetUpdate, AssetDownloadLinkResponse
 from app.streaming.validator import VideoValidator
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.quota import QuotaEnforcer
+from app.core.storage import adjust_storage_usage
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -162,6 +171,7 @@ async def create_asset(
         # Check quota for assets
         enforcer = QuotaEnforcer(db, user_id)
         await enforcer.check_assets_limit()
+        await enforcer.check_storage_limit(additional_bytes=asset_data.size_bytes)
         
         # Create asset record - directly for user_id
         asset = Asset(
@@ -179,6 +189,7 @@ async def create_asset(
             apply_stream_summary_fields(asset, asset_data.meta)
         
         db.add(asset)
+        await adjust_storage_usage(db, user_id, asset.size_bytes or 0)
         await db.commit()
         await db.refresh(asset)
         
@@ -428,6 +439,10 @@ async def handle_upload_complete(
 
         if asset_owner_id:
             try:
+                enforcer = QuotaEnforcer(db, asset_owner_id)
+                await enforcer.check_assets_limit()
+                await enforcer.check_storage_limit(additional_bytes=size_bytes)
+
                 asset = Asset(
                     user_id=asset_owner_id,
                     filename=filename_override or file_path.name,
@@ -442,6 +457,7 @@ async def handle_upload_complete(
                 apply_stream_summary_fields(asset, stream_info)
 
                 db.add(asset)
+                await adjust_storage_usage(db, asset_owner_id, asset.size_bytes or 0)
                 await db.commit()
                 await db.refresh(asset)
                 created_asset = asset
@@ -515,13 +531,19 @@ async def revalidate_asset(
         meta = validation_result.get("meta", {})
         stream_info = validator.get_stream_info(meta)
 
+        new_size = file_path.stat().st_size
+        delta = new_size - (asset.size_bytes or 0)
+
         asset.meta = stream_info
-        asset.size_bytes = file_path.stat().st_size
+        asset.size_bytes = new_size
         asset.duration_seconds = stream_info.get("duration")
         asset.compatible_for_copy = validation_result["compatible_for_copy"]
         asset.validation_errors = validation_result.get("validation_errors", [])
 
         apply_stream_summary_fields(asset, stream_info)
+
+        if delta:
+            await adjust_storage_usage(db, user_id, delta)
 
         await db.commit()
         await db.refresh(asset)
@@ -646,7 +668,7 @@ async def delete_asset(
 ):
     """Delete an asset and its file"""
     db, user_id = user_deps
-    
+
     try:
         # Get asset
         query = select(Asset).where(
@@ -655,13 +677,69 @@ async def delete_asset(
         )
         result = await db.execute(query)
         asset = result.scalar_one_or_none()
-        
+
         if not asset:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Asset not found"
             )
-        
+
+        # Prevent deletion if asset is referenced by playlists or streams
+        playlist_refs = await db.execute(
+            select(Playlist.id, Playlist.name)
+            .join(PlaylistItem, PlaylistItem.playlist_id == Playlist.id)
+            .where(
+                PlaylistItem.asset_id == asset_id,
+                Playlist.user_id == user_id,
+            )
+            .limit(5)
+        )
+        playlist_rows = playlist_refs.all()
+
+        stream_refs = await db.execute(
+            select(Stream.id, Stream.name, Stream.status)
+            .join(StreamAsset, StreamAsset.stream_id == Stream.id)
+            .where(
+                StreamAsset.asset_id == asset_id,
+                Stream.user_id == user_id,
+            )
+            .limit(5)
+        )
+        stream_rows = stream_refs.all()
+
+        if playlist_rows or stream_rows:
+            detail_payload = {
+                "error": "asset_in_use",
+                "message": "Asset is used in playlists or streams and cannot be deleted.",
+                "playlists": [
+                    {"id": str(row.id), "name": row.name} for row in playlist_rows
+                ],
+                "streams": [
+                    {"id": str(row.id), "name": row.name, "status": row.status}
+                    for row in stream_rows
+                ],
+            }
+
+            alert = SystemAlert(
+                user_id=user_id,
+                asset_id=asset_id,
+                alert_type="asset_in_use",
+                severity="warning",
+                message="Asset deletion blocked due to existing references",
+                details=detail_payload,
+            )
+            db.add(alert)
+            await db.commit()
+
+            logger.warning(
+                "Asset %s deletion blocked for user %s due to references", asset_id, user_id
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=detail_payload,
+            )
+
         # Delete file from disk along with associated tusd metadata (.info)
         file_path = Path(asset.storage_path)
         info_candidates = set()
@@ -680,13 +758,29 @@ async def delete_asset(
                     logger.info("Deleted companion info file: %s", info_path)
                 except Exception as info_err:
                     logger.warning("Failed to delete info file %s: %s", info_path, info_err)
-        
+
+        asset_size = asset.size_bytes or 0
+
         # Delete from database
-        await db.execute(delete(Asset).where(Asset.id == asset_id))
+        await db.delete(asset)
+        await adjust_storage_usage(db, user_id, -asset_size)
+
+        db.add(
+            UserActivityLog(
+                user_id=user_id,
+                activity_type="asset_deleted",
+                details={
+                    "asset_id": str(asset_id),
+                    "filename": asset.filename,
+                    "size_bytes": asset_size,
+                },
+            )
+        )
+
         await db.commit()
-        
+
         logger.info(f"Deleted asset {asset_id}")
-        
+
     except HTTPException:
         raise
     except Exception as e:

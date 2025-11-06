@@ -91,6 +91,16 @@ def _extract_stream_assets(stream: Stream):
     return assets_data, loop_enabled
 
 
+def _asset_is_audio_only(asset: Asset) -> bool:
+    meta = asset.meta or {}
+    if not isinstance(meta, dict):
+        return False
+
+    video_meta = meta.get("video")
+    audio_meta = meta.get("audio")
+    return audio_meta is not None and not video_meta
+
+
 @router.get("/", response_model=List[StreamResponse])
 async def list_streams(
     user_deps: tuple = Depends(require_user)
@@ -175,6 +185,17 @@ async def create_stream(
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Asset selection contains duplicates or invalid IDs"
+                )
+
+            invalid_assets = [asset for asset in selected_assets if _asset_is_audio_only(asset)]
+            if invalid_assets:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "error": "invalid_asset_type",
+                        "message": "Audio-only assets cannot be used as video backgrounds.",
+                        "asset_ids": [str(asset.id) for asset in invalid_assets],
+                    },
                 )
 
         source_type = "playlist" if playlist else "assets"
