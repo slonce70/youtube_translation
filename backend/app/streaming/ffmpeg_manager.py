@@ -12,8 +12,8 @@ import aiofiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
-from app.core.database import async_session_maker
-from app.models.database import SystemAlert
+from app.core.database import get_db_context
+from app.models.database import Stream, SystemAlert
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +125,9 @@ class FFmpegStreamManager:
                     return False
 
                 process = self.active_streams[stream_id]
+                info = self.stream_info.get(stream_id)
+                if info is not None:
+                    info["manual_stop"] = True
                 
                 logger.info(f"Stopping stream {stream_id} (PID {process.pid})")
 
@@ -207,12 +210,13 @@ class FFmpegStreamManager:
         # Build tee muxer output
         tee_outputs = []
         for dest in destinations:
-            rtmps_url = f"{dest['url']}/{dest['key']}"
-            # Use fifo muxer with recovery for each destination, force Annex B bitstream for FLV
+            base_url = str(dest.get("url") or "").rstrip("/")
+            stream_key = str(dest.get("key") or "").strip()
+            rtmps_url = f"{base_url}/{stream_key}" if base_url else stream_key
+            # Use fifo muxer with recovery for each destination to survive transient failures
             output = (
                 "[select='v\\:0,a\\:0':"
-                "f=fifo:fifo_format=flv:attempt_recovery=1:recovery_wait_time=5:"
-                "bsfs=v=h264_metadata+remove_extra+filter_units=remove_types=6|h264_mp4toannexb]"
+                "f=fifo:fifo_format=flv:attempt_recovery=1:recovery_wait_time=5]"
                 f"{rtmps_url}"
             )
             tee_outputs.append(output)
@@ -228,7 +232,10 @@ class FFmpegStreamManager:
             "-i", str(playlist_file),
             "-map", "0:v:0",
             "-map", "0:a:0?",
-            "-c", "copy",  # NO TRANSCODING
+            "-c:v", "copy",  # keep original video stream
+            "-c:a", "copy",  # keep original audio stream
+            "-bsf:v", "h264_mp4toannexb",
+            "-tag:v", "h264",
             "-f", "tee",
             tee_output
         ]
@@ -253,9 +260,19 @@ class FFmpegStreamManager:
             if info is not None:
                 info["last_exit_code"] = returncode
                 info["last_finished_at"] = datetime.utcnow()
-            
-            if returncode == 0:
-                logger.info(f"Stream {stream_id} exited normally")
+                manual_stop = bool(info.get("manual_stop"))
+            else:
+                manual_stop = False
+
+            if returncode == 0 or manual_stop:
+                if manual_stop and returncode != 0:
+                    logger.info(
+                        "Stream %s exited after manual stop (code %s)",
+                        stream_id,
+                        returncode,
+                    )
+                else:
+                    logger.info(f"Stream {stream_id} exited normally")
                 async with self._cleanup_lock:
                     self.active_streams.pop(stream_id, None)
                     self.stream_info.pop(stream_id, None)
@@ -278,6 +295,12 @@ class FFmpegStreamManager:
         else:
             recent_errors = []
 
+        stream_uuid: Optional[UUID] = None
+        try:
+            stream_uuid = UUID(str(stream_id))
+        except ValueError:
+            logger.debug("Stream ID %s is not a UUID; skipping DB failure update", stream_id)
+
         if recent_errors:
             logger.error(
                 "Recent FFmpeg stderr for %s:\n%s",
@@ -297,6 +320,8 @@ class FFmpegStreamManager:
             restart_attempts=attempts,
             will_restart=will_restart,
         )
+
+        final_failure = not will_restart
 
         if will_restart:
             info["restart_attempts"] = attempts + 1
@@ -355,6 +380,10 @@ class FFmpegStreamManager:
                 restart_attempts=info.get("restart_attempts", attempts + 1),
                 will_restart=False,
             )
+            final_failure = True
+
+        if final_failure and stream_uuid:
+            await self._mark_stream_failed(stream_uuid, returncode, recent_errors)
 
         async with self._cleanup_lock:
             self.active_streams.pop(stream_id, None)
@@ -405,17 +434,71 @@ class FFmpegStreamManager:
         )
 
         try:
-            async with async_session_maker() as session:
+            async with get_db_context() as session:
                 session.add(alert)
-                await session.commit()
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to persist FFmpeg alert for stream %s: %s", stream_id, exc)
+        except Exception as exc:
+            logger.exception("Unexpected error while persisting alert for stream %s: %s", stream_id, exc)
+        else:
             logger.info(
                 "Created %s alert for stream %s (attempt %s)",
                 severity,
                 stream_id,
                 restart_attempts,
             )
+
+    async def _mark_stream_failed(
+        self,
+        stream_uuid: UUID,
+        returncode: int,
+        recent_errors: List[str],
+    ) -> None:
+        """Update stream record to reflect a terminal FFmpeg failure."""
+        try:
+            async with get_db_context() as session:
+                stream = await session.get(Stream, stream_uuid)
+                if not stream:
+                    logger.debug(
+                        "Unable to persist failure state: stream %s not found in database",
+                        stream_uuid,
+                    )
+                    return
+
+                now = datetime.utcnow()
+                if stream.started_at:
+                    elapsed = (now - stream.started_at).total_seconds()
+                    if elapsed > 0:
+                        current_total = stream.total_duration_seconds or 0.0
+                        stream.total_duration_seconds = current_total + elapsed
+
+                stream.status = "error"
+                stream.pid = None
+                stream.stopped_at = now
+
+                snippet = "; ".join(recent_errors[-3:]) if recent_errors else ""
+                if snippet and len(snippet) > 500:
+                    snippet = f"{snippet[:497]}..."
+
+                if snippet:
+                    stream.error_message = (
+                        f"FFmpeg exited with code {returncode}. Last errors: {snippet}"
+                    )
+                else:
+                    stream.error_message = f"FFmpeg exited with code {returncode}."
+
         except SQLAlchemyError as exc:
-            logger.exception("Failed to persist FFmpeg alert for stream %s: %s", stream_id, exc)
+            logger.exception(
+                "Database error while marking stream %s as failed: %s",
+                stream_uuid,
+                exc,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error while marking stream %s as failed: %s",
+                stream_uuid,
+                exc,
+            )
 
     async def _write_logs_to_file(
         self,

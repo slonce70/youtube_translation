@@ -105,34 +105,50 @@ async def logout(authorization: Optional[str] = Header(None)):
             detail="Missing or invalid authorization header",
         )
 
-    logout_url = f"{settings.supabase_url.rstrip('/')}/auth/v1/logout"
-
+    admin_revoked = False
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            response = await client.post(
-                logout_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "apikey": settings.supabase_key,
-                },
-            )
-    except httpx.HTTPError as exc:
-        logger.exception("Network error during Supabase logout: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Supabase logout service unavailable",
-        )
+        client = _create_supabase_client()
+        await asyncio.to_thread(client.auth.admin.sign_out, token, "global")
+        admin_revoked = True
+    except Exception as exc:  # pragma: no cover - defensive safeguard
+        logger.warning("Supabase admin sign_out failed: %s", exc)
 
-    if response.status_code >= 400:
-        logger.warning(
-            "Supabase logout failed with status %s: %s",
-            response.status_code,
-            response.text,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to revoke session",
-        )
+    if not admin_revoked:
+        logout_url = f"{settings.supabase_url.rstrip('/')}/auth/v1/logout"
+
+        try:
+            async with httpx.AsyncClient(timeout=5) as http_client:
+                response = await http_client.post(
+                    logout_url,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "apikey": settings.supabase_key,
+                    },
+                )
+        except httpx.HTTPError as exc:
+            logger.exception("Network error during Supabase logout: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase logout service unavailable",
+            )
+
+        if response.status_code >= 500:
+            logger.error(
+                "Supabase logout returned %s: %s",
+                response.status_code,
+                response.text,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase logout service unavailable",
+            )
+
+        if response.status_code >= 400:
+            logger.warning(
+                "Supabase logout failed with status %s: %s",
+                response.status_code,
+                response.text,
+            )
 
     invalidate_cached_user(token)
 

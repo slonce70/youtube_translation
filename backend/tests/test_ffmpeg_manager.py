@@ -185,3 +185,51 @@ class TestFFmpegStreamManager:
         # Cleanup executed
         assert stream_id not in manager.stream_info
         assert stream_id not in manager.active_streams
+
+    @pytest.mark.asyncio
+    async def test_handle_stream_failure_marks_stream_error(self, monkeypatch):
+        """Final FFmpeg failure should persist error state for UUID streams."""
+        manager = FFmpegStreamManager()
+        stream_id = "22222222-2222-2222-2222-222222222222"
+
+        manager.stream_info[stream_id] = {
+            "metadata": {"user_id": "cccccccc-cccc-cccc-cccc-cccccccccccc"},
+            "restart_attempts": 0,
+            "recent_errors": deque(["fatal"], maxlen=20),
+        }
+        manager.active_streams[stream_id] = AsyncMock()
+
+        monkeypatch.setattr(settings, "ffmpeg_auto_restart_attempts", 0)
+        manager._create_system_alert = AsyncMock()
+        manager.start_stream = AsyncMock()
+
+        marker = AsyncMock()
+        monkeypatch.setattr(manager, "_mark_stream_failed", marker)
+
+        await manager._handle_stream_failure(stream_id, returncode=234)
+
+        marker.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_monitor_process_manual_stop_skips_failure(self, monkeypatch):
+        """Manual stop should not trigger failure handling or auto-restart."""
+        manager = FFmpegStreamManager()
+        stream_id = "manual-stop-stream"
+
+        process = AsyncMock()
+        process.wait = AsyncMock(return_value=-9)
+
+        manager.active_streams[stream_id] = process
+        manager.stream_info[stream_id] = {
+            "manual_stop": True,
+            "recent_errors": deque(maxlen=20),
+        }
+
+        handler = AsyncMock()
+        monkeypatch.setattr(manager, "_handle_stream_failure", handler)
+
+        await manager._monitor_process(stream_id, process, None)
+
+        handler.assert_not_called()
+        assert stream_id not in manager.active_streams
+        assert stream_id not in manager.stream_info

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
+import type { Locale as DateFnsLocale } from 'date-fns'
+import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
 import {
   Radio,
   Play,
@@ -21,7 +23,7 @@ import {
   Settings,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from 'next/navigation'
 
 import { api } from '@/lib/api'
@@ -79,6 +81,12 @@ const statusVariantMap: Record<StreamStatusValue, 'success' | 'info' | 'warning'
   error: 'error',
 }
 
+const dateLocales: Record<string, DateFnsLocale> = {
+  en: enUS,
+  ru,
+  uk: ukLocale,
+}
+
 export default function StreamingPage() {
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -86,6 +94,8 @@ export default function StreamingPage() {
   const streamingToasts = useTranslations('streaming.toasts')
   const streamingStatus = useTranslations('streaming.status')
   const tStreaming = useTranslations('streaming.page')
+  const locale = useLocale()
+  const dateLocale = dateLocales[locale] ?? enUS
 
   const violationTranslationKey: Record<string, string> = {
     resolution_exceeded: 'streams.quality.violations.resolution',
@@ -654,7 +664,7 @@ export default function StreamingPage() {
                             </div>
                             <div>
                               <p className="text-slate-500 dark:text-slate-400">{tStreaming('streams.labels.created')}</p>
-                              <p className="font-medium">{formatDistanceToNow(new Date(stream.created_at), { addSuffix: true })}</p>
+                              <p className="font-medium">{formatDistanceToNow(new Date(stream.created_at), { addSuffix: true, locale: dateLocale })}</p>
                             </div>
                           </div>
 

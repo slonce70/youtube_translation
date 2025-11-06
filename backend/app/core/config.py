@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator, FieldValidationInfo
-from typing import List, Optional
-from urllib.parse import urlparse, urlunparse, quote, unquote
+from typing import List, Optional, Union
+from urllib.parse import urlparse, urlunparse, quote, unquote, parse_qsl, urlencode
 
 
 class Settings(BaseSettings):
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
 
     # CORS
-    allowed_origins: List[str] | str = ["http://localhost:3000"]
+    allowed_origins: Union[List[str], str] = ["http://localhost:3000"]
 
     # Internal integrations
     tusd_hmac_secret: Optional[str] = None
@@ -121,6 +121,39 @@ class Settings(BaseSettings):
 
                 parsed = parsed._replace(netloc=netloc)
                 v = urlunparse(parsed)
+
+            # Ensure pooler connections run in session mode and align pool size limits
+            query_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+
+            pool_mode = query_params.pop('pool_mode', None)
+            if pool_mode and pool_mode.lower() != 'session':
+                raise ValueError(
+                    "Supabase pooler must use pool_mode=session for async connections. "
+                    "Update DATABASE_URL parameters."
+                )
+
+            existing_pool_size = query_params.get('pool_size')
+            if existing_pool_size:
+                try:
+                    existing_value = int(existing_pool_size)
+                except ValueError as exc:
+                    raise ValueError("DATABASE_URL pool_size must be an integer") from exc
+
+                if existing_value < 1:
+                    raise ValueError("DATABASE_URL pool_size must be at least 1")
+            else:
+                configured_pool_size = (info.data or {}).get('db_pool_size') if info is not None else None
+                if configured_pool_size is not None:
+                    try:
+                        configured_value = int(configured_pool_size)
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError("DB_POOL_SIZE must be an integer") from exc
+
+                    if configured_value < 1:
+                        raise ValueError("DB_POOL_SIZE must be at least 1")
+
+            parsed = parsed._replace(query=urlencode(query_params))
+            v = urlunparse(parsed)
 
         return v
 
