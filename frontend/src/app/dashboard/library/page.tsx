@@ -41,11 +41,48 @@ type AssetDisplayInfo = {
   audioSampleRate?: number
   audioChannels?: number
   issues: string[]
-  warnings: string[]
+  warnings: AssetWarning[]
   recommendationLabel?: string
   recommendationDetails?: string
   bitrateStatus: 'within' | 'outside' | 'unknown'
 }
+
+type AssetWarning =
+  | {
+      kind: 'bitrateRange'
+      payload: {
+        resolution: string
+        fps: number
+        min: string
+        max: string
+        target: string
+      }
+    }
+  | { kind: 'fpsOutOfGuideline' }
+  | {
+      kind: 'videoCodec'
+      payload: { expected: string; found?: string | null }
+    }
+  | {
+      kind: 'audioCodec'
+      payload: { expected: string; found?: string | null }
+    }
+  | {
+      kind: 'pixelFormat'
+      payload: { expected: string; found?: string | null }
+    }
+  | {
+      kind: 'gopTooLarge'
+      payload: { found: string; limit: string }
+    }
+  | { kind: 'noVideoStream' }
+  | { kind: 'noAudioStream' }
+  | {
+      kind: 'requiresTranscode'
+      payload?: { video?: string; audio?: string; pixel?: string }
+    }
+  | { kind: 'missingMetadata' }
+  | { kind: 'custom'; message: string }
 
 const formatBitrateDisplay = (bps?: number): string => {
   if (!bps || !Number.isFinite(bps)) return '—'
@@ -70,7 +107,7 @@ const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
   const video = (meta?.video ?? {}) as Record<string, any>
   const audio = (meta?.audio ?? {}) as Record<string, any>
   const backendWarnings = Array.isArray(meta?.warnings) ? (meta.warnings as string[]) : []
-  const validationIssues = Array.isArray(asset.validation_errors)
+  const rawValidationErrors = Array.isArray(asset.validation_errors)
     ? [...(asset.validation_errors as string[])]
     : []
   const backendRecommendation = meta?.recommendation as
@@ -95,7 +132,6 @@ const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
     return undefined
   }
 
-  const warnings = [...backendWarnings]
   let recommendation = matchBitrateRecommendation(
     safeNumber(video.height),
     safeNumber(video.fps)
@@ -119,6 +155,231 @@ const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
     }
   }
 
+  const warnings: AssetWarning[] = []
+  const STREAM_VIDEO_EXPECTED = 'H.264'
+  const STREAM_AUDIO_EXPECTED = 'AAC'
+  const STREAM_PIXEL_EXPECTED = 'yuv420p'
+
+  const videoBitrate = safeNumber(video.bitrate)
+  const videoFps = safeNumber(video.fps)
+  const videoWidth = safeNumber(video.width)
+  const videoHeight = safeNumber(video.height)
+  const audioBitrate = safeNumber(audio.bitrate)
+  const audioSampleRate = safeNumber(audio.sample_rate)
+  const audioChannels = safeNumber(audio.channels)
+
+  const ensureRequiresTranscode = () => {
+    if (!warnings.some((warning) => warning.kind === 'requiresTranscode')) {
+      warnings.push({
+        kind: 'requiresTranscode',
+        payload: {
+          video: STREAM_VIDEO_EXPECTED,
+          audio: STREAM_AUDIO_EXPECTED,
+          pixel: STREAM_PIXEL_EXPECTED,
+        },
+      })
+    }
+  }
+
+  const pushBitrateWarning = (): boolean => {
+    const rule = recommendation.rule
+    if (!rule) return false
+    if (warnings.some((warning) => warning.kind === 'bitrateRange')) return true
+
+    const resolutionLabel = rule.resolutionLabel ?? (videoHeight ? `${videoHeight}p` : '?p')
+    const fpsValue = rule.fps ?? (videoFps ? Math.round(videoFps) : 0)
+
+    warnings.push({
+      kind: 'bitrateRange',
+      payload: {
+        resolution: resolutionLabel,
+        fps: fpsValue,
+        min: rule.minBitrateMbps.toFixed(0),
+        max: rule.maxBitrateMbps.toFixed(0),
+        target: rule.targetBitrateMbps.toFixed(0),
+      },
+    })
+    return true
+  }
+
+  const pushFpsWarning = (): void => {
+    if (!warnings.some((warning) => warning.kind === 'fpsOutOfGuideline')) {
+      warnings.push({ kind: 'fpsOutOfGuideline' })
+    }
+  }
+
+  const pushVideoCodecWarning = (found?: string | null, expected: string = STREAM_VIDEO_EXPECTED) => {
+    warnings.push({
+      kind: 'videoCodec',
+      payload: {
+        expected,
+        found: found ? found.toUpperCase() : found,
+      },
+    })
+    ensureRequiresTranscode()
+  }
+
+  const pushAudioCodecWarning = (found?: string | null, expected: string = STREAM_AUDIO_EXPECTED) => {
+    warnings.push({
+      kind: 'audioCodec',
+      payload: {
+        expected,
+        found: found ? found.toUpperCase() : found,
+      },
+    })
+    ensureRequiresTranscode()
+  }
+
+  const pushPixelFormatWarning = (found?: string | null, expected: string = STREAM_PIXEL_EXPECTED) => {
+    warnings.push({
+      kind: 'pixelFormat',
+      payload: {
+        expected,
+        found,
+      },
+    })
+    ensureRequiresTranscode()
+  }
+
+  const pushMissingMetadataWarning = () => {
+    if (!warnings.some((warning) => warning.kind === 'missingMetadata')) {
+      warnings.push({ kind: 'missingMetadata' })
+    }
+    ensureRequiresTranscode()
+  }
+
+  const pushNoVideoStreamWarning = () => {
+    if (!warnings.some((warning) => warning.kind === 'noVideoStream')) {
+      warnings.push({ kind: 'noVideoStream' })
+    }
+    ensureRequiresTranscode()
+  }
+
+  const pushNoAudioStreamWarning = () => {
+    if (!warnings.some((warning) => warning.kind === 'noAudioStream')) {
+      warnings.push({ kind: 'noAudioStream' })
+    }
+    ensureRequiresTranscode()
+  }
+
+  const pushGopWarning = (found: string, limit: string) => {
+    warnings.push({ kind: 'gopTooLarge', payload: { found, limit } })
+    ensureRequiresTranscode()
+  }
+
+  for (const warning of backendWarnings) {
+    const normalized = warning.toLowerCase()
+    if (normalized.startsWith('video bitrate is outside')) {
+      if (pushBitrateWarning()) {
+        continue
+      }
+    }
+
+    if (normalized.startsWith('frame rate differs')) {
+      pushFpsWarning()
+      continue
+    }
+
+    if (normalized.includes('video codec must')) {
+      const expectedMatch = warning.match(/must be\s+([a-z0-9\.\-]+)/i)
+      const foundMatch = warning.match(/(?:got|found)\s+([a-z0-9\.\-]+)/i)
+      pushVideoCodecWarning(foundMatch?.[1] ?? null, (expectedMatch?.[1] ?? STREAM_VIDEO_EXPECTED).toUpperCase())
+      continue
+    }
+
+    if (normalized.includes('audio codec must')) {
+      const expectedMatch = warning.match(/must be\s+([a-z0-9\.\-]+)/i)
+      const foundMatch = warning.match(/(?:got|found)\s+([a-z0-9\.\-]+)/i)
+      pushAudioCodecWarning(foundMatch?.[1] ?? null, (expectedMatch?.[1] ?? STREAM_AUDIO_EXPECTED).toUpperCase())
+      continue
+    }
+
+    if (normalized.includes('pixel format must')) {
+      const expectedMatch = warning.match(/must be\s+([a-z0-9\.\-]+)/i)
+      const foundMatch = warning.match(/(?:got|found)\s+([a-z0-9\.\-]+)/i)
+      pushPixelFormatWarning(foundMatch?.[1] ?? null, (expectedMatch?.[1] ?? STREAM_PIXEL_EXPECTED).toLowerCase())
+      continue
+    }
+
+    if (normalized.includes('gop size')) {
+      const sizeMatch = warning.match(/gop size[^0-9]*(\d+)/i)
+      const limitMatch = warning.match(/(?:max|limit)\s*(\d+)/i)
+      if (sizeMatch) {
+        pushGopWarning(sizeMatch[1], limitMatch?.[1] ?? '')
+        continue
+      }
+    }
+
+    if (normalized.includes('no video stream')) {
+      pushNoVideoStreamWarning()
+      continue
+    }
+
+    if (normalized.includes('no audio stream')) {
+      pushNoAudioStreamWarning()
+      continue
+    }
+
+    if (normalized.includes('requires transcod')) {
+      ensureRequiresTranscode()
+      continue
+    }
+
+    if (normalized.includes('metadata is required') || normalized.includes('metadata is incomplete')) {
+      pushMissingMetadataWarning()
+      continue
+    }
+
+    warnings.push({ kind: 'custom', message: warning })
+  }
+
+  const unresolvedValidationIssues: string[] = []
+
+  for (const issue of rawValidationErrors) {
+    const normalized = issue.toLowerCase()
+    let handled = false
+
+    if (normalized.includes('video codec must')) {
+      const expectedMatch = issue.match(/must be\s+([a-z0-9\.\-]+)/i)
+      const foundMatch = issue.match(/(?:got|found)\s+([a-z0-9\.\-]+)/i)
+      pushVideoCodecWarning(foundMatch?.[1] ?? null, (expectedMatch?.[1] ?? STREAM_VIDEO_EXPECTED).toUpperCase())
+      handled = true
+    } else if (normalized.includes('audio codec must')) {
+      const expectedMatch = issue.match(/must be\s+([a-z0-9\.\-]+)/i)
+      const foundMatch = issue.match(/(?:got|found)\s+([a-z0-9\.\-]+)/i)
+      pushAudioCodecWarning(foundMatch?.[1] ?? null, (expectedMatch?.[1] ?? STREAM_AUDIO_EXPECTED).toUpperCase())
+      handled = true
+    } else if (normalized.includes('pixel format must')) {
+      const expectedMatch = issue.match(/must be\s+([a-z0-9\.\-]+)/i)
+      const foundMatch = issue.match(/(?:got|found)\s+([a-z0-9\.\-]+)/i)
+      pushPixelFormatWarning(foundMatch?.[1] ?? null, (expectedMatch?.[1] ?? STREAM_PIXEL_EXPECTED).toLowerCase())
+      handled = true
+    } else if (normalized.includes('gop size')) {
+      const sizeMatch = issue.match(/gop size[^0-9]*(\d+)/i)
+      const limitMatch = issue.match(/(?:max|limit)\s*(\d+)/i)
+      if (sizeMatch) {
+        pushGopWarning(sizeMatch[1], limitMatch?.[1] ?? '')
+        handled = true
+      }
+    } else if (normalized.includes('no video stream')) {
+      pushNoVideoStreamWarning()
+      handled = true
+    } else if (normalized.includes('no audio stream')) {
+      pushNoAudioStreamWarning()
+      handled = true
+    } else if (normalized.includes('requires transcod')) {
+      ensureRequiresTranscode()
+      handled = true
+    } else if (normalized.includes('metadata is required') || normalized.includes('metadata is incomplete')) {
+      pushMissingMetadataWarning()
+      handled = true
+    }
+
+    if (!handled) {
+      unresolvedValidationIssues.push(issue)
+    }
+  }
+
   let bitrateStatus: AssetDisplayInfo['bitrateStatus'] =
     backendRecommendation?.bitrate_status === 'within'
       ? 'within'
@@ -126,7 +387,6 @@ const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
       ? 'outside'
       : 'unknown'
 
-  const videoBitrate = safeNumber(video.bitrate)
   if (recommendation.rule && videoBitrate && bitrateStatus === 'unknown') {
     const bitrateMbps = videoBitrate / 1_000_000
     if (
@@ -136,30 +396,38 @@ const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
       bitrateStatus = 'within'
     } else {
       bitrateStatus = 'outside'
-      warnings.push(
-        `Video bitrate is outside the recommended range (${recommendation.rule.minBitrateMbps.toFixed(0)}–${recommendation.rule.maxBitrateMbps.toFixed(0)} Mbps, target ${recommendation.rule.targetBitrateMbps.toFixed(0)} Mbps).`
-      )
+      pushBitrateWarning()
     }
   }
 
   if (
-    (backendRecommendation?.fps_out_of_guideline ?? recommendation.fpsOutOfGuideline) &&
-    !warnings.some((warning) => warning.toLowerCase().includes('frame rate'))
+    backendRecommendation?.fps_out_of_guideline ?? recommendation.fpsOutOfGuideline
   ) {
-    warnings.push('Frame rate differs from the recommended 30 or 60 fps for live streaming.')
+    pushFpsWarning()
+  }
+
+  const hasVideoMetadata = video && Object.keys(video).length > 0
+  const hasAudioMetadata = audio && Object.keys(audio).length > 0
+
+  if (!hasVideoMetadata || !hasAudioMetadata) {
+    pushMissingMetadataWarning()
+  }
+
+  if (asset.compatible_for_copy === false) {
+    ensureRequiresTranscode()
   }
 
   return {
     videoCodec: video.codec,
     videoBitrate,
-    videoWidth: safeNumber(video.width),
-    videoHeight: safeNumber(video.height),
-    videoFps: safeNumber(video.fps),
+    videoWidth,
+    videoHeight,
+    videoFps,
     audioCodec: audio.codec,
-    audioBitrate: safeNumber(audio.bitrate),
-    audioSampleRate: safeNumber(audio.sample_rate),
-    audioChannels: safeNumber(audio.channels),
-    issues: validationIssues,
+    audioBitrate,
+    audioSampleRate,
+    audioChannels,
+    issues: unresolvedValidationIssues,
     warnings,
     recommendationLabel: recommendation.rule
       ? `${recommendation.rule.resolutionLabel}, ${recommendation.rule.fps} FPS`
@@ -178,7 +446,57 @@ export default function LibraryPage() {
   const { user } = useDashboardContext()
   const libraryToasts = useTranslations('library.toasts')
   const tLibrary = useTranslations('library.page')
+  const tAssetWarnings = useTranslations('library.page.assets.warnings')
   const actionLabels = useTranslations('common.actions')
+
+  const formatWarningMessage = (warning: AssetWarning): string => {
+    switch (warning.kind) {
+      case 'bitrateRange':
+        return tAssetWarnings('bitrateRange', {
+          resolution: warning.payload.resolution,
+          fps: warning.payload.fps,
+          min: warning.payload.min,
+          max: warning.payload.max,
+          target: warning.payload.target,
+        })
+      case 'fpsOutOfGuideline':
+        return tAssetWarnings('fpsOutOfGuideline')
+      case 'videoCodec':
+        return tAssetWarnings('videoCodec', {
+          expected: warning.payload.expected,
+          found: warning.payload.found ?? tAssetWarnings('unknownValue'),
+        })
+      case 'audioCodec':
+        return tAssetWarnings('audioCodec', {
+          expected: warning.payload.expected,
+          found: warning.payload.found ?? tAssetWarnings('unknownValue'),
+        })
+      case 'pixelFormat':
+        return tAssetWarnings('pixelFormat', {
+          expected: warning.payload.expected,
+          found: warning.payload.found ?? tAssetWarnings('unknownValue'),
+        })
+      case 'gopTooLarge':
+        return tAssetWarnings('gopTooLarge', {
+          found: warning.payload.found,
+          limit: warning.payload.limit,
+        })
+      case 'noVideoStream':
+        return tAssetWarnings('noVideoStream')
+      case 'noAudioStream':
+        return tAssetWarnings('noAudioStream')
+      case 'requiresTranscode':
+        return tAssetWarnings('requiresTranscode', {
+          video: warning.payload?.video ?? 'H.264',
+          audio: warning.payload?.audio ?? 'AAC',
+          pixel: warning.payload?.pixel ?? 'yuv420p',
+        })
+      case 'missingMetadata':
+        return tAssetWarnings('missingMetadata')
+      default:
+        return warning.message
+    }
+  }
 
   // Tab management with URL sync
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'assets')
@@ -762,7 +1080,7 @@ export default function LibraryPage() {
                                     className="flex items-start text-sm text-amber-600 dark:text-amber-400"
                                   >
                                     <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                                    <span>{warning}</span>
+                                    <span>{formatWarningMessage(warning)}</span>
                                   </div>
                                 ))}
                               </div>
@@ -1223,7 +1541,7 @@ export default function LibraryPage() {
                           className="flex items-start text-sm text-amber-600 dark:text-amber-400"
                         >
                           <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                          <span>{warning}</span>
+                          <span>{formatWarningMessage(warning)}</span>
                         </div>
                       ))}
                     </div>

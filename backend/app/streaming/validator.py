@@ -3,7 +3,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 from app.core.config import settings
 
@@ -318,7 +318,7 @@ class VideoValidator:
         except:
             return 0.0
 
-    def _normalize_fps(self, fps_value: float | None) -> tuple[int | None, bool]:
+    def _normalize_fps(self, fps_value: Optional[float]) -> Tuple[Optional[int], bool]:
         """Map numeric fps into the 30/60 buckets and flag out-of-guideline values."""
         if not fps_value or fps_value <= 0:
             return None, True
@@ -335,7 +335,7 @@ class VideoValidator:
             return 30, True
         return 60, True
 
-    def _match_bitrate_guidance(self, height: int | None, fps_value: float | None):
+    def _match_bitrate_guidance(self, height: Optional[int], fps_value: Optional[float]):
         """Find the best matching bitrate recommendation for provided height/fps."""
         if not height:
             return None, None, True

@@ -48,6 +48,19 @@
         "audio": "Audio",
         "channels": "{count} channels"
       },
+    "warnings": {
+      "bitrateRange": "Video bitrate is outside the recommended range. For {resolution} at {fps} FPS, aim for {min}–{max} Mbps (target {target} Mbps).",
+      "fpsOutOfGuideline": "Frame rate differs from the recommended 30 or 60 FPS for live streaming.",
+      "videoCodec": "Video codec must be {expected} for stream copy. Detected {found}.",
+      "audioCodec": "Audio codec must be {expected} for stream copy. Detected {found}.",
+      "pixelFormat": "Pixel format must be {expected} for stream copy. Detected {found}.",
+      "requiresTranscode": "Re-encode this file with {video} video, {audio} audio, and {pixel} pixel format before streaming.",
+      "missingMetadata": "Video metadata is incomplete. Refresh validation after re-uploading.",
+      "gopTooLarge": "GOP size is {found}, exceeding the recommended limit of {limit}.",
+      "noVideoStream": "Video stream missing in the uploaded file.",
+      "noAudioStream": "Audio stream missing in the uploaded file.",
+      "unknownValue": "unknown"
+    },
       "empty": {
         "title": "No assets yet",
         "description": "Upload your first video asset to get started",
@@ -158,7 +171,8 @@
         "uploading": "uploading",
         "processing": "processing",
         "complete": "done",
-        "error": "error"
+        "error": "error",
+        "needsEncoding": "needs re-encoding"
       }
     },
     "media": {
@@ -179,7 +193,11 @@
     "warnings": {
       "metadataUnavailable": "Unable to extract technical metadata locally. The server validator will double-check after upload.",
       "bitrateRange": "Video bitrate is outside the recommended range. For {resolution} at {fps} FPS, aim for {min}–{max} Mbps (target {target} Mbps).",
-      "fpsOutOfGuideline": "Detected frame rate falls outside the recommended 30 or 60 FPS for live streams."
+      "fpsOutOfGuideline": "Detected frame rate falls outside the recommended 30 or 60 FPS for live streams.",
+      "videoCodec": "Video codec must be {expected} for stream copy. Detected {found}.",
+      "audioCodec": "Audio codec must be {expected} for stream copy. Detected {found}.",
+      "pixelFormat": "Pixel format must be {expected} for stream copy. Detected {found}.",
+      "unknownValue": "unknown"
     },
     "errors": {
       "metadataHelper": "Couldn't load the MediaInfo helper. We'll refresh metadata after the upload completes."

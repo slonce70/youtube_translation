@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import List, Dict, Tuple, Any, Optional
+from typing import List, Dict, Tuple, Any, Optional, Union
 
 from app.core.config import settings
 from app.streaming.validator import VideoValidator
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class PlaylistBuilder:
     """Builds FFmpeg concat demuxer playlist files"""
 
-    def __init__(self, streams_dir: Optional[Path | str] = None):
+    def __init__(self, streams_dir: Optional[Union[Path, str]] = None):
         self.streams_dir = Path(streams_dir) if streams_dir else Path(settings.stream_dir)
 
     async def build_playlist(self, playlist_id: str, assets: List[Dict[str, Any]]) -> Path:
@@ -150,9 +150,16 @@ class PlaylistBuilder:
                 )
 
             if not video:
+                message = "Video metadata is required for validation."
                 add_issue(
                     "missing_video_metadata",
-                    "Video metadata is required for validation.",
+                    message,
+                    index,
+                    asset,
+                )
+                add_issue(
+                    "missing_metadata",
+                    message,
                     index,
                     asset,
                 )
@@ -166,9 +173,20 @@ class PlaylistBuilder:
                         asset,
                     )
                 elif video_codec != VideoValidator.REQUIRED_VIDEO_CODEC:
+                    codec_message = (
+                        f"Video codec must be {VideoValidator.REQUIRED_VIDEO_CODEC.upper()} for direct streaming."
+                    )
                     add_issue(
                         "video_codec_invalid",
-                        f"Video codec must be {VideoValidator.REQUIRED_VIDEO_CODEC.upper()} for direct streaming.",
+                        codec_message,
+                        index,
+                        asset,
+                        expected=VideoValidator.REQUIRED_VIDEO_CODEC,
+                        found=video_codec,
+                    )
+                    add_issue(
+                        "video_codec_mismatch",
+                        codec_message,
                         index,
                         asset,
                         expected=VideoValidator.REQUIRED_VIDEO_CODEC,
@@ -194,9 +212,16 @@ class PlaylistBuilder:
                     )
 
             if not audio:
+                message = "Audio metadata is required for validation."
                 add_issue(
                     "missing_audio_metadata",
-                    "Audio metadata is required for validation.",
+                    message,
+                    index,
+                    asset,
+                )
+                add_issue(
+                    "missing_metadata",
+                    message,
                     index,
                     asset,
                 )

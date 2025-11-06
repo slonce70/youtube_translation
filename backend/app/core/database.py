@@ -3,6 +3,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 
 from app.core.config import settings
@@ -45,6 +46,30 @@ async_session_maker = sessionmaker(
 )
 
 
+_db_connection_semaphore = asyncio.Semaphore(max(settings.db_pool_size, 1))
+
+
+@asynccontextmanager
+async def _managed_session():
+    async with _db_connection_semaphore:
+        async with async_session_maker() as session:
+            try:
+                yield session
+            except Exception as e:
+                await session.rollback()
+                logger.exception(f"Database error, rolling back: {e}")
+                raise
+            else:
+                try:
+                    await session.commit()
+                except Exception as e:
+                    await session.rollback()
+                    logger.exception(f"Commit failed, rolling back: {e}")
+                    raise
+            finally:
+                await session.close()
+
+
 async def get_db() -> AsyncSession:
     """
     Dependency for getting database session.
@@ -55,23 +80,8 @@ async def get_db() -> AsyncSession:
         async def get_items(db: AsyncSession = Depends(get_db)):
             ...
     """
-    async with async_session_maker() as session:
-        try:
-            yield session
-        except Exception as e:
-            await session.rollback()
-            logger.exception(f"Database error, rolling back: {e}")
-            raise
-        else:
-            # Only commit if no exception occurred
-            try:
-                await session.commit()
-            except Exception as e:
-                await session.rollback()
-                logger.exception(f"Commit failed, rolling back: {e}")
-                raise
-        finally:
-            await session.close()
+    async with _managed_session() as session:
+        yield session
 
 
 @asynccontextmanager
@@ -84,22 +94,8 @@ async def get_db_context():
         async with get_db_context() as db:
             result = await db.execute(...)
     """
-    async with async_session_maker() as session:
-        try:
-            yield session
-        except Exception as e:
-            await session.rollback()
-            logger.exception(f"Database error, rolling back: {e}")
-            raise
-        else:
-            try:
-                await session.commit()
-            except Exception as e:
-                await session.rollback()
-                logger.exception(f"Commit failed, rolling back: {e}")
-                raise
-        finally:
-            await session.close()
+    async with _managed_session() as session:
+        yield session
 
 
 async def init_db():

@@ -63,6 +63,7 @@ interface UploadAnalysis {
   recommendationLabel?: string
   recommendationDetails?: string
   normalizedFpsLabel?: string
+  isLikelyCompatible?: boolean
 }
 
 interface UploadItem {
@@ -193,6 +194,70 @@ function formatSampleRate(value?: number): string {
   return `${value.toFixed(0)} Hz`
 }
 
+function firstNonEmpty(...values: Array<unknown>): string | undefined {
+  for (const value of values) {
+    if (value === undefined || value === null) continue
+    const text = String(value).trim()
+    if (text) {
+      return text
+    }
+  }
+  return undefined
+}
+
+function normalizeVideoCodec(raw?: string): string | undefined {
+  if (!raw) return undefined
+  const value = raw.toLowerCase()
+  if (value.includes('avc') || value.includes('h264') || value.includes('x264')) {
+    return 'h264'
+  }
+  if (value.includes('hevc') || value.includes('h265') || value.includes('x265')) {
+    return 'hevc'
+  }
+  if (value.includes('mpeg-4') || value.includes('mp4v') || value.includes('mp42')) {
+    return 'mpeg4'
+  }
+  if (value.includes('vp9')) {
+    return 'vp9'
+  }
+  return value.replace(/[^a-z0-9]/g, '') || value
+}
+
+function normalizeAudioCodec(raw?: string): string | undefined {
+  if (!raw) return undefined
+  const value = raw.toLowerCase()
+  if (value.includes('aac') || value.includes('mp4a')) {
+    return 'aac'
+  }
+  if (value.includes('opus')) {
+    return 'opus'
+  }
+  if (value.includes('mp3') || value.includes('mpeg')) {
+    return 'mp3'
+  }
+  return value.replace(/[^a-z0-9]/g, '') || value
+}
+
+function normalizePixelFormat(raw?: string): string | undefined {
+  if (!raw) return undefined
+  const value = raw.toLowerCase()
+  if (value.includes('yuv420') || value.includes('4:2:0')) {
+    return 'yuv420p'
+  }
+  if (value.includes('yuv422') || value.includes('4:2:2')) {
+    return 'yuv422p'
+  }
+  if (value.includes('yuv444') || value.includes('4:4:4')) {
+    return 'yuv444p'
+  }
+  return value.replace(/\s+/g, '') || value
+}
+
+function formatCodecDisplay(raw?: string): string {
+  if (!raw) return '—'
+  return raw.toUpperCase()
+}
+
 function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnalysis {
   const tracks = Array.isArray(result.media?.track) ? result.media?.track ?? [] : []
   const general = tracks.find((track) => track['@type'] === 'General') ?? {}
@@ -208,9 +273,36 @@ function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnaly
   const fps = parseFps(videoTrack.FrameRate ?? videoTrack.FrameRate_Original)
   const recommendation = matchBitrateRecommendation(height, fps)
 
+  const rawVideoCodec = firstNonEmpty(
+    videoTrack.Format,
+    videoTrack.CodecID,
+    videoTrack.CodecID_String,
+    videoTrack.CodecID_Hint,
+    videoTrack.Format_Profile
+  )
+  const rawAudioCodec = firstNonEmpty(
+    audioTrack.Format,
+    audioTrack.CodecID,
+    audioTrack.CodecID_String,
+    audioTrack.CodecID_Hint
+  )
+  const rawPixelFormat = firstNonEmpty(
+    videoTrack.PixelFormat,
+    videoTrack.Pixel_format,
+    videoTrack.Pixel_Format,
+    videoTrack.Format_Settings__PixelFormat,
+    videoTrack.Format_Settings__ChromaSubsampling,
+    videoTrack.ChromaSubsampling
+  )
+  const normalizedVideoCodec = normalizeVideoCodec(rawVideoCodec)
+  const normalizedAudioCodec = normalizeAudioCodec(rawAudioCodec)
+  const normalizedPixelFormat = normalizePixelFormat(rawPixelFormat)
+
   const warnings: string[] = []
   let bitrateStatus: UploadAnalysis['bitrateStatus'] = 'unknown'
   const bitrateForCheck = videoBitrate ?? overallBitrate
+  let isLikelyCompatible: boolean | undefined =
+    normalizedVideoCodec || normalizedAudioCodec || normalizedPixelFormat ? true : undefined
 
   if (recommendation.rule && bitrateForCheck) {
     const bitrateMbps = bitrateForCheck / 1_000_000
@@ -237,12 +329,46 @@ function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnaly
     warnings.push(translate('warnings.fpsOutOfGuideline'))
   }
 
+  const expectedVideoCodecLabel = 'H.264'
+  const expectedAudioCodecLabel = 'AAC'
+  const expectedPixelFormatLabel = 'yuv420p'
+
+  if (normalizedVideoCodec && normalizedVideoCodec !== 'h264') {
+    warnings.push(
+      translate('warnings.videoCodec', {
+        expected: expectedVideoCodecLabel,
+        found: formatCodecDisplay(rawVideoCodec),
+      })
+    )
+    isLikelyCompatible = false
+  }
+
+  if (normalizedAudioCodec && normalizedAudioCodec !== 'aac') {
+    warnings.push(
+      translate('warnings.audioCodec', {
+        expected: expectedAudioCodecLabel,
+        found: formatCodecDisplay(rawAudioCodec),
+      })
+    )
+    isLikelyCompatible = false
+  }
+
+  if (normalizedPixelFormat && normalizedPixelFormat !== 'yuv420p') {
+    warnings.push(
+      translate('warnings.pixelFormat', {
+        expected: expectedPixelFormatLabel,
+        found: rawPixelFormat ? rawPixelFormat : translate('warnings.unknownValue'),
+      })
+    )
+    isLikelyCompatible = false
+  }
+
   return {
     containerFormat: general.Format || general.Format_String,
     durationSeconds: parseNumber(general.Duration) ? parseNumber(general.Duration)! / 1000 : undefined,
     overallBitrate,
     video: {
-      codec: videoTrack.Format || videoTrack.CodecID || videoTrack.CodecID_String,
+      codec: rawVideoCodec || videoTrack.Format || videoTrack.CodecID || videoTrack.CodecID_String,
       profile: videoTrack.Format_Profile,
       width,
       height,
@@ -250,7 +376,7 @@ function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnaly
       bitrate: videoBitrate,
     },
     audio: {
-      codec: audioTrack.Format || audioTrack.CodecID || audioTrack.CodecID_Hint,
+      codec: rawAudioCodec || audioTrack.Format || audioTrack.CodecID || audioTrack.CodecID_Hint,
       bitrate: parseBitrate(audioTrack.BitRate ?? audioTrack.BitRate_Nominal),
       sampleRate: parseSampleRate(audioTrack.SamplingRate),
       channels: parseNumber(audioTrack.Channels),
@@ -273,6 +399,7 @@ function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnaly
     normalizedFpsLabel: recommendation.normalizedFps
       ? translate('recommendations.normalizedFps', { fps: recommendation.normalizedFps })
       : undefined,
+    isLikelyCompatible,
   }
 }
 
@@ -365,7 +492,12 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
               current.id === file.id
                 ? {
                     ...current,
-                    status: current.status === 'pending' ? 'ready' : current.status,
+                    status:
+                      current.status === 'pending'
+                        ? analysis.isLikelyCompatible === false
+                          ? 'pending'
+                          : 'ready'
+                        : current.status,
                     analysis,
                   }
                 : current
@@ -380,10 +512,11 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
               current.id === file.id
                 ? {
                     ...current,
-                    status: current.status === 'pending' ? 'ready' : current.status,
+                    status: current.status,
                     analysis: {
                       warnings: [t('warnings.metadataUnavailable')],
                       bitrateStatus: 'unknown',
+                      isLikelyCompatible: undefined,
                     },
                   }
                 : current
@@ -744,11 +877,21 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
               </div>
 
               <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
-                {uploadItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-4 space-y-3 shadow-sm"
-                  >
+                {uploadItems.map((item) => {
+                  const statusLabel =
+                    item.analysis?.isLikelyCompatible === false
+                      ? t('status.values.needsEncoding')
+                      : getStatusLabel(item.status)
+                  const statusClass =
+                    item.analysis?.isLikelyCompatible === false
+                      ? 'capitalize text-error-600 dark:text-error-400'
+                      : 'capitalize text-slate-700 dark:text-slate-300'
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-4 space-y-3 shadow-sm"
+                    >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 text-slate-900 dark:text-white font-medium">
@@ -758,12 +901,10 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                           <span>{formatBytes(item.size)}</span>
                           <span>·</span>
-                          <span>
-                            {t('status.label')}{' '}
-                            <span className="capitalize text-slate-700 dark:text-slate-300">
-                              {getStatusLabel(item.status)}
+                            <span>
+                              {t('status.label')}{' '}
+                              <span className={statusClass}>{statusLabel}</span>
                             </span>
-                          </span>
                         </div>
                       </div>
                       <Button
@@ -868,8 +1009,9 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                         <span>{item.error}</span>
                       </div>
                     ) : null}
-                  </div>
-                ))}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ) : (

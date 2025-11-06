@@ -341,8 +341,16 @@ async def start_stream(
             dest = stream_dest.destination
             if dest.enabled:
                 decrypted_key = decrypt_stream_key(dest.stream_key_encrypted)
+                normalized_url = (dest.rtmps_url or "").strip().rstrip("/")
+                if not normalized_url:
+                    logger.warning(
+                        "Destination %s for stream %s has no RTMP(S) URL, skipping",
+                        dest.id,
+                        stream.id,
+                    )
+                    continue
                 destinations.append({
-                    "url": dest.rtmps_url,
+                    "url": normalized_url,
                     "key": decrypted_key
                 })
         

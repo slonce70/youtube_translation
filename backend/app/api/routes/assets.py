@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any, Optional
 from pathlib import Path
 import asyncio
 import json
@@ -34,7 +34,7 @@ except FileNotFoundError as exc:
     validator = None
 
 
-def apply_stream_summary_fields(asset: Asset, stream_meta: dict | None) -> None:
+def apply_stream_summary_fields(asset: Asset, stream_meta: Optional[Dict[str, Any]]) -> None:
     """Populate summary columns (codec, bitrate, resolution) from ffprobe meta."""
     if not stream_meta:
         return
