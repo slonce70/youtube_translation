@@ -5,7 +5,19 @@ import logging
 import asyncio
 
 from app.core.config import settings
-from app.api.routes import auth, assets, playlists, destinations, streams, metrics, quota, admin, monitoring
+from app.api.routes import (
+    admin,
+    assets,
+    auth,
+    destinations,
+    library,
+    media_collections,
+    metrics,
+    monitoring,
+    quota,
+    stream_configurations,
+    streams,
+)
 from app.middleware.rate_limiter import RateLimitMiddleware, global_rate_limiter
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.core.logging_config import setup_logging, get_logger
@@ -42,6 +54,9 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(quota.router, prefix="/api", tags=["quota"])  # Quota management
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])  # Admin panel
 app.include_router(assets.router, prefix="/api/assets", tags=["assets"])
+app.include_router(library.router, prefix="/api/library", tags=["library"])
+app.include_router(media_collections.router, prefix="/api/media-collections", tags=["media-collections"])
+app.include_router(stream_configurations.router, prefix="/api/stream-configurations", tags=["stream-configurations"])
 app.include_router(playlists.router, prefix="/api/playlists", tags=["playlists"])
 app.include_router(destinations.router, prefix="/api/destinations", tags=["destinations"])
 app.include_router(streams.router, prefix="/api/streams", tags=["streams"])

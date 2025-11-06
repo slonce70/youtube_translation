@@ -1,4 +1,16 @@
-from sqlalchemy import Column, String, Integer, BigInteger, Float, Boolean, Text, ForeignKey, ARRAY, CheckConstraint
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    BigInteger,
+    Float,
+    Boolean,
+    Text,
+    ForeignKey,
+    ARRAY,
+    CheckConstraint,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP, INET
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -92,6 +104,7 @@ class Asset(Base):
     storage_path = Column(Text, nullable=False, unique=True)
     size_bytes = Column(BigInteger, nullable=False)
     duration_seconds = Column(Float)
+    asset_type = Column(Text, nullable=False, default="video", index=True)
     
     # Video metadata
     meta = Column(JSONB)  # ffprobe output
@@ -100,6 +113,7 @@ class Asset(Base):
     resolution = Column(Text)
     bitrate = Column(Integer)
     fps = Column(Integer)
+    codec_info = Column(JSONB)
     
     # Validation
     compatible_for_copy = Column(Boolean, default=False, index=True)
@@ -112,6 +126,55 @@ class Asset(Base):
 
     # Relationships
     playlist_items = relationship("PlaylistItem", back_populates="asset", cascade="all, delete-orphan")
+    folder_links = relationship("AssetFolderLink", back_populates="asset", cascade="all, delete-orphan")
+    collection_items = relationship("CollectionItem", back_populates="asset")
+
+    __table_args__ = (
+        CheckConstraint("asset_type IN ('video', 'audio')", name='check_asset_type'),
+    )
+
+
+# ==================================================
+# MEDIA FOLDERS AND TAGS
+# ==================================================
+
+
+class MediaFolder(Base):
+    __tablename__ = "media_folders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("media_folders.id", ondelete="CASCADE"), index=True)
+    name = Column(Text, nullable=False)
+    is_tag = Column(Boolean, nullable=False, default=False, index=True)
+
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    parent = relationship("MediaFolder", remote_side="MediaFolder.id", backref="children")
+    assets = relationship("AssetFolderLink", back_populates="folder", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'parent_id', 'name', name='uq_media_folders_name'),
+    )
+
+
+class AssetFolderLink(Base):
+    __tablename__ = "asset_folder_links"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    folder_id = Column(UUID(as_uuid=True), ForeignKey("media_folders.id", ondelete="CASCADE"), nullable=False, index=True)
+    link_type = Column(Text, nullable=False, default="folder", index=True)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    folder = relationship("MediaFolder", back_populates="assets")
+    asset = relationship("Asset", back_populates="folder_links")
+
+    __table_args__ = (
+        CheckConstraint("link_type IN ('folder', 'tag')", name='check_asset_folder_link_type'),
+        UniqueConstraint('asset_id', 'folder_id', 'link_type', name='uq_asset_folder_link'),
+    )
 
 
 # ==================================================
@@ -159,6 +222,81 @@ class PlaylistItem(Base):
 
 
 # ==================================================
+# MEDIA COLLECTIONS
+# ==================================================
+
+
+class MediaCollection(Base):
+    __tablename__ = "media_collections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    name = Column(Text, nullable=False)
+    description = Column(Text)
+    collection_type = Column(Text, nullable=False, index=True)
+    loop_enabled = Column(Boolean, nullable=False, default=True)
+    shuffle_enabled = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    items = relationship(
+        "CollectionItem",
+        back_populates="collection",
+        cascade="all, delete-orphan",
+        order_by="CollectionItem.position",
+    )
+    video_streams = relationship(
+        "Stream",
+        foreign_keys="Stream.video_collection_id",
+        back_populates="video_collection",
+    )
+    audio_streams = relationship(
+        "Stream",
+        foreign_keys="Stream.audio_collection_id",
+        back_populates="audio_collection",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "collection_type IN ('video_background', 'audio_playlist')",
+            name='check_collection_type',
+        ),
+        UniqueConstraint('user_id', 'name', 'collection_type', name='uq_media_collection_name'),
+    )
+
+
+class CollectionItem(Base):
+    __tablename__ = "collection_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    collection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("media_collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    asset_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("assets.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    position = Column(Integer, nullable=False)
+    loop_mode = Column(Text, nullable=False, default="inherit")
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    collection = relationship("MediaCollection", back_populates="items")
+    asset = relationship("Asset", back_populates="collection_items")
+
+    __table_args__ = (
+        CheckConstraint('position >= 0', name='check_collection_item_position'),
+        UniqueConstraint('collection_id', 'position', name='uq_collection_item_position'),
+    )
+
+
+# ==================================================
 # DESTINATIONS
 # ==================================================
 
@@ -196,7 +334,11 @@ class Stream(Base):
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     
     playlist_id = Column(UUID(as_uuid=True), ForeignKey("playlists.id", ondelete="RESTRICT"), nullable=True)
+    video_collection_id = Column(UUID(as_uuid=True), ForeignKey("media_collections.id", ondelete="SET NULL"), nullable=True)
+    audio_collection_id = Column(UUID(as_uuid=True), ForeignKey("media_collections.id", ondelete="SET NULL"), nullable=True)
     source_type = Column(Text, nullable=False, default="playlist")
+    mix_mode = Column(Text, nullable=False, default="video_only", index=True)
+    settings_json = Column(JSONB)
     name = Column(Text)
     status = Column(Text, default="stopped", index=True)
     pid = Column(Integer)
@@ -213,13 +355,16 @@ class Stream(Base):
 
     # Relationships
     playlist = relationship("Playlist", back_populates="streams")
+    video_collection = relationship("MediaCollection", foreign_keys=[video_collection_id], back_populates="video_streams")
+    audio_collection = relationship("MediaCollection", foreign_keys=[audio_collection_id], back_populates="audio_streams")
     stream_destinations = relationship("StreamDestination", back_populates="stream", cascade="all, delete-orphan")
     stream_assets = relationship("StreamAsset", back_populates="stream", cascade="all, delete-orphan", order_by="StreamAsset.position")
     events = relationship("StreamEvent", back_populates="stream", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint("status IN ('stopped', 'starting', 'running', 'error', 'stopping')", name='check_status'),
-        CheckConstraint("source_type IN ('playlist', 'assets')", name='check_source_type'),
+        CheckConstraint("source_type IN ('playlist', 'assets', 'collection')", name='check_source_type'),
+        CheckConstraint("mix_mode IN ('video_only', 'audio_only', 'mixed')", name='check_mix_mode'),
     )
 
 

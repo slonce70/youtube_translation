@@ -9,7 +9,17 @@ from datetime import datetime
 import logging
 
 from app.api.deps import require_user
-from app.models.database import Stream, StreamDestination, Playlist, Destination, PlaylistItem, StreamAsset, Asset
+from app.models.database import (
+    Stream,
+    StreamDestination,
+    Playlist,
+    Destination,
+    PlaylistItem,
+    StreamAsset,
+    Asset,
+    MediaCollection,
+    CollectionItem,
+)
 from app.schemas.api import (
     StreamResponse,
     StreamCreate,
@@ -40,6 +50,12 @@ async def _load_stream_with_relations(
         .options(
             selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
             selectinload(Stream.stream_assets).selectinload(StreamAsset.asset),
+            selectinload(Stream.video_collection)
+            .selectinload(MediaCollection.items)
+            .selectinload(CollectionItem.asset),
+            selectinload(Stream.audio_collection)
+            .selectinload(MediaCollection.items)
+            .selectinload(CollectionItem.asset),
             selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
         )
     )
@@ -68,6 +84,39 @@ def _extract_stream_assets(stream: Stream):
             for item in items
         ]
         loop_enabled = stream.playlist.loop
+    elif stream.source_type == "collection":
+        if stream.mix_mode != "video_only":
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="Only video-only collections are supported for playback at this time",
+            )
+
+        collection = stream.video_collection
+        if not collection:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video collection is not attached to this stream",
+            )
+        items = sorted(collection.items, key=lambda item: item.position)
+        if not items:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video collection does not contain any assets",
+            )
+
+        assets_data = [
+            {
+                "path": item.asset.storage_path,
+                "meta": item.asset.meta or {},
+                "asset_id": str(item.asset.id),
+                "filename": item.asset.filename,
+                "compatible_for_copy": item.asset.compatible_for_copy,
+                "validation_errors": item.asset.validation_errors or [],
+            }
+            for item in items
+        ]
+        loop_enabled = collection.loop_enabled
+
     else:
         links = sorted(stream.stream_assets, key=lambda x: x.position)
         if not links:
@@ -105,6 +154,12 @@ async def list_streams(
             .options(
                 selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
                 selectinload(Stream.stream_assets).selectinload(StreamAsset.asset),
+                selectinload(Stream.video_collection)
+                .selectinload(MediaCollection.items)
+                .selectinload(CollectionItem.asset),
+                selectinload(Stream.audio_collection)
+                .selectinload(MediaCollection.items)
+                .selectinload(CollectionItem.asset),
             )
         )
         
@@ -132,11 +187,51 @@ async def create_stream(
     try:
         playlist = None
         selected_assets: List[Asset] = []
+        video_collection: MediaCollection | None = None
+        audio_collection: MediaCollection | None = None
 
-        if stream_data.playlist_id:
+        if stream_data.video_collection_id or stream_data.audio_collection_id:
+            source_type = "collection"
+            if stream_data.video_collection_id:
+                video_query = select(MediaCollection).where(
+                    MediaCollection.id == stream_data.video_collection_id,
+                    MediaCollection.user_id == user_id,
+                )
+                video_result = await db.execute(video_query)
+                video_collection = video_result.scalar_one_or_none()
+                if not video_collection:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Video collection not found",
+                    )
+                if video_collection.collection_type != "video_background":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="video_collection_id must reference a video_background collection",
+                    )
+
+            if stream_data.audio_collection_id:
+                audio_query = select(MediaCollection).where(
+                    MediaCollection.id == stream_data.audio_collection_id,
+                    MediaCollection.user_id == user_id,
+                )
+                audio_result = await db.execute(audio_query)
+                audio_collection = audio_result.scalar_one_or_none()
+                if not audio_collection:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Audio collection not found",
+                    )
+                if audio_collection.collection_type != "audio_playlist":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="audio_collection_id must reference an audio_playlist collection",
+                    )
+
+        elif stream_data.playlist_id:
             playlist_query = select(Playlist).where(
                 Playlist.id == stream_data.playlist_id,
-                Playlist.user_id == user_id
+                Playlist.user_id == user_id,
             )
             result = await db.execute(playlist_query)
             playlist = result.scalar_one_or_none()
@@ -144,19 +239,20 @@ async def create_stream(
             if not playlist:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Playlist not found"
+                    detail="Playlist not found",
                 )
+            source_type = "playlist"
         else:
             asset_ids = stream_data.asset_ids or []
             if not asset_ids:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="At least one asset must be selected"
+                    detail="At least one asset must be selected",
                 )
 
             assets_query = select(Asset).where(
                 Asset.user_id == user_id,
-                Asset.id.in_(asset_ids)
+                Asset.id.in_(asset_ids),
             )
             result = await db.execute(assets_query)
             fetched_assets = result.scalars().all()
@@ -164,27 +260,36 @@ async def create_stream(
             if len(fetched_assets) != len(set(asset_ids)):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="One or more assets were not found"
+                    detail="One or more assets were not found",
                 )
 
-            # Preserve order from payload
             asset_lookup = {str(asset.id): asset for asset in fetched_assets}
             try:
                 selected_assets = [asset_lookup[str(asset_id)] for asset_id in asset_ids]
-            except KeyError:
+            except KeyError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Asset selection contains duplicates or invalid IDs"
-                )
+                    detail="Asset selection contains duplicates or invalid IDs",
+                ) from exc
 
-        source_type = "playlist" if playlist else "assets"
+            source_type = "assets"
+
+        mix_mode = stream_data.mix_mode or "video_only"
+        if source_type != "collection":
+            mix_mode = "video_only"
+
+        stream_settings = stream_data.settings or None
 
         stream = Stream(
             user_id=user_id,
             playlist_id=playlist.id if playlist else None,
+            video_collection_id=video_collection.id if video_collection else None,
+            audio_collection_id=audio_collection.id if audio_collection else None,
             source_type=source_type,
             name=stream_data.name,
-            status="stopped"
+            status="stopped",
+            mix_mode=mix_mode,
+            settings_json=stream_settings,
         )
 
         db.add(stream)

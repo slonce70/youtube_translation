@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from sqlalchemy.orm import selectinload
 from typing import List, Tuple, Dict, Any, Optional
 from pathlib import Path
 import asyncio
@@ -22,6 +23,8 @@ from app.streaming.validator import VideoValidator
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.quota import QuotaEnforcer
+from app.core.library import MediaLibraryService
+from app.core.cascade import CascadeUpdateService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -32,6 +35,41 @@ try:
 except FileNotFoundError as exc:
     logger.error("FFprobe binary not available: %s", exc)
     validator = None
+
+
+def serialize_asset(asset: Asset) -> AssetResponse:
+    """Convert an Asset ORM object to response payload including folder/tag links."""
+    folder_ids = []
+    tag_ids = []
+    for link in getattr(asset, "folder_links", []) or []:
+        if link.link_type == "folder":
+            folder_ids.append(link.folder_id)
+        elif link.link_type == "tag":
+            tag_ids.append(link.folder_id)
+
+    payload = AssetResponse.model_validate(asset, from_attributes=True)
+    payload.folder_ids = folder_ids
+    payload.tag_ids = tag_ids
+    return payload
+
+
+def infer_asset_type(stream_meta: Optional[Dict[str, Any]]) -> str:
+    """Best-effort detection of asset type based on ffprobe metadata."""
+    if not stream_meta:
+        return "video"
+
+    if isinstance(stream_meta, dict):
+        video_section = stream_meta.get("video") or stream_meta.get("video_stream")
+        if video_section:
+            return "video"
+
+        streams = stream_meta.get("streams")
+        if isinstance(streams, list):
+            for stream in streams:
+                if isinstance(stream, dict) and stream.get("codec_type") == "video":
+                    return "video"
+
+    return "audio"
 
 
 def apply_stream_summary_fields(asset: Asset, stream_meta: Optional[Dict[str, Any]]) -> None:
@@ -124,26 +162,32 @@ def parse_download_token(token: str) -> Tuple[UUID, UUID, int]:
 
 @router.get("/", response_model=List[AssetResponse])
 async def list_assets(
-    user_deps: tuple = Depends(require_user)
+    asset_type: Optional[str] = Query(None, pattern=r"^(video|audio)$"),
+    folder_id: Optional[UUID] = Query(None),
+    tag_ids: Optional[List[UUID]] = Query(None),
+    user_deps: tuple = Depends(require_user),
 ):
-    """List all video assets for current user"""
+    """List assets for the current user with optional filters."""
     db, user_id = user_deps
-    
+
     try:
-        # Build query - filter by user_id directly
-        query = select(Asset).where(Asset.user_id == user_id)
-        
-        result = await db.execute(query)
-        assets = result.scalars().all()
-        
-        return assets
-        
+        library = MediaLibraryService(db, user_id)
+        assets = await library.list_assets(
+            asset_type=asset_type,
+            folder_id=folder_id,
+            tag_ids=tag_ids,
+        )
+
+        return [serialize_asset(asset) for asset in assets]
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception(f"Error listing assets: {e}")
+        logger.exception("Error listing assets: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list assets: {str(e)}"
-        )
+            detail="Failed to list assets",
+        ) from e
 
 
 @router.post("/", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
@@ -171,20 +215,35 @@ async def create_asset(
             size_bytes=asset_data.size_bytes,
             duration_seconds=asset_data.duration_seconds,
             meta=asset_data.meta,
+            codec_info=asset_data.codec_info,
+            asset_type=asset_data.asset_type,
             compatible_for_copy=asset_data.compatible_for_copy,
-            validation_errors=asset_data.validation_errors
+            validation_errors=asset_data.validation_errors,
         )
 
         if isinstance(asset_data.meta, dict):
             apply_stream_summary_fields(asset, asset_data.meta)
-        
+            inferred_type = infer_asset_type(asset_data.meta)
+            if inferred_type != asset.asset_type:
+                asset.asset_type = inferred_type
+
         db.add(asset)
+        await db.flush()
+
+        if asset_data.folder_ids or asset_data.tag_ids:
+            library = MediaLibraryService(db, user_id)
+            await library.assign_asset_links(
+                asset.id,
+                folder_ids=asset_data.folder_ids,
+                tag_ids=asset_data.tag_ids,
+            )
+
         await db.commit()
-        await db.refresh(asset)
+        await db.refresh(asset, attribute_names=["folder_links"])
         
         logger.info(f"Created asset {asset.id} for user {user_id}")
-        
-        return asset
+
+        return serialize_asset(asset)
         
     except HTTPException:
         raise
@@ -207,7 +266,7 @@ async def update_asset(
     db, user_id = user_deps
 
     try:
-        query = select(Asset).where(Asset.id == asset_id, Asset.user_id == user_id)
+        query = select(Asset).where(Asset.id == asset_id, Asset.user_id == user_id).options(selectinload(Asset.folder_links))
         result = await db.execute(query)
         asset = result.scalar_one_or_none()
 
@@ -223,13 +282,26 @@ async def update_asset(
             asset.filename = asset_update.filename.strip()
             updated = True
 
+        if asset_update.asset_type is not None:
+            asset.asset_type = asset_update.asset_type
+            updated = True
+
+        if asset_update.folder_ids is not None or asset_update.tag_ids is not None:
+            library = MediaLibraryService(db, user_id)
+            await library.assign_asset_links(
+                asset.id,
+                folder_ids=asset_update.folder_ids,
+                tag_ids=asset_update.tag_ids,
+            )
+            updated = True
+
         if not updated:
-            return asset
+            return serialize_asset(asset)
 
         await db.commit()
-        await db.refresh(asset)
+        await db.refresh(asset, attribute_names=["folder_links"])
         logger.info("Updated asset %s metadata for user %s", asset.id, user_id)
-        return asset
+        return serialize_asset(asset)
 
     except HTTPException:
         raise
@@ -435,11 +507,16 @@ async def handle_upload_complete(
                     size_bytes=size_bytes,
                     duration_seconds=stream_info.get("duration"),
                     meta=stream_info,
+                    codec_info=meta,
+                    asset_type=infer_asset_type(meta or stream_info),
                     compatible_for_copy=validation_result["compatible_for_copy"],
                     validation_errors=validation_result.get("validation_errors", []),
                 )
 
                 apply_stream_summary_fields(asset, stream_info)
+                inferred_type = infer_asset_type(meta or stream_info)
+                if inferred_type != asset.asset_type:
+                    asset.asset_type = inferred_type
 
                 db.add(asset)
                 await db.commit()
@@ -516,16 +593,20 @@ async def revalidate_asset(
         stream_info = validator.get_stream_info(meta)
 
         asset.meta = stream_info
+        asset.codec_info = meta
         asset.size_bytes = file_path.stat().st_size
         asset.duration_seconds = stream_info.get("duration")
         asset.compatible_for_copy = validation_result["compatible_for_copy"]
         asset.validation_errors = validation_result.get("validation_errors", [])
 
         apply_stream_summary_fields(asset, stream_info)
+        inferred_type = infer_asset_type(meta or stream_info)
+        if inferred_type != asset.asset_type:
+            asset.asset_type = inferred_type
 
         await db.commit()
-        await db.refresh(asset)
-        return asset
+        await db.refresh(asset, attribute_names=["folder_links"])
+        return serialize_asset(asset)
     except HTTPException:
         raise
     except Exception as exc:
@@ -614,20 +695,24 @@ async def get_asset(
     db, user_id = user_deps
     
     try:
-        query = select(Asset).where(
-            Asset.id == asset_id,
-            Asset.user_id == user_id
+        query = (
+            select(Asset)
+            .where(
+                Asset.id == asset_id,
+                Asset.user_id == user_id,
+            )
+            .options(selectinload(Asset.folder_links))
         )
         result = await db.execute(query)
         asset = result.scalar_one_or_none()
-        
+
         if not asset:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Asset not found"
             )
-        
-        return asset
+
+        return serialize_asset(asset)
         
     except HTTPException:
         raise
@@ -642,20 +727,24 @@ async def get_asset(
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_asset(
     asset_id: UUID,
-    user_deps: tuple = Depends(require_user)
+    user_deps: tuple = Depends(require_user),
 ):
     """Delete an asset and its file"""
     db, user_id = user_deps
     
     try:
         # Get asset
-        query = select(Asset).where(
-            Asset.id == asset_id,
-            Asset.user_id == user_id
+        query = (
+            select(Asset)
+            .where(
+                Asset.id == asset_id,
+                Asset.user_id == user_id,
+            )
+            .options(selectinload(Asset.folder_links))
         )
         result = await db.execute(query)
         asset = result.scalar_one_or_none()
-        
+
         if not asset:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -681,10 +770,13 @@ async def delete_asset(
                 except Exception as info_err:
                     logger.warning("Failed to delete info file %s: %s", info_path, info_err)
         
+        cascade_service = CascadeUpdateService(db, user_id, logger=logger)
+        await cascade_service.handle_asset_removed(asset_id)
+
         # Delete from database
         await db.execute(delete(Asset).where(Asset.id == asset_id))
         await db.commit()
-        
+
         logger.info(f"Deleted asset {asset_id}")
         
     except HTTPException:
