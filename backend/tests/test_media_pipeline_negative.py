@@ -12,7 +12,11 @@ import tempfile
 import json
 
 from app.streaming.validator import VideoValidator
-from app.streaming.ffmpeg_manager import FFmpegStreamManager
+from app.streaming.ffmpeg_manager import (
+    FFmpegStreamManager,
+    PipelineTrackConfig,
+    StreamPipelineConfig,
+)
 from app.streaming.playlist_builder import PlaylistBuilder
 
 
@@ -395,16 +399,103 @@ class TestMediaPipelineIntegration:
             mock_process.stderr = AsyncMock()
             mock_process.stderr.readline = AsyncMock(return_value=b'')
             mock_exec.return_value = mock_process
-            
+
             # Try to start many streams
             for i in range(20):
                 await manager.start_stream(f"stream{i}", playlist, destinations)
-            
+
             # Should have tracked all streams
             assert len(manager.active_streams) == 20
-            
+
             # Cleanup
             await manager.stop_all_streams()
+
+
+class TestFFmpegManagerPipelineConfig:
+    """Unit tests for pipeline-aware FFmpeg command generation."""
+
+    def test_mixed_mode_single_destination_prefers_copy(self, tmp_path):
+        manager = FFmpegStreamManager()
+        video_playlist = tmp_path / "video.txt"
+        audio_playlist = tmp_path / "audio.txt"
+        video_playlist.write_text("file 'video.mp4'\n")
+        audio_playlist.write_text("file 'audio.aac'\n")
+
+        pipeline = StreamPipelineConfig(
+            mode="mixed",
+            video=PipelineTrackConfig(playlist=video_playlist, copy_compatible=True),
+            audio=PipelineTrackConfig(playlist=audio_playlist, copy_compatible=True),
+        )
+
+        cmd = manager._build_command(
+            None,
+            [{"url": "rtmps://a.rtmp.youtube.com/live2", "key": "abc"}],
+            pipeline_config=pipeline,
+        )
+
+        assert "-c:v" in cmd
+        assert "copy" in cmd
+        assert "-f" in cmd and "flv" in cmd
+
+    def test_mixed_mode_multiple_destinations_transcodes(self, tmp_path):
+        manager = FFmpegStreamManager()
+        playlist = tmp_path / "video.txt"
+        audio = tmp_path / "audio.txt"
+        playlist.write_text("file 'video.mp4'\n")
+        audio.write_text("file 'audio.aac'\n")
+
+        pipeline = StreamPipelineConfig(
+            mode="mixed",
+            video=PipelineTrackConfig(playlist=playlist, copy_compatible=True),
+            audio=PipelineTrackConfig(playlist=audio, copy_compatible=True),
+        )
+
+        cmd = manager._build_command(
+            None,
+            [
+                {"url": "rtmps://a.rtmp.youtube.com/live2", "key": "abc"},
+                {"url": "rtmps://b.rtmp.youtube.com/live2", "key": "def"},
+            ],
+            pipeline_config=pipeline,
+        )
+
+        assert "libx264" in cmd
+        assert "aac" in cmd
+
+    def test_video_only_mode_without_audio_playlist(self, tmp_path):
+        manager = FFmpegStreamManager()
+        video_playlist = tmp_path / "video.txt"
+        video_playlist.write_text("file 'video.mp4'\n")
+
+        pipeline = StreamPipelineConfig(
+            mode="video_only",
+            video=PipelineTrackConfig(playlist=video_playlist, copy_compatible=False),
+        )
+
+        cmd = manager._build_command(
+            None,
+            [{"url": "rtmps://a.rtmp.youtube.com/live2", "key": "abc"}],
+            pipeline_config=pipeline,
+        )
+
+        assert "-an" in cmd
+
+    def test_audio_only_requires_audio_playlist(self, tmp_path):
+        manager = FFmpegStreamManager()
+        audio_playlist = tmp_path / "audio.txt"
+        audio_playlist.write_text("file 'audio.aac'\n")
+
+        pipeline = StreamPipelineConfig(
+            mode="audio_only",
+            audio=PipelineTrackConfig(playlist=audio_playlist, copy_compatible=True),
+        )
+
+        with pytest.raises(ValueError):
+            manager._build_command(
+                None,
+                [{"url": "rtmps://a.rtmp.youtube.com/live2", "key": "abc"}],
+                pipeline_config=pipeline,
+            )
 
 
 class TestPlaylistBuilderNegative:

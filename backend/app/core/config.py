@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     ffprobe_bin: str = "/usr/bin/ffprobe"
     ffmpeg_auto_restart_attempts: int = 1
     ffmpeg_restart_backoff_seconds: int = 5
+    ffmpeg_resource_log_interval_seconds: int = 15
+
+    # Media placeholders
+    placeholder_video_path: str = "/app/placeholders/blank_video.mp4"
+    placeholder_audio_path: str = "/app/placeholders/silence.aac"
 
     # Monitoring
     sentry_dsn: str = ""
