@@ -33,6 +33,7 @@
     "header": {
       "title": "Streaming",
       "description": "Manage channels and live streams",
+      "planLabel": "Current plan",
       "goLive": "Go Live"
     },
     "channels": {
@@ -127,6 +128,7 @@
       "quality": {
         "title": "Quality requirements not met",
         "description": "Update your source files before starting \"{name}\".",
+        "plan": "Applies to {plan}",
         "limits": {
           "resolution": "Max Resolution",
           "fps": "Max Frame Rate",

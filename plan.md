@@ -1,71 +1,77 @@
-# Epic Landing Page - Implementation Plan
+# План розвитку медіа-бібліотеки та конструктору стрімів
 
-## Overview
-Complete landing page for YouTube Multi-Channel 24/7 Streaming Platform with glassmorphism design, purple-cyan gradient theme, and Framer Motion animations.
+## Фаза 0 — Дискавері та узгодження
+- **Аудит поточної схеми**: зафіксувати взаємозвʼязки `assets`, `playlists`, `stream_assets`, tusd-хуків і FFmpeg-пайплайна.
+- **Документація вимог**: описати user-flow для відео-фонів, аудіо-плейлистів, віртуальних папок, сценаріїв видалення.
+- **Граничні умови**: підтвердити обмеження тарифів (3 ГБ, 1 стрім), зʼясувати які дані необхідно відображати в UI при каскадних змінах.
 
-## Design System
+## Фаза 1 — Дані та міграції
+1. **Розширення `assets`**
+   - Додати `asset_type` (`video` | `audio`) і часом `codec_info` для майбутніх перевірок.
+   - Додати механізм тегів/папок: таблиці `media_folders` (з ієрархією) та `asset_folder_links`.
+   - Міграція з backfill: визначити тип через ffprobe, створити базову папку «root» для кожного юзера.
+2. **Колекції медіа**
+   - Створити `media_collections` (тип: `video_background` | `audio_playlist`) та `collection_items` (asset_id, order, loop_mode).
+   - Тримати історію змін (audit timestamps) для подальших live-редагувань.
+3. **Оновлення стрімів**
+   - Додати посилання на колекції в `streams` (`video_collection_id`, `audio_collection_id`, `mix_mode`, `settings_json`).
+   - Забезпечити зворотну сумісність: старі стріми отримують auto-collection на базі існуючого плейлиста.
+4. **ORM та схеми**
+   - Оновити SQLAlchemy моделі, Pydantic-схеми, seed-скрипти, alembic міграцію з rollback.
 
-### Colors
-- Primary: #a855f7 (purple-500)
-- Accent: #06b6d4 (cyan-500)
-- Gradients: purple-600 → purple-500 → cyan-500
+## Фаза 2 — Сервіси та API
+1. **Сервіс бібліотеки**
+   - CRUD для віртуальних папок, фільтри за типом/тегами, агрегація розміру по користувачу.
+   - Валідація видалень: заборонити видаляти непорожні папки без підтвердження.
+2. **Конструктор стрімів**
+   - CRUD для `media_collections`, reorder API, включно з опцією «loop»/«shuffle».
+   - Новий ендпоінт `stream_configurations` (деталі для UI), інтеграція зі `streams` (`start`, `stop`, `status`).
+3. **Каскадне оновлення**
+   - Фоновий сервіс, що синхронізує конфігурації при видаленні asset/folder (оновлює колекції, піднімає warning).
+   - Логи/alerts в `SystemAlert` при деградації конфігурації.
 
-### Typography
-- Font: Inter (latin + cyrillic)
-- Hero: text-5xl/6xl/7xl font-bold
-- Headings: text-3xl/4xl font-bold
-- Body: text-sm/base
+## Фаза 3 — FFmpeg та пайплайн
+1. **PlaylistBuilder**
+   - Генерація окремих плейлистів для відео й аудіо з урахуванням порядку, loop/shuffle.
+   - Плейлист може містити placeholder для аудіо-only (статична картинка) та відео-only (mute).
+2. **FFmpegStreamManager**
+   - Формування команд для режимів: `video_only`, `audio_only`, `mixed` (відео+аудіо). Надавати пріоритет `-c copy`, fallback на перекодування, якщо кодеки не сумісні.
+   - Підготовка до live-редагування: інтерфейс для «hot swap» (названа труба або перезапуск із коротким даунтаймом, зафлагований).
+   - Детальне логування команд, параметрів міксу, споживання ресурсів.
+3. **tusd-хуки**
+   - Автоматичне визначення типу файлу, оновлення кворуму файлів у колекціях, тригери на перевірку квот.
 
-### Animations
-- Framer Motion scroll-triggered
-- Hover: scale(1.02-1.05) + translateY(-4px)
-- Background orbs: 8s continuous loop
+## Фаза 4 — Frontend UX
+1. **Медіа-бібліотека**
+   - Сторінка з панеллю папок, фільтрами `All/Video/Audio`, превʼюшками та масовими діями.
+   - Форми завантаження з вибором типу, можливість переміщення файлів у папки, попередження при звʼязках зі стрімами.
+2. **Конструктор стріму**
+   - Покроковий UI (вкладки «Background video», «Audio playlist», «Destinations», «Schedule/Loop»).
+   - Компоненти для reorder (drag&drop), toggle loop/shuffle, зміни гучності.
+   - Інформаційні банери про поточні квоти та залежності (які стріми використовують asset).
+3. **Live-редагування (MVP)**
+   - Інтерфейс для reorder/replace під час активного стріму → поки надсилати PATCH, що зберігає новий порядок і ставить задачі на перезапуск; real-time оновлення буде фічефлагом.
 
-## Components (12 Total)
+## Фаза 5 — Валідації, квоти та каскадні дії
+1. **Квоти**
+   - Перевірка 3 ГБ при завантаженні, перерахунок після видалення/трансформації. API для UI (поточне використання).
+   - Контроль «1 активний стрім»: перед стартом перевіряти `streams` зі статусом `running`.
+2. **Валідації**
+   - Заборонити додавати аудіо-asset як відео фон і навпаки.
+   - При відсутності відео в `mixed` режимі автоматично обирати placeholder фон (конфігурація в settings).
+3. **Видалення**
+   - Процедури: якщо asset використовується, або видалити з колекцій, або блокувати з повідомленням.
+   - Event-лог (для профілактики inconsistency) + UI-попередження.
 
-1. **LandingNavBar** - Sticky glassmorphism navbar
-2. **AnimatedBackground** - Two animated blur orbs
-3. **SectionContainer** - Consistent spacing wrapper
-4. **HeroSection** - Main hero with gradient text + CTAs
-5. **FeaturesGrid** - 6 feature cards (3 cols)
-6. **HowItWorks** - 4-step timeline
-7. **StatsSection** - 4 metrics in dark card
-8. **PricingCards** - 3 tiers (Free/Pro/Business)
-9. **ComparisonTable** - Feature comparison
-10. **BenefitsSection** - 4 benefits with icons
-11. **CTASection** - Bottom CTA
-12. **Footer** - 4-column footer
+## Фаза 6 — Тестування, обсервабіліті, деплой
+1. **Бекенд-тести**: alembic міграції, сервіси бібліотеки, mix-mode в FFmpeg (unit+integration з моками файлів).
+2. **Фронтенд-тести**: Jest/RTL для компонентів, Playwright/ Cypress для ключових сценаріїв (upload → конфіг → запуск → live reorder).
+3. **Моніторинг**: структуровані логи FFmpeg, метрики (re-encode rate, fps, bitrate) з виводом в Prometheus або лог-файли.
+4. **Документація**: оновити `README`, `docs/architecture.md`, `.env.example`; підготувати інструкцію по міграції та відкату.
+5. **Деплой-підготовка**: ревʼю Dockerfile/docker-compose, скриптів старту, щоб у майбутньому легко перенести на VDS/кластер.
 
-## Responsive Breakpoints
-- Mobile: < 640px (1 col)
-- Tablet: 640px-1024px (2 cols)
-- Desktop: > 1024px (3 cols)
-
-## Localization
-- English (en)
-- Ukrainian (uk)
-- Russian (ru)
-
-## Implementation Checklist
-- [x] Plan specification
-- [x] 12 landing components
-- [x] 3 localization files
-- [x] Update page.tsx
-- [ ] Test responsive + dark mode (manual QA pending)
-
-## Key Features
-✅ Glassmorphism design
-✅ Animated backgrounds
-✅ Scroll animations
-✅ Dark mode support
-✅ Trilingual (en/uk/ru)
-✅ Fully responsive
-✅ WCAG AA accessible
-
-## Tech Stack
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-- Framer Motion
-- Lucide Icons
-- next-intl
+## Основні ризики та помʼякшення
+- **Складні міграції** → dry-run на копії прод, поетапний backfill, можливість rollback.
+- **Помилки в FFmpeg-командах** → матриця тестових комбінацій, логування команд, швидкий механізм відкату до stable-конфіг.
+- **Каскадні видалення** → підтверджувальні діалоги, журнал змін, автоматичне створення TODO для власника стріму.
+- **Відставання квот** → фоновий job для перерахунку usage, алерти при розсинхроні.

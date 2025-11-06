@@ -3,7 +3,7 @@ import logging
 import signal
 import shutil
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -207,23 +207,55 @@ class FFmpegStreamManager:
     ) -> List[str]:
         """Build FFmpeg command for streaming"""
         
-        # Build tee muxer output
-        tee_outputs = []
+        # Normalize destinations
+        normalized_destinations: List[Dict[str, str]] = []
         for dest in destinations:
             base_url = str(dest.get("url") or "").rstrip("/")
             stream_key = str(dest.get("key") or "").strip()
-            rtmps_url = f"{base_url}/{stream_key}" if base_url else stream_key
-            # Use fifo muxer with recovery for each destination to survive transient failures
+            if not base_url:
+                normalized_destinations.append({"uri": stream_key})
+            else:
+                normalized_destinations.append({"uri": f"{base_url}/{stream_key}"})
+
+        # For а single destination we can mux directly into FLV, що дозволяє
+        # уникнути tee-мультиплексора і зберегти мінімальне навантаження на CPU.
+        # Щоб RTMP-провайдери (YouTube тощо) приймали потік без перекодування,
+        # потрібно виставити сумісні FLV codec tags.
+        if len(normalized_destinations) == 1:
+            target = normalized_destinations[0]["uri"]
+            cmd = [
+                self.ffmpeg_bin,
+                "-re",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(playlist_file),
+                "-map", "0:v:0",
+                "-map", "0:a:0?",
+                "-c:v", "copy",
+                "-c:a", "copy",
+                "-bsf:v", "h264_mp4toannexb",  # конвертуємо в Annex B для стабільного RTMP
+                "-tag:v", "7",                # FLV video tag для H.264
+                "-tag:a", "10",               # FLV audio tag для AAC
+                "-f", "flv",
+                target,
+            ]
+            return cmd
+
+        # Build tee muxer output for multi-destination streaming
+        tee_outputs = []
+        for dest in normalized_destinations:
+            uri = dest["uri"]
             output = (
                 "[select='v\\:0,a\\:0':"
                 "f=fifo:fifo_format=flv:attempt_recovery=1:recovery_wait_time=5]"
-                f"{rtmps_url}"
+                f"{uri}"
             )
             tee_outputs.append(output)
-        
+
         tee_output = "|".join(tee_outputs)
 
-        # Build command
+        # Build command for tee (re-encode to guarantee FLV-compatible tags).
+        # Цей шлях залишаємо для майбутнього мультистрімінгу, коли цілей буде >1.
         cmd = [
             self.ffmpeg_bin,
             "-re",  # Read input at native frame rate
@@ -232,10 +264,14 @@ class FFmpegStreamManager:
             "-i", str(playlist_file),
             "-map", "0:v:0",
             "-map", "0:a:0?",
-            "-c:v", "copy",  # keep original video stream
-            "-c:a", "copy",  # keep original audio stream
-            "-bsf:v", "h264_mp4toannexb",
-            "-tag:v", "h264",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-pix_fmt", "yuv420p",
+            "-profile:v", "high",
+            "-g", "60",
+            "-c:a", "aac",
+            "-ar", "44100",
+            "-b:a", "160k",
             "-f", "tee",
             tee_output
         ]
@@ -273,6 +309,9 @@ class FFmpegStreamManager:
                     )
                 else:
                     logger.info(f"Stream {stream_id} exited normally")
+
+                await self._finalize_stream_success(stream_id, manual_stop)
+
                 async with self._cleanup_lock:
                     self.active_streams.pop(stream_id, None)
                     self.stream_info.pop(stream_id, None)
@@ -542,6 +581,45 @@ class FFmpegStreamManager:
                 logger.info(f"Cleaning up dead stream {stream_id}")
                 self.active_streams.pop(stream_id, None)
                 self.stream_info.pop(stream_id, None)
+
+    async def _finalize_stream_success(self, stream_id: str, manual_stop: bool) -> None:
+        """Persist success status and uptime when FFmpeg завершується без помилок."""
+        try:
+            stream_uuid = UUID(str(stream_id))
+        except ValueError:
+            logger.debug("Stream ID %s не є UUID — пропускаємо фіналізацію в БД", stream_id)
+            return
+
+        now = datetime.now(timezone.utc)
+
+        try:
+            async with get_db_context() as session:
+                stream = await session.get(Stream, stream_uuid)
+                if stream is None:
+                    logger.debug("Не знайшли stream %s у БД для фіналізації", stream_id)
+                    return
+
+                started_at = stream.started_at
+                if started_at is not None:
+                    # Перетворюємо на aware datetime у UTC, якщо потрібно
+                    if started_at.tzinfo is None:
+                        started_aware = started_at.replace(tzinfo=timezone.utc)
+                    else:
+                        started_aware = started_at.astimezone(timezone.utc)
+                    elapsed = (now - started_aware).total_seconds()
+                    if elapsed > 0:
+                        stream.total_duration_seconds = (stream.total_duration_seconds or 0.0) + elapsed
+
+                stream.pid = None
+                stream.stopped_at = now
+                stream.error_message = None
+                if stream.status != "stopped":
+                    stream.status = "stopped"
+
+        except SQLAlchemyError as exc:
+            logger.exception("Помилка БД під час фіналізації stream %s: %s", stream_id, exc)
+        except Exception as exc:
+            logger.exception("Неочікувана помилка під час фіналізації stream %s: %s", stream_id, exc)
 
 
     @staticmethod

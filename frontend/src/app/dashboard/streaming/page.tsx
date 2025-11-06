@@ -44,6 +44,7 @@ import type {
   StreamStatusValue,
   StreamStatusResponse,
   StreamQualityResponse,
+  SubscriptionTierKey,
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
 
@@ -90,7 +91,9 @@ const dateLocales: Record<string, DateFnsLocale> = {
 export default function StreamingPage() {
   const queryClient = useQueryClient()
   const router = useRouter()
-  const { user } = useDashboardContext()
+  const { user, quota, quotaLoading, currentTier } = useDashboardContext()
+  const planNames = useTranslations('dashboard.quota.tiers')
+  const activePlanLabel = planNames((currentTier ?? 'free') as SubscriptionTierKey)
   const streamingToasts = useTranslations('streaming.toasts')
   const streamingStatus = useTranslations('streaming.status')
   const tStreaming = useTranslations('streaming.page')
@@ -251,6 +254,11 @@ export default function StreamingPage() {
     () => (destinations || []).filter((destination) => destination.enabled),
     [destinations]
   )
+
+  const formatLimitValue = (value?: number | null) => (value == null ? '∞' : value.toString())
+  const destinationsLimit = quota?.destinations?.limit ?? null
+  const concurrentStreamsLimit = quota?.streams?.limit ?? null
+  const planQualityLimits = quota?.quality
 
   useEffect(() => {
     if (sourceMode === 'playlist' && playlists && playlists.length > 0 && !streamForm.playlist_id) {
@@ -492,6 +500,16 @@ export default function StreamingPage() {
         <div>
           <h2 className="text-3xl font-bold gradient-text mb-2">{tStreaming('header.title')}</h2>
           <p className="text-slate-600 dark:text-slate-400">{tStreaming('header.description')}</p>
+          <div className="mt-3 inline-flex items-center space-x-2 rounded-full bg-primary-50 dark:bg-primary-900/20 px-3 py-1 text-xs font-medium text-primary-700 dark:text-primary-300">
+            <span>{tStreaming('header.planLabel')}</span>
+            <span className="font-semibold">
+              {quotaLoading ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                activePlanLabel
+              )}
+            </span>
+          </div>
         </div>
         <Button onClick={() => setShowCreateStream(true)} className="flex items-center space-x-2">
           <Play className="w-4 h-4" />
@@ -604,7 +622,13 @@ export default function StreamingPage() {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-600 dark:text-slate-400">{tStreaming('channels.stats.total')}</span>
-                  <span className="text-lg font-bold">{destinations?.length || 0}</span>
+                  <span className="text-lg font-bold">
+                    {quotaLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      `${destinations?.length || 0}/${formatLimitValue(destinationsLimit)}`
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-600 dark:text-slate-400">{tStreaming('channels.stats.active')}</span>
@@ -760,7 +784,11 @@ export default function StreamingPage() {
               <CardContent className="pt-6">
                 <div className="text-center">
                   <p className="text-3xl font-bold gradient-text">
-                    {streams?.filter((s) => s.status === 'running').length || 0}/{enabledDestinations.length || 0}
+                    {quotaLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                    ) : (
+                      `${streams?.filter((s) => s.status === 'running').length || 0}/${formatLimitValue(concurrentStreamsLimit)}`
+                    )}
                   </p>
                   <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tStreaming('streams.stats.concurrent')}</p>
                 </div>
@@ -858,6 +886,9 @@ export default function StreamingPage() {
                   name: qualityGate.streamName || tStreaming('streams.untitled'),
                 })}
               </p>
+              <Badge variant="outline" className="w-max mt-2 text-xs font-medium">
+                {tStreaming('streams.quality.plan', { plan: activePlanLabel })}
+              </Badge>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -897,14 +928,30 @@ export default function StreamingPage() {
                 </p>
                 {(() => {
                   const recommendation = qualityGate.quality.recommended
-                  const resolution =
-                    recommendation?.resolution ??
-                    `${qualityGate.quality.limits.max_resolution_height ?? 1080}p`
-                  const fpsValue =
+                  const resolution = (() => {
+                    if (recommendation?.resolution) {
+                      return recommendation.resolution
+                    }
+                    if (qualityGate.quality.limits.max_resolution_height) {
+                      return `${qualityGate.quality.limits.max_resolution_height}p`
+                    }
+                    if (planQualityLimits?.max_resolution) {
+                      return planQualityLimits.max_resolution
+                    }
+                    return tStreaming('streams.quality.limits.unlimited')
+                  })()
+
+                  const fpsLimit =
                     recommendation?.fps ??
                     qualityGate.quality.limits.max_fps ??
-                    30
-                  const minBitrate = recommendation?.min_bitrate_mbps ?? null
+                    planQualityLimits?.max_fps ??
+                    null
+                  const fpsDisplay = fpsLimit != null ? fpsLimit.toString() : '∞'
+
+                  const minBitrate =
+                    recommendation?.min_bitrate_mbps ??
+                    qualityGate.quality.limits.min_video_bitrate_mbps ??
+                    null
                   const maxBitrate =
                     recommendation?.max_bitrate_mbps ??
                     qualityGate.quality.limits.max_video_bitrate_mbps ??
@@ -926,7 +973,7 @@ export default function StreamingPage() {
                     if (min && max) return `${min}–${max} Mbps`
                     if (min) return `≥ ${min} Mbps`
                     if (max) return `≤ ${max} Mbps`
-                    return '—'
+                    return tStreaming('streams.quality.limits.unlimited')
                   })()
 
                   const targetClause = targetBitrate != null
@@ -939,7 +986,7 @@ export default function StreamingPage() {
                     <p className="text-sm text-primary-700 dark:text-primary-300 mt-1">
                       {tStreaming('streams.quality.recommended.description', {
                         resolution,
-                        fps: fpsValue.toString(),
+                        fps: fpsDisplay,
                         videoCodec,
                         audioCodec,
                         bitrateRange: rangeText,
