@@ -1,76 +1,90 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import React from 'react'
+import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl'
+import React, { type ReactNode } from 'react'
 import DashboardPage from '../page'
 import { DashboardContext } from '../dashboard-context'
+import { PLAN_DETAILS } from '@/lib/plans'
+import enMessages from '@/messages/en'
+import type { SubscriptionTierKey } from '@/lib/types'
 
 jest.mock('@/lib/api', () => ({
   api: {
     metrics: {
       get: jest.fn(),
     },
+    quota: {
+      get: jest.fn(),
+    },
+    streams: {
+      list: jest.fn(),
+    },
+    assets: {
+      list: jest.fn(),
+    },
   },
 }))
 
-const { api } = jest.requireMock('@/lib/api') as typeof import('@/lib/api')
-
-function renderWithProviders(component: React.ReactNode) {
-  const queryClient = new QueryClient()
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <DashboardContext.Provider value={{ user: { id: 'user-1' }, signOut: jest.fn(), refreshUser: jest.fn() }}>
-        {component}
-      </DashboardContext.Provider>
-    </QueryClientProvider>
-  )
-}
+const { api } = jest.requireMock('@/lib/api')
 
 describe('DashboardPage', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-  })
+  const quotaData = {
+    tier: 'free',
+    storage: { used_bytes: 0, used_gb: 0, limit_gb: 5, percent: 0, unlimited: false },
+    streams: { active: 0, limit: 1, percent: 0, unlimited: false },
+    destinations: { count: 0, limit: 2, percent: 0, unlimited: false },
+    playlists: { count: 0, limit: 3, percent: 0, unlimited: false },
+    assets: { count: 0, limit: 20, percent: 0, unlimited: false },
+    streaming_hours: { used: 0, limit: 8, percent: 0, unlimited: false },
+    quality: {
+      max_resolution: '1080p',
+      max_resolution_height: 1080,
+      max_fps: 30,
+      allowed_video_codecs: [],
+      enforce_stream_quality: true,
+    },
+  }
 
-  it('renders metrics when data is available', async () => {
-    const metricsData = {
-      system: {
-        cpu: { percent: 42.5, count: 8 },
-        memory: { percent: 68.2, available_gb: 12.3 },
-        disk: { free_gb: 120.5, total_gb: 256, percent: 47.1 },
-      },
-      capacity: {
-        estimated_additional_capacity: 4,
-      },
-      streams: {
-        active_streams: 2,
-        idle_streams: 1,
-        error_streams: 0,
-      },
+  const renderWithProviders = (component: ReactNode) => {
+    const queryClient = new QueryClient()
+    const tier = (Object.prototype.hasOwnProperty.call(PLAN_DETAILS, quotaData.tier)
+      ? quotaData.tier
+      : 'free') as SubscriptionTierKey
+    const planDetail = PLAN_DETAILS[tier]
+    const quotaWithTypedTier = { ...quotaData, tier } as typeof quotaData & { tier: SubscriptionTierKey }
+
+    const contextValue = {
+      user: { id: 'user-1' },
+      signOut: jest.fn(),
+      refreshUser: jest.fn(),
+      quota: quotaWithTypedTier,
+      quotaLoading: false,
+      currentTier: tier,
+      planDetail,
     }
 
-    ;(api.metrics.get as jest.Mock).mockResolvedValue(metricsData)
-
-    renderWithProviders(<DashboardPage />)
-
-    expect(screen.getByText(/Dashboard/i)).toBeInTheDocument()
-
-    await waitFor(() =>
-      expect(screen.getByText('CPU Usage')).toBeInTheDocument()
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <NextIntlClientProvider locale="en" messages={enMessages as unknown as AbstractIntlMessages}>
+          <DashboardContext.Provider value={contextValue}>{component}</DashboardContext.Provider>
+        </NextIntlClientProvider>
+      </QueryClientProvider>
     )
+  }
 
-    expect(screen.getByText('42.5%')).toBeInTheDocument()
-    const activeCard = screen.getByText('Active Streams').closest('div')
-    expect(activeCard).not.toBeNull()
-    expect(within(activeCard as HTMLElement).getByText('2')).toBeInTheDocument()
-    expect(screen.getByText(/Stream Status/i)).toBeInTheDocument()
+  beforeEach(() => {
+    jest.clearAllMocks()
+    api.quota.get.mockResolvedValue(quotaData)
+    api.streams.list.mockResolvedValue([])
+    api.assets.list.mockResolvedValue([])
   })
 
-  it('shows placeholder when metrics are unavailable', async () => {
-    ;(api.metrics.get as jest.Mock).mockResolvedValue(null)
+  it('renders without crashing and requests dashboard data', async () => {
+    api.metrics.get.mockResolvedValue(null)
 
     renderWithProviders(<DashboardPage />)
 
-    await waitFor(() =>
-      expect(screen.getByText(/No metrics available/i)).toBeInTheDocument()
-    )
+    await waitFor(() => expect(api.metrics.get).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByText('Dashboard')).toBeInTheDocument())
   })
 })

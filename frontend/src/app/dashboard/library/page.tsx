@@ -9,7 +9,7 @@ import Tus from '@uppy/tus'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { 
-  Upload, ListVideo, Plus, CheckCircle, XCircle, Clock, 
+  AlertCircle, Upload, ListVideo, Plus, CheckCircle, XCircle, Clock, 
   List, PlayCircle, CalendarClock, Edit, Trash2, ChevronDown, ChevronUp, Loader2, X 
 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -40,6 +40,7 @@ type AssetDisplayInfo = {
   audioBitrate?: number
   audioSampleRate?: number
   audioChannels?: number
+  issues: string[]
   warnings: string[]
   recommendationLabel?: string
   recommendationDetails?: string
@@ -69,6 +70,9 @@ const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
   const video = (meta?.video ?? {}) as Record<string, any>
   const audio = (meta?.audio ?? {}) as Record<string, any>
   const backendWarnings = Array.isArray(meta?.warnings) ? (meta.warnings as string[]) : []
+  const validationIssues = Array.isArray(asset.validation_errors)
+    ? [...(asset.validation_errors as string[])]
+    : []
   const backendRecommendation = meta?.recommendation as
     | {
         label?: string
@@ -91,7 +95,7 @@ const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
     return undefined
   }
 
-  const warnings = [...(asset.validation_errors ?? []), ...backendWarnings]
+  const warnings = [...backendWarnings]
   let recommendation = matchBitrateRecommendation(
     safeNumber(video.height),
     safeNumber(video.fps)
@@ -155,6 +159,7 @@ const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
     audioBitrate: safeNumber(audio.bitrate),
     audioSampleRate: safeNumber(audio.sample_rate),
     audioChannels: safeNumber(audio.channels),
+    issues: validationIssues,
     warnings,
     recommendationLabel: recommendation.rule
       ? `${recommendation.rule.resolutionLabel}, ${recommendation.rule.fps} FPS`
@@ -645,15 +650,25 @@ export default function LibraryPage() {
                                   <Badge variant="warning">{tLibrary('assets.badges.bitrateCheck')}</Badge>
                                 ) : null}
                               </div>
+                              {!asset.compatible_for_copy && (
+                                <div className="text-sm text-error-600 dark:text-error-400">
+                                  {tLibrary('assets.messages.incompatibleSummary')}
+                                  {info.issues.length > 0 && (
+                                    <span className="block text-xs text-error-500/90 dark:text-error-300">
+                                      {info.issues[0]}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <AssetActionsMenu
                             onEdit={() => handleRenameAsset(asset)}
                             onDelete={() => handleDeleteAsset(asset.id)}
                             onCheck={() => handleCheckAsset(asset)}
-                            onPlaylists={() => handleNotImplemented('Playlists')}
-                            onOptimize={() => handleNotImplemented('Optimization')}
-                            onMove={() => handleNotImplemented('Move')}
+                            onPlaylists={() => handleNotImplemented(tLibrary('assets.menu.items.playlists'))}
+                            onOptimize={() => handleNotImplemented(tLibrary('assets.menu.items.optimize'))}
+                            onMove={() => handleNotImplemented(tLibrary('assets.menu.items.move'))}
                             onDownload={() => handleDownloadAsset(asset)}
                             isDeleting={
                               deleteAssetMutation.isPending && deleteAssetMutation.variables === asset.id
@@ -730,14 +745,23 @@ export default function LibraryPage() {
                               </div>
                             ) : null}
 
-                            {info.warnings.length > 0 && (
+                            {(info.issues.length > 0 || info.warnings.length > 0) && (
                               <div className="space-y-2">
-                                {info.warnings.map((warning, index) => (
+                                {info.issues.map((issue, index) => (
                                   <div
-                                    key={index}
+                                    key={`asset-issue-${index}`}
                                     className="flex items-start text-sm text-error-600 dark:text-error-400"
                                   >
                                     <XCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                                    <span>{issue}</span>
+                                  </div>
+                                ))}
+                                {info.warnings.map((warning, index) => (
+                                  <div
+                                    key={`asset-warning-${index}`}
+                                    className="flex items-start text-sm text-amber-600 dark:text-amber-400"
+                                  >
+                                    <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
                                     <span>{warning}</span>
                                   </div>
                                 ))}
@@ -1121,6 +1145,17 @@ export default function LibraryPage() {
                     ) : null}
                   </div>
 
+                  {!checkModalAsset.compatible_for_copy && (
+                    <div className="text-sm text-error-600 dark:text-error-400">
+                      {tLibrary('assets.messages.incompatibleSummary')}
+                      {checkModalInfo.issues.length > 0 && (
+                        <span className="block text-xs text-error-500/90 dark:text-error-300">
+                          {checkModalInfo.issues[0]}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   <div className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -1171,11 +1206,23 @@ export default function LibraryPage() {
                     </div>
                   ) : null}
 
-                  {checkModalInfo.warnings.length > 0 && (
+                  {(checkModalInfo.issues.length > 0 || checkModalInfo.warnings.length > 0) && (
                     <div className="space-y-2">
-                      {checkModalInfo.warnings.map((warning, index) => (
-                        <div key={index} className="flex items-start text-sm text-error-600 dark:text-error-400">
+                      {checkModalInfo.issues.map((issue, index) => (
+                        <div
+                          key={`modal-issue-${index}`}
+                          className="flex items-start text-sm text-error-600 dark:text-error-400"
+                        >
                           <XCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                          <span>{issue}</span>
+                        </div>
+                      ))}
+                      {checkModalInfo.warnings.map((warning, index) => (
+                        <div
+                          key={`modal-warning-${index}`}
+                          className="flex items-start text-sm text-amber-600 dark:text-amber-400"
+                        >
+                          <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
                           <span>{warning}</span>
                         </div>
                       ))}

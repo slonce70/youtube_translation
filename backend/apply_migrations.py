@@ -249,7 +249,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         query = text("SELECT COUNT(*) FROM subscription_tier_limits")
         result = await conn.execute(query)
         count = result.scalar()
-        return count == 4  # Should have 4 tiers
+        return count >= 4
     
     elif migration_num == '004':
         # Check user_id columns exist
@@ -401,6 +401,28 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         result = await conn.execute(query)
         return result.scalar() == 3
+
+    elif migration_num == '013':
+        query = text("""
+            SELECT COUNT(*)
+            FROM subscription_tier_limits
+            WHERE tier IN ('free', 'fhd_start', 'fhd_flow', 'fhd_boost', 'uhd_start', 'uhd_flow', 'uhd_boost')
+        """)
+        result = await conn.execute(query)
+        tier_count = result.scalar()
+        if tier_count != 7:
+            return False
+
+        # Ensure expected columns exist (price_cents as representative)
+        query = text("""
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'subscription_tier_limits'
+              AND column_name = 'price_cents'
+        """)
+        result = await conn.execute(query)
+        return result.scalar() == 1
 
     return False
 

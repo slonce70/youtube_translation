@@ -61,7 +61,7 @@ export default function AdminDashboard() {
       return tUsers('tiers.free')
     }
     const normalized = tier.toLowerCase()
-    const knownTiers = ['free', 'pro', 'business', 'enterprise']
+    const knownTiers = ['free', 'fhd_start', 'fhd_flow', 'fhd_boost', 'uhd_start', 'uhd_flow', 'uhd_boost']
     return knownTiers.includes(normalized) ? tUsers(`tiers.${normalized}` as any) : tier
   }
 

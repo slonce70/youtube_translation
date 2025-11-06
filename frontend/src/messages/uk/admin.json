@@ -22,9 +22,12 @@
       "tier": {
         "all": "Усі тарифи",
         "free": "Free",
-        "pro": "Pro",
-        "business": "Business",
-        "enterprise": "Enterprise"
+        "fhd_start": "FHD Start",
+        "fhd_flow": "FHD Flow",
+        "fhd_boost": "FHD Boost",
+        "uhd_start": "4K Start",
+        "uhd_flow": "4K Flow",
+        "uhd_boost": "4K Boost"
       },
       "status": {
         "all": "Усі статуси",
@@ -40,9 +43,16 @@
       "badges": {
         "suspended": "Заблоковано"
       },
+      "labels": {
+        "planTier": "Тариф: {tier}",
+        "planStarted": "З {date}",
+        "planExpires": "Подовження {date}",
+        "planNoExpiry": "Без кінцевої дати"
+      },
       "actions": {
         "suspend": "Заблокувати",
-        "unsuspend": "Розблокувати"
+        "unsuspend": "Розблокувати",
+        "applyTier": "Оновити"
       },
       "fields": {
         "storageUsed": "Використане сховище",
@@ -61,9 +71,12 @@
     },
     "tiers": {
       "free": "Free",
-      "pro": "Pro",
-      "business": "Business",
-      "enterprise": "Enterprise"
+      "fhd_start": "FHD Start",
+      "fhd_flow": "FHD Flow",
+      "fhd_boost": "FHD Boost",
+      "uhd_start": "4K Start",
+      "uhd_flow": "4K Flow",
+      "uhd_boost": "4K Boost"
     },
     "subscriptionStatus": {
       "active": "Активна",
@@ -76,13 +89,16 @@
     },
     "prompts": {
       "suspendReason": "Вкажіть причину блокування для {email}:",
-      "unsuspendConfirm": "Розблокувати цього користувача?"
+      "unsuspendConfirm": "Розблокувати цього користувача?",
+      "changeTierReason": "Коментар до зміни тарифу {email}:"
     },
     "toasts": {
       "suspendSuccess": "Користувача заблоковано",
       "suspendError": "Не вдалося заблокувати користувача",
       "unsuspendSuccess": "Користувача розблоковано",
-      "unsuspendError": "Не вдалося розблокувати користувача"
+      "unsuspendError": "Не вдалося розблокувати користувача",
+      "tierChangeSuccess": "Тариф оновлено",
+      "tierChangeError": "Не вдалося оновити тариф"
     }
   },
   "alerts": {

@@ -10,7 +10,7 @@
   },
   "profile": {
     "fallbackName": "User",
-    "freePlanBadge": "Free plan",
+    "planBadge": "{plan} plan",
     "accountSettings": "Account settings",
     "changePassword": "Change password",
     "managePlan": "Manage plan",

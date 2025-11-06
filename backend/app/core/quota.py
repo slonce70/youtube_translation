@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 import logging
 from urllib.parse import urlparse
+from datetime import datetime, timezone, timedelta
 
 from app.models.database import (
     UserProfile, SubscriptionTierLimits,
@@ -104,7 +105,7 @@ class QuotaEnforcer:
     async def check_concurrent_streams(self) -> bool:
         """
         Check if user can start another concurrent stream.
-        
+
         Returns:
             bool: True if allowed
             
@@ -140,12 +141,74 @@ class QuotaEnforcer:
                 tier=self._profile.subscription_tier
             )
         
+        await self._check_daily_streaming_limit()
+
         return True
-    
+
+    async def _check_daily_streaming_limit(self) -> bool:
+        """Ensure the user has not exceeded the daily streaming allowance."""
+
+        await self._load_limits()
+
+        limit_hours = self._limits.daily_streaming_limit_hours
+        if not limit_hours:
+            return True
+
+        window_end = datetime.now(timezone.utc)
+        window_start = window_end - timedelta(hours=24)
+
+        result = await self.db.execute(
+            select(Stream).where(
+                Stream.user_id == self.user_id,
+                Stream.started_at.isnot(None),
+                func.coalesce(Stream.stopped_at, func.now()) >= window_start
+            )
+        )
+        streams = result.scalars().all()
+
+        total_seconds = 0.0
+
+        for stream in streams:
+            started_at = stream.started_at
+            if not started_at:
+                continue
+
+            stopped_at = stream.stopped_at or window_end
+
+            if stopped_at <= window_start:
+                continue
+
+            effective_start = max(started_at, window_start)
+            effective_end = max(stopped_at, effective_start)
+
+            total_seconds += (effective_end - effective_start).total_seconds()
+
+        total_hours = total_seconds / 3600.0
+
+        if total_hours >= limit_hours:
+            await self._create_alert(
+                'quota_exceeded',
+                f'Daily streaming limit exceeded: {total_hours:.2f}/{limit_hours} hours',
+                {
+                    'resource': 'daily_streaming_hours',
+                    'count_hours': round(total_hours, 2),
+                    'limit_hours': limit_hours,
+                },
+            )
+
+            raise QuotaExceededError(
+                resource="daily streaming hours",
+                current=round(total_hours, 2),
+                limit=limit_hours,
+                tier=self._profile.subscription_tier,
+            )
+
+        return True
+
     async def check_assets_limit(self) -> bool:
         """
         Check if user can create another asset.
-        
+
         Returns:
             bool: True if allowed
             
@@ -242,6 +305,42 @@ class QuotaEnforcer:
         if not limits.enforce_stream_quality:
             return result
 
+        for index, asset in enumerate(assets):
+            meta = asset.get("meta") or {}
+            video = meta.get("video") or {}
+            audio = meta.get("audio") or {}
+            label = asset.get("filename") or asset.get("asset_id") or f"asset #{index + 1}"
+
+            if asset.get("compatible_for_copy") is False:
+                result["violations"].append(
+                    {
+                        "code": "incompatible_codecs",
+                        "asset_index": index,
+                        "asset_label": label,
+                        "message": (
+                            "Asset must use H.264 video, AAC audio, and yuv420p pixel format "
+                            "for direct streaming."
+                        ),
+                        "details": {
+                            "validation_errors": asset.get("validation_errors") or [],
+                        },
+                    }
+                )
+
+            if not video or not audio:
+                result["violations"].append(
+                    {
+                        "code": "missing_metadata",
+                        "asset_index": index,
+                        "asset_label": label,
+                        "message": "Asset metadata is incomplete for quality checks.",
+                    }
+                )
+
+        if result["violations"]:
+            result["ok"] = False
+            return result
+
         guidance_table = VideoValidator.BITRATE_GUIDANCE
 
         def _safe_int(value: Any) -> Optional[int]:
@@ -329,6 +428,11 @@ class QuotaEnforcer:
         for index, asset in enumerate(assets):
             meta = asset.get("meta") or {}
             video = meta.get("video") or {}
+            allowed_codecs = {
+                (codec or "").lower()
+                for codec in (self._limits.allowed_video_codecs or [])
+                if codec
+            }
 
             def add_violation(code: str, message: str, current: Any = None, allowed: Any = None):
                 result["violations"].append(
@@ -347,6 +451,16 @@ class QuotaEnforcer:
                 add_violation(
                     "missing_metadata",
                     "Video metadata is missing. Revalidate the file before streaming.",
+                )
+                continue
+
+            codec_name = (video.get("codec_name") or "").lower()
+            if allowed_codecs and codec_name and codec_name not in allowed_codecs:
+                add_violation(
+                    "codec_not_allowed",
+                    "Video codec is not permitted for your plan.",
+                    current=codec_name,
+                    allowed=", ".join(sorted(allowed_codecs)),
                 )
                 continue
 

@@ -7,6 +7,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
+const SESSION_COOKIE_NAME = 'sb-session'
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -18,23 +20,20 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 function setAuthCookies(session: Session | null) {
   if (typeof document === 'undefined') return
 
-  const expireAccess = session?.expires_at
+  // Позначаємо наявність активної сесії без збереження чутливих токенів у cookies
+  const expire = session?.expires_at
     ? new Date(session.expires_at * 1000)
     : new Date(Date.now() + 60 * 60 * 1000)
 
-  const expireRefresh = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // ~60 days
-
   if (session?.access_token) {
-    document.cookie = `sb-access-token=${session.access_token}; Path=/; Expires=${expireAccess.toUTCString()}; SameSite=Lax`
+    document.cookie = `${SESSION_COOKIE_NAME}=1; Path=/; Expires=${expire.toUTCString()}; SameSite=Strict`
   } else {
-    document.cookie = `sb-access-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`
+    document.cookie = `${SESSION_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`
   }
 
-  if (session?.refresh_token) {
-    document.cookie = `sb-refresh-token=${session.refresh_token}; Path=/; Expires=${expireRefresh.toUTCString()}; SameSite=Lax`
-  } else {
-    document.cookie = `sb-refresh-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`
-  }
+  // Скидаємо застарілі cookies з токенами, якщо вони залишились
+  document.cookie = `sb-access-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`
+  document.cookie = `sb-refresh-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`
 }
 
 supabase.auth.getSession().then(({ data }) => setAuthCookies(data.session ?? null))

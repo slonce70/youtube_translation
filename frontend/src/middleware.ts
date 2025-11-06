@@ -37,10 +37,9 @@ export function middleware(request: NextRequest) {
   const isDashboardRoute = pathname.startsWith('/dashboard') || pathname.startsWith('/admin')
 
   if (isDashboardRoute) {
-    const accessCookie = request.cookies.get('sb-access-token')
-    const refreshCookie = request.cookies.get('sb-refresh-token')
+    const sessionCookie = request.cookies.get('sb-session')?.value
 
-    if (!accessCookie || !refreshCookie) {
+    if (sessionCookie !== '1') {
       const loginUrl = request.nextUrl.clone()
       loginUrl.pathname = '/login'
       loginUrl.searchParams.set('redirect', pathname)

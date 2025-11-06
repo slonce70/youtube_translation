@@ -35,31 +35,37 @@ class TestUserProfilesMigration:
         result = await db.execute(select(SubscriptionTierLimits))
         tiers = result.scalars().all()
         
-        tier_names = [t.tier for t in tiers]
-        assert 'free' in tier_names
-        assert 'pro' in tier_names
-        assert 'business' in tier_names
-        assert 'enterprise' in tier_names
-        
+        tier_names = {t.tier for t in tiers}
+        assert tier_names == {
+            'free',
+            'fhd_start',
+            'fhd_flow',
+            'fhd_boost',
+            'uhd_start',
+            'uhd_flow',
+            'uhd_boost',
+        }
+
         # Check free tier limits
         free_tier = next(t for t in tiers if t.tier == 'free')
-        assert free_tier.storage_gb == 5
+        assert free_tier.storage_gb == 3
         assert free_tier.max_concurrent_streams == 1
-        assert free_tier.max_destinations == 2
-        assert free_tier.max_playlists == 3
+        assert free_tier.max_destinations == 1
+        assert free_tier.max_playlists == 5
         assert free_tier.max_assets == 20
-    
+        assert free_tier.daily_streaming_limit_hours == 8
+
     @pytest.mark.asyncio
-    async def test_enterprise_tier_unlimited(self, db: AsyncSession):
-        """Test that enterprise tier has unlimited resources"""
+    async def test_uhd_boost_tier_allows_hevc(self, db: AsyncSession):
+        """Test that UHD Boost tier supports HEVC passthrough"""
         result = await db.execute(
-            select(SubscriptionTierLimits).where(SubscriptionTierLimits.tier == 'enterprise')
+            select(SubscriptionTierLimits).where(SubscriptionTierLimits.tier == 'uhd_boost')
         )
-        enterprise = result.scalar_one()
-        
-        assert enterprise.storage_gb is None  # Unlimited
-        assert enterprise.max_concurrent_streams is None
-        assert enterprise.max_destinations is None
+        uhd_boost = result.scalar_one()
+
+        assert uhd_boost.max_resolution_height == 2160
+        assert uhd_boost.max_concurrent_streams == 4
+        assert 'hevc' in (uhd_boost.allowed_video_codecs or [])
 
 
 class TestUserIdColumnsMigration:
@@ -219,7 +225,7 @@ class TestAdminTables:
         target_id = uuid4()
 
         db.add_all([
-            UserProfile(user_id=admin_id, email="admin@example.com", subscription_tier='pro', subscription_status='active', is_admin=True),
+            UserProfile(user_id=admin_id, email="admin@example.com", subscription_tier='fhd_flow', subscription_status='active', is_admin=True),
             UserProfile(user_id=target_id, email="user@example.com", subscription_tier='free', subscription_status='active')
         ])
 

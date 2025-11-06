@@ -1,0 +1,244 @@
+{
+  "nav": {
+    "brand": "YouTube Streaming",
+    "features": "Product tour",
+    "howItWorks": "How it works",
+    "pricing": "Plans & pricing",
+    "benefits": "Why creators stay",
+    "startStreaming": "Open dashboard"
+  },
+  "hero": {
+    "badge": "Keep your channel live day and night",
+    "title": "Always-on YouTube streaming without babysitting OBS",
+    "subtitle": "Upload your shows once, set a simple schedule, and let our platform keep the broadcast running while you sleep.",
+    "primaryCTA": "Start for free",
+    "secondaryCTA": "Watch a quick demo",
+    "trustIndicator": "Free tier included • Upgrade only when you grow"
+  },
+  "features": {
+    "title": "Built for creators who stream around the clock",
+    "items": {
+      "streaming": {
+        "title": "Hands-off broadcasting",
+        "description": "Loop playlists, swap fallbacks, and recover from hiccups automatically—no 3 a.m. restarts."
+      },
+      "multiChannel": {
+        "title": "All channels in one place",
+        "description": "Connect every YouTube channel you manage and switch between them from a single dashboard."
+      },
+      "quota": {
+        "title": "Usage guardrails",
+        "description": "Realtime gauges for storage, destinations, and runtime so you stay ahead of platform limits."
+      },
+      "quality": {
+        "title": "Original quality preserved",
+        "description": "We pass through your H.264 or HEVC source without re-encoding, so viewers see exactly what you uploaded."
+      },
+      "schedule": {
+        "title": "Set-and-forget scheduling",
+        "description": "Drag a calendar, plan special events, and trigger backups automatically when the playlist ends."
+      },
+      "uploads": {
+        "title": "Resumable uploads",
+        "description": "Large files finish faster with tusd. Pause, resume, and never worry about losing progress again."
+      }
+    }
+  },
+  "howItWorks": {
+    "title": "From upload to live in four clear steps",
+    "steps": {
+      "upload": {
+        "title": "Load your library",
+        "description": "Drop pre-produced sets into secure storage with resumable uploads."
+      },
+      "playlist": {
+        "title": "Arrange the rotation",
+        "description": "Create playlists, balance durations, and define what plays next."
+      },
+      "stream": {
+        "title": "Go live",
+        "description": "Provision RTMPS outputs for YouTube in one click—FFmpeg orchestration included."
+      },
+      "monitor": {
+        "title": "Monitor the feed",
+        "description": "Track bitrate, quota usage, and health alerts directly from the admin console."
+      }
+    }
+  },
+  "stats": {
+    "storageMax": {
+      "label": "Storage per workspace",
+      "description": "Plans include from {value} GB and scale as your catalog grows"
+    },
+    "streamsMax": {
+      "label": "Concurrent streams",
+      "description": "Add more slots as you expand to 24/7 or parallel channels"
+    },
+    "destinationsMax": {
+      "label": "Destinations per stream",
+      "description": "Send the same feed to the platforms you rely on"
+    },
+    "resolutionMax": {
+      "label": "Maximum passthrough",
+      "description": "Up to {value} at 60 fps for top plans"
+    }
+  },
+  "pricing": {
+    "title": "Plans for every type of channel",
+    "subtitle": "Experiment on the free tier and upgrade only when you need extra streams, storage, or support.",
+    "ctaLabel": "Choose plan",
+    "billingPeriod": "/month",
+    "freeCard": {
+      "badge": "Start here",
+      "title": "Free forever",
+      "subtitle": "Perfect for testing automations or keeping a hobby channel online with zero risk.",
+      "button": "Create free workspace",
+      "features": [
+        "1 live channel at a time",
+        "8 hours of streaming each day",
+        "3 GB of secure storage",
+        "Resumable uploads & live health checks"
+      ]
+    },
+    "planLabels": {
+      "free": {
+        "name": "Free",
+        "tagline": "Launch your stream risk-free"
+      },
+      "fhd_start": {
+        "name": "FHD Start",
+        "tagline": "Step up from manual OBS sessions"
+      },
+      "fhd_flow": {
+        "name": "FHD Flow",
+        "tagline": "Most popular for monetised channels",
+        "badge": "Creators' choice"
+      },
+      "fhd_boost": {
+        "name": "FHD Boost",
+        "tagline": "Advanced automations and bigger libraries"
+      },
+      "uhd_start": {
+        "name": "4K Start",
+        "tagline": "Launch your first true 4K60 channel"
+      },
+      "uhd_flow": {
+        "name": "4K Flow",
+        "tagline": "Redundant UHD output for growing teams"
+      },
+      "uhd_boost": {
+        "name": "4K Boost",
+        "tagline": "Studios that need concierge support",
+        "badge": "Teams"
+      }
+    },
+    "selection": {
+      "badges": {
+        "current": "Current plan",
+        "selected": "Selected"
+      },
+      "button": {
+        "default": "Buy plan",
+        "selected": "Continue with {plan}",
+        "current": "Current plan"
+      }
+    },
+    "featureLabels": {
+      "storage": "Includes {value} GB of secure storage",
+      "streams": "{value} parallel stream slots",
+      "destinations": "Stream to {value} destinations at once",
+      "resolution": "{resolution} passthrough at up to {fps} fps",
+      "dailyLimit": "Daily streaming window: up to {hours} hours",
+      "noDailyLimit": "Daily streaming window: no cap (24/7)",
+      "branding": "Channel branding toolkit included",
+      "automation": "Automation & scheduled playlist swaps",
+      "support": "Support response: {value}",
+      "manager": "Dedicated success manager"
+    },
+    "supportLevels": {
+      "community": "Community forum",
+      "standard": "Email within 1 business day",
+      "priority": "Priority queue (under 12 hours)",
+      "sameDay": "Same-day engineer reply",
+      "dedicated": "Direct line to your manager"
+    }
+  },
+  "comparison": {
+    "title": "Snapshot of what's included",
+    "subtitle": "Every plan delivers secure storage, analytics, and automation-ready infrastructure.",
+    "features": {
+      "storage": "Storage (GB)",
+      "streams": "Concurrent streams",
+      "destinations": "Destinations",
+      "dailyLimit": "Daily streaming",
+      "resolution": "Max resolution",
+      "branding": "Branding tools",
+      "automation": "Automation",
+      "support": "Support level",
+      "manager": "Success manager"
+    },
+    "notes": {
+      "dailyLimit": "“24/7” means no daily cap.",
+      "resolution": "Lower resolutions are available on every plan."
+    }
+  },
+  "benefits": {
+    "title": "Why serious creators rely on us",
+    "items": {
+      "quality": {
+        "title": "Sleep through the night",
+        "description": "Your stream stays live while we handle restarts, failovers, and alerts."
+      },
+      "secure": {
+        "title": "Enterprise-grade security",
+        "description": "Row-level access, audit logs, and encrypted storage keep your catalog safe."
+      },
+      "simple": {
+        "title": "Operations on autopilot",
+        "description": "Spend time making content, not juggling scripts, cron jobs, and ad-hoc tooling."
+      },
+      "support": {
+        "title": "Streaming-first support",
+        "description": "Chat with engineers who keep streaming pipelines healthy every day."
+      }
+    }
+  },
+  "cta": {
+    "title": "Launch your always-on stream today",
+    "subtitle": "Music channels, podcasts, radio stations, and webcams run nonstop on our platform.",
+    "button": "Start for free",
+    "trustIndicators": {
+      "noCard": "No credit card required",
+      "freeStorage": "Free plan includes storage and daily streaming",
+      "cancelAnytime": "Upgrade, downgrade, or cancel anytime"
+    }
+  },
+  "footer": {
+    "brand": {
+      "name": "YouTube Streaming",
+      "tagline": "Automation platform for always-on creators"
+    },
+    "product": {
+      "title": "Product",
+      "features": "Product tour",
+      "pricing": "Plans & pricing",
+      "docs": "Documentation",
+      "api": "API reference"
+    },
+    "company": {
+      "title": "Company",
+      "about": "About",
+      "blog": "Blog",
+      "contact": "Contact",
+      "support": "Support"
+    },
+    "legal": {
+      "title": "Legal",
+      "terms": "Terms of service",
+      "privacy": "Privacy policy",
+      "security": "Security",
+      "compliance": "Compliance"
+    },
+    "copyright": "© 2024 YouTube Streaming. All rights reserved."
+  }
+}

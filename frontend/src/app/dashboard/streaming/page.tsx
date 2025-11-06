@@ -642,7 +642,11 @@ export default function StreamingPage() {
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                             <div>
                               <p className="text-slate-500 dark:text-slate-400">{tStreaming('streams.labels.playlist')}</p>
-                              <p className="font-medium">{playlistMap.get(stream.playlist_id)?.name || tStreaming('streams.unknownPlaylist')}</p>
+                              <p className="font-medium">
+                                {stream.playlist_id
+                                  ? playlistMap.get(stream.playlist_id)?.name ?? tStreaming('streams.unknownPlaylist')
+                                  : tStreaming('streams.unknownPlaylist')}
+                              </p>
                             </div>
                             <div>
                               <p className="text-slate-500 dark:text-slate-400">{tStreaming('streams.labels.status')}</p>

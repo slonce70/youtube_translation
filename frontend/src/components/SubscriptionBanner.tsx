@@ -3,52 +3,101 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { motion } from 'framer-motion'
-import { Crown, Sparkles, TrendingUp, X } from 'lucide-react'
+import { Crown, Sparkles, TrendingUp, Rocket, X } from 'lucide-react'
 
 import { Card } from './ui/Card'
 import { Button } from './ui/Button'
 import { Badge } from './ui/Badge'
+import type { SubscriptionTierKey } from '@/lib/types'
 
 interface SubscriptionBannerProps {
-  tier: 'free' | 'pro' | 'business' | 'enterprise'
+  tier: SubscriptionTierKey
   expiresAt?: string
   onUpgrade?: () => void
 }
 
-const tierVisuals = {
+const tierVisuals: Record<SubscriptionTierKey, { color: string; icon: typeof Sparkles; showUpgrade: boolean }> = {
   free: {
     color: 'from-slate-500 to-slate-600',
     icon: Sparkles,
     showUpgrade: true,
   },
-  pro: {
+  fhd_start: {
+    color: 'from-primary-400 to-primary-500',
+    icon: TrendingUp,
+    showUpgrade: true,
+  },
+  fhd_flow: {
     color: 'from-primary-500 to-purple-600',
+    icon: TrendingUp,
+    showUpgrade: true,
+  },
+  fhd_boost: {
+    color: 'from-primary-600 to-fuchsia-600',
     icon: Crown,
     showUpgrade: true,
   },
-  business: {
-    color: 'from-accent-500 to-cyan-600',
-    icon: TrendingUp,
-    showUpgrade: false,
+  uhd_start: {
+    color: 'from-amber-500 to-orange-500',
+    icon: Rocket,
+    showUpgrade: true,
   },
-  enterprise: {
-    color: 'from-amber-500 to-orange-600',
+  uhd_flow: {
+    color: 'from-amber-600 to-orange-600',
+    icon: Rocket,
+    showUpgrade: true,
+  },
+  uhd_boost: {
+    color: 'from-amber-700 to-rose-600',
     icon: Crown,
     showUpgrade: false,
   },
-} as const
+}
+
+const tierDotColor: Record<SubscriptionTierKey, string> = {
+  free: 'bg-slate-500',
+  fhd_start: 'bg-primary-400',
+  fhd_flow: 'bg-primary-500',
+  fhd_boost: 'bg-primary-600',
+  uhd_start: 'bg-amber-500',
+  uhd_flow: 'bg-amber-600',
+  uhd_boost: 'bg-rose-500',
+}
 
 const BANNER_STORAGE_KEY = 'subscription-banner-dismissed'
-const BANNER_TTL_MS = 24 * 60 * 60 * 1000
+const BANNER_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 const getStorageKey = (tier: string) => `${BANNER_STORAGE_KEY}:${tier}`
+
+const shouldDisplayBanner = (tier: SubscriptionTierKey) => {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  const raw = window.localStorage.getItem(getStorageKey(tier))
+
+  if (!raw) {
+    return true
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { timestamp?: number }
+    if (!parsed?.timestamp) {
+      return true
+    }
+
+    return Date.now() - parsed.timestamp > BANNER_TTL_MS
+  } catch {
+    return true
+  }
+}
 
 export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionBannerProps) {
   const visuals = tierVisuals[tier]
   const Icon = visuals.icon
   const banner = useTranslations('dashboard.subscriptionBanner')
   const locale = useLocale()
-  const [visible, setVisible] = useState(() => !visuals.showUpgrade)
+  const [visible, setVisible] = useState(() => shouldDisplayBanner(tier))
 
   const translations = useMemo(() => {
     const features = banner.raw(`tiers.${tier}.features`) as string[] | undefined
@@ -63,34 +112,11 @@ export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionB
   }, [banner, tier, visuals.showUpgrade])
 
   useEffect(() => {
-    if (!visuals.showUpgrade) {
-      setVisible(true)
-      return
-    }
-
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const raw = window.localStorage.getItem(getStorageKey(tier))
-
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as { timestamp?: number }
-        if (parsed?.timestamp && Date.now() - parsed.timestamp < BANNER_TTL_MS) {
-          setVisible(false)
-          return
-        }
-      } catch {
-        // ignore malformed storage contents and show banner
-      }
-    }
-
-    setVisible(true)
-  }, [tier, visuals.showUpgrade])
+    setVisible(shouldDisplayBanner(tier))
+  }, [tier])
 
   const persistDismissal = () => {
-    if (!visuals.showUpgrade || typeof window === 'undefined') {
+    if (typeof window === 'undefined') {
       return
     }
 
@@ -155,15 +181,7 @@ export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionB
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                   {translations.features.map((feature, index) => (
                     <div key={index} className="flex items-center space-x-2 text-sm">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          tier === 'business'
-                            ? 'bg-accent-500'
-                            : tier === 'enterprise'
-                              ? 'bg-amber-500'
-                              : 'bg-primary-500'
-                        }`}
-                      />
+                      <div className={`w-2 h-2 rounded-full ${tierDotColor[tier] ?? 'bg-primary-500'}`} />
                       <span>{feature}</span>
                     </div>
                   ))}
@@ -199,4 +217,3 @@ export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionB
     </motion.div>
   )
 }
-

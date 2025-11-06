@@ -15,18 +15,16 @@ import { StreamControlWidget } from '@/components/StreamControlWidget'
 import { PlanLimitsCard } from '@/components/PlanLimitsCard'
 import { Progress } from '@/components/ui/Progress'
 import { useDashboardContext } from './dashboard-context'
-import type { MetricsResponse, Stream, Asset } from '@/lib/types'
-
-const STORAGE_LIMIT_GB = 3
-const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * Math.pow(1024, 3)
-const DAILY_STREAMING_LIMIT_HOURS = 8
-const CONCURRENT_STREAM_LIMIT = 1
+import type { MetricsResponse, Stream, Asset, SubscriptionTierKey } from '@/lib/types'
 
 export default function DashboardPage() {
-  const { user } = useDashboardContext()
+  const { user, quota, quotaLoading, currentTier, planDetail } = useDashboardContext()
   const dashboard = useTranslations('dashboard')
 
   const formatHoursLabel = useCallback((hours: number) => {
+    if (!Number.isFinite(hours)) {
+      return dashboard('timeFormat.unlimited')
+    }
     const wholeHours = Math.floor(hours)
     const minutes = Math.round((hours - wholeHours) * 60)
 
@@ -39,17 +37,26 @@ export default function DashboardPage() {
       : dashboard('timeFormat.hours', { hours: wholeHours })
   }, [dashboard])
 
+  const computeRefetchInterval = useCallback(() => {
+    if (typeof document === 'undefined') {
+      return false
+    }
+    return document.visibilityState === 'visible' ? 15000 : false
+  }, [])
+
   const { data: metrics, isLoading: metricsLoading } = useQuery<MetricsResponse>({
     queryKey: ['metrics'],
     queryFn: api.metrics.get,
-    refetchInterval: 5000,
+    refetchInterval: computeRefetchInterval,
+    refetchOnWindowFocus: true,
     enabled: !!user,
   })
 
   const { data: streams, isLoading: streamsLoading } = useQuery<Stream[]>({
     queryKey: ['streams'],
     queryFn: api.streams.list,
-    refetchInterval: 5000,
+    refetchInterval: computeRefetchInterval,
+    refetchOnWindowFocus: true,
     enabled: !!user,
   })
 
@@ -58,7 +65,13 @@ export default function DashboardPage() {
     queryFn: api.assets.list,
     enabled: !!user,
     staleTime: 30_000,
+    refetchOnWindowFocus: true,
   })
+  const planKey = (currentTier ?? 'free') as SubscriptionTierKey
+  const plan = planDetail
+  const planStorageLimitBytes = plan.storageGb * Math.pow(1024, 3)
+  const planDailyLimitHours = plan.dailyLimitHours ?? Infinity
+  const planStreamLimit = plan.streams
 
   const usage = useMemo(() => {
     const now = new Date()
@@ -75,34 +88,40 @@ export default function DashboardPage() {
     }, 0)
 
     const hoursUsed = activeSeconds / 3600
-    const hoursUsagePercent = Math.min(100, (hoursUsed / DAILY_STREAMING_LIMIT_HOURS) * 100)
+    const hoursUsagePercent = Number.isFinite(planDailyLimitHours) && planDailyLimitHours > 0
+      ? Math.min(100, (hoursUsed / (planDailyLimitHours as number)) * 100)
+      : 0
 
     const storageUsedBytes = (assets ?? []).reduce((total, asset) => total + (asset.size_bytes ?? 0), 0)
-    const storageUsagePercent = Math.min(100, (storageUsedBytes / STORAGE_LIMIT_BYTES) * 100)
+    const storageUsagePercent = planStorageLimitBytes === 0
+      ? 0
+      : Math.min(100, (storageUsedBytes / planStorageLimitBytes) * 100)
 
     const streamUsagePercent = Math.min(
       100,
-      (activeStreams.length / CONCURRENT_STREAM_LIMIT) * 100
+      (activeStreams.length / planStreamLimit) * 100
     )
 
     return {
       activeStreams,
       assetsCount: assets?.length ?? 0,
       hoursUsed,
-      hoursRemaining: Math.max(0, DAILY_STREAMING_LIMIT_HOURS - hoursUsed),
+      hoursRemaining: Number.isFinite(planDailyLimitHours)
+        ? Math.max(0, (planDailyLimitHours as number) - hoursUsed)
+        : Infinity,
       hoursUsagePercent: Number.isFinite(hoursUsagePercent) ? hoursUsagePercent : 0,
       storageUsedBytes,
-      storageRemainingBytes: Math.max(0, STORAGE_LIMIT_BYTES - storageUsedBytes),
+      storageRemainingBytes: Math.max(0, planStorageLimitBytes - storageUsedBytes),
       storageUsagePercent: Number.isFinite(storageUsagePercent) ? storageUsagePercent : 0,
       streamUsagePercent: Number.isFinite(streamUsagePercent) ? streamUsagePercent : 0,
     }
-  }, [assets, streams])
+  }, [assets, streams, planDailyLimitHours, planStorageLimitBytes, planStreamLimit])
 
   const statCards = useMemo(
     () => [
       {
         title: dashboard('stats.storageUsed'),
-        value: `${formatBytes(usage.storageUsedBytes)} / ${STORAGE_LIMIT_GB} GB`,
+        value: `${formatBytes(usage.storageUsedBytes)} / ${plan.storageGb} GB`,
         icon: HardDrive,
         gradient: 'from-primary-500 to-cyan-500',
       },
@@ -114,7 +133,7 @@ export default function DashboardPage() {
       },
       {
         title: dashboard('stats.activeStreams'),
-        value: `${usage.activeStreams.length} / ${CONCURRENT_STREAM_LIMIT}`,
+        value: `${usage.activeStreams.length} / ${planStreamLimit}`,
         icon: Radio,
         gradient: 'from-success-500 to-emerald-500',
       },
@@ -125,11 +144,12 @@ export default function DashboardPage() {
         gradient: 'from-amber-500 to-orange-500',
       },
     ],
-    [dashboard, usage, formatHoursLabel]
+    [dashboard, usage, formatHoursLabel, plan.storageGb, planStreamLimit]
   )
 
   const initialLoading =
-    !metrics && !streams && !assets && (metricsLoading || streamsLoading || assetsLoading)
+    (!metrics && !streams && !assets && (metricsLoading || streamsLoading || assetsLoading)) ||
+    (quotaLoading && !quota)
 
   if (initialLoading) {
     return <LoadingState />
@@ -145,11 +165,11 @@ export default function DashboardPage() {
       </div>
 
       <SubscriptionBanner
-        tier="free"
+        tier={planKey}
         onUpgrade={() => window.location.assign('/dashboard/plans')}
       />
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 items-stretch">
         {statCards.map((card, index) => (
           <StatCard
             key={card.title}
@@ -178,7 +198,7 @@ export default function DashboardPage() {
                 <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                   {dashboard('usage.storageRemaining', {
                     remaining: formatBytes(usage.storageRemainingBytes),
-                    limit: `${STORAGE_LIMIT_GB} GB`,
+                    limit: `${plan.storageGb} GB`,
                   })}
                 </p>
               </div>
@@ -194,7 +214,7 @@ export default function DashboardPage() {
                 <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                   {dashboard('usage.dailyStreamingRemaining', {
                     remaining: formatHoursLabel(usage.hoursRemaining),
-                    limit: formatHoursLabel(DAILY_STREAMING_LIMIT_HOURS),
+                    limit: formatHoursLabel(planDailyLimitHours),
                   })}
                 </p>
               </div>
@@ -204,7 +224,7 @@ export default function DashboardPage() {
                   <span>{dashboard('usage.concurrentLabel')}</span>
                   <span>{dashboard('usage.concurrentValue', {
                     current: usage.activeStreams.length,
-                    limit: CONCURRENT_STREAM_LIMIT,
+                    limit: planStreamLimit,
                   })}</span>
                 </div>
                 <Progress value={usage.streamUsagePercent} className="mt-2" indicatorClassName={usage.streamUsagePercent >= 90 ? 'bg-error-500' : undefined} />
@@ -222,15 +242,13 @@ export default function DashboardPage() {
 
         <div className="space-y-6">
           <PlanLimitsCard
+            planKey={planKey}
+            plan={plan}
             storageUsedBytes={usage.storageUsedBytes}
-            storageLimitBytes={STORAGE_LIMIT_BYTES}
-            storageUsagePercent={usage.storageUsagePercent}
             hoursUsed={usage.hoursUsed}
-            hoursLimit={DAILY_STREAMING_LIMIT_HOURS}
-            hoursUsagePercent={usage.hoursUsagePercent}
             activeStreams={usage.activeStreams.length}
-            streamLimit={CONCURRENT_STREAM_LIMIT}
             assetsCount={usage.assetsCount}
+            onUpgrade={() => window.location.assign('/dashboard/plans')}
           />
 
           <Card>

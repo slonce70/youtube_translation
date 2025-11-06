@@ -9,6 +9,7 @@ import profile from './profile.json'
 import admin from './admin.json'
 import metadata from './metadata.json'
 import errors from './errors.json'
+import landing from './landing.json'
 
 const messages = {
   common,
@@ -22,6 +23,7 @@ const messages = {
   metadata,
   admin,
   errors,
+  landing,
 }
 
 export default messages

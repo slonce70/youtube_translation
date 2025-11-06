@@ -59,9 +59,11 @@ def _extract_stream_assets(stream: Stream):
         assets_data = [
             {
                 "path": item.asset.storage_path,
-                "meta": item.asset.meta,
+                "meta": item.asset.meta or {},
                 "asset_id": str(item.asset.id),
                 "filename": item.asset.filename,
+                "compatible_for_copy": item.asset.compatible_for_copy,
+                "validation_errors": item.asset.validation_errors or [],
             }
             for item in items
         ]
@@ -76,9 +78,11 @@ def _extract_stream_assets(stream: Stream):
         assets_data = [
             {
                 "path": link.asset.storage_path,
-                "meta": link.asset.meta,
+                "meta": link.asset.meta or {},
                 "asset_id": str(link.asset.id),
                 "filename": link.asset.filename,
+                "compatible_for_copy": link.asset.compatible_for_copy,
+                "validation_errors": link.asset.validation_errors or [],
             }
             for link in links
         ]

@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { HardDrive, Radio, Upload, ListVideo, TvMinimal, TrendingUp } from 'lucide-react'
+import { HardDrive, Radio, Upload, ListVideo, TvMinimal, TrendingUp, Timer } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
@@ -14,6 +14,8 @@ interface QuotaUsage {
   assets: { count: number; limit: number; percent: number }
   playlists: { count: number; limit: number; percent: number }
   destinations: { count: number; limit: number; percent: number }
+  streaming_hours: { used: number; limit: number | null; percent: number; unlimited: boolean }
+  quality: { max_resolution: string; max_resolution_height: number | null; max_fps: number | null; allowed_video_codecs: string[]; enforce_stream_quality: boolean }
   tier: string
 }
 
@@ -48,6 +50,10 @@ export function QuotaWidget({ quota, loading }: QuotaWidgetProps) {
 
   const tierKey = quota.tier.toLowerCase()
   const tierLabel = t(`tiers.${tierKey}` as any)
+  const resolutionLabel = quota.quality.max_resolution_height
+    ? `${quota.quality.max_resolution_height}p`
+    : quota.quality.max_resolution
+  const codecsLabel = (quota.quality.allowed_video_codecs || []).join(', ') || '—'
 
   const resources = (
     [
@@ -66,6 +72,16 @@ export function QuotaWidget({ quota, loading }: QuotaWidgetProps) {
         limit: quota.streams.limit,
         percent: quota.streams.percent,
         color: 'from-purple-500 to-pink-500',
+      },
+      {
+        key: 'streamingHours',
+        icon: Timer,
+        current: `${quota.streaming_hours.used.toFixed(1)} h`,
+        limit: quota.streaming_hours.unlimited
+          ? t('limits.unlimited')
+          : `${Number(quota.streaming_hours.limit ?? 0).toFixed(0)} h`,
+        percent: quota.streaming_hours.percent,
+        color: 'from-sky-500 to-cyan-500',
       },
       {
         key: 'assets',
@@ -173,6 +189,21 @@ export function QuotaWidget({ quota, loading }: QuotaWidgetProps) {
               </motion.div>
             )
           })}
+        </div>
+
+        <div className="mt-6 p-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30">
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+            {t('quality.title')}
+          </p>
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            {t('quality.resolution', {
+              resolution: resolutionLabel,
+              fps: quota.quality.max_fps ?? '—',
+            })}
+          </p>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+            {t('quality.codecs', { codecs: codecsLabel })}
+          </p>
         </div>
 
         {/* Upgrade CTA */}

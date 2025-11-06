@@ -38,22 +38,27 @@ async def main():
         
         print("\n2. Checking subscription tiers...")
         result = await conn.execute(text("""
-            SELECT tier, storage_gb, max_concurrent_streams, max_destinations
+            SELECT tier, price_cents, storage_gb, max_concurrent_streams, max_destinations, daily_streaming_limit_hours
             FROM subscription_tier_limits
             ORDER BY 
                 CASE tier
                     WHEN 'free' THEN 1
-                    WHEN 'pro' THEN 2
-                    WHEN 'business' THEN 3
-                    WHEN 'enterprise' THEN 4
+                    WHEN 'fhd_start' THEN 2
+                    WHEN 'fhd_flow' THEN 3
+                    WHEN 'fhd_boost' THEN 4
+                    WHEN 'uhd_start' THEN 5
+                    WHEN 'uhd_flow' THEN 6
+                    WHEN 'uhd_boost' THEN 7
                 END
         """))
         tiers = result.all()
-        for t in tiers:
-            storage = f"{t[1]} GB" if t[1] else "Unlimited"
-            streams = f"{t[2]}" if t[2] else "Unlimited"
-            dests = f"{t[3]}" if t[3] else "Unlimited"
-            print(f"   - {t[0].upper()}: Storage={storage}, Streams={streams}, Destinations={dests}")
+        for tier, price_cents, storage_gb, max_streams, max_destinations, daily_limit in tiers:
+            storage = f"{storage_gb} GB" if storage_gb else "Unlimited"
+            streams = f"{max_streams}" if max_streams else "Unlimited"
+            dests = f"{max_destinations}" if max_destinations else "Unlimited"
+            daily = f"{daily_limit}h" if daily_limit else "24/7"
+            price = f"${price_cents / 100:.2f}" if price_cents else "$0.00"
+            print(f"   - {tier.upper()}: Price={price}, Storage={storage}, Streams={streams}, Destinations={dests}, Daily={daily}")
         
         print("\n3. Checking user_id columns...")
         checks = {

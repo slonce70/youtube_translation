@@ -22,12 +22,27 @@ import type {
   AdminActionLog,
   AssetDownloadLink,
   StreamQualityResponse,
+  SubscriptionTierKey,
+  QuotaUsageResponse,
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>
+}
+
+export class ApiError extends Error {
+  status: number
+  detail: unknown
+
+  constructor(status: number, detail: unknown) {
+    const message = typeof detail === 'string' ? detail : `HTTP ${status}`
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.detail = detail
+  }
 }
 
 async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -62,8 +77,9 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(error.detail || `HTTP ${response.status}`)
+    const errorPayload = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    const detail = errorPayload?.detail ?? errorPayload
+    throw new ApiError(response.status, detail)
   }
 
   if (response.status === 204) {
@@ -125,6 +141,10 @@ export const api = {
     get: () => apiRequest<MetricsResponse>('/metrics'),
   },
 
+  quota: {
+    get: () => apiRequest<QuotaUsageResponse>('/quota'),
+  },
+
   admin: {
     access: () => apiRequest<AdminAccessResponse>('/admin/access'),
     users: {
@@ -154,7 +174,7 @@ export const api = {
         }),
       unsuspend: (userId: string) =>
         apiRequest<AdminUserDetail>(`/admin/users/${userId}/unsuspend`, { method: 'POST' }),
-      changeTier: (userId: string, newTier: string, reason?: string) =>
+      changeTier: (userId: string, newTier: SubscriptionTierKey, reason?: string) =>
         apiRequest<AdminUserDetail>(`/admin/users/${userId}/tier`, {
           method: 'PATCH',
           body: JSON.stringify({ new_tier: newTier, reason }),

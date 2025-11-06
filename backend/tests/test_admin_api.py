@@ -12,7 +12,7 @@ if os.environ.get("RUN_ADMIN_TESTS", "").lower() not in {"1", "true", "yes"}:
 
 from uuid import uuid4, UUID
 from datetime import datetime
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.models.database import (
     UserProfile, SubscriptionTierLimits, AdminAction,
@@ -48,7 +48,7 @@ class TestAdminPermissions:
         profile = UserProfile(
             user_id=admin_id,
             email="admin@example.com",
-            subscription_tier='pro',
+            subscription_tier='fhd_flow',
             is_admin=True
         )
         db_session.add(profile)
@@ -74,7 +74,7 @@ class TestUserManagement:
             user = UserProfile(
                 user_id=uuid4(),
                 email=f"user{i}@example.com",
-                subscription_tier='free' if i < 3 else 'pro',
+                subscription_tier='free' if i < 3 else 'fhd_start',
                 is_suspended=i == 4
             )
             users.append(user)
@@ -101,7 +101,7 @@ class TestUserManagement:
             user_id=user_id,
             email="user@example.com",
             full_name="Test User",
-            subscription_tier='pro',
+            subscription_tier='fhd_flow',
             current_storage_bytes=1024**3,  # 1 GB
             total_stream_hours=10.5
         )
@@ -126,7 +126,7 @@ class TestUserManagement:
         user = result.scalar_one()
         
         assert user.email == "user@example.com"
-        assert user.subscription_tier == 'pro'
+        assert user.subscription_tier == 'fhd_flow'
         assert user.current_storage_bytes == 1024**3
     
     async def test_suspend_user(self, db_session):
@@ -144,7 +144,7 @@ class TestUserManagement:
         admin = UserProfile(
             user_id=admin_id,
             email="admin@example.com",
-            subscription_tier='pro',
+            subscription_tier='fhd_flow',
             is_admin=True
         )
         db_session.add(user)
@@ -286,7 +286,7 @@ class TestUserManagement:
         
         # Change tier
         old_tier = user.subscription_tier
-        user.subscription_tier = 'pro'
+        user.subscription_tier = 'fhd_flow'
         
         action = AdminAction(
             admin_user_id=admin_id,
@@ -294,7 +294,7 @@ class TestUserManagement:
             target_user_id=user_id,
             details={
                 'old_tier': old_tier,
-                'new_tier': 'pro',
+                'new_tier': 'fhd_flow',
                 'reason': 'Promotional upgrade'
             }
         )
@@ -306,7 +306,9 @@ class TestUserManagement:
             select(UserProfile).where(UserProfile.user_id == user_id)
         )
         upgraded_user = result.scalar_one()
-        assert upgraded_user.subscription_tier == 'pro'
+        assert upgraded_user.subscription_tier == 'fhd_flow'
+        assert upgraded_user.subscription_started_at is not None
+        assert upgraded_user.subscription_expires_at is None
         
         # Verify action logged
         result = await db_session.execute(
@@ -317,7 +319,7 @@ class TestUserManagement:
         )
         logged_action = result.scalar_one()
         assert logged_action.details['old_tier'] == 'free'
-        assert logged_action.details['new_tier'] == 'pro'
+        assert logged_action.details['new_tier'] == 'fhd_flow'
 
 
 @pytest.mark.asyncio
@@ -332,7 +334,7 @@ class TestStreamsMonitoring:
             user = UserProfile(
                 user_id=user_id,
                 email=f"user{i}@example.com",
-                subscription_tier='pro'
+                subscription_tier='fhd_flow'
             )
             db_session.add(user)
             
@@ -368,7 +370,7 @@ class TestStreamsMonitoring:
         user = UserProfile(
             user_id=user_id,
             email="user@example.com",
-            subscription_tier='pro'
+            subscription_tier='fhd_flow'
         )
         admin = UserProfile(
             user_id=admin_id,
@@ -584,7 +586,7 @@ class TestAdminActionLogging:
             target_user_id=user_id,
             details={
                 'old_tier': 'free',
-                'new_tier': 'pro',
+                'new_tier': 'fhd_start',
                 'reason': 'Customer support request',
                 'ticket_id': '12345'
             }
@@ -601,9 +603,10 @@ class TestAdminActionLogging:
         )
         logged_action = result.scalar_one()
         assert logged_action.details['old_tier'] == 'free'
-        assert logged_action.details['new_tier'] == 'pro'
+        assert logged_action.details['new_tier'] == 'fhd_start'
         assert logged_action.details['reason'] == 'Customer support request'
         assert logged_action.details['ticket_id'] == '12345'
+        assert 'previous_started_at' in logged_action.details
 
 
 @pytest.fixture
@@ -614,18 +617,38 @@ async def db_session():
     
     # Create tables
     async with async_engine.begin() as conn:
+        view_names = ['unresolved_critical_alerts', 'recent_admin_actions', 'recent_user_activity']
+        for view in view_names:
+            await conn.execute(text(f'DROP VIEW IF EXISTS {view}'))
+        await conn.execute(text('DROP TABLE IF EXISTS subscription_tier_limits CASCADE'))
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+        alter_statements = [
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS price_cents INTEGER DEFAULT 0",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS daily_streaming_limit_hours INTEGER",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS calendar_enabled BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS branding_enabled BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS automation_enabled BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS priority_support_level TEXT",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS dedicated_manager BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS allowed_video_codecs TEXT[]"
+        ]
+        for statement in alter_statements:
+            await conn.execute(text(statement))
     
     # Create session
     async with async_session_maker() as session:
         # Insert tier limits
         tiers_data = [
-            {'tier': 'free', 'storage_gb': 5, 'max_concurrent_streams': 1},
-            {'tier': 'pro', 'storage_gb': 50, 'max_concurrent_streams': 5},
-            {'tier': 'business', 'storage_gb': 200, 'max_concurrent_streams': 20},
-            {'tier': 'enterprise', 'storage_gb': None, 'max_concurrent_streams': None}
+            {'tier': 'free', 'price_cents': 0, 'storage_gb': 3, 'max_concurrent_streams': 1, 'max_destinations': 1},
+            {'tier': 'fhd_start', 'price_cents': 1000, 'storage_gb': 50, 'max_concurrent_streams': 1, 'max_destinations': 3},
+            {'tier': 'fhd_flow', 'price_cents': 2000, 'storage_gb': 100, 'max_concurrent_streams': 2, 'max_destinations': 6},
+            {'tier': 'fhd_boost', 'price_cents': 3500, 'storage_gb': 200, 'max_concurrent_streams': 4, 'max_destinations': 10},
+            {'tier': 'uhd_start', 'price_cents': 6900, 'storage_gb': 200, 'max_concurrent_streams': 1, 'max_destinations': 4},
+            {'tier': 'uhd_flow', 'price_cents': 10900, 'storage_gb': 400, 'max_concurrent_streams': 2, 'max_destinations': 8},
+            {'tier': 'uhd_boost', 'price_cents': 15900, 'storage_gb': 800, 'max_concurrent_streams': 4, 'max_destinations': 12}
         ]
-        
+
         for tier_data in tiers_data:
             tier = SubscriptionTierLimits(**tier_data)
             session.add(tier)

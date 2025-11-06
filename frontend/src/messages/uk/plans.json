@@ -9,6 +9,17 @@
       "fhd": "Full HD",
       "uhd": "4K Ultra HD"
     },
+    "selection": {
+      "badges": {
+        "current": "Поточний тариф",
+        "selected": "Обрано"
+      },
+      "button": {
+        "default": "Придбати тариф",
+        "selected": "Продовжити з {plan}",
+        "current": "Поточний тариф"
+      }
+    },
     "plans": {
       "free": {
         "name": "Free",

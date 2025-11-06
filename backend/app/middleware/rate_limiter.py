@@ -68,6 +68,7 @@ class RateLimiter:
     def __init__(self):
         self.clients: Dict[str, RateLimitEntry] = {}
         self.lock = RLock()
+        self.max_clients = 10000
         
         # Default limits (requests per minute)
         self.default_limit = 60
@@ -127,7 +128,7 @@ class RateLimiter:
             # Get or create rate limit entry
             if client_key not in self.clients:
                 self.clients[client_key] = RateLimitEntry(max_requests, window)
-            
+
             entry = self.clients[client_key]
             
             # Update limits if they changed
@@ -137,7 +138,12 @@ class RateLimiter:
             
             # Check if allowed
             allowed = entry.is_allowed()
-            
+
+            if len(self.clients) > self.max_clients:
+                oldest_key = next(iter(self.clients))
+                if oldest_key != client_key:
+                    self.clients.pop(oldest_key, None)
+
             return allowed, entry
     
     def cleanup_old_entries(self):

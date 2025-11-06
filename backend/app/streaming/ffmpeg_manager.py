@@ -208,8 +208,13 @@ class FFmpegStreamManager:
         tee_outputs = []
         for dest in destinations:
             rtmps_url = f"{dest['url']}/{dest['key']}"
-            # Use fifo muxer with recovery for each destination
-            output = f"[f=fifo:fifo_format=flv:attempt_recovery=1:recovery_wait_time=5]{rtmps_url}"
+            # Use fifo muxer with recovery for each destination, force Annex B bitstream for FLV
+            output = (
+                "[select='v\\:0,a\\:0':"
+                "f=fifo:fifo_format=flv:attempt_recovery=1:recovery_wait_time=5:"
+                "bsfs=v=h264_metadata+remove_extra+filter_units=remove_types=6|h264_mp4toannexb]"
+                f"{rtmps_url}"
+            )
             tee_outputs.append(output)
         
         tee_output = "|".join(tee_outputs)
@@ -221,6 +226,8 @@ class FFmpegStreamManager:
             "-f", "concat",
             "-safe", "0",
             "-i", str(playlist_file),
+            "-map", "0:v:0",
+            "-map", "0:a:0?",
             "-c", "copy",  # NO TRANSCODING
             "-f", "tee",
             tee_output

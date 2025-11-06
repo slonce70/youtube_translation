@@ -1,0 +1,52 @@
+name: Backend Quality Checks
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-quality.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-quality.yml'
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Prepare test environment
+        run: |
+          cat <<'ENV' > .env.ci
+          SUPABASE_URL=https://example.supabase.co
+          SUPABASE_KEY=dummy-key
+          SUPABASE_JWT_SECRET=dummy-jwt-secret
+          DATABASE_URL=postgresql://postgres:password@localhost:5432/postgres
+          ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+          ENCRYPTION_SALT=test_salt_value
+          DOWNLOAD_TOKEN_SECRET=test_download_secret
+          ENV
+
+      - name: Run security unit tests
+        env:
+          ENV_FILE: .env.ci
+        run: |
+          export $(grep -v '^#' "$ENV_FILE" | xargs)
+          pytest tests/test_security.py

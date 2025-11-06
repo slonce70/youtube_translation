@@ -44,7 +44,8 @@
   "timeFormat": {
     "hours": "{hours}год",
     "minutes": "{minutes}хв",
-    "hoursAndMinutes": "{hours}год {minutes}хв"
+    "hoursAndMinutes": "{hours}год {minutes}хв",
+    "unlimited": "Без обмежень"
   },
   "metadata": {
     "title": "Панель",
@@ -61,21 +62,9 @@
         "label": "Почати ефір",
         "description": "Розпочніть трансляцію просто зараз"
       },
-      "createPlaylist": {
-        "label": "Створити плейлист",
-        "description": "Зберіть новий плейлист"
-      },
-      "addChannel": {
-        "label": "Додати канал",
-        "description": "Підключіть канал YouTube"
-      },
-      "viewLibrary": {
-        "label": "Переглянути бібліотеку",
-        "description": "Переглядайте відео та плейлисти"
-      },
-      "manageStreams": {
-        "label": "Керувати трансляціями",
-        "description": "Керуйте ефірами"
+      "managePlan": {
+        "label": "Керувати тарифом",
+        "description": "Перевірити ліміти й обрати оновлення"
       }
     }
   },
@@ -86,44 +75,78 @@
     "tiers": {
       "free": {
         "name": "Free",
-        "message": "Ви використовуєте тариф Free",
-        "cta": "Оновіться, щоб отримати більше можливостей",
-        "primaryAction": "Оновити до Pro",
+        "message": "Ви на тарифі Free",
+        "cta": "Оновіться, щоб збільшити ліміти",
+        "primaryAction": "Перейти на FHD Start",
         "features": [
-          "Буфер пам'яті 3 ГБ",
-          "8 годин прямого ефіру на день",
-          "1 активний слот трансляції"
+          "Буфер 3 ГБ",
+          "8 годин ефіру на добу",
+          "1 активна трансляція"
         ]
       },
-      "pro": {
-        "name": "Pro",
-        "message": "Ви використовуєте тариф Pro",
-        "cta": "Подобається Pro? Розгляньте Business для розширених можливостей",
-        "primaryAction": "Оновити до Business",
+      "fhd_start": {
+        "name": "FHD Start",
+        "message": "Активований пакет FHD Start",
+        "cta": "Потрібно більше паралельних ефірів?",
+        "primaryAction": "Оновити до FHD Flow",
         "features": [
           "50 ГБ сховища",
-          "5 паралельних трансляцій",
-          "200 відеоактивів"
+          "24 години трансляцій на добу",
+          "До 3 напрямів виводу"
         ]
       },
-      "business": {
-        "name": "Business",
-        "message": "Ви використовуєте тариф Business",
-        "cta": "Преміум-підтримка та необмежені ресурси",
+      "fhd_flow": {
+        "name": "FHD Flow",
+        "message": "FHD Flow тримає ефіри стабільними",
+        "cta": "Додайте автоматизацію й більший буфер",
+        "primaryAction": "Оновити до FHD Boost",
+        "features": [
+          "100 ГБ сховища",
+          "1080p @ 60 FPS",
+          "До 6 напрямів"
+        ]
+      },
+      "fhd_boost": {
+        "name": "FHD Boost",
+        "message": "Ви використовуєте FHD Boost",
+        "cta": "Готові до 4K?",
+        "primaryAction": "Перейти на 4K Start",
         "features": [
           "200 ГБ сховища",
-          "20 паралельних трансляцій",
-          "Пріоритетна підтримка"
+          "4 одночасні HD-трансляції",
+          "Автоматизація та розклади"
         ]
       },
-      "enterprise": {
-        "name": "Enterprise",
-        "message": "Ви використовуєте тариф Enterprise",
-        "cta": "Дякуємо, що обрали Enterprise",
+      "uhd_start": {
+        "name": "4K Start",
+        "message": "4K Start увімкнено",
+        "cta": "Розширтеся до двох UHD-потоків",
+        "primaryAction": "Оновити до 4K Flow",
         "features": [
-          "Необмежене сховище",
-          "Необмежені трансляції",
-          "Виділена підтримка"
+          "200 ГБ сховища",
+          "Один потік 4K60",
+          "Підтримка HEVC"
+        ]
+      },
+      "uhd_flow": {
+        "name": "4K Flow",
+        "message": "4K Flow в роботі",
+        "cta": "Потрібно більше для студійних продакшенів?",
+        "primaryAction": "Оновити до 4K Boost",
+        "features": [
+          "400 ГБ сховища",
+          "2 одночасні 4K-потоки",
+          "Підтримка протягом дня"
+        ]
+      },
+      "uhd_boost": {
+        "name": "4K Boost",
+        "message": "Ви на максимальному тарифі",
+        "cta": "Персональний менеджер уже допомагає",
+        "features": [
+          "800 ГБ сховища",
+          "4 одночасні 4K-потоки",
+          "Виділений менеджер успіху"
         ]
       }
     }
@@ -157,9 +180,9 @@
     }
   },
   "planLimits": {
-    "title": "Використання тарифу Free",
+    "title": "Використання тарифу {plan}",
     "subtitle": "Відстежуйте, наскільки ви наблизилися до лімітів",
-    "badge": "Тариф Free",
+    "badge": "Тариф {plan}",
     "storage": {
       "label": "Сховище бібліотеки",
       "summary": "{used} із {limit}",
@@ -189,21 +212,33 @@
     "resources": {
       "storage": "Сховище",
       "streams": "Паралельні трансляції",
+      "streamingHours": "Добовий ефір",
       "assets": "Відеоактиви",
       "playlists": "Плейлисти",
       "destinations": "Канали"
     },
+    "limits": {
+      "unlimited": "Без обмежень"
+    },
+    "quality": {
+      "title": "Обмеження якості",
+      "resolution": "До {resolution} @ {fps} FPS",
+      "codecs": "Дозволені кодеки: {codecs}"
+    },
     "tiers": {
       "free": "Free",
-      "pro": "Pro",
-      "business": "Business",
-      "enterprise": "Enterprise"
+      "fhd_start": "FHD Start",
+      "fhd_flow": "FHD Flow",
+      "fhd_boost": "FHD Boost",
+      "uhd_start": "4K Start",
+      "uhd_flow": "4K Flow",
+      "uhd_boost": "4K Boost"
     },
     "nearLimit": "Наближаєтесь до ліміту",
     "cta": {
       "title": "Потрібно більше ресурсів?",
-      "description": "Оновіться до Pro: 50 ГБ сховища, 5 паралельних трансляцій та більше.",
-      "button": "Оновити до Pro"
+      "description": "FHD Start відкриває більше напрямів, сховище та цілодобові ефіри.",
+      "button": "Переглянути тарифи"
     }
   }
 }

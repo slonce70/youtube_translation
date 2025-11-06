@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMessages, useTranslations } from 'next-intl'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Check, Minus, Sparkles } from 'lucide-react'
+import { useDashboardContext } from '../dashboard-context'
+import { cn } from '@/lib/utils'
 
 type PlanQuality = 'fhd' | 'uhd'
 
@@ -134,17 +136,52 @@ export default function PlansPage() {
     }
   }
 
+  const { currentTier } = useDashboardContext()
   const [quality, setQuality] = useState<PlanQuality>('fhd')
+  const [selectedPlan, setSelectedPlan] = useState<PlanId>((currentTier ?? 'free') as PlanId)
 
   const planMessages = messages.plans?.page?.plans ?? ({} as Record<PlanId, PlanMessage>)
   const comparisonMessages = messages.plans?.page?.comparison ?? ({} as ComparisonMessages)
   const faqMessages = messages.plans?.page?.faq ?? ({} as FaqMessage)
   const qualityToggleMessages = messages.plans?.page?.qualityToggle ?? ({} as Record<PlanQuality, string>)
 
-  const activePlanOrder = ['free', ...QUALITY_PLAN_ORDER[quality]] as PlanId[]
+  const activePlanOrder = useMemo(() => (['free', ...QUALITY_PLAN_ORDER[quality]] as PlanId[]), [quality])
   const activeComparison = comparisonMessages.qualities?.[quality] ?? {
     rows: {},
     booleanRows: {},
+  }
+
+  useEffect(() => {
+    if (!currentTier) return
+    if (currentTier === 'free') return
+
+    const planQuality = PLAN_CONFIGS[currentTier as PlanId]?.quality
+    if (planQuality && planQuality !== 'free' && planQuality !== quality) {
+      setQuality(planQuality)
+    }
+  }, [currentTier, quality])
+
+  useEffect(() => {
+    if (currentTier) {
+      setSelectedPlan(currentTier as PlanId)
+    }
+  }, [currentTier])
+
+  useEffect(() => {
+    setSelectedPlan((prev) => (activePlanOrder.includes(prev) ? prev : activePlanOrder[0]))
+  }, [activePlanOrder])
+
+  const handlePlanNavigation = (planConfig: PlanConfig) => {
+    if (planConfig.href.startsWith('http') || planConfig.href.startsWith('mailto:')) {
+      window.open(
+        planConfig.href,
+        planConfig.href.startsWith('mailto:') ? '_self' : '_blank',
+        planConfig.href.startsWith('mailto:') ? undefined : 'noopener'
+      )
+      return
+    }
+
+    window.open(planConfig.href, '_self')
   }
 
   return (
@@ -193,16 +230,49 @@ export default function PlansPage() {
             const planPeriod = planData.period ?? ''
             const planSummary = planData.summary ?? ''
             const ctaLabel = planData.ctaLabel ?? ''
+            const isCurrentPlan = planConfig.id === (currentTier ?? 'free')
+            const isSelected = selectedPlan === planConfig.id
+            const selectionBadge = isCurrentPlan
+              ? tPlans('selection.badges.current')
+              : isSelected
+                ? tPlans('selection.badges.selected')
+                : null
+
+            const buttonVariant = isCurrentPlan ? 'outline' : isSelected ? 'primary' : 'secondary'
+            const buttonLabel = isCurrentPlan
+              ? tPlans('selection.button.current')
+              : isSelected
+                ? ctaLabel || tPlans('selection.button.selected', { plan: planName })
+                : tPlans('selection.button.default')
 
             return (
               <Card
                 key={planConfig.id}
-                className={`relative flex h-full flex-col border-2 transition-shadow duration-300 hover:scale-100 ${
-                  planConfig.featured
-                    ? 'border-primary-400 shadow-xl shadow-primary-500/10 hover:shadow-primary-500/20'
-                    : 'border-slate-200 dark:border-slate-800 hover:shadow-lg'
-                }`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isSelected}
+                onClick={() => setSelectedPlan(planConfig.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setSelectedPlan(planConfig.id)
+                  }
+                }}
+                className={cn(
+                  'relative flex h-full flex-col border-2 transition-shadow duration-300 hover:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/60',
+                  isSelected
+                    ? 'border-primary-400 shadow-xl shadow-primary-500/10 ring-1 ring-primary-400/60 dark:ring-primary-600/40'
+                    : planConfig.featured
+                      ? 'border-primary-300 shadow-xl shadow-primary-500/10 hover:shadow-primary-500/20'
+                      : 'border-slate-200 dark:border-slate-800 hover:shadow-lg',
+                  isCurrentPlan ? 'bg-primary-50/40 dark:bg-primary-950/10' : 'bg-white/95 dark:bg-slate-900/70'
+                )}
               >
+                <div className="absolute left-4 top-4 flex flex-col gap-2">
+                  {selectionBadge ? (
+                    <Badge variant={isCurrentPlan ? 'success' : 'secondary'}>{selectionBadge}</Badge>
+                  ) : null}
+                </div>
                 {badgeText ? (
                   <Badge variant={planConfig.badgeVariant} className="absolute right-4 top-4">
                     {badgeText}
@@ -228,16 +298,18 @@ export default function PlansPage() {
                     ))}
                   </ul>
                   <Button
-                    variant={planConfig.ctaVariant}
-                    onClick={() => {
-                      if (planConfig.href.startsWith('http')) {
-                        window.open(planConfig.href, '_blank', 'noopener')
-                      } else {
-                        window.open(planConfig.href, '_self')
+                    variant={buttonVariant}
+                    disabled={isCurrentPlan}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (!isSelected) {
+                        setSelectedPlan(planConfig.id)
+                        return
                       }
+                      handlePlanNavigation(planConfig)
                     }}
                   >
-                    {ctaLabel}
+                    {buttonLabel}
                   </Button>
                 </CardContent>
               </Card>

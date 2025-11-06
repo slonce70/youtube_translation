@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Any, Optional
 
 from app.core.config import settings
+from app.streaming.validator import VideoValidator
 
 logger = logging.getLogger(__name__)
 
@@ -128,13 +129,103 @@ class PlaylistBuilder:
             )
             return False, issues
 
-        if len(assets) == 1:
-            meta = assets[0].get("meta")
-            if not meta:
-                logger.warning("Single asset playlist missing metadata; skipping compatibility checks")
+        for index, asset in enumerate(assets):
+            meta = asset.get("meta") or {}
+            video = meta.get("video") or {}
+            audio = meta.get("audio") or {}
+            validation_errors = asset.get("validation_errors") or []
+
+            for message in validation_errors:
+                add_issue("validation_error", message, index, asset)
+
+            if asset.get("compatible_for_copy") is False and not validation_errors:
+                add_issue(
+                    "requires_transcoding",
+                    (
+                        "Asset must be prepared with H.264 video, AAC audio, and yuv420p pixel "
+                        "format before it can be streamed without transcoding."
+                    ),
+                    index,
+                    asset,
+                )
+
+            if not video:
+                add_issue(
+                    "missing_video_metadata",
+                    "Video metadata is required for validation.",
+                    index,
+                    asset,
+                )
             else:
-                logger.info("Single asset playlist validated successfully")
-            return True, issues
+                video_codec = str(video.get("codec") or "").lower()
+                if not video_codec:
+                    add_issue(
+                        "video_codec_missing",
+                        "Video codec metadata is missing.",
+                        index,
+                        asset,
+                    )
+                elif video_codec != VideoValidator.REQUIRED_VIDEO_CODEC:
+                    add_issue(
+                        "video_codec_invalid",
+                        f"Video codec must be {VideoValidator.REQUIRED_VIDEO_CODEC.upper()} for direct streaming.",
+                        index,
+                        asset,
+                        expected=VideoValidator.REQUIRED_VIDEO_CODEC,
+                        found=video_codec,
+                    )
+
+                pix_fmt = str(video.get("pix_fmt") or "").lower()
+                if not pix_fmt:
+                    add_issue(
+                        "pixel_format_missing",
+                        "Pixel format metadata is missing.",
+                        index,
+                        asset,
+                    )
+                elif pix_fmt != VideoValidator.REQUIRED_PIX_FMT:
+                    add_issue(
+                        "pixel_format_invalid",
+                        f"Pixel format must be {VideoValidator.REQUIRED_PIX_FMT} for direct streaming.",
+                        index,
+                        asset,
+                        expected=VideoValidator.REQUIRED_PIX_FMT,
+                        found=pix_fmt,
+                    )
+
+            if not audio:
+                add_issue(
+                    "missing_audio_metadata",
+                    "Audio metadata is required for validation.",
+                    index,
+                    asset,
+                )
+            else:
+                audio_codec = str(audio.get("codec") or "").lower()
+                if not audio_codec:
+                    add_issue(
+                        "audio_codec_missing",
+                        "Audio codec metadata is missing.",
+                        index,
+                        asset,
+                    )
+                elif audio_codec != VideoValidator.REQUIRED_AUDIO_CODEC:
+                    add_issue(
+                        "audio_codec_invalid",
+                        f"Audio codec must be {VideoValidator.REQUIRED_AUDIO_CODEC.upper()} for direct streaming.",
+                        index,
+                        asset,
+                        expected=VideoValidator.REQUIRED_AUDIO_CODEC,
+                        found=audio_codec,
+                    )
+
+        if issues:
+            logger.warning("Playlist compatibility validation issues detected: %s", issues)
+            return False, issues
+
+        if len(assets) == 1:
+            logger.info("Single asset playlist validated successfully")
+            return True, []
 
         first = assets[0].get("meta") or {}
         first_video = first.get("video") or {}
