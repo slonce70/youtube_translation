@@ -220,9 +220,15 @@ class StreamCreate(StreamBase):
         playlist_id = model.playlist_id
         asset_ids = model.asset_ids
 
-        if model.video_collection_id:
+        video_collection_id = model.video_collection_id
+        audio_collection_id = model.audio_collection_id
+
+        if video_collection_id and audio_collection_id:
+            raise ValueError("Provide only one collection type when creating a stream")
+
+        if video_collection_id or audio_collection_id:
             if any([playlist_id, asset_ids]):
-                raise ValueError("Provide either video_collection_id or legacy playlist/asset parameters, not both")
+                raise ValueError("Provide either collection identifiers or legacy playlist/asset parameters, not both")
             return model
 
         if bool(playlist_id) == bool(asset_ids):

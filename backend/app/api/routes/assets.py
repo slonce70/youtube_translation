@@ -334,7 +334,11 @@ async def update_asset(
     db, user_id = user_deps
 
     try:
-        query = select(Asset).where(Asset.id == asset_id, Asset.user_id == user_id)
+        query = (
+            select(Asset)
+            .options(selectinload(Asset.folder_links))
+            .where(Asset.id == asset_id, Asset.user_id == user_id)
+        )
         result = await db.execute(query)
         asset = result.scalar_one_or_none()
 
