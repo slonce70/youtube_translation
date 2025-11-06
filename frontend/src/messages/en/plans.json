@@ -9,6 +9,17 @@
     "fhd": "Full HD",
     "uhd": "4K Ultra HD"
   },
+  "selection": {
+    "badges": {
+      "current": "Current plan",
+      "selected": "Selected"
+    },
+    "button": {
+      "default": "Buy plan",
+      "selected": "Continue with {plan}",
+      "current": "Current plan"
+    }
+  },
   "plans": {
     "free": {
       "name": "Free",

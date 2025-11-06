@@ -58,7 +58,19 @@
         "show": "Show technical details"
       },
       "menu": {
-        "srLabel": "Asset actions"
+        "srLabel": "Asset actions",
+        "items": {
+          "edit": "Rename",
+          "remove": "Delete",
+          "check": "Revalidate",
+          "playlists": "Add to playlist",
+          "optimize": "Optimize",
+          "move": "Move",
+          "download": "Download"
+        }
+      },
+      "messages": {
+        "incompatibleSummary": "This file isn't ready for direct streaming. Encode it with H.264 video, AAC audio, and yuv420p pixel format."
       }
     },
     "playlists": {

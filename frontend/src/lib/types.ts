@@ -241,11 +241,68 @@ export interface AssetDownloadLink {
 }
 
 // Admin API Types
+export type SubscriptionTierKey =
+  | 'free'
+  | 'fhd_start'
+  | 'fhd_flow'
+  | 'fhd_boost'
+  | 'uhd_start'
+  | 'uhd_flow'
+  | 'uhd_boost'
+
+export interface QuotaUsageResponse {
+  storage: {
+    used_bytes: number
+    used_gb: number
+    limit_gb: number | null
+    percent: number
+    unlimited: boolean
+  }
+  streams: {
+    active: number
+    limit: number | null
+    percent: number
+    unlimited: boolean
+  }
+  destinations: {
+    count: number
+    limit: number | null
+    percent: number
+    unlimited: boolean
+  }
+  playlists: {
+    count: number
+    limit: number | null
+    percent: number
+    unlimited: boolean
+  }
+  assets: {
+    count: number
+    limit: number | null
+    percent: number
+    unlimited: boolean
+  }
+  streaming_hours: {
+    used: number
+    limit: number | null
+    percent: number
+    unlimited: boolean
+  }
+  quality: {
+    max_resolution: string
+    max_resolution_height: number | null
+    max_fps: number | null
+    allowed_video_codecs: string[]
+    enforce_stream_quality: boolean
+  }
+  tier: SubscriptionTierKey
+}
+
 export interface AdminAccessResponse {
   user_id: string
   email: string
   full_name: string | null
-  subscription_tier: string
+  subscription_tier: SubscriptionTierKey
   subscription_status: string
   is_admin: boolean
   is_suspended: boolean
@@ -255,8 +312,10 @@ export interface AdminUserListItem {
   user_id: string
   email: string
   full_name: string | null
-  subscription_tier: string
+  subscription_tier: SubscriptionTierKey
   subscription_status: string
+  subscription_started_at: string | null
+  subscription_expires_at: string | null
   is_suspended: boolean
   current_storage_bytes: number
   total_stream_hours: number
@@ -266,8 +325,6 @@ export interface AdminUserListItem {
 
 export interface AdminUserDetail extends AdminUserListItem {
   company_name: string | null
-  subscription_started_at: string | null
-  subscription_expires_at: string | null
   is_admin: boolean
   suspension_reason: string | null
   assets_count: number

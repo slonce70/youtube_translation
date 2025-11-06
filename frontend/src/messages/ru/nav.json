@@ -10,7 +10,7 @@
   },
   "profile": {
     "fallbackName": "Пользователь",
-    "freePlanBadge": "Бесплатный план",
+    "planBadge": "Тариф {plan}",
     "accountSettings": "Настройки аккаунта",
     "changePassword": "Сменить пароль",
     "managePlan": "Управлять тарифом",

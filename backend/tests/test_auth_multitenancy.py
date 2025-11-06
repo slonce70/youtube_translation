@@ -39,7 +39,7 @@ async def test_supabase_user_cache_reuses_fetch(monkeypatch):
             user=SimpleNamespace(
                 id="user-123",
                 email="user@example.com",
-                user_metadata={"plan": "pro"},
+                user_metadata={"plan": "fhd_flow"},
             )
         )
 
@@ -378,7 +378,24 @@ async def db_session():
 
     # Ensure schema exists
     async with async_engine.begin() as conn:
+        view_names = ['unresolved_critical_alerts', 'recent_admin_actions', 'recent_user_activity']
+        for view in view_names:
+            await conn.execute(text(f'DROP VIEW IF EXISTS {view}'))
+        await conn.execute(text('DROP TABLE IF EXISTS subscription_tier_limits CASCADE'))
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+        alter_statements = [
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS price_cents INTEGER DEFAULT 0",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS daily_streaming_limit_hours INTEGER",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS calendar_enabled BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS branding_enabled BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS automation_enabled BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS priority_support_level TEXT",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS dedicated_manager BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS allowed_video_codecs TEXT[]"
+        ]
+        for statement in alter_statements:
+            await conn.execute(text(statement))
 
     async with async_session_maker() as session:
         # Seed tier limits if missing
@@ -387,19 +404,23 @@ async def db_session():
             tiers = [
                 {
                     "tier": "free",
-                    "storage_gb": 5,
+                    "storage_gb": 3,
                     "max_concurrent_streams": 1,
-                    "max_destinations": 5,
-                    "max_playlists": 10,
-                    "max_assets": 50,
+                    "max_destinations": 1,
+                    "max_playlists": 5,
+                    "max_assets": 20,
+                    "daily_streaming_limit_hours": 8,
+                    "allowed_video_codecs": ["h264"],
                 },
                 {
-                    "tier": "pro",
-                    "storage_gb": 50,
-                    "max_concurrent_streams": 5,
-                    "max_destinations": 20,
-                    "max_playlists": 40,
-                    "max_assets": 500,
+                    "tier": "fhd_flow",
+                    "storage_gb": 100,
+                    "max_concurrent_streams": 2,
+                    "max_destinations": 6,
+                    "max_playlists": 25,
+                    "max_assets": 200,
+                    "daily_streaming_limit_hours": None,
+                    "allowed_video_codecs": ["h264"],
                 },
             ]
             for data in tiers:

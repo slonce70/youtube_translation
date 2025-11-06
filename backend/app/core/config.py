@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # Supabase
     supabase_url: str
     supabase_key: str
+    supabase_service_key: Optional[str] = None
     supabase_jwt_secret: str
     supabase_user_cache_ttl_seconds: int = 60
     supabase_user_cache_max_entries: int = 512
@@ -27,6 +28,12 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str
+    db_pool_size: int = 3
+    db_max_overflow: int = 0
+    db_pool_timeout_seconds: int = 30
+    db_pool_recycle_seconds: int = 1800
+    db_use_null_pool: bool = False
+    db_echo_sql: bool = False
 
     # Security & Encryption
     encryption_key: str
@@ -116,6 +123,22 @@ class Settings(BaseSettings):
                 v = urlunparse(parsed)
 
         return v
+
+    @field_validator('encryption_salt')
+    @classmethod
+    def validate_encryption_salt(cls, value: str, info: FieldValidationInfo) -> str:
+        environment = (info.data or {}).get('environment', 'development')
+        if environment != 'development' and value == "default_salt_change_in_production_16bytes":
+            raise ValueError("ENCRYPTION_SALT must be set to a secure value")
+        return value
+
+    @field_validator('download_token_secret')
+    @classmethod
+    def validate_download_token_secret(cls, value: str, info: FieldValidationInfo) -> str:
+        environment = (info.data or {}).get('environment', 'development')
+        if environment != 'development' and value == "change_this_download_secret":
+            raise ValueError("DOWNLOAD_TOKEN_SECRET must be configured")
+        return value
 
 
 settings = Settings()

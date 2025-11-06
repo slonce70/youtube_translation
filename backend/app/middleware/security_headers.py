@@ -30,8 +30,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Adjust based on your frontend needs
         csp_directives = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",  # Adjust for production
-            "style-src 'self' 'unsafe-inline'",
+            "script-src 'self'",
+            "style-src 'self'",
             "img-src 'self' data: https:",
             "font-src 'self' data:",
             "connect-src 'self' https://api.supabase.co wss:",
@@ -40,7 +40,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "base-uri 'self'",
             "form-action 'self'"
         ]
-        response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+        path = request.url.path
+        if not (path.startswith("/docs") or path.startswith("/redoc")):
+            response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
         
         # X-Frame-Options - Prevent clickjacking
         response.headers["X-Frame-Options"] = "DENY"

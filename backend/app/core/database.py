@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
+from sqlalchemy.pool import NullPool
 from contextlib import asynccontextmanager
 import logging
 
@@ -12,12 +13,25 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
 
 # Create async engine
+engine_kwargs = {
+    "echo": settings.db_echo_sql,
+    "pool_pre_ping": True,
+}
+
+if settings.db_use_null_pool:
+    engine_kwargs["poolclass"] = NullPool
+else:
+    engine_kwargs.update(
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout_seconds,
+        pool_recycle=settings.db_pool_recycle_seconds,
+        pool_use_lifo=True,
+    )
+
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,  # Set to True for SQL query logging
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10
+    **engine_kwargs
 )
 
 # Backwards-compatible export expected by older modules/tests

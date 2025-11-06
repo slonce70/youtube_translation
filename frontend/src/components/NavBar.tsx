@@ -21,6 +21,9 @@ import { DarkModeToggle } from './DarkModeToggle'
 import { cn } from '@/lib/utils'
 import { useEffect, useRef, useState } from 'react'
 import { LanguageSwitcher } from './LanguageSwitcher'
+import { useDashboardContext } from '@/app/dashboard/dashboard-context'
+import { useTranslations as useDashboardTranslations } from 'next-intl'
+import type { SubscriptionTierKey } from '@/lib/types'
 
 interface NavBarProps {
   userEmail?: string
@@ -41,6 +44,10 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const profileMenuRef = useRef<HTMLDivElement | null>(null)
   const nav = useTranslations('nav')
+  const { currentTier } = useDashboardContext()
+  const planNames = useDashboardTranslations('dashboard.quota.tiers')
+  const activePlanName = planNames((currentTier ?? 'free') as SubscriptionTierKey)
+  const planBadgeText = nav('profile.planBadge', { plan: activePlanName })
 
   useEffect(() => {
     if (!profileMenuOpen) return
@@ -151,7 +158,7 @@ export function NavBar({ userEmail, userName, onSignOut }: NavBarProps) {
                     )}
                     <p className="mt-1 inline-flex items-center space-x-1 rounded-full bg-primary-50 dark:bg-primary-900/20 px-2 py-0.5 text-[11px] font-medium text-primary-600 dark:text-primary-300">
                       <Shield className="h-3 w-3" />
-                      <span>{nav('profile.freePlanBadge')}</span>
+                      <span>{planBadgeText}</span>
                     </p>
                   </div>
 

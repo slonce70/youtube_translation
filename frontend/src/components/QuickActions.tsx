@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Upload, Play, ListPlus, TvMinimal, Settings, BarChart3 } from 'lucide-react'
+import { Upload, Play, BadgeDollarSign } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -24,28 +24,10 @@ export function QuickActions() {
       gradient: 'from-purple-500 to-pink-500',
     },
     {
-      key: 'createPlaylist' as const,
-      icon: ListPlus,
-      action: () => router.push('/dashboard/library?tab=playlists'),
-      gradient: 'from-amber-500 to-orange-500',
-    },
-    {
-      key: 'addChannel' as const,
-      icon: TvMinimal,
-      action: () => router.push('/dashboard/streaming'),
+      key: 'managePlan' as const,
+      icon: BadgeDollarSign,
+      action: () => router.push('/dashboard/plans'),
       gradient: 'from-emerald-500 to-green-500',
-    },
-    {
-      key: 'viewLibrary' as const,
-      icon: BarChart3,
-      action: () => router.push('/dashboard/library'),
-      gradient: 'from-indigo-500 to-violet-500',
-    },
-    {
-      key: 'manageStreams' as const,
-      icon: Settings,
-      action: () => router.push('/dashboard/streaming'),
-      gradient: 'from-slate-500 to-slate-600',
     },
   ]
 
@@ -55,7 +37,7 @@ export function QuickActions() {
         <CardTitle>{t('title')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {actions.map((action, index) => {
             const Icon = action.icon
             const label = t(`actions.${action.key}.label`)
@@ -69,10 +51,10 @@ export function QuickActions() {
                 whileHover={{ scale: 1.03, y: -2 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={action.action}
-                className="group relative flex items-center gap-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all bg-white dark:bg-slate-800/50 overflow-hidden p-4"
+                className="group relative flex items-center gap-4 overflow-hidden rounded-xl border border-slate-200 bg-white/95 p-4 transition-all hover:border-slate-300 hover:shadow-lg dark:border-slate-700 dark:bg-slate-900/50 dark:hover:border-slate-600"
               >
                 {/* Gradient background on hover */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${action.gradient} opacity-0 group-hover:opacity-5 transition-opacity`} />
+                <div className={`absolute inset-0 bg-gradient-to-br ${action.gradient} opacity-0 transition-opacity group-hover:opacity-5`} />
                 <div className="relative flex w-full items-center gap-4">
                   <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${action.gradient} shadow-lg group-hover:shadow-xl transition-shadow`}>
                     <Icon className="w-6 h-6 text-white" />

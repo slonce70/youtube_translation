@@ -14,6 +14,7 @@ from typing import Optional
 import hashlib
 import hmac
 import logging
+from datetime import datetime, timezone, timedelta
 
 from app.api.deps import require_user
 from app.core.database import get_db
@@ -51,6 +52,8 @@ class QuotaUsageResponse(BaseModel):
     destinations: dict
     playlists: dict
     assets: dict
+    streaming_hours: dict
+    quality: dict
     tier: str
 
 
@@ -105,6 +108,12 @@ async def check_quota_internal(
                     detail="Invalid tusd signature"
                 )
         else:
+            if settings.environment.lower() in {"production", "staging"}:
+                logger.error("TUSD_HMAC_SECRET must be configured for environment '%s'", settings.environment)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Quota service misconfigured",
+                )
             if not _warned_missing_secret:
                 logger.warning("TUSD_HMAC_SECRET is not configured; falling back to unsigned quota check requests")
                 _warned_missing_secret = True
@@ -316,6 +325,34 @@ async def get_user_quota(
     assets_count = result.scalar()
     assets_limit = limits.max_assets
     assets_percent = (assets_count / assets_limit * 100) if assets_limit else 0
+
+    window_end = datetime.now(timezone.utc)
+    window_start = window_end - timedelta(hours=24)
+
+    result = await db.execute(
+        select(Stream).where(
+            Stream.user_id == user_uuid,
+            Stream.started_at.isnot(None),
+            func.coalesce(Stream.stopped_at, func.now()) >= window_start
+        )
+    )
+    recent_streams = result.scalars().all()
+
+    total_seconds = 0.0
+    for stream in recent_streams:
+        started_at = stream.started_at
+        if not started_at:
+            continue
+
+        stopped_at = stream.stopped_at or window_end
+        if stopped_at <= window_start:
+            continue
+
+        effective_start = max(started_at, window_start)
+        effective_end = max(stopped_at, effective_start)
+        total_seconds += (effective_end - effective_start).total_seconds()
+
+    daily_hours = round(total_seconds / 3600.0, 2)
     
     return QuotaUsageResponse(
         storage={
@@ -348,6 +385,20 @@ async def get_user_quota(
             "limit": assets_limit,
             "percent": round(assets_percent, 1),
             "unlimited": assets_limit is None
+        },
+        streaming_hours={
+            "used": daily_hours,
+            "limit": limits.daily_streaming_limit_hours,
+            "percent": round((daily_hours / limits.daily_streaming_limit_hours * 100), 1)
+            if limits.daily_streaming_limit_hours else 0,
+            "unlimited": limits.daily_streaming_limit_hours is None,
+        },
+        quality={
+            "max_resolution": limits.max_resolution,
+            "max_resolution_height": limits.max_resolution_height,
+            "max_fps": limits.max_fps,
+            "allowed_video_codecs": limits.allowed_video_codecs or [],
+            "enforce_stream_quality": limits.enforce_stream_quality,
         },
         tier=profile.subscription_tier
     )

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, update
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from app.api.deps import require_user
@@ -36,6 +36,8 @@ class UserListItem(BaseModel):
     full_name: Optional[str]
     subscription_tier: str
     subscription_status: str
+    subscription_started_at: Optional[datetime]
+    subscription_expires_at: Optional[datetime]
     is_suspended: bool
     current_storage_bytes: int
     total_stream_hours: float
@@ -77,7 +79,7 @@ class SuspendUserRequest(BaseModel):
 
 class ChangeTierRequest(BaseModel):
     """Request to change user's subscription tier"""
-    new_tier: str = Field(..., pattern="^(free|pro|business|enterprise)$")
+    new_tier: str = Field(..., pattern="^(free|fhd_start|fhd_flow|fhd_boost|uhd_start|uhd_flow|uhd_boost)$")
     reason: Optional[str] = None
 
 
@@ -282,6 +284,8 @@ async def list_users(
                 full_name=user.full_name,
                 subscription_tier=user.subscription_tier,
                 subscription_status=user.subscription_status,
+                subscription_started_at=user.subscription_started_at,
+                subscription_expires_at=user.subscription_expires_at,
                 is_suspended=user.is_suspended,
                 current_storage_bytes=user.current_storage_bytes or 0,
                 total_stream_hours=user.total_stream_hours or 0,
@@ -322,6 +326,12 @@ async def get_user_detail(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
+            )
+
+        if profile.subscription_tier == request.new_tier:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User already on requested tier"
             )
         
         # Get counts
@@ -555,7 +565,12 @@ async def change_user_tier(
             )
         
         old_tier = profile.subscription_tier
+        previous_started_at = profile.subscription_started_at
         profile.subscription_tier = request.new_tier
+        profile.subscription_started_at = datetime.now(timezone.utc)
+        profile.subscription_expires_at = None
+        if profile.subscription_status != 'active':
+            profile.subscription_status = 'active'
         
         # Log action
         await log_admin_action(
@@ -564,7 +579,8 @@ async def change_user_tier(
             details={
                 'old_tier': old_tier,
                 'new_tier': request.new_tier,
-                'reason': request.reason
+                'reason': request.reason,
+                'previous_started_at': previous_started_at.isoformat() if previous_started_at else None,
             }
         )
         

@@ -1,11 +1,17 @@
 'use client'
 
 import { createContext, useContext } from 'react'
+import type { QuotaUsageResponse, SubscriptionTierKey } from '@/lib/types'
+import type { PlanDetail } from '@/lib/plans'
 
 type DashboardContextValue = {
   user: any
   signOut: () => Promise<void>
   refreshUser: () => Promise<void>
+  quota?: QuotaUsageResponse
+  quotaLoading: boolean
+  currentTier: SubscriptionTierKey | null
+  planDetail: PlanDetail
 }
 
 export const DashboardContext = createContext<DashboardContextValue | undefined>(undefined)

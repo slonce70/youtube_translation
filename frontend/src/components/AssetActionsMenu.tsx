@@ -166,47 +166,47 @@ export function AssetActionsMenu({
   const actions: MenuAction[] = [
     onEdit
       ? {
-          label: 'Edit',
+          label: tLibraryMenu('items.edit'),
           icon: <Pencil className="w-4 h-4" />, 
           onClick: onEdit,
         }
       : null,
     {
-      label: 'Remove',
+      label: tLibraryMenu('items.remove'),
       icon: <Trash2 className="w-4 h-4" />, 
       onClick: onDelete,
       disabled: isDeleting,
       tone: 'danger',
     },
     {
-      label: 'Check',
+      label: tLibraryMenu('items.check'),
       icon: <Check className="w-4 h-4" />, 
       onClick: onCheck,
       disabled: isChecking,
     },
     onPlaylists
       ? {
-          label: 'Playlists',
+          label: tLibraryMenu('items.playlists'),
           icon: <List className="w-4 h-4" />, 
           onClick: onPlaylists,
         }
       : null,
     onOptimize
       ? {
-          label: 'Optimization',
+          label: tLibraryMenu('items.optimize'),
           icon: <Zap className="w-4 h-4" />, 
           onClick: onOptimize,
         }
       : null,
     onMove
       ? {
-          label: 'Move',
+          label: tLibraryMenu('items.move'),
           icon: <Folder className="w-4 h-4" />, 
           onClick: onMove,
         }
       : null,
     {
-      label: 'Download',
+      label: tLibraryMenu('items.download'),
       icon: <Download className="w-4 h-4" />, 
       onClick: onDownload,
       disabled: isGeneratingDownload,

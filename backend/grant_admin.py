@@ -46,8 +46,26 @@ async def check_and_update_admin(email: str):
                 # Insert new profile
                 await session.execute(
                     text("""
-                        INSERT INTO user_profiles (user_id, email, is_admin, subscription_tier)
-                        VALUES (:user_id, :email, true, 'free')
+                        INSERT INTO user_profiles (
+                            user_id,
+                            email,
+                            subscription_tier,
+                            subscription_status,
+                            subscription_started_at,
+                            is_admin
+                        )
+                        VALUES (
+                            :user_id,
+                            :email,
+                            'free',
+                            'active',
+                            NOW(),
+                            TRUE
+                        )
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            subscription_tier = EXCLUDED.subscription_tier,
+                            subscription_status = EXCLUDED.subscription_status,
+                            is_admin = TRUE
                     """),
                     {"user_id": auth_user[0], "email": auth_user[1]}
                 )

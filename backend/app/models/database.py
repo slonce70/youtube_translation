@@ -49,16 +49,24 @@ class SubscriptionTierLimits(Base):
     __tablename__ = "subscription_tier_limits"
 
     tier = Column(Text, primary_key=True)
+    price_cents = Column(Integer, nullable=False, default=0)
     storage_gb = Column(Integer)  # NULL = unlimited
     max_concurrent_streams = Column(Integer)  # NULL = unlimited
     max_destinations = Column(Integer)  # NULL = unlimited
     max_playlists = Column(Integer)  # NULL = unlimited
     max_assets = Column(Integer)  # NULL = unlimited
     max_resolution = Column(Text, nullable=False, default='1080p')
+    daily_streaming_limit_hours = Column(Integer)
     api_access_enabled = Column(Boolean, default=False)
     custom_rtmps_enabled = Column(Boolean, default=False)
     analytics_enabled = Column(Boolean, default=False)
     team_collaboration_enabled = Column(Boolean, default=False)
+    calendar_enabled = Column(Boolean, default=False)
+    branding_enabled = Column(Boolean, default=False)
+    automation_enabled = Column(Boolean, default=False)
+    priority_support_level = Column(Text)
+    dedicated_manager = Column(Boolean, default=False)
+    allowed_video_codecs = Column(ARRAY(Text))
     log_retention_days = Column(Integer, default=7)
     min_video_bitrate_mbps = Column(Integer)
     max_resolution_height = Column(Integer)

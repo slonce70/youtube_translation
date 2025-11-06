@@ -44,7 +44,8 @@
   "timeFormat": {
     "hours": "{hours}h",
     "minutes": "{minutes}m",
-    "hoursAndMinutes": "{hours}h {minutes}m"
+    "hoursAndMinutes": "{hours}h {minutes}m",
+    "unlimited": "Unlimited"
   },
   "metadata": {
     "title": "Dashboard",
@@ -61,21 +62,9 @@
         "label": "Go Live",
         "description": "Start streaming now"
       },
-      "createPlaylist": {
-        "label": "Create playlist",
-        "description": "Build a new playlist"
-      },
-      "addChannel": {
-        "label": "Add channel",
-        "description": "Connect YouTube channel"
-      },
-      "viewLibrary": {
-        "label": "View library",
-        "description": "Browse videos & playlists"
-      },
-      "manageStreams": {
-        "label": "Manage streams",
-        "description": "Control live streams"
+      "managePlan": {
+        "label": "Manage plan",
+        "description": "Review limits and compare upgrades"
       }
     }
   },
@@ -87,43 +76,77 @@
       "free": {
         "name": "Free",
         "message": "You're on the Free plan",
-        "cta": "Upgrade to unlock more features",
-        "primaryAction": "Upgrade to Pro",
+        "cta": "Upgrade to unlock more storage and longer sessions",
+        "primaryAction": "Explore FHD Start",
         "features": [
-          "3 GB dedicated memory buffer",
-          "8 hours of live streaming per day",
+          "3 GB circular buffer",
+          "8 hours of streaming per day",
           "1 active stream slot"
         ]
       },
-      "pro": {
-        "name": "Pro",
-        "message": "You're on the Pro plan",
-        "cta": "Enjoying Pro? Consider Business for advanced features",
-        "primaryAction": "Upgrade to Business",
+      "fhd_start": {
+        "name": "FHD Start",
+        "message": "You're on FHD Start",
+        "cta": "Ready to run parallel shows?",
+        "primaryAction": "Upgrade to FHD Flow",
         "features": [
-          "50 GB storage",
-          "5 concurrent streams",
-          "200 video assets"
+          "50 GB storage pool",
+          "24 hours daily output",
+          "Up to 3 destinations"
         ]
       },
-      "business": {
-        "name": "Business",
-        "message": "You're on the Business plan",
-        "cta": "Premium support and unlimited resources",
+      "fhd_flow": {
+        "name": "FHD Flow",
+        "message": "FHD Flow keeps your streams smooth",
+        "cta": "Enable automation and higher buffers",
+        "primaryAction": "Upgrade to FHD Boost",
+        "features": [
+          "100 GB storage",
+          "1080p @ 60 FPS",
+          "Up to 6 destinations"
+        ]
+      },
+      "fhd_boost": {
+        "name": "FHD Boost",
+        "message": "FHD Boost unlocked",
+        "cta": "Step into 4K when you're ready",
+        "primaryAction": "Move to 4K Start",
         "features": [
           "200 GB storage",
-          "20 concurrent streams",
-          "Priority support"
+          "4 concurrent HD streams",
+          "Automation and scheduling"
         ]
       },
-      "enterprise": {
-        "name": "Enterprise",
-        "message": "You're on the Enterprise plan",
-        "cta": "Thank you for choosing Enterprise",
+      "uhd_start": {
+        "name": "4K Start",
+        "message": "4K Start engaged",
+        "cta": "Scale to dual UHD pipelines",
+        "primaryAction": "Upgrade to 4K Flow",
         "features": [
-          "Unlimited storage",
-          "Unlimited streams",
-          "Dedicated support"
+          "200 GB storage",
+          "Single 4K60 stream",
+          "HEVC passthrough support"
+        ]
+      },
+      "uhd_flow": {
+        "name": "4K Flow",
+        "message": "4K Flow running strong",
+        "cta": "Expand to full broadcast setups",
+        "primaryAction": "Upgrade to 4K Boost",
+        "features": [
+          "400 GB storage",
+          "2 concurrent 4K streams",
+          "Same-day priority support"
+        ]
+      },
+      "uhd_boost": {
+        "name": "4K Boost",
+        "message": "You're on the top tier",
+        "cta": "Dedicated success manager included",
+        "features": [
+          "800 GB storage",
+          "4 concurrent 4K streams",
+          "Dedicated success manager"
         ]
       }
     }
@@ -157,9 +180,9 @@
     }
   },
   "planLimits": {
-    "title": "Free plan usage",
+    "title": "{plan} plan usage",
     "subtitle": "Track how close you are to plan limits",
-    "badge": "Free tier",
+    "badge": "{plan} tier",
     "storage": {
       "label": "Library storage",
       "summary": "{used} of {limit}",
@@ -189,21 +212,33 @@
     "resources": {
       "storage": "Storage",
       "streams": "Concurrent Streams",
+      "streamingHours": "Daily Streaming",
       "assets": "Video Assets",
       "playlists": "Playlists",
       "destinations": "Channels"
     },
+    "limits": {
+      "unlimited": "Unlimited"
+    },
+    "quality": {
+      "title": "Stream quality limits",
+      "resolution": "Up to {resolution} @ {fps} FPS",
+      "codecs": "Allowed codecs: {codecs}"
+    },
     "tiers": {
       "free": "Free",
-      "pro": "Pro",
-      "business": "Business",
-      "enterprise": "Enterprise"
+      "fhd_start": "FHD Start",
+      "fhd_flow": "FHD Flow",
+      "fhd_boost": "FHD Boost",
+      "uhd_start": "4K Start",
+      "uhd_flow": "4K Flow",
+      "uhd_boost": "4K Boost"
     },
     "nearLimit": "Approaching limit",
     "cta": {
       "title": "Need more resources?",
-      "description": "Upgrade to Pro for 50GB storage, 5 concurrent streams, and more.",
-      "button": "Upgrade to Pro"
+      "description": "FHD Start unlocks additional destinations, storage, and all-day streaming.",
+      "button": "Review plans"
     }
   }
 }

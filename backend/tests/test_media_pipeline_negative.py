@@ -407,5 +407,29 @@ class TestMediaPipelineIntegration:
             await manager.stop_all_streams()
 
 
+class TestPlaylistBuilderNegative:
+    """Additional negative cases for playlist validation"""
+
+    def test_incompatible_single_asset_requires_transcoding(self):
+        asset = {
+            "path": "/tmp/video.mp4",
+            "meta": {
+                "video": {"codec": "hevc", "pix_fmt": "yuv422p"},
+                "audio": {"codec": "aac"},
+            },
+            "filename": "bad.mp4",
+            "compatible_for_copy": False,
+            "validation_errors": ["Video codec must be h264, got hevc"],
+        }
+
+        valid, issues = PlaylistBuilder.validate_playlist_assets([asset])
+
+        assert not valid
+        assert any(
+            issue["code"] in {"requires_transcoding", "video_codec_invalid", "validation_error"}
+            for issue in issues
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

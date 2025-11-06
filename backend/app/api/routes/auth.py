@@ -10,6 +10,7 @@ from supabase import (
     ClientOptions,
     create_client,
 )
+import httpx
 
 from app.api.deps import get_current_user, invalidate_cached_user
 from app.core.config import settings
@@ -104,21 +105,33 @@ async def logout(authorization: Optional[str] = Header(None)):
             detail="Missing or invalid authorization header",
         )
 
-    client = _create_supabase_client()
+    logout_url = f"{settings.supabase_url.rstrip('/')}/auth/v1/logout"
 
     try:
-        await asyncio.to_thread(client.auth.admin.sign_out, token, "global")
-    except AuthApiError as exc:
-        logger.warning("Supabase logout failed: %s", exc)
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.post(
+                logout_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "apikey": settings.supabase_key,
+                },
+            )
+    except httpx.HTTPError as exc:
+        logger.exception("Network error during Supabase logout: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase logout service unavailable",
+        )
+
+    if response.status_code >= 400:
+        logger.warning(
+            "Supabase logout failed with status %s: %s",
+            response.status_code,
+            response.text,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to revoke session",
-        )
-    except Exception as exc:
-        logger.exception("Unexpected error during logout: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to logout user",
         )
 
     invalidate_cached_user(token)

@@ -1,12 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { NavBar } from '@/components/NavBar'
 import { LoadingState } from '@/components/LoadingState'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { DashboardContext } from './dashboard-context'
+import { api } from '@/lib/api'
+import type { QuotaUsageResponse, SubscriptionTierKey } from '@/lib/types'
+import { PLAN_DETAILS } from '@/lib/plans'
 
 type Props = {
   children: React.ReactNode
@@ -16,6 +20,16 @@ export default function DashboardLayout({ children }: Props) {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+
+  const {
+    data: quota,
+    isLoading: quotaLoading,
+  } = useQuery<QuotaUsageResponse>({
+    queryKey: ['quota'],
+    queryFn: api.quota.get,
+    enabled: !!user,
+    staleTime: 60_000,
+  })
 
   useEffect(() => {
     const loadSession = async () => {
@@ -65,9 +79,20 @@ export default function DashboardLayout({ children }: Props) {
     return <LoadingState />
   }
 
+  const currentTier = quota?.tier ? (quota.tier as SubscriptionTierKey) : null
+  const planDetail = currentTier ? PLAN_DETAILS[currentTier] : PLAN_DETAILS['free']
+
   return (
     <ErrorBoundary>
-      <DashboardContext.Provider value={{ user, signOut: handleSignOut, refreshUser }}>
+      <DashboardContext.Provider value={{
+        user,
+        signOut: handleSignOut,
+        refreshUser,
+        quota,
+        quotaLoading,
+        currentTier,
+        planDetail,
+      }}>
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
           <NavBar
             userEmail={user?.email ?? ''}
