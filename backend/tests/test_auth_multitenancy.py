@@ -131,12 +131,14 @@ async def test_assets_are_scoped_per_user(db_session):
         filename="a.mp4",
         storage_path=f"/uploads/{user_a}/a.mp4",
         size_bytes=1024,
+        asset_type="video",
     )
     asset_b = Asset(
         user_id=user_b,
         filename="b.mp4",
         storage_path=f"/uploads/{user_b}/b.mp4",
         size_bytes=2048,
+        asset_type="video",
     )
     db_session.add_all([asset_a, asset_b])
     await db_session.commit()
@@ -181,6 +183,7 @@ async def test_playlists_are_scoped_per_user(db_session):
         filename="a.mp4",
         storage_path=f"/uploads/{user_a}/a.mp4",
         size_bytes=1024,
+        asset_type="video",
     )
     db_session.add(asset_a)
     await db_session.flush()
@@ -334,6 +337,7 @@ async def test_quota_endpoint_uses_authenticated_user(db_session):
         filename="quota.mp4",
         storage_path=f"/uploads/{user_id}/quota.mp4",
         size_bytes=1024,
+        asset_type="video",
     )
     destination = Destination(
         user_id=user_id,

@@ -14,7 +14,9 @@ from uuid import uuid4
 from app.models.database import (
     UserProfile, SubscriptionTierLimits,
     Asset, Playlist, Destination, Stream,
-    AdminAction, SystemAlert
+    AdminAction, SystemAlert,
+    MediaFolder, AssetFolderLink,
+    MediaCollection, CollectionItem,
 )
 from app.core.database import get_db
 
@@ -108,7 +110,7 @@ class TestUserIdColumnsMigration:
 
 class TestDataMigration:
     """Test that existing data was migrated correctly"""
-    
+
     @pytest.mark.asyncio
     async def test_all_assets_have_user_id(self, db: AsyncSession):
         """Test that all assets have user_id populated"""
@@ -122,6 +124,15 @@ class TestDataMigration:
         
         # All assets should have user_id
         assert counts.total == counts.with_user_id
+
+    @pytest.mark.asyncio
+    async def test_all_assets_have_type(self, db: AsyncSession):
+        """Ensure asset_type column is populated for all assets."""
+        result = await db.execute(
+            select(func.count(Asset.id)).where(Asset.asset_type.is_(None))
+        )
+        missing = result.scalar()
+        assert missing == 0
     
     def test_project_columns_removed(self):
         """Ensure legacy project_id columns were dropped"""
@@ -160,7 +171,8 @@ class TestStatisticsTracking:
                 user_id=user_id,
                 filename=f"test-asset-{idx}.mp4",
                 storage_path=f"/tmp/test-{idx}.mp4",
-                size_bytes=size
+                size_bytes=size,
+                asset_type="video",
             )
             db.add(asset)
 
@@ -180,6 +192,39 @@ class TestStatisticsTracking:
         )
         reloaded_profile = refreshed.scalar_one()
         assert reloaded_profile.current_storage_bytes == expected_storage
+
+
+class TestMediaLibraryPhaseOne:
+    """Validate foundational media library structures."""
+
+    @pytest.mark.asyncio
+    async def test_media_folders_available(self, db: AsyncSession):
+        result = await db.execute(select(MediaFolder).limit(1))
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_asset_folder_links_available(self, db: AsyncSession):
+        result = await db.execute(select(AssetFolderLink).limit(1))
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_media_collections_available(self, db: AsyncSession):
+        result = await db.execute(select(MediaCollection).limit(1))
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_collection_items_available(self, db: AsyncSession):
+        result = await db.execute(select(CollectionItem).limit(1))
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_stream_mix_mode_defaults(self, db: AsyncSession):
+        result = await db.execute(select(Stream.mix_mode).limit(10))
+        mix_modes = [row[0] for row in result.fetchall()]
+        for mode in mix_modes:
+            if mode is None:
+                continue
+            assert mode in {"video_only", "audio_only", "mixed"}
     
     @pytest.mark.asyncio
     async def test_playlist_stats_calculated(self, db: AsyncSession):

@@ -1,4 +1,16 @@
-from sqlalchemy import Column, String, Integer, BigInteger, Float, Boolean, Text, ForeignKey, ARRAY, CheckConstraint
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    BigInteger,
+    Float,
+    Boolean,
+    Text,
+    ForeignKey,
+    ARRAY,
+    CheckConstraint,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP, INET
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -86,15 +98,17 @@ class Asset(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    
+
     # File info
     filename = Column(Text, nullable=False)
     storage_path = Column(Text, nullable=False, unique=True)
     size_bytes = Column(BigInteger, nullable=False)
     duration_seconds = Column(Float)
-    
+    asset_type = Column(Text, nullable=False, default="video", index=True)
+
     # Video metadata
     meta = Column(JSONB)  # ffprobe output
+    codec_info = Column(JSONB)
     video_codec = Column(Text)
     audio_codec = Column(Text)
     resolution = Column(Text)
@@ -112,6 +126,131 @@ class Asset(Base):
 
     # Relationships
     playlist_items = relationship("PlaylistItem", back_populates="asset", cascade="all, delete-orphan")
+    folder_links = relationship("AssetFolderLink", back_populates="asset", cascade="all, delete-orphan")
+    folders = relationship(
+        "MediaFolder",
+        secondary="asset_folder_links",
+        primaryjoin="Asset.id==AssetFolderLink.asset_id",
+        secondaryjoin="MediaFolder.id==AssetFolderLink.folder_id",
+        viewonly=True,
+    )
+
+
+class MediaFolder(Base):
+    __tablename__ = "media_folders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    name = Column(Text, nullable=False)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("media_folders.id", ondelete="CASCADE"), index=True)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    parent = relationship("MediaFolder", remote_side=[id], backref="children")
+    asset_links = relationship("AssetFolderLink", back_populates="folder", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "parent_id", "name", name="uq_media_folders_user_parent_name"),
+    )
+
+
+class AssetFolderLink(Base):
+    __tablename__ = "asset_folder_links"
+
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    folder_id = Column(UUID(as_uuid=True), ForeignKey("media_folders.id", ondelete="CASCADE"), primary_key=True)
+    assigned_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    asset = relationship("Asset", back_populates="folder_links")
+    folder = relationship("MediaFolder", back_populates="asset_links")
+
+
+class MediaCollection(Base):
+    __tablename__ = "media_collections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    name = Column(Text, nullable=False)
+    description = Column(Text)
+    collection_type = Column(Text, nullable=False, index=True)
+    default_loop = Column(Boolean, default=True)
+    allow_shuffle = Column(Boolean, default=False)
+    revision = Column(Integer, nullable=False, default=1)
+    legacy_playlist_id = Column(UUID(as_uuid=True), ForeignKey("playlists.id", ondelete="SET NULL"))
+    legacy_stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id", ondelete="SET NULL"))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    audit_created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    audit_updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    items = relationship(
+        "CollectionItem",
+        back_populates="collection",
+        cascade="all, delete-orphan",
+        order_by="CollectionItem.position",
+    )
+    linked_streams_video = relationship(
+        "Stream",
+        back_populates="video_collection",
+        foreign_keys="Stream.video_collection_id",
+    )
+    linked_streams_audio = relationship(
+        "Stream",
+        back_populates="audio_collection",
+        foreign_keys="Stream.audio_collection_id",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "collection_type IN ('video_background', 'audio_playlist')",
+            name="ck_media_collections_type",
+        ),
+        UniqueConstraint(
+            "legacy_playlist_id",
+            name="uq_media_collections_legacy_playlist",
+        ),
+        UniqueConstraint(
+            "legacy_stream_id",
+            name="uq_media_collections_legacy_stream",
+        ),
+    )
+
+
+class CollectionItem(Base):
+    __tablename__ = "collection_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    collection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("media_collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    asset_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("assets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    position = Column(Integer, nullable=False)
+    loop_mode = Column(Text, nullable=False, default="inherit")
+    activated_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    deactivated_at = Column(TIMESTAMP(timezone=True))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    collection = relationship("MediaCollection", back_populates="items")
+    asset = relationship("Asset")
+
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="ck_collection_item_position"),
+        CheckConstraint(
+            "loop_mode IN ('inherit', 'loop', 'once')",
+            name="ck_collection_item_loop_mode",
+        ),
+        UniqueConstraint("collection_id", "position", name="uq_collection_items_position"),
+        UniqueConstraint("collection_id", "asset_id", name="uq_collection_items_asset"),
+    )
 
 
 # ==================================================
@@ -194,9 +333,20 @@ class Stream(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    
+
     playlist_id = Column(UUID(as_uuid=True), ForeignKey("playlists.id", ondelete="RESTRICT"), nullable=True)
+    video_collection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("media_collections.id", ondelete="SET NULL"),
+        index=True,
+    )
+    audio_collection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("media_collections.id", ondelete="SET NULL"),
+        index=True,
+    )
     source_type = Column(Text, nullable=False, default="playlist")
+    mix_mode = Column(Text, nullable=False, default="video_only")
     name = Column(Text)
     status = Column(Text, default="stopped", index=True)
     pid = Column(Integer)
@@ -204,15 +354,26 @@ class Stream(Base):
     error_message = Column(Text)
     started_at = Column(TIMESTAMP(timezone=True), index=True)
     stopped_at = Column(TIMESTAMP(timezone=True))
-    
+    settings_json = Column(JSONB, default=dict)
+
     # Track total duration for billing
     total_duration_seconds = Column(Float, default=0)
-    
+
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
     playlist = relationship("Playlist", back_populates="streams")
+    video_collection = relationship(
+        "MediaCollection",
+        back_populates="linked_streams_video",
+        foreign_keys=[video_collection_id],
+    )
+    audio_collection = relationship(
+        "MediaCollection",
+        back_populates="linked_streams_audio",
+        foreign_keys=[audio_collection_id],
+    )
     stream_destinations = relationship("StreamDestination", back_populates="stream", cascade="all, delete-orphan")
     stream_assets = relationship("StreamAsset", back_populates="stream", cascade="all, delete-orphan", order_by="StreamAsset.position")
     events = relationship("StreamEvent", back_populates="stream", cascade="all, delete-orphan")
@@ -220,6 +381,10 @@ class Stream(Base):
     __table_args__ = (
         CheckConstraint("status IN ('stopped', 'starting', 'running', 'error', 'stopping')", name='check_status'),
         CheckConstraint("source_type IN ('playlist', 'assets')", name='check_source_type'),
+        CheckConstraint(
+            "mix_mode IN ('video_only', 'audio_only', 'mixed')",
+            name="check_stream_mix_mode",
+        ),
     )
 
 

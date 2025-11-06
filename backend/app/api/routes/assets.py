@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from sqlalchemy.orm import selectinload
 from typing import List, Tuple, Dict, Any, Optional
 from pathlib import Path
 import asyncio
@@ -16,7 +17,7 @@ from datetime import datetime, timezone
 from fastapi.responses import FileResponse
 
 from app.api.deps import require_user
-from app.models.database import Asset
+from app.models.database import Asset, MediaFolder, AssetFolderLink
 from app.schemas.api import AssetResponse, AssetCreate, AssetUpdate, AssetDownloadLinkResponse
 from app.streaming.validator import VideoValidator
 from app.core.config import settings
@@ -32,6 +33,53 @@ try:
 except FileNotFoundError as exc:
     logger.error("FFprobe binary not available: %s", exc)
     validator = None
+
+
+def infer_asset_type(meta: Optional[Dict[str, Any]], fallback_video_codec: Optional[str] = None) -> str:
+    """Infer asset type from ffprobe metadata or fall back to codecs."""
+    if isinstance(meta, dict):
+        stream_type = str(meta.get("type") or "").lower()
+        if stream_type in {"audio", "video"}:
+            return stream_type
+
+        video_stream = meta.get("video")
+        audio_stream = meta.get("audio")
+
+        if isinstance(video_stream, dict) and video_stream:
+            return "video"
+        if isinstance(audio_stream, dict) and audio_stream and not video_stream:
+            return "audio"
+
+    if fallback_video_codec:
+        return "video"
+
+    return "video"
+
+
+def extract_codec_info(meta: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Extract a concise codec summary from ffprobe metadata."""
+    if not isinstance(meta, dict):
+        return None
+
+    codec_summary: Dict[str, Any] = {}
+
+    if isinstance(meta.get("video"), dict):
+        video_meta = meta["video"]
+        codec_summary["video"] = {
+            key: video_meta.get(key)
+            for key in ("codec", "profile", "level", "pix_fmt", "width", "height", "bitrate", "fps")
+            if video_meta.get(key) is not None
+        }
+
+    if isinstance(meta.get("audio"), dict):
+        audio_meta = meta["audio"]
+        codec_summary["audio"] = {
+            key: audio_meta.get(key)
+            for key in ("codec", "sample_rate", "channels", "bitrate", "layout")
+            if audio_meta.get(key) is not None
+        }
+
+    return codec_summary or None
 
 
 def apply_stream_summary_fields(asset: Asset, stream_meta: Optional[Dict[str, Any]]) -> None:
@@ -82,6 +130,63 @@ def apply_stream_summary_fields(asset: Asset, stream_meta: Optional[Dict[str, An
     if fps_value is not None:
         asset.fps = int(round(fps_value))
 
+    codec_summary = extract_codec_info(stream_meta)
+    if codec_summary:
+        if asset.codec_info:
+            asset.codec_info.update(codec_summary)
+        else:
+            asset.codec_info = codec_summary
+
+    if not asset.asset_type:
+        asset.asset_type = infer_asset_type(stream_meta, fallback_video_codec=asset.video_codec)
+
+
+async def ensure_root_folder(db: AsyncSession, user_id: UUID) -> MediaFolder:
+    """Ensure that a root folder exists for the user and return it."""
+    result = await db.execute(
+        select(MediaFolder)
+        .where(
+            MediaFolder.user_id == user_id,
+            MediaFolder.parent_id.is_(None),
+            MediaFolder.name == "root",
+        )
+        .order_by(MediaFolder.created_at)
+        .limit(1)
+    )
+    folder = result.scalar_one_or_none()
+    if folder:
+        return folder
+
+    folder = MediaFolder(user_id=user_id, name="root")
+    db.add(folder)
+    await db.flush()
+    return folder
+
+
+async def resolve_target_folders(
+    db: AsyncSession, user_id: UUID, folder_ids: Optional[List[UUID]]
+) -> List[MediaFolder]:
+    """Resolve requested folders ensuring they belong to the user."""
+    if folder_ids is None or len(folder_ids) == 0:
+        return [await ensure_root_folder(db, user_id)]
+
+    unique_ids = list(dict.fromkeys(folder_ids))
+    result = await db.execute(
+        select(MediaFolder).where(
+            MediaFolder.user_id == user_id,
+            MediaFolder.id.in_(unique_ids),
+        )
+    )
+    folders = result.scalars().all()
+
+    if len(folders) != len(unique_ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="One or more folders are invalid or unavailable",
+        )
+
+    return folders
+
 
 def _sign_download_payload(payload: str) -> str:
     signature = hmac.new(
@@ -131,7 +236,14 @@ async def list_assets(
     
     try:
         # Build query - filter by user_id directly
-        query = select(Asset).where(Asset.user_id == user_id)
+        query = (
+            select(Asset)
+            .where(Asset.user_id == user_id)
+            .options(
+                selectinload(Asset.folder_links).selectinload(AssetFolderLink.folder),
+                selectinload(Asset.folders),
+            )
+        )
         
         result = await db.execute(query)
         assets = result.scalars().all()
@@ -164,6 +276,9 @@ async def create_asset(
         await enforcer.check_assets_limit()
         
         # Create asset record - directly for user_id
+        resolved_type = asset_data.asset_type or infer_asset_type(asset_data.meta)
+        codec_summary = asset_data.codec_info or extract_codec_info(asset_data.meta)
+
         asset = Asset(
             user_id=user_id,
             filename=asset_data.filename,
@@ -171,19 +286,31 @@ async def create_asset(
             size_bytes=asset_data.size_bytes,
             duration_seconds=asset_data.duration_seconds,
             meta=asset_data.meta,
+            asset_type=resolved_type,
+            codec_info=codec_summary,
             compatible_for_copy=asset_data.compatible_for_copy,
             validation_errors=asset_data.validation_errors
         )
 
         if isinstance(asset_data.meta, dict):
             apply_stream_summary_fields(asset, asset_data.meta)
-        
+
+        folders = await resolve_target_folders(db, user_id, asset_data.folder_ids)
+
         db.add(asset)
+        await db.flush()
+
+        for folder in folders:
+            asset.folder_links.append(AssetFolderLink(folder_id=folder.id))
+
         await db.commit()
-        await db.refresh(asset)
-        
+        await db.refresh(
+            asset,
+            attribute_names=["folder_links", "folders"],
+        )
+
         logger.info(f"Created asset {asset.id} for user {user_id}")
-        
+
         return asset
         
     except HTTPException:
@@ -223,11 +350,38 @@ async def update_asset(
             asset.filename = asset_update.filename.strip()
             updated = True
 
+        if asset_update.asset_type is not None:
+            asset.asset_type = asset_update.asset_type
+            updated = True
+
+        if asset_update.codec_info is not None:
+            asset.codec_info = asset_update.codec_info
+            updated = True
+
+        if asset_update.folder_ids is not None:
+            target_folders = await resolve_target_folders(db, user_id, asset_update.folder_ids)
+            target_ids = {folder.id for folder in target_folders}
+            existing_links = list(asset.folder_links or [])
+
+            for link in existing_links:
+                if link.folder_id not in target_ids:
+                    asset.folder_links.remove(link)
+
+            existing_ids = {link.folder_id for link in asset.folder_links}
+            for folder in target_folders:
+                if folder.id not in existing_ids:
+                    asset.folder_links.append(AssetFolderLink(folder_id=folder.id))
+
+            updated = True
+
         if not updated:
             return asset
 
         await db.commit()
-        await db.refresh(asset)
+        await db.refresh(
+            asset,
+            attribute_names=["folder_links", "folders"],
+        )
         logger.info("Updated asset %s metadata for user %s", asset.id, user_id)
         return asset
 

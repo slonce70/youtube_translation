@@ -113,7 +113,8 @@ class TestUserManagement:
                 user_id=user_id,
                 filename=f"video{i}.mp4",
                 storage_path=f"/uploads/{user_id}/video{i}.mp4",
-                size_bytes=1000000
+                size_bytes=1000000,
+                asset_type="video",
             )
             db_session.add(asset)
         
