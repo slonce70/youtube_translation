@@ -202,6 +202,10 @@ users (managed by Supabase Auth)
 8. Frontend updates asset list
 ```
 
+## Additional Reading
+
+- [Media Library Flow Notes](./media-library-flows.md) — detailed walkthrough of the upload → playlist → stream journey, gaps for audio playlists, and deletion safeguards.
+
 ## Scaling Strategy
 
 ### Current MVP (Single Server)
