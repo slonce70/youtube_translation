@@ -11,16 +11,25 @@ import {
   Play,
   Square,
   Trash2,
-  ListMusic,
   Plus,
   Loader2,
   Activity,
   X,
   TvMinimal,
   Edit,
-  Eye,
-  EyeOff,
-  Settings,
+  Layers,
+  Music3,
+  MapPin,
+  Clock3,
+  Shuffle,
+  Repeat,
+  GripVertical,
+  Info,
+  AlertTriangle,
+  Volume2,
+  VolumeX,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useTranslations, useLocale } from 'next-intl'
@@ -32,6 +41,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import { cn } from '@/lib/utils'
 import type {
   Playlist,
@@ -45,15 +55,26 @@ import type {
   StreamStatusResponse,
   StreamQualityResponse,
   SubscriptionTierKey,
+  MediaCollection,
+  LoopMode,
+  StreamLiveUpdatePayload,
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
+import {
+  createDefaultEditorState,
+  DEFAULT_SCHEDULE_STATE,
+  deriveEditorStateFromCollection,
+  type CollectionEditorItem,
+  type CollectionEditorState,
+  type ScheduleState,
+} from './builder-helpers'
 
 type StreamFormState = {
   name: string
-  playlist_id: string | null
-  asset_ids: string[]
   destination_ids: string[]
 }
+
+type BuilderTab = 'video' | 'audio' | 'destinations' | 'schedule'
 
 type DestinationFormState = {
   name: string
@@ -61,6 +82,7 @@ type DestinationFormState = {
   stream_key: string
   enabled: boolean
 }
+
 
 type QualityViolation = StreamQualityResponse['violations'][number]
 
@@ -204,12 +226,30 @@ export default function StreamingPage() {
   // Streams state
   const [viewingLogs, setViewingLogs] = useState<string | null>(null)
   const [showCreateStream, setShowCreateStream] = useState(false)
-  const [sourceMode, setSourceMode] = useState<'playlist' | 'assets'>('playlist')
   const [streamForm, setStreamForm] = useState<StreamFormState>({
     name: '',
-    playlist_id: null,
-    asset_ids: [],
     destination_ids: [],
+  })
+  const [activeBuilderTab, setActiveBuilderTab] = useState<BuilderTab>('video')
+  const [mixMode, setMixMode] = useState<'video_only' | 'mixed'>('mixed')
+  const [videoEditor, setVideoEditor] = useState<CollectionEditorState>(createDefaultEditorState())
+  const [audioEditor, setAudioEditor] = useState<CollectionEditorState>(
+    createDefaultEditorState({ shuffle: true })
+  )
+  const [scheduleState, setScheduleState] = useState<ScheduleState>(DEFAULT_SCHEDULE_STATE)
+  const [dragState, setDragState] = useState<{ collection: 'video' | 'audio'; index: number } | null>(
+    null
+  )
+  const [isBuilderSubmitting, setIsBuilderSubmitting] = useState(false)
+  const [liveEditingStream, setLiveEditingStream] = useState<Stream | null>(null)
+  const [liveEditorState, setLiveEditorState] = useState<{
+    video: CollectionEditorState | null
+    audio: CollectionEditorState | null
+  }>({ video: null, audio: null })
+  const [liveEditorLoading, setLiveEditorLoading] = useState(false)
+  const [liveEditorSaving, setLiveEditorSaving] = useState<{ video: boolean; audio: boolean }>({
+    video: false,
+    audio: false,
   })
 
   // API Queries
@@ -238,6 +278,26 @@ export default function StreamingPage() {
     enabled: !!user,
   })
 
+  const { data: videoCollections, isLoading: isLoadingVideoCollections } = useQuery<MediaCollection[]>({
+    queryKey: ['media-collections', 'video'],
+    queryFn: () =>
+      api.mediaCollections.list({
+        collection_type: 'video_background',
+        include_items: true,
+      }),
+    enabled: !!user && showCreateStream,
+  })
+
+  const { data: audioCollections, isLoading: isLoadingAudioCollections } = useQuery<MediaCollection[]>({
+    queryKey: ['media-collections', 'audio'],
+    queryFn: () =>
+      api.mediaCollections.list({
+        collection_type: 'audio_playlist',
+        include_items: true,
+      }),
+    enabled: !!user && showCreateStream,
+  })
+
   const { data: logsResponse } = useQuery<StreamLogsResponse>({
     queryKey: ['stream-logs', viewingLogs],
     queryFn: () => api.streams.logs(viewingLogs!, 200),
@@ -250,21 +310,30 @@ export default function StreamingPage() {
     return new Map(playlists.map((playlist) => [playlist.id, playlist]))
   }, [playlists])
 
+  const assetMap = useMemo(() => {
+    if (!assets) return new Map<string, Asset>()
+    return new Map(assets.map((asset) => [asset.id, asset]))
+  }, [assets])
+
+  const videoAssets = useMemo(() => (assets ?? []).filter((asset) => asset.asset_type === 'video'), [assets])
+  const audioAssets = useMemo(() => (assets ?? []).filter((asset) => asset.asset_type === 'audio'), [assets])
+
   const enabledDestinations = useMemo(
     () => (destinations || []).filter((destination) => destination.enabled),
     [destinations]
   )
 
+  const builderTabsList: BuilderTab[] = ['video', 'audio', 'destinations', 'schedule']
+  const currentTabIndex = builderTabsList.indexOf(activeBuilderTab)
+  const isFinalTab = currentTabIndex === builderTabsList.length - 1
+
+  const runningStreams = useMemo(() => (streams ?? []).filter((stream) => stream.status === 'running'), [streams])
+  const errorStreams = useMemo(() => (streams ?? []).filter((stream) => stream.status === 'error'), [streams])
+
   const formatLimitValue = (value?: number | null) => (value == null ? '∞' : value.toString())
   const destinationsLimit = quota?.destinations?.limit ?? null
   const concurrentStreamsLimit = quota?.streams?.limit ?? null
   const planQualityLimits = quota?.quality
-
-  useEffect(() => {
-    if (sourceMode === 'playlist' && playlists && playlists.length > 0 && !streamForm.playlist_id) {
-      setStreamForm((prev) => ({ ...prev, playlist_id: playlists[0].id }))
-    }
-  }, [sourceMode, playlists, streamForm.playlist_id])
 
   useEffect(() => {
     if (enabledDestinations.length > 0 && streamForm.destination_ids.length === 0) {
@@ -317,20 +386,7 @@ export default function StreamingPage() {
 
   // Stream Mutations
   const createStreamMutation = useMutation({
-    mutationFn: (data: StreamFormState) => {
-      const payload: CreateStreamPayload = {
-        name: data.name,
-        destination_ids: data.destination_ids,
-      }
-
-      if (sourceMode === 'playlist') {
-        payload.playlist_id = data.playlist_id ?? undefined
-      } else {
-        payload.asset_ids = data.asset_ids
-      }
-
-      return api.streams.create(payload)
-    },
+    mutationFn: (payload: CreateStreamPayload) => api.streams.create(payload),
     onSuccess: () => {
       toast.success(streamingToasts('stream.created'))
       queryClient.invalidateQueries({ queryKey: ['streams'] })
@@ -402,9 +458,496 @@ export default function StreamingPage() {
   }
 
   const resetStreamForm = () => {
-    setSourceMode('playlist')
-    setStreamForm({ name: '', playlist_id: playlists && playlists.length > 0 ? playlists[0].id : null, asset_ids: [], destination_ids: [] })
+    setStreamForm((prev) => ({
+      name: '',
+      destination_ids: enabledDestinations.length > 0 ? [enabledDestinations[0].id] : prev.destination_ids,
+    }))
+    setVideoEditor(createDefaultEditorState())
+    setAudioEditor(createDefaultEditorState({ shuffle: true }))
+    setScheduleState(DEFAULT_SCHEDULE_STATE)
+    setMixMode('mixed')
+    setDragState(null)
+    setActiveBuilderTab('video')
     setShowCreateStream(false)
+  }
+
+  const updateEditor = (
+    target: 'video' | 'audio',
+    updater: (current: CollectionEditorState) => CollectionEditorState
+  ) => {
+    if (target === 'video') {
+      setVideoEditor((prev) => updater(prev))
+    } else {
+      setAudioEditor((prev) => updater(prev))
+    }
+  }
+
+  const addAssetToEditor = (target: 'video' | 'audio', assetId: string) => {
+    updateEditor(target, (prev) => {
+      if (prev.items.some((item) => item.asset_id === assetId)) {
+        return prev
+      }
+      return {
+        ...prev,
+        items: [...prev.items, { asset_id: assetId }],
+        mode: prev.mode === 'existing' ? 'custom' : prev.mode,
+      }
+    })
+  }
+
+  const removeAssetFromEditor = (target: 'video' | 'audio', assetId: string) => {
+    updateEditor(target, (prev) => ({
+      ...prev,
+      items: prev.items.filter((item) => item.asset_id !== assetId),
+    }))
+  }
+
+  const reorderEditorItems = (target: 'video' | 'audio', fromIndex: number, toIndex: number) => {
+    updateEditor(target, (prev) => {
+      if (fromIndex === toIndex) return prev
+      const items = [...prev.items]
+      const [moved] = items.splice(fromIndex, 1)
+      items.splice(Math.max(0, Math.min(items.length, toIndex)), 0, moved)
+      return { ...prev, items }
+    })
+  }
+
+  const handleItemDragStart = (target: 'video' | 'audio', index: number) => {
+    setDragState({ collection: target, index })
+  }
+
+  const handleItemDrop = (target: 'video' | 'audio', index: number) => {
+    if (!dragState || dragState.collection !== target) {
+      setDragState(null)
+      return
+    }
+    reorderEditorItems(target, dragState.index, index)
+    setDragState(null)
+  }
+
+  const handleSelectCollection = (target: 'video' | 'audio', collectionId: string | 'custom') => {
+    if (collectionId === 'custom') {
+      updateEditor(target, (prev) => ({
+        ...createDefaultEditorState({ shuffle: target === 'audio' }),
+        mode: 'custom',
+        name: prev.name,
+        items: prev.items,
+      }))
+      return
+    }
+
+    const sourceCollections = target === 'video' ? videoCollections : audioCollections
+    const found = sourceCollections?.find((collection) => collection.id === collectionId)
+    if (found) {
+      const derived = deriveEditorStateFromCollection(found)
+      updateEditor(target, () => derived)
+      if (target === 'audio') {
+        setMixMode('mixed')
+      }
+    }
+  }
+
+  const handleCustomizeExisting = (target: 'video' | 'audio') => {
+    updateEditor(target, (prev) => ({
+      ...prev,
+      mode: 'custom',
+      selectedCollectionId: null,
+    }))
+  }
+
+  const handleDestinationToggle = (destinationId: string) => {
+    setStreamForm((prev) =>
+      prev.destination_ids.includes(destinationId)
+        ? { ...prev, destination_ids: prev.destination_ids.filter((id) => id !== destinationId) }
+        : { ...prev, destination_ids: [...prev.destination_ids, destinationId] }
+    )
+  }
+
+  const editorHasSelection = (editor: CollectionEditorState) =>
+    Boolean(editor.selectedCollectionId) || editor.items.length > 0
+
+  const loopModeForEditor = (editor: CollectionEditorState): LoopMode => {
+    if (editor.shuffle) return 'shuffle'
+    if (editor.loop) return 'loop'
+    return 'once'
+  }
+
+  const persistEditorAsCollection = async (
+    editor: CollectionEditorState,
+    type: 'video_background' | 'audio_playlist',
+    fallbackLabel: string
+  ): Promise<string> => {
+    const payload = {
+      name: editor.name.trim() || `${fallbackLabel} ${new Date().toLocaleTimeString()}`,
+      collection_type: type,
+      items: editor.items.map((item, index) => ({
+        asset_id: item.asset_id,
+        position: index,
+        loop_mode: loopModeForEditor(editor),
+      })),
+    }
+    const created = await api.mediaCollections.create(payload)
+    return created.id
+  }
+
+  const audioEnabled = mixMode === 'mixed'
+
+  const handleAudioToggle = (enabled: boolean) => {
+    if (enabled) {
+      setMixMode('mixed')
+    } else {
+      setMixMode('video_only')
+      setAudioEditor(createDefaultEditorState({ shuffle: true }))
+    }
+  }
+
+  const handleBuilderSubmit = async () => {
+    const hasVideoSelection = editorHasSelection(videoEditor)
+    if (!hasVideoSelection) {
+      toast.error(streamingToasts('errors.selectBackground'))
+      setActiveBuilderTab('video')
+      return
+    }
+
+    if (audioEnabled && !editorHasSelection(audioEditor)) {
+      toast.error(streamingToasts('errors.selectAudio'))
+      setActiveBuilderTab('audio')
+      return
+    }
+
+    if (streamForm.destination_ids.length === 0) {
+      toast.error(streamingToasts('errors.selectDestination'))
+      setActiveBuilderTab('destinations')
+      return
+    }
+
+    if (scheduleState.startMode === 'schedule' && !scheduleState.startAt) {
+      toast.error(streamingToasts('errors.scheduleTime'))
+      setActiveBuilderTab('schedule')
+      return
+    }
+
+    setIsBuilderSubmitting(true)
+    try {
+      let videoCollectionId = videoEditor.selectedCollectionId
+      if (!videoCollectionId || videoEditor.mode === 'custom') {
+        videoCollectionId = await persistEditorAsCollection(
+          videoEditor,
+          'video_background',
+          tStreaming('streams.builder.video.title')
+        )
+      }
+
+      let audioCollectionId: string | undefined
+      if (audioEnabled) {
+          audioCollectionId = audioEditor.selectedCollectionId ?? undefined
+          if (!audioCollectionId || audioEditor.mode === 'custom') {
+            audioCollectionId = await persistEditorAsCollection(
+              audioEditor,
+              'audio_playlist',
+              tStreaming('streams.builder.audio.title')
+            )
+          }
+      }
+
+      const payload: CreateStreamPayload = {
+        name: streamForm.name || undefined,
+        destination_ids: streamForm.destination_ids,
+        video_collection_id: videoCollectionId ?? undefined,
+        audio_collection_id: audioEnabled ? audioCollectionId : undefined,
+        mix_mode: audioEnabled ? 'mixed' : 'video_only',
+        settings_json: {
+          start_mode: scheduleState.startMode,
+          start_at: scheduleState.startMode === 'schedule' ? scheduleState.startAt : undefined,
+          loop_stream: scheduleState.loopStream,
+          video_volume: scheduleState.videoVolume,
+          audio_volume: scheduleState.audioVolume,
+          shuffle_video: videoEditor.shuffle,
+          shuffle_audio: audioEditor.shuffle,
+        },
+      }
+
+      try {
+        await createStreamMutation.mutateAsync(payload)
+      } catch (error) {
+        // handled by mutation toast
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create collection'
+      toast.error(streamingToasts('generic.errorWithMessage', { message }))
+    } finally {
+      setIsBuilderSubmitting(false)
+    }
+  }
+
+  const resetLiveEditor = () => {
+    setLiveEditingStream(null)
+    setLiveEditorState({ video: null, audio: null })
+    setLiveEditorLoading(false)
+    setLiveEditorSaving({ video: false, audio: false })
+  }
+
+  const openLiveEditor = async (stream: Stream) => {
+    setLiveEditingStream(stream)
+    setLiveEditorLoading(true)
+    setLiveEditorState({ video: null, audio: null })
+    try {
+      const [videoCollection, audioCollection] = await Promise.all([
+        stream.video_collection_id ? api.mediaCollections.get(stream.video_collection_id, true) : null,
+        stream.audio_collection_id ? api.mediaCollections.get(stream.audio_collection_id, true) : null,
+      ])
+      setLiveEditorState({
+        video: videoCollection ? deriveEditorStateFromCollection(videoCollection) : null,
+        audio: audioCollection ? deriveEditorStateFromCollection(audioCollection) : null,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load collections'
+      toast.error(streamingToasts('generic.errorWithMessage', { message }))
+      resetLiveEditor()
+    } finally {
+      setLiveEditorLoading(false)
+    }
+  }
+
+  const updateLiveEditorState = (
+    target: 'video' | 'audio',
+    updater: (prev: CollectionEditorState) => CollectionEditorState
+  ) => {
+    setLiveEditorState((prev) => {
+      const current = prev[target]
+      if (!current) {
+        return prev
+      }
+      return {
+        ...prev,
+        [target]: updater(current),
+      }
+    })
+  }
+
+  const addAssetToLiveEditor = (target: 'video' | 'audio', assetId: string) => {
+    updateLiveEditorState(target, (prev) => {
+      if (prev.items.some((item) => item.asset_id === assetId)) {
+        return prev
+      }
+      return {
+        ...prev,
+        items: [...prev.items, { asset_id: assetId }],
+      }
+    })
+  }
+
+  const removeLiveEditorItem = (target: 'video' | 'audio', index: number) => {
+    updateLiveEditorState(target, (prev) => ({
+      ...prev,
+      items: prev.items.filter((_, itemIndex) => itemIndex !== index),
+    }))
+  }
+
+  const moveLiveEditorItem = (target: 'video' | 'audio', from: number, to: number) => {
+    updateLiveEditorState(target, (prev) => {
+      if (to < 0 || to >= prev.items.length) {
+        return prev
+      }
+      const updated = [...prev.items]
+      const [removed] = updated.splice(from, 1)
+      updated.splice(to, 0, removed)
+      return {
+        ...prev,
+        items: updated,
+      }
+    })
+  }
+
+  const toggleLiveEditorOption = (target: 'video' | 'audio', option: 'loop' | 'shuffle') => {
+    updateLiveEditorState(target, (prev) => ({
+      ...prev,
+      [option]: !prev[option],
+    }))
+  }
+
+  const liveEditorHasSelection = (target: 'video' | 'audio') =>
+    Boolean(liveEditorState[target]?.items.length)
+
+  const saveLiveEditorChanges = async (target: 'video' | 'audio') => {
+    if (!liveEditingStream) return
+    const editor = liveEditorState[target]
+    if (!editor || editor.items.length === 0) {
+      toast.error(streamingToasts('generic.errorWithMessage', { message: tStreaming('streams.liveEdit.empty') }))
+      return
+    }
+
+    const payload: StreamLiveUpdatePayload = {
+      target,
+      restart: liveEditingStream.status === 'running',
+      items: editor.items.map((item, index) => ({
+        asset_id: item.asset_id,
+        position: index,
+        loop_mode: loopModeForEditor(editor),
+      })),
+    }
+
+    setLiveEditorSaving((prev) => ({ ...prev, [target]: true }))
+    try {
+      await api.streams.liveUpdate(liveEditingStream.id, payload)
+      toast.success(streamingToasts('stream.liveEdited'))
+      queryClient.invalidateQueries({ queryKey: ['streams'] })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update stream'
+      toast.error(streamingToasts('generic.errorWithMessage', { message }))
+    } finally {
+      setLiveEditorSaving((prev) => ({ ...prev, [target]: false }))
+    }
+  }
+
+  const renderLiveEditorPanel = (target: 'video' | 'audio') => {
+    const editor = liveEditorState[target]
+    const titleKey =
+      target === 'video' ? 'streams.liveEdit.videoTitle' : 'streams.liveEdit.audioTitle'
+    const assetsPool = target === 'video' ? videoAssets : audioAssets
+
+    if (!editor) {
+      return (
+        <div className="rounded-xl border border-slate-200 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
+          <h4 className="font-semibold text-slate-900 dark:text-white">{tStreaming(titleKey)}</h4>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+            {tStreaming('streams.liveEdit.missing')}
+          </p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-900/70 flex flex-col space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="font-semibold text-slate-900 dark:text-white">{tStreaming(titleKey)}</h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {tStreaming('streams.liveEdit.queueHeading')}
+            </p>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={editor.loop}
+                onChange={() => toggleLiveEditorOption(target, 'loop')}
+              />
+              {tStreaming('streams.liveEdit.toggleLoop')}
+            </label>
+            <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={editor.shuffle}
+                onChange={() => toggleLiveEditorOption(target, 'shuffle')}
+              />
+              {tStreaming('streams.liveEdit.toggleShuffle')}
+            </label>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {editor.items.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {tStreaming('streams.liveEdit.empty')}
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {editor.items.map((item, index) => {
+                const asset = assetMap.get(item.asset_id)
+                return (
+                  <li
+                    key={`${item.asset_id}-${index}`}
+                    className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+                  >
+                    <div className="flex items-center gap-3">
+                      <GripVertical className="w-4 h-4 text-slate-400" />
+                      <div>
+                        <p className="font-medium text-slate-900 dark:text-white">
+                          {asset?.filename ??
+                            (target === 'video'
+                              ? tStreaming('streams.builder.video.unknownAsset')
+                              : tStreaming('streams.builder.audio.unknownAsset'))}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          #{index + 1}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => moveLiveEditorItem(target, index, index - 1)}
+                        disabled={index === 0}
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => moveLiveEditorItem(target, index, index + 1)}
+                        disabled={index === editor.items.length - 1}
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeLiveEditorItem(target, index)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {tStreaming('streams.liveEdit.availableHeading')}
+          </p>
+          <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+            {assetsPool && assetsPool.length > 0 ? (
+              assetsPool.map((asset) => {
+                const alreadySelected = editor.items.some((item) => item.asset_id === asset.id)
+                return (
+                  <button
+                    key={asset.id}
+                    className={cn(
+                      'w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                      alreadySelected
+                        ? 'border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-800'
+                        : 'border-slate-200 hover:border-primary-500 hover:text-primary-600 dark:border-slate-700'
+                    )}
+                    disabled={alreadySelected}
+                    onClick={() => addAssetToLiveEditor(target, asset.id)}
+                  >
+                    {asset.filename}
+                  </button>
+                )
+              })
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {tStreaming('streams.liveEdit.availableEmpty')}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <Button
+          className="mt-auto"
+          onClick={() => saveLiveEditorChanges(target)}
+          isLoading={liveEditorSaving[target]}
+          disabled={!liveEditorHasSelection(target)}
+        >
+          {tStreaming('streams.liveEdit.actions.save')}
+        </Button>
+      </div>
+    )
   }
 
   const handleSubmitChannel = (event: React.FormEvent) => {
@@ -414,29 +957,6 @@ export default function StreamingPage() {
     } else {
       createDestinationMutation.mutate(channelForm)
     }
-  }
-
-  const handleSourceModeChange = (mode: 'playlist' | 'assets') => {
-    setSourceMode(mode)
-    setStreamForm((prev) => ({
-      ...prev,
-      playlist_id:
-        mode === 'playlist'
-          ? playlists && playlists.length > 0
-            ? playlists[0].id
-            : null
-          : null,
-      asset_ids: [],
-    }))
-  }
-
-  const toggleAssetSelection = (assetId: string) => {
-    setStreamForm((prev) => {
-      if (prev.asset_ids.includes(assetId)) {
-        return { ...prev, asset_ids: prev.asset_ids.filter((id) => id !== assetId) }
-      }
-      return { ...prev, asset_ids: [...prev.asset_ids, assetId] }
-    })
   }
 
   const handleEditChannel = (destination: Destination) => {
@@ -454,35 +974,6 @@ export default function StreamingPage() {
     if (confirm(tStreaming('channels.form.confirmDelete'))) {
       deleteDestinationMutation.mutate(destinationId)
     }
-  }
-
-  const handleSubmitStream = (event: React.FormEvent) => {
-    event.preventDefault()
-
-    if (sourceMode === 'playlist') {
-      if (!streamForm.playlist_id) {
-        toast.error(streamingToasts('errors.selectPlaylist'))
-        return
-      }
-    } else if (streamForm.asset_ids.length === 0) {
-      toast.error(streamingToasts('errors.selectAssets'))
-      return
-    }
-
-    if (streamForm.destination_ids.length === 0) {
-      toast.error(streamingToasts('errors.selectDestination'))
-      return
-    }
-
-    createStreamMutation.mutate(streamForm)
-  }
-
-  const toggleDestination = (destinationId: string) => {
-    setStreamForm((prev) =>
-      prev.destination_ids.includes(destinationId)
-        ? { ...prev, destination_ids: prev.destination_ids.filter((id) => id !== destinationId) }
-        : { ...prev, destination_ids: [...prev.destination_ids, destinationId] }
-    )
   }
 
   const renderStatusBadge = (status: StreamStatusValue) => (
@@ -704,6 +1195,12 @@ export default function StreamingPage() {
                           <Button size="sm" variant="outline" onClick={() => setViewingLogs(stream.id)}>
                             {tStreaming('streams.buttons.logs')}
                           </Button>
+                          {stream.status === 'running' && (
+                            <Button size="sm" variant="outline" onClick={() => openLiveEditor(stream)}>
+                              <Edit className="w-4 h-4 mr-2" />
+                              {tStreaming('streams.liveEdit.button')}
+                            </Button>
+                          )}
                           {stream.status === 'running' ? (
                             <Button
                               size="sm"
@@ -886,7 +1383,7 @@ export default function StreamingPage() {
                   name: qualityGate.streamName || tStreaming('streams.untitled'),
                 })}
               </p>
-              <Badge variant="outline" className="w-max mt-2 text-xs font-medium">
+              <Badge variant="info" className="w-max mt-2 text-xs font-medium">
                 {tStreaming('streams.quality.plan', { plan: activePlanLabel })}
               </Badge>
             </CardHeader>
@@ -1051,238 +1548,554 @@ export default function StreamingPage() {
           </Card>
         </div>
       )}
-
       {/* Create Stream Modal */}
       {showCreateStream && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-2xl animate-scale-in">
-            <CardHeader>
-              <CardTitle>{tStreaming('streams.form.title')}</CardTitle>
+          <Card className="w-full max-w-5xl animate-scale-in">
+            <CardHeader className="flex items-start justify-between space-y-0">
+              <div>
+                <CardTitle>{tStreaming('streams.form.title')}</CardTitle>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {tStreaming('streams.builder.subtitle')}
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={resetStreamForm}>
+                <X className="h-4 w-4" />
+              </Button>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmitStream} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    {tStreaming('streams.form.nameLabel')}
-                  </label>
-                  <Input
-                    placeholder={tStreaming('streams.form.namePlaceholder')}
-                    value={streamForm.name}
-                    onChange={(e) => setStreamForm((prev) => ({ ...prev, name: e.target.value }))}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    {tStreaming('streams.form.sourceLabel')}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant={sourceMode === 'playlist' ? 'primary' : 'secondary'}
-                      onClick={() => handleSourceModeChange('playlist')}
-                    >
-                      {tStreaming('streams.form.sourceToggle.playlist')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={sourceMode === 'assets' ? 'primary' : 'secondary'}
-                      onClick={() => handleSourceModeChange('assets')}
-                    >
-                      {tStreaming('streams.form.sourceToggle.assets')}
-                    </Button>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
+                  <div className="flex items-center gap-3">
+                    <Info className="h-5 w-5 text-primary-500" />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        {tStreaming('streams.builder.info.capacity')}
+                      </p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">
+                        {tStreaming('streams.builder.info.capacityDescription', {
+                          count: runningStreams.length,
+                          limit: formatLimitValue(concurrentStreamsLimit),
+                        })}
+                      </p>
+                    </div>
                   </div>
                 </div>
+                {errorStreams.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-400/60 dark:bg-amber-500/10">
+                    <div className="flex items-center gap-3">
+                      <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-300" />
+                      <div>
+                        <p className="text-sm font-semibold text-amber-700 dark:text-amber-200">
+                          {tStreaming('streams.builder.info.alert')}
+                        </p>
+                        <p className="text-xs text-amber-700/80 dark:text-amber-200/80">
+                          {tStreaming('streams.builder.info.alertDescription', { count: errorStreams.length })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-                {sourceMode === 'playlist' ? (
+              <Tabs value={activeBuilderTab} onValueChange={(value) => setActiveBuilderTab(value as BuilderTab)}>
+                <TabsList className="grid grid-cols-4">
+                  <TabsTrigger value="video" className="flex items-center gap-2">
+                    <Layers className="h-4 w-4" />
+                    {tStreaming('streams.builder.tabs.video')}
+                  </TabsTrigger>
+                  <TabsTrigger value="audio" className="flex items-center gap-2">
+                    <Music3 className="h-4 w-4" />
+                    {tStreaming('streams.builder.tabs.audio')}
+                  </TabsTrigger>
+                  <TabsTrigger value="destinations" className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    {tStreaming('streams.builder.tabs.destinations')}
+                  </TabsTrigger>
+                  <TabsTrigger value="schedule" className="flex items-center gap-2">
+                    <Clock3 className="h-4 w-4" />
+                    {tStreaming('streams.builder.tabs.schedule')}
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="video" className="mt-4 space-y-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      {tStreaming('streams.form.playlistLabel')}
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {tStreaming('streams.builder.video.collectionLabel')}
                     </label>
-                    <div className="space-y-2">
-                      {playlists && playlists.length > 0 ? (
-                        playlists.map((playlist) => (
-                          <button
-                            key={playlist.id}
-                            type="button"
-                            onClick={() =>
-                              setStreamForm((prev) => ({
-                                ...prev,
-                                playlist_id: playlist.id,
-                              }))
-                            }
-                            className={`w-full text-left p-3 rounded-lg border transition-all ${
-                              streamForm.playlist_id === playlist.id
-                                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-medium text-sm text-slate-900 dark:text-white">{playlist.name}</p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
-                                  {tStreaming('streams.form.playlistItems', { count: playlist.items.length })}
-                                </p>
-                              </div>
-                              <Badge variant={streamForm.playlist_id === playlist.id ? 'success' : 'secondary'}>
-                                {streamForm.playlist_id === playlist.id
-                                  ? tStreaming('channels.badge.selected')
-                                  : tStreaming('channels.badge.tapToSelect')}
-                              </Badge>
-                            </div>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4">
-                          <div className="text-left">
-                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                              {tStreaming('streams.form.playlistNoneTitle')}
-                            </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                              {tStreaming('streams.form.playlistNoneDescription')}
-                            </p>
-                          </div>
-                          <ListMusic className="w-6 h-6 text-slate-400" />
-                        </div>
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                      <select
+                        className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                        value={videoEditor.selectedCollectionId ?? 'custom'}
+                        onChange={(event) => handleSelectCollection('video', event.target.value as string)}
+                      >
+                        <option value="custom">{tStreaming('streams.builder.video.collectionPlaceholder')}</option>
+                        {(videoCollections ?? []).map((collection) => (
+                          <option key={collection.id} value={collection.id}>
+                            {collection.name}
+                          </option>
+                        ))}
+                      </select>
+                      {videoEditor.mode === 'existing' && (
+                        <Button variant="outline" size="sm" onClick={() => handleCustomizeExisting('video')}>
+                          {tStreaming('streams.builder.video.customize')}
+                        </Button>
                       )}
                     </div>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      {tStreaming('streams.form.assetsLabel')}
-                    </label>
-                    {isLoadingAssets ? (
-                      <LoadingState text={tStreaming('loading')} />
-                    ) : assets && assets.length > 0 ? (
-                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                        {assets.map((asset) => {
-                          const selectedIndex = streamForm.asset_ids.indexOf(asset.id)
-                          const isSelected = selectedIndex !== -1
-                          return (
-                            <button
-                              key={asset.id}
-                              type="button"
-                              onClick={() => toggleAssetSelection(asset.id)}
-                              className={`w-full text-left p-3 rounded-lg border transition-all ${
-                                isSelected
-                                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="font-medium text-sm text-slate-900 dark:text-white">{asset.filename}</p>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                                    {isSelected
-                                      ? tStreaming('streams.form.assetSelectedOrder', { index: selectedIndex + 1 })
-                                      : tStreaming('streams.form.assetTapToSelect')}
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant={videoEditor.loop ? 'primary' : 'secondary'}
+                      onClick={() => updateEditor('video', (prev) => ({ ...prev, loop: !prev.loop, mode: 'custom' }))}
+                    >
+                      <Repeat className="mr-1 h-4 w-4" />
+                      {tStreaming('streams.builder.video.loop')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={videoEditor.shuffle ? 'primary' : 'secondary'}
+                      onClick={() => updateEditor('video', (prev) => ({ ...prev, shuffle: !prev.shuffle, mode: 'custom' }))}
+                    >
+                      <Shuffle className="mr-1 h-4 w-4" />
+                      {tStreaming('streams.builder.video.shuffle')}
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                          {tStreaming('streams.builder.video.queueHeading')}
+                        </h4>
+                        {videoEditor.items.length > 0 && (
+                          <Button variant="ghost" size="sm" onClick={() => updateEditor('video', (prev) => ({ ...prev, items: [] }))}>
+                            {tStreaming('streams.builder.video.clear')}
+                          </Button>
+                        )}
+                      </div>
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-900/50 max-h-72 overflow-y-auto">
+                        {videoEditor.items.length > 0 ? (
+                          videoEditor.items.map((item, index) => {
+                            const asset = assetMap.get(item.asset_id)
+                            const draggable = videoEditor.mode === 'custom'
+                            return (
+                              <div
+                                key={`${item.asset_id}-${index}`}
+                                className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
+                                draggable={draggable}
+                                onDragStart={() => handleItemDragStart('video', index)}
+                                onDragOver={(event) => {
+                                  if (!draggable) return
+                                  event.preventDefault()
+                                }}
+                                onDrop={() => draggable && handleItemDrop('video', index)}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <GripVertical className={`h-4 w-4 text-slate-400 ${!draggable ? 'opacity-40' : ''}`} />
+                                  <p className="truncate font-medium text-slate-900 dark:text-white">
+                                    {asset?.filename ?? tStreaming('streams.builder.video.unknownAsset')}
                                   </p>
                                 </div>
+                                {draggable && (
+                                  <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('video', item.asset_id)}>
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            )
+                          })
+                        ) : (
+                          <p className="text-sm text-slate-500">{tStreaming('streams.builder.video.empty')}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                        {tStreaming('streams.builder.video.assetsHeading')}
+                      </h4>
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-900/50 max-h-72 overflow-y-auto">
+                        {isLoadingAssets ? (
+                          <LoadingState text={tStreaming('loading')} />
+                        ) : videoAssets.length > 0 ? (
+                          videoAssets.map((asset) => {
+                            const isSelected = videoEditor.items.some((entry) => entry.asset_id === asset.id)
+                            return (
+                              <button
+                                key={`video-source-${asset.id}`}
+                                type="button"
+                                onClick={() => addAssetToEditor('video', asset.id)}
+                                className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                                  isSelected
+                                    ? 'border-primary-400 bg-primary-50/60 dark:border-primary-500 dark:bg-primary-900/30'
+                                    : 'border-slate-200 hover:border-primary-300 dark:border-slate-600 dark:hover:border-primary-500'
+                                }`}
+                              >
+                                <span className="truncate">{asset.filename}</span>
                                 <Badge variant={isSelected ? 'success' : 'secondary'}>
                                   {isSelected
                                     ? tStreaming('channels.badge.selected')
                                     : tStreaming('channels.badge.tapToSelect')}
                                 </Badge>
-                              </div>
-                            </button>
-                          )
-                        })}
+                              </button>
+                            )
+                          })
+                        ) : (
+                          <p className="text-sm text-slate-500">{tStreaming('streams.builder.video.noAssets')}</p>
+                        )}
                       </div>
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4 text-sm text-slate-600 dark:text-slate-300">
-                        {tStreaming('streams.form.assetsNoneDescription')}
-                      </div>
-                    )}
+                    </div>
                   </div>
-                )}
+                </TabsContent>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    {tStreaming('streams.form.destinationsLabel')}
-                  </label>
-                  <div className="space-y-2">
-                    {enabledDestinations.length > 0 ? (
-                      enabledDestinations.map((destination) => {
+                <TabsContent value="audio" className="mt-4 space-y-4">
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/40">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        {tStreaming('streams.builder.audio.title')}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {tStreaming('streams.builder.audio.subtitle')}
+                      </p>
+                    </div>
+                    <Button variant={audioEnabled ? 'primary' : 'secondary'} size="sm" onClick={() => handleAudioToggle(!audioEnabled)}>
+                      {audioEnabled ? tStreaming('streams.builder.audio.disable') : tStreaming('streams.builder.audio.enable')}
+                    </Button>
+                  </div>
+
+                  {!audioEnabled ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {tStreaming('streams.builder.audio.disabledNotice')}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                          {tStreaming('streams.builder.audio.collectionLabel')}
+                        </label>
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                          <select
+                            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                            value={audioEditor.selectedCollectionId ?? 'custom'}
+                            onChange={(event) => handleSelectCollection('audio', event.target.value as string)}
+                          >
+                            <option value="custom">{tStreaming('streams.builder.audio.collectionPlaceholder')}</option>
+                            {(audioCollections ?? []).map((collection) => (
+                              <option key={collection.id} value={collection.id}>
+                                {collection.name}
+                              </option>
+                            ))}
+                          </select>
+                          {audioEditor.mode === 'existing' && (
+                            <Button variant="outline" size="sm" onClick={() => handleCustomizeExisting('audio')}>
+                              {tStreaming('streams.builder.audio.customize')}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant={audioEditor.loop ? 'primary' : 'secondary'}
+                          onClick={() => updateEditor('audio', (prev) => ({ ...prev, loop: !prev.loop, mode: 'custom' }))}
+                        >
+                          <Repeat className="mr-1 h-4 w-4" />
+                          {tStreaming('streams.builder.audio.loop')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={audioEditor.shuffle ? 'primary' : 'secondary'}
+                          onClick={() => updateEditor('audio', (prev) => ({ ...prev, shuffle: !prev.shuffle, mode: 'custom' }))}
+                        >
+                          <Shuffle className="mr-1 h-4 w-4" />
+                          {tStreaming('streams.builder.audio.shuffle')}
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                            {tStreaming('streams.builder.audio.queueHeading')}
+                          </h4>
+                          <div className="space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-900/50 max-h-64 overflow-y-auto">
+                            {audioEditor.items.length > 0 ? (
+                              audioEditor.items.map((item, index) => {
+                                const asset = assetMap.get(item.asset_id)
+                                const draggable = audioEditor.mode === 'custom'
+                                return (
+                                  <div
+                                    key={`${item.asset_id}-${index}`}
+                                    className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
+                                    draggable={draggable}
+                                    onDragStart={() => handleItemDragStart('audio', index)}
+                                    onDragOver={(event) => {
+                                      if (!draggable) return
+                                      event.preventDefault()
+                                    }}
+                                    onDrop={() => draggable && handleItemDrop('audio', index)}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <GripVertical className={`h-4 w-4 text-slate-400 ${!draggable ? 'opacity-40' : ''}`} />
+                                      <p className="truncate font-medium text-slate-900 dark:text-white">
+                                        {asset?.filename ?? tStreaming('streams.builder.audio.unknownAsset')}
+                                      </p>
+                                    </div>
+                                    {draggable && (
+                                      <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('audio', item.asset_id)}>
+                                        <X className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                )
+                              })
+                            ) : (
+                              <p className="text-sm text-slate-500">{tStreaming('streams.builder.audio.empty')}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                            {tStreaming('streams.builder.audio.assetsHeading')}
+                          </h4>
+                          <div className="space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-900/50 max-h-64 overflow-y-auto">
+                            {isLoadingAssets ? (
+                              <LoadingState text={tStreaming('loading')} />
+                            ) : audioAssets.length > 0 ? (
+                              audioAssets.map((asset) => {
+                                const isSelected = audioEditor.items.some((entry) => entry.asset_id === asset.id)
+                                return (
+                                  <button
+                                    key={`audio-source-${asset.id}`}
+                                    type="button"
+                                    onClick={() => addAssetToEditor('audio', asset.id)}
+                                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                                      isSelected
+                                        ? 'border-primary-400 bg-primary-50/60 dark:border-primary-500 dark:bg-primary-900/30'
+                                        : 'border-slate-200 hover:border-primary-300 dark:border-slate-600 dark:hover-border-primary-500'
+                                    }`}
+                                  >
+                                    <span className="truncate">{asset.filename}</span>
+                                    <Badge variant={isSelected ? 'success' : 'secondary'}>
+                                      {isSelected
+                                        ? tStreaming('channels.badge.selected')
+                                        : tStreaming('channels.badge.tapToSelect')}
+                                    </Badge>
+                                  </button>
+                                )
+                              })
+                            ) : (
+                              <p className="text-sm text-slate-500">{tStreaming('streams.builder.audio.noAssets')}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="destinations" className="mt-4 space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {tStreaming('streams.builder.destinations.title')}
+                    </label>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {tStreaming('streams.builder.destinations.subtitle')}
+                    </p>
+                  </div>
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {isLoadingDestinations ? (
+                      <div className="flex items-center justify-center rounded-lg border border-dashed border-slate-300 p-6 dark:border-slate-700">
+                        <LoadingState text={tStreaming('streams.builder.destinations.loading')} />
+                      </div>
+                    ) : destinations && destinations.length > 0 ? (
+                      destinations.map((destination) => {
                         const isSelected = streamForm.destination_ids.includes(destination.id)
                         return (
                           <button
-                            key={destination.id}
+                            key={`destination-${destination.id}`}
                             type="button"
-                            onClick={() => toggleDestination(destination.id)}
-                            className={cn(
-                              'w-full rounded-lg border p-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-success-500',
+                            disabled={!destination.enabled}
+                            onClick={() => handleDestinationToggle(destination.id)}
+                            className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-colors ${
                               isSelected
-                                ? 'border-success-500 bg-success-100 text-success-900 dark:border-success-400 dark:bg-success-900/40 dark:text-success-100'
-                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                            )}
+                                ? 'border-success-500 bg-success-50 dark:border-success-700 dark:bg-success-900/30'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-primary-300'
+                            } ${!destination.enabled ? 'opacity-60 cursor-not-allowed' : ''}`}
                           >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p
-                                  className={cn(
-                                    'font-medium text-sm',
-                                    isSelected
-                                      ? 'text-success-900 dark:text-success-100'
-                                      : 'text-slate-900 dark:text-white'
-                                  )}
-                                >
-                                  {destination.name}
-                                </p>
-                                <p
-                                  className={cn(
-                                    'text-xs',
-                                    isSelected
-                                      ? 'text-success-800 dark:text-success-300'
-                                      : 'text-slate-500 dark:text-slate-400'
-                                  )}
-                                >
-                                  {destination.rtmps_url.split('/').slice(0, 3).join('/')}
-                                </p>
-                              </div>
-                              <Badge variant={isSelected ? 'success' : 'secondary'}>
-                                {isSelected
-                                  ? tStreaming('channels.badge.selected')
-                                  : tStreaming('channels.badge.tapToSelect')}
-                              </Badge>
+                            <div>
+                              <p className="text-sm font-medium text-slate-900 dark:text-white">{destination.name}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">{destination.rtmps_url}</p>
                             </div>
+                            <Badge variant={isSelected ? 'success' : destination.enabled ? 'secondary' : 'warning'}>
+                              {destination.enabled
+                                ? isSelected
+                                  ? tStreaming('channels.badge.selected')
+                                  : tStreaming('channels.badge.tapToSelect')
+                                : tStreaming('streams.builder.destinations.disabled')}
+                            </Badge>
                           </button>
                         )
                       })
                     ) : (
-                      <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4">
-                        <div className="text-left">
-                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                            {tStreaming('streams.form.destinationsNoneTitle')}
-                          </p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {tStreaming('streams.form.destinationsNoneDescription')}
-                          </p>
-                        </div>
-                        <Plus className="w-6 h-6 text-slate-400" />
+                      <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300 space-y-3 text-center">
+                        <p>{tStreaming('streams.builder.destinations.none')}</p>
+                        <Button size="sm" variant="outline" onClick={() => setShowChannelForm(true)}>
+                          {tStreaming('streams.builder.destinations.cta')}
+                        </Button>
                       </div>
                     )}
                   </div>
-                </div>
+                </TabsContent>
 
-                <div className="flex justify-end gap-3">
-                  <Button type="button" onClick={resetStreamForm} variant="secondary">
-                    {tStreaming('streams.form.cancel')}
+                <TabsContent value="schedule" className="mt-4 space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {tStreaming('streams.form.nameLabel')}
+                    </label>
+                    <Input
+                      placeholder={tStreaming('streams.form.namePlaceholder')}
+                      value={streamForm.name}
+                      onChange={(event) => setStreamForm((prev) => ({ ...prev, name: event.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {tStreaming('streams.builder.schedule.title')}
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant={scheduleState.startMode === 'now' ? 'primary' : 'secondary'}
+                        onClick={() => setScheduleState((prev) => ({ ...prev, startMode: 'now' }))}
+                      >
+                        {tStreaming('streams.builder.schedule.startNow')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={scheduleState.startMode === 'schedule' ? 'primary' : 'secondary'}
+                        onClick={() => setScheduleState((prev) => ({ ...prev, startMode: 'schedule' }))}
+                      >
+                        {tStreaming('streams.builder.schedule.startLater')}
+                      </Button>
+                    </div>
+                    {scheduleState.startMode === 'schedule' && (
+                      <Input
+                        type="datetime-local"
+                        value={scheduleState.startAt}
+                        onChange={(event) => setScheduleState((prev) => ({ ...prev, startAt: event.target.value }))}
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant={scheduleState.loopStream ? 'primary' : 'secondary'}
+                      onClick={() => setScheduleState((prev) => ({ ...prev, loopStream: !prev.loopStream }))}
+                    >
+                      <Repeat className="mr-1 h-4 w-4" />
+                      {tStreaming('streams.builder.schedule.loop')}
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {tStreaming('streams.builder.schedule.videoVolume')}: {scheduleState.videoVolume}%
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <Volume2 className="h-4 w-4 text-slate-400" />
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={scheduleState.videoVolume}
+                          onChange={(event) => setScheduleState((prev) => ({ ...prev, videoVolume: Number(event.target.value) }))}
+                          className="flex-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {tStreaming('streams.builder.schedule.audioVolume')}: {audioEnabled ? scheduleState.audioVolume : 0}%
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <VolumeX className={`h-4 w-4 ${audioEnabled ? 'text-slate-400' : 'text-slate-300'}`} />
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={audioEnabled ? scheduleState.audioVolume : 0}
+                          disabled={!audioEnabled}
+                          onChange={(event) => setScheduleState((prev) => ({ ...prev, audioVolume: Number(event.target.value) }))}
+                          className="flex-1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/40">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                      {tStreaming('streams.builder.schedule.summaryTitle')}
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-300">
+                      <li>
+                        {videoEditor.selectedCollectionId
+                          ? tStreaming('streams.builder.schedule.summaryVideoSaved')
+                          : tStreaming('streams.builder.schedule.summaryVideoCount', {
+                              count: videoEditor.items.length,
+                            })}
+                      </li>
+                      <li>
+                        {audioEnabled
+                          ? audioEditor.selectedCollectionId
+                            ? tStreaming('streams.builder.schedule.summaryAudioSaved')
+                            : tStreaming('streams.builder.schedule.summaryAudioCount', {
+                                count: audioEditor.items.length,
+                              })
+                          : tStreaming('streams.builder.schedule.summaryAudioDisabled')}
+                      </li>
+                      <li>
+                        {tStreaming('streams.builder.schedule.summaryDestinations', {
+                          count: streamForm.destination_ids.length,
+                        })}
+                      </li>
+                    </ul>
+                  </div>
+                </TabsContent>
+              </Tabs>
+
+              <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <Button variant="ghost" onClick={resetStreamForm}>
+                    {tStreaming('streams.builder.actions.cancel')}
                   </Button>
-                  <Button
-                    type="submit"
-                    disabled={
-                      (sourceMode === 'playlist' && !streamForm.playlist_id) ||
-                      (sourceMode === 'assets' && streamForm.asset_ids.length === 0) ||
-                      streamForm.destination_ids.length === 0
-                    }
-                    isLoading={createStreamMutation.isPending}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    {tStreaming('streams.form.create')}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setActiveBuilderTab(builderTabsList[Math.max(0, currentTabIndex - 1)])}
+                      disabled={currentTabIndex === 0}
+                    >
+                      {tStreaming('streams.builder.actions.back')}
+                    </Button>
+                    {isFinalTab ? (
+                      <Button
+                        onClick={handleBuilderSubmit}
+                        isLoading={isBuilderSubmitting || createStreamMutation.isPending}
+                      >
+                        {tStreaming('streams.builder.actions.create')}
+                      </Button>
+                    ) : (
+                      <Button onClick={() => setActiveBuilderTab(builderTabsList[Math.min(builderTabsList.length - 1, currentTabIndex + 1)])}>
+                        {tStreaming('streams.builder.actions.next')}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </form>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1307,6 +2120,56 @@ export default function StreamingPage() {
                 ) : (
                   <p>{tStreaming('streams.logs.empty')}</p>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      {liveEditingStream && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
+          <Card className="w-full max-w-5xl animate-scale-in">
+            <CardHeader className="flex items-start justify-between space-y-0">
+              <div>
+                <CardTitle>
+                  {tStreaming('streams.liveEdit.title', {
+                    name: liveEditingStream.name || tStreaming('streams.untitled'),
+                  })}
+                </CardTitle>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {tStreaming('streams.liveEdit.subtitle')}
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={resetLiveEditor}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {liveEditorLoading ? (
+                <LoadingState text={tStreaming('streams.liveEdit.loading')} />
+              ) : (
+                <div className="space-y-6">
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    {tStreaming('streams.liveEdit.restartNotice')}
+                  </p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {renderLiveEditorPanel('video')}
+                    {liveEditingStream.audio_collection_id
+                      ? renderLiveEditorPanel('audio')
+                      : (
+                        <div className="rounded-xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
+                          <h4 className="font-semibold text-slate-900 dark:text-white">
+                            {tStreaming('streams.liveEdit.audioTitle')}
+                          </h4>
+                          <p className="mt-2">{tStreaming('streams.liveEdit.disabledAudio')}</p>
+                        </div>
+                      )}
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={resetLiveEditor}>
+                  {tStreaming('streams.liveEdit.actions.close')}
+                </Button>
               </div>
             </CardContent>
           </Card>

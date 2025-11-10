@@ -66,7 +66,7 @@ test: ## Run all tests
 	@echo "$(BLUE)Running backend tests...$(NC)"
 	cd backend && pytest -v
 	@echo "$(BLUE)Running frontend tests...$(NC)"
-	cd frontend && npm test
+	cd frontend && CI=1 npm test
 	@echo "$(GREEN)✓ All tests passed$(NC)"
 
 test-backend: ## Run backend tests
@@ -79,7 +79,7 @@ test-backend-coverage: ## Run backend tests with coverage
 
 test-frontend: ## Run frontend tests
 	@echo "$(BLUE)Running frontend tests...$(NC)"
-	cd frontend && npm test
+	cd frontend && CI=1 npm test
 
 test-admin: ## Run admin tests (requires RUN_ADMIN_TESTS=1)
 	@echo "$(BLUE)Running admin tests...$(NC)"

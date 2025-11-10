@@ -1,4 +1,7 @@
+import hashlib
 import logging
+import random
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Dict, Tuple, Any, Optional, Union
 
@@ -6,6 +9,27 @@ from app.core.config import settings
 from app.streaming.validator import VideoValidator
 
 logger = logging.getLogger(__name__)
+
+
+ALLOWED_LOOP_MODES = {"loop", "once", "shuffle"}
+
+
+@dataclass
+class PlaylistFileSet:
+    """Artifacts generated for FFmpeg streaming inputs."""
+
+    stream_dir: Path
+    video_playlist: Optional[Path]
+    audio_playlist: Optional[Path]
+    mix_mode: str
+    video_loop: bool
+    audio_loop: bool
+    needs_video_placeholder: bool = False
+    needs_audio_placeholder: bool = False
+    video_copy_compatible: bool = False
+    audio_copy_compatible: bool = False
+    video_assets: List[Dict[str, Any]] = field(default_factory=list)
+    audio_assets: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class PlaylistBuilder:
@@ -42,11 +66,154 @@ class PlaylistBuilder:
         PlaylistBuilder.build_playlist_file(normalized_assets, output_file, loop=True)
         return output_file
 
+    def prepare_stream_playlists(
+        self,
+        stream_id: str,
+        stream_dir: Path,
+        video_assets: Optional[List[Dict[str, Any]]],
+        audio_assets: Optional[List[Dict[str, Any]]],
+        mix_mode: str,
+    ) -> PlaylistFileSet:
+        """Generate playlist files for video/audio streams with shuffle & loop semantics."""
+
+        normalized_mode = (mix_mode or "video_only").lower()
+        if normalized_mode not in {"video_only", "audio_only", "mixed"}:
+            raise ValueError(f"Unsupported mix mode: {mix_mode}")
+
+        stream_dir.mkdir(parents=True, exist_ok=True)
+
+        normalized_video = self._normalize_assets(video_assets or [])
+        normalized_audio = self._normalize_assets(audio_assets or [])
+
+        needs_video_placeholder = False
+        needs_audio_placeholder = False
+
+        if normalized_mode == "mixed":
+            if not normalized_audio:
+                raise ValueError("Mixed mode requires at least one audio asset")
+            if not normalized_video:
+                needs_video_placeholder = True
+        elif normalized_mode == "video_only" and not normalized_video:
+            raise ValueError("Video-only mode requires at least one video asset")
+        elif normalized_mode == "audio_only" and not normalized_audio:
+            raise ValueError("Audio-only mode requires at least one audio asset")
+
+        video_loop = self._should_loop(normalized_video)
+        audio_loop = self._should_loop(normalized_audio)
+        video_shuffle = self._should_shuffle(normalized_video)
+        audio_shuffle = self._should_shuffle(normalized_audio)
+
+        video_playlist_path: Optional[Path] = None
+        if normalized_video:
+            video_playlist_path = stream_dir / "video.txt"
+            PlaylistBuilder.build_playlist_file(
+                normalized_video,
+                video_playlist_path,
+                loop=video_loop,
+                shuffle=video_shuffle,
+                seed=self._seed_from_components(stream_id, "video"),
+            )
+
+        audio_playlist_path: Optional[Path] = None
+        if normalized_audio:
+            audio_playlist_path = stream_dir / "audio.txt"
+            PlaylistBuilder.build_playlist_file(
+                normalized_audio,
+                audio_playlist_path,
+                loop=audio_loop,
+                shuffle=audio_shuffle,
+                seed=self._seed_from_components(stream_id, "audio"),
+            )
+
+        video_copy_compatible = bool(normalized_video) and all(
+            asset.get("compatible_for_copy") is True for asset in normalized_video
+        )
+        audio_copy_compatible = self._audio_assets_compatible(normalized_audio)
+
+        needs_video_placeholder = needs_video_placeholder or (normalized_mode == "audio_only")
+        needs_audio_placeholder = (normalized_mode == "video_only")
+
+        return PlaylistFileSet(
+            stream_dir=stream_dir,
+            video_playlist=video_playlist_path,
+            audio_playlist=audio_playlist_path,
+            mix_mode=normalized_mode,
+            video_loop=video_loop,
+            audio_loop=audio_loop,
+            needs_video_placeholder=needs_video_placeholder,
+            needs_audio_placeholder=needs_audio_placeholder,
+            video_copy_compatible=video_copy_compatible,
+            audio_copy_compatible=audio_copy_compatible,
+            video_assets=normalized_video,
+            audio_assets=normalized_audio,
+        )
+
+    def _normalize_assets(self, assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+
+        for asset in assets:
+            entry = dict(asset)
+
+            raw_path = entry.get("path") or entry.get("file_path")
+            if not raw_path:
+                raise ValueError("Asset entry missing 'path'")
+
+            file_path = Path(str(raw_path)).expanduser()
+            entry["path"] = str(file_path)
+
+            loop_mode = self._sanitize_loop_mode(entry.get("loop_mode"))
+            entry["loop_mode"] = loop_mode
+
+            normalized.append(entry)
+
+        return normalized
+
+    @staticmethod
+    def _sanitize_loop_mode(value: Optional[str]) -> str:
+        if not value:
+            return "loop"
+        candidate = str(value).strip().lower()
+        if candidate not in ALLOWED_LOOP_MODES:
+            return "loop"
+        return candidate
+
+    @staticmethod
+    def _should_loop(assets: List[Dict[str, Any]]) -> bool:
+        if not assets:
+            return False
+        return any(asset.get("loop_mode") != "once" for asset in assets)
+
+    @staticmethod
+    def _should_shuffle(assets: List[Dict[str, Any]]) -> bool:
+        if not assets:
+            return False
+        return any(asset.get("loop_mode") == "shuffle" for asset in assets)
+
+    @staticmethod
+    def _audio_assets_compatible(assets: List[Dict[str, Any]]) -> bool:
+        if not assets:
+            return False
+
+        for asset in assets:
+            meta = asset.get("meta") or {}
+            audio = meta.get("audio") or {}
+            codec = str(audio.get("codec") or "").lower()
+            if codec != VideoValidator.REQUIRED_AUDIO_CODEC:
+                return False
+        return True
+
+    @staticmethod
+    def _seed_from_components(stream_id: str, suffix: str) -> int:
+        digest = hashlib.sha1(f"{stream_id}:{suffix}".encode("utf-8")).digest()
+        return int.from_bytes(digest[:8], "big", signed=False)
+
     @staticmethod
     def build_playlist_file(
         assets: List[Dict],
         output_file: Path,
-        loop: bool = True
+        loop: bool = True,
+        shuffle: bool = False,
+        seed: Optional[int] = None,
     ) -> Path:
         """
         Build concat demuxer playlist file for FFmpeg.
@@ -55,24 +222,32 @@ class PlaylistBuilder:
             assets: List of asset dicts with 'path' key
             output_file: Path where to save playlist.txt
             loop: Whether to enable infinite loop (currently not used to avoid descriptor leak)
+            shuffle: Whether to shuffle assets before writing playlist
+            seed: Optional deterministic seed for shuffle order
             
         Returns:
             Path to created playlist file
         """
         try:
             output_file.parent.mkdir(parents=True, exist_ok=True)
-            
+
+            playlist_entries = list(assets)
+            if shuffle and len(playlist_entries) > 1:
+                rng = random.Random(seed)
+                rng.shuffle(playlist_entries)
+
             with open(output_file, "w") as f:
                 f.write("ffconcat version 1.0\n")
-                
-                for asset in assets:
-                    asset_path = Path(asset["path"])
+
+                for asset in playlist_entries:
+                    asset_path = Path(asset["path"]).expanduser()
                     if not asset_path.exists():
                         logger.error(f"Asset file not found: {asset_path}")
                         continue
-                    
+                    resolved_path = asset_path.resolve()
+                    escaped = resolved_path.as_posix().replace("'", "\\'")
                     # Write absolute path
-                    f.write(f"file '{asset_path.absolute()}'\n")
+                    f.write(f"file '{escaped}'\n")
             
             logger.info(f"Created playlist file: {output_file}")
             return output_file
@@ -85,7 +260,7 @@ class PlaylistBuilder:
     def validate_playlist_assets(assets: List[Dict]) -> Tuple[bool, List[Dict[str, Any]]]:
         """
         Validate that all assets in playlist have compatible parameters.
-        
+
         For concat demuxer to work without transcoding, all files must have:
         - Same video codec and parameters
         - Same audio codec and parameters
@@ -356,6 +531,81 @@ class PlaylistBuilder:
         if is_valid:
             logger.info("All playlist assets are compatible")
         return is_valid, issues
+
+    @staticmethod
+    def validate_audio_playlist_assets(assets: List[Dict]) -> Tuple[bool, List[Dict[str, Any]]]:
+        """Validate that audio-only assets are ready for AAC streaming."""
+
+        issues: List[Dict[str, Any]] = []
+
+        def asset_label(index: int, asset: Dict) -> str:
+            return (
+                asset.get("filename")
+                or asset.get("name")
+                or asset.get("path")
+                or f"asset #{index + 1}"
+            )
+
+        def add_issue(code: str, message: str, index: int, asset: Dict, **context):
+            entry = {
+                "code": code,
+                "message": message,
+                "asset_index": index,
+                "asset_label": asset_label(index, asset),
+            }
+            if asset.get("path"):
+                entry["asset_path"] = asset["path"]
+            entry.update({k: v for k, v in context.items() if v is not None})
+            issues.append(entry)
+
+        if not assets:
+            add_issue("empty_playlist", "Audio playlist must contain at least one asset.", 0, {})
+            return False, issues
+
+        allowed_sample_rates = {44100, 48000}
+
+        for index, asset in enumerate(assets):
+            meta = asset.get("meta") or {}
+            audio = meta.get("audio") or {}
+
+            if not audio:
+                add_issue("missing_audio_metadata", "Audio metadata is required for streaming.", index, asset)
+                continue
+
+            codec = str(audio.get("codec") or "").lower()
+            if codec != VideoValidator.REQUIRED_AUDIO_CODEC:
+                add_issue(
+                    "audio_codec_invalid",
+                    f"Audio codec must be {VideoValidator.REQUIRED_AUDIO_CODEC.upper()} for direct streaming.",
+                    index,
+                    asset,
+                    expected=VideoValidator.REQUIRED_AUDIO_CODEC,
+                    found=codec,
+                )
+
+            sample_rate_raw = audio.get("sample_rate")
+            try:
+                sample_rate = int(sample_rate_raw) if sample_rate_raw is not None else None
+            except (TypeError, ValueError):
+                sample_rate = None
+
+            if sample_rate is None:
+                add_issue("audio_sample_rate_missing", "Audio sample rate metadata is missing.", index, asset)
+            elif sample_rate not in allowed_sample_rates:
+                add_issue(
+                    "audio_sample_rate_mismatch",
+                    "Audio sample rate must be 44100 or 48000 Hz for RTMP streaming.",
+                    index,
+                    asset,
+                    expected=list(sorted(allowed_sample_rates)),
+                    found=sample_rate,
+                )
+
+        if issues:
+            logger.warning("Audio playlist validation issues detected: %s", issues)
+            return False, issues
+
+        return True, []
 
     @staticmethod
     async def combine_to_transport_stream(

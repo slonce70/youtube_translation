@@ -1,3 +1,27 @@
+export type AssetType = 'video' | 'audio'
+
+export interface AssetUsageReference {
+  id: string
+  name: string
+  kind: 'playlist' | 'collection' | 'stream'
+  status?: string | null
+  context?: string | null
+}
+
+export interface AssetUsageSummary {
+  playlists: AssetUsageReference[]
+  collections: AssetUsageReference[]
+  streams: AssetUsageReference[]
+}
+
+export interface AssetFolderInfo {
+  folder_id: string
+  name: string
+  is_root: boolean
+}
+
+export type LoopMode = 'loop' | 'once' | 'shuffle'
+
 export interface Asset {
   id: string
   filename: string
@@ -5,10 +29,77 @@ export interface Asset {
   size_bytes: number
   duration_seconds?: number | null
   meta?: Record<string, unknown> | null
+  asset_type: AssetType
+  codec_info?: Record<string, unknown> | null
   compatible_for_copy: boolean
   validation_errors?: string[] | null
   created_at: string
   updated_at: string
+  primary_folder_id?: string | null
+  folders?: AssetFolderInfo[]
+  usage?: AssetUsageSummary
+  thumbnail_url?: string | null
+}
+
+export interface MediaFolder {
+  id: string
+  user_id: string
+  name: string
+  parent_id?: string | null
+  is_root: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface MediaFolderBulkMoveResponse {
+  updated_assets: number
+}
+
+export interface CollectionItem {
+  id: string
+  collection_id: string
+  asset_id: string
+  position: number
+  loop_mode: LoopMode
+  created_at: string
+  updated_at: string
+}
+
+export interface CollectionItemInput {
+  asset_id: string
+  position: number
+  loop_mode?: LoopMode
+}
+
+export interface MediaCollection {
+  id: string
+  user_id: string
+  name: string
+  description?: string | null
+  collection_type: 'video_background' | 'audio_playlist'
+  is_active: boolean
+  origin_playlist_id?: string | null
+  created_at: string
+  updated_at: string
+  items: CollectionItem[]
+}
+
+export interface MediaCollectionCreatePayload {
+  name: string
+  description?: string
+  collection_type: 'video_background' | 'audio_playlist'
+  is_active?: boolean
+  items: CollectionItemInput[]
+}
+
+export interface MediaCollectionUpdatePayload {
+  name?: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface MediaCollectionItemsPayload {
+  items: CollectionItemInput[]
 }
 
 export interface PlaylistItem {
@@ -112,6 +203,10 @@ export interface Stream {
   error_message?: string | null
   started_at?: string | null
   stopped_at?: string | null
+  video_collection_id?: string | null
+  audio_collection_id?: string | null
+  mix_mode: 'video_only' | 'audio_only' | 'mixed'
+  settings_json?: Record<string, unknown>
   created_at: string
   updated_at: string
   stream_assets?: StreamAssetLink[]
@@ -212,6 +307,16 @@ export interface CreateStreamPayload {
   destination_ids: string[]
   playlist_id?: string
   asset_ids?: string[]
+  video_collection_id?: string
+  audio_collection_id?: string
+  mix_mode?: 'video_only' | 'audio_only' | 'mixed'
+  settings_json?: Record<string, unknown>
+}
+
+export interface StreamLiveUpdatePayload {
+  target: 'video' | 'audio'
+  items: CollectionItemInput[]
+  restart?: boolean
 }
 
 export interface CreateAssetPayload {

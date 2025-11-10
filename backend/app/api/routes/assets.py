@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
-from typing import List, Tuple, Dict, Any, Optional
+from sqlalchemy import select, delete, update, func, text, or_
+from typing import List, Tuple, Dict, Any, Optional, Sequence
+from collections import defaultdict
 from pathlib import Path
 import asyncio
 import json
@@ -16,8 +17,30 @@ from datetime import datetime, timezone
 from fastapi.responses import FileResponse
 
 from app.api.deps import require_user
-from app.models.database import Asset
-from app.schemas.api import AssetResponse, AssetCreate, AssetUpdate, AssetDownloadLinkResponse
+from app.models.database import (
+    Asset,
+    AssetFolderLink,
+    CollectionItem,
+    MediaCollection,
+    MediaFolder,
+    Playlist,
+    PlaylistItem,
+    Stream,
+    StreamAsset,
+    SystemAlert,
+    UserActivityLog,
+    UserProfile,
+)
+from app.schemas.api import (
+    AssetResponse,
+    AssetCreate,
+    AssetUpdate,
+    AssetDownloadLinkResponse,
+    AssetFolderInfo,
+    AssetUsageReference,
+    AssetUsageSummary,
+    ALLOWED_ASSET_TYPES,
+)
 from app.streaming.validator import VideoValidator
 from app.core.config import settings
 from app.core.database import get_db
@@ -32,6 +55,102 @@ try:
 except FileNotFoundError as exc:
     logger.error("FFprobe binary not available: %s", exc)
     validator = None
+
+
+def infer_asset_type(stream_meta: Optional[Dict[str, Any]], fallback: str = "video") -> str:
+    if not isinstance(stream_meta, dict):
+        return fallback
+
+    video_meta = stream_meta.get("video") if isinstance(stream_meta, dict) else None
+    audio_meta = stream_meta.get("audio") if isinstance(stream_meta, dict) else None
+
+    if video_meta and video_meta.get("codec"):
+        return "video"
+    if audio_meta and not video_meta:
+        return "audio"
+    return fallback
+
+
+def normalize_asset_type(
+    requested: Optional[str], stream_meta: Optional[Dict[str, Any]]
+) -> str:
+    candidate = (requested or "video").lower()
+    if candidate not in ALLOWED_ASSET_TYPES:
+        candidate = "video"
+    return infer_asset_type(stream_meta, candidate)
+
+
+async def _apply_storage_delta(
+    db: AsyncSession,
+    user_id: UUID,
+    delta_bytes: int,
+) -> None:
+    if not delta_bytes:
+        return
+
+    await db.execute(
+        update(UserProfile)
+        .where(UserProfile.user_id == user_id)
+        .values(
+            current_storage_bytes=func.GREATEST(
+                func.coalesce(UserProfile.current_storage_bytes, 0) + delta_bytes,
+                0,
+            )
+        )
+    )
+
+
+async def _audit_collection_quorum(
+    db: AsyncSession,
+    collection_ids: List[UUID],
+    asset_id: Optional[UUID] = None,
+) -> None:
+    if not collection_ids:
+        return
+
+    unique_ids = list({cid for cid in collection_ids if cid is not None})
+    if not unique_ids:
+        return
+
+    result = await db.execute(
+        select(
+            MediaCollection.id,
+            MediaCollection.user_id,
+            MediaCollection.name,
+            MediaCollection.collection_type,
+            func.count(CollectionItem.id).label("items"),
+        )
+        .outerjoin(CollectionItem, CollectionItem.collection_id == MediaCollection.id)
+        .where(MediaCollection.id.in_(unique_ids))
+        .group_by(
+            MediaCollection.id,
+            MediaCollection.user_id,
+            MediaCollection.name,
+            MediaCollection.collection_type,
+        )
+    )
+
+    depleted: List[MediaCollection] = []
+    for row in result.all():
+        if row.items == 0:
+            collection = await db.get(MediaCollection, row.id)
+            if collection and collection.is_active:
+                collection.is_active = False
+                depleted.append(collection)
+
+    for collection in depleted:
+        alert = SystemAlert(
+            user_id=collection.user_id,
+            alert_type="collection_depleted",
+            severity="warning",
+            asset_id=None,
+            message=f"Collection '{collection.name}' no longer contains assets",
+            details={
+                "collection_id": str(collection.id),
+                "collection_type": collection.collection_type,
+            },
+        )
+        db.add(alert)
 
 
 def apply_stream_summary_fields(asset: Asset, stream_meta: Optional[Dict[str, Any]]) -> None:
@@ -82,6 +201,8 @@ def apply_stream_summary_fields(asset: Asset, stream_meta: Optional[Dict[str, An
     if fps_value is not None:
         asset.fps = int(round(fps_value))
 
+    asset.asset_type = infer_asset_type(stream_meta, asset.asset_type or "video")
+
 
 def _sign_download_payload(payload: str) -> str:
     signature = hmac.new(
@@ -122,22 +243,330 @@ def parse_download_token(token: str) -> Tuple[UUID, UUID, int]:
             detail="Invalid or expired download token",
         ) from exc
 
+
+def _extract_thumbnail_url(asset: Asset) -> Optional[str]:
+    meta = asset.meta if isinstance(asset.meta, dict) else None
+    if not meta:
+        return None
+
+    thumbnail_candidates = [
+        meta.get("thumbnail_url"),
+        meta.get("poster_url"),
+        meta.get("preview_url"),
+    ]
+
+    for candidate in thumbnail_candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate
+
+    thumbnails = meta.get("thumbnails")
+    if isinstance(thumbnails, list):
+        for entry in thumbnails:
+            if isinstance(entry, dict):
+                url = entry.get("url") or entry.get("path")
+                if isinstance(url, str) and url.strip():
+                    return url
+
+    preview = meta.get("preview")
+    if isinstance(preview, dict):
+        url = preview.get("url") or preview.get("path")
+        if isinstance(url, str) and url.strip():
+            return url
+
+    return None
+
+
+async def _collect_asset_folders(
+    db: AsyncSession,
+    asset_ids: Sequence[UUID],
+) -> Tuple[Dict[UUID, List[AssetFolderInfo]], Dict[UUID, Optional[UUID]]]:
+    if not asset_ids:
+        return {}, {}
+
+    rows = await db.execute(
+        select(
+            AssetFolderLink.asset_id,
+            AssetFolderLink.folder_id,
+            MediaFolder.name,
+            MediaFolder.is_root,
+        )
+        .join(MediaFolder, MediaFolder.id == AssetFolderLink.folder_id)
+        .where(AssetFolderLink.asset_id.in_(asset_ids))
+        .order_by(MediaFolder.is_root.desc(), MediaFolder.created_at)
+    )
+
+    folder_map: Dict[UUID, List[AssetFolderInfo]] = defaultdict(list)
+    primary_map: Dict[UUID, Optional[UUID]] = {}
+
+    for asset_id, folder_id, folder_name, is_root in rows:
+        info = AssetFolderInfo(folder_id=folder_id, name=folder_name, is_root=is_root)
+        folder_map[asset_id].append(info)
+
+    for asset_id, folders in folder_map.items():
+        primary = next((folder.folder_id for folder in folders if not folder.is_root), None)
+        if primary is None and folders:
+            primary = folders[0].folder_id
+        primary_map[asset_id] = primary
+
+    return folder_map, primary_map
+
+
+async def _collect_asset_usage(
+    db: AsyncSession,
+    user_id: UUID,
+    asset_ids: Sequence[UUID],
+) -> Tuple[
+    Dict[UUID, List[AssetUsageReference]],
+    Dict[UUID, List[AssetUsageReference]],
+    Dict[UUID, List[AssetUsageReference]],
+]:
+    if not asset_ids:
+        return {}, {}, {}
+
+    playlist_usage: Dict[UUID, List[AssetUsageReference]] = defaultdict(list)
+    collection_usage: Dict[UUID, List[AssetUsageReference]] = defaultdict(list)
+    stream_usage: Dict[UUID, List[AssetUsageReference]] = defaultdict(list)
+
+    playlist_rows = await db.execute(
+        select(PlaylistItem.asset_id, Playlist.id, Playlist.name)
+        .join(Playlist, Playlist.id == PlaylistItem.playlist_id)
+        .where(
+            Playlist.user_id == user_id,
+            PlaylistItem.asset_id.in_(asset_ids),
+        )
+    )
+    for asset_id, playlist_id, playlist_name in playlist_rows:
+        playlist_usage[asset_id].append(
+            AssetUsageReference(
+                id=playlist_id,
+                name=playlist_name or "Untitled playlist",
+                kind="playlist",
+            )
+        )
+
+    collection_rows = await db.execute(
+        select(
+            CollectionItem.asset_id,
+            MediaCollection.id,
+            MediaCollection.name,
+            MediaCollection.collection_type,
+        )
+        .join(MediaCollection, MediaCollection.id == CollectionItem.collection_id)
+        .where(
+            MediaCollection.user_id == user_id,
+            CollectionItem.asset_id.in_(asset_ids),
+        )
+    )
+
+    collection_to_assets: Dict[UUID, set[UUID]] = defaultdict(set)
+    for asset_id, collection_id, collection_name, collection_type in collection_rows:
+        collection_usage[asset_id].append(
+            AssetUsageReference(
+                id=collection_id,
+                name=collection_name or "Untitled collection",
+                kind="collection",
+                context=collection_type,
+            )
+        )
+        collection_to_assets[collection_id].add(asset_id)
+
+    stream_asset_rows = await db.execute(
+        select(StreamAsset.asset_id, Stream.id, Stream.name, Stream.status)
+        .join(Stream, Stream.id == StreamAsset.stream_id)
+        .where(
+            Stream.user_id == user_id,
+            StreamAsset.asset_id.in_(asset_ids),
+        )
+    )
+
+    seen_stream_pairs: set[Tuple[UUID, UUID]] = set()
+    for asset_id, stream_id, stream_name, stream_status in stream_asset_rows:
+        pair = (asset_id, stream_id)
+        if pair in seen_stream_pairs:
+            continue
+        seen_stream_pairs.add(pair)
+        stream_usage[asset_id].append(
+            AssetUsageReference(
+                id=stream_id,
+                name=stream_name or "Untitled stream",
+                kind="stream",
+                status=stream_status,
+            )
+        )
+
+    if collection_to_assets:
+        collection_ids = list(collection_to_assets.keys())
+        stream_via_collection_rows = await db.execute(
+            select(
+                Stream.id,
+                Stream.name,
+                Stream.status,
+                Stream.video_collection_id,
+                Stream.audio_collection_id,
+            )
+            .where(Stream.user_id == user_id)
+            .where(
+                or_(
+                    Stream.video_collection_id.in_(collection_ids),
+                    Stream.audio_collection_id.in_(collection_ids),
+                )
+            )
+        )
+
+        for (
+            stream_id,
+            stream_name,
+            stream_status,
+            video_collection_id,
+            audio_collection_id,
+        ) in stream_via_collection_rows:
+            for related_collection in (video_collection_id, audio_collection_id):
+                if related_collection and related_collection in collection_to_assets:
+                    for asset_id in collection_to_assets[related_collection]:
+                        pair = (asset_id, stream_id)
+                        if pair in seen_stream_pairs:
+                            continue
+                        seen_stream_pairs.add(pair)
+                        stream_usage[asset_id].append(
+                            AssetUsageReference(
+                                id=stream_id,
+                                name=stream_name or "Untitled stream",
+                                kind="stream",
+                                status=stream_status,
+                                context="collection",
+                            )
+                        )
+
+    return playlist_usage, collection_usage, stream_usage
+
+
+async def _serialize_assets(
+    db: AsyncSession,
+    user_id: UUID,
+    assets: Sequence[Asset],
+) -> List[AssetResponse]:
+    if not assets:
+        return []
+
+    asset_ids = [asset.id for asset in assets]
+    folder_map, primary_map = await _collect_asset_folders(db, asset_ids)
+    playlist_usage, collection_usage, stream_usage = await _collect_asset_usage(db, user_id, asset_ids)
+
+    responses: List[AssetResponse] = []
+    for asset in assets:
+        usage_summary = AssetUsageSummary(
+            playlists=playlist_usage.get(asset.id, []),
+            collections=collection_usage.get(asset.id, []),
+            streams=stream_usage.get(asset.id, []),
+        )
+
+        responses.append(
+            AssetResponse(
+                id=asset.id,
+                user_id=asset.user_id,
+                filename=asset.filename,
+                storage_path=asset.storage_path,
+                size_bytes=asset.size_bytes,
+                duration_seconds=asset.duration_seconds,
+                meta=asset.meta,
+                asset_type=asset.asset_type,
+                codec_info=asset.codec_info,
+                compatible_for_copy=asset.compatible_for_copy,
+                validation_errors=asset.validation_errors,
+                created_at=asset.created_at,
+                updated_at=asset.updated_at,
+                primary_folder_id=primary_map.get(asset.id),
+                folders=folder_map.get(asset.id, []),
+                usage=usage_summary,
+                thumbnail_url=_extract_thumbnail_url(asset),
+            )
+        )
+
+    return responses
+
 @router.get("/", response_model=List[AssetResponse])
 async def list_assets(
+    asset_type: Optional[str] = Query(
+        None, description="Filter by asset type: video | audio"
+    ),
+    folder_id: Optional[UUID] = Query(
+        None, description="Filter by folder ID and descendants"
+    ),
     user_deps: tuple = Depends(require_user)
 ):
-    """List all video assets for current user"""
+    """List assets for current user with optional filters"""
     db, user_id = user_deps
-    
+
     try:
         # Build query - filter by user_id directly
         query = select(Asset).where(Asset.user_id == user_id)
-        
+
+        normalized_asset_type: Optional[str]
+        if asset_type is None:
+            normalized_asset_type = None
+        elif isinstance(asset_type, str):
+            normalized_asset_type = asset_type.strip().lower()
+        else:
+            default_value = getattr(asset_type, "default", None)
+            normalized_asset_type = default_value.strip().lower() if isinstance(default_value, str) else None
+
+        if normalized_asset_type:
+            if normalized_asset_type not in ALLOWED_ASSET_TYPES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="asset_type must be 'video' or 'audio'",
+                )
+            query = query.where(Asset.asset_type == normalized_asset_type)
+
+        resolved_folder_id: Optional[UUID]
+        if folder_id is None:
+            resolved_folder_id = None
+        elif isinstance(folder_id, UUID):
+            resolved_folder_id = folder_id
+        else:
+            default_folder = getattr(folder_id, "default", None)
+            resolved_folder_id = default_folder if isinstance(default_folder, UUID) else None
+
+        if resolved_folder_id:
+            subfolders = await db.execute(
+                select(MediaFolder.id)
+                .where(MediaFolder.user_id == user_id)
+            )
+            all_folders = {row[0] for row in subfolders}
+            if resolved_folder_id not in all_folders:
+                logger.info(
+                    "Requested folder %s not found for user %s; returning empty asset list",
+                    resolved_folder_id,
+                    user_id,
+                )
+                return []
+            recursive = text(
+                """
+                WITH RECURSIVE folder_tree AS (
+                    SELECT id FROM media_folders WHERE id = :folder_id
+                    UNION ALL
+                    SELECT mf.id
+                    FROM media_folders mf
+                    JOIN folder_tree ft ON mf.parent_id = ft.id
+                    WHERE mf.user_id = :user_id
+                )
+                SELECT asset_id FROM asset_folder_links WHERE folder_id IN (SELECT id FROM folder_tree)
+                """
+            )
+            result = await db.execute(recursive, {"folder_id": str(resolved_folder_id), "user_id": str(user_id)})
+            asset_ids = [row[0] for row in result]
+            if not asset_ids:
+                return []
+            query = query.where(Asset.id.in_(asset_ids))
+
+        query = query.order_by(Asset.created_at.desc())
         result = await db.execute(query)
-        assets = result.scalars().all()
+        assets = result.scalars().unique().all()
+
+        return await _serialize_assets(db, user_id, assets)
         
-        return assets
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Error listing assets: {e}")
         raise HTTPException(
@@ -162,8 +591,10 @@ async def create_asset(
         # Check quota for assets
         enforcer = QuotaEnforcer(db, user_id)
         await enforcer.check_assets_limit()
+        await enforcer.check_storage_limit(asset_data.size_bytes)
         
         # Create asset record - directly for user_id
+        stream_meta = asset_data.meta if isinstance(asset_data.meta, dict) else {}
         asset = Asset(
             user_id=user_id,
             filename=asset_data.filename,
@@ -172,19 +603,24 @@ async def create_asset(
             duration_seconds=asset_data.duration_seconds,
             meta=asset_data.meta,
             compatible_for_copy=asset_data.compatible_for_copy,
-            validation_errors=asset_data.validation_errors
+            validation_errors=asset_data.validation_errors,
+            asset_type=asset_data.asset_type,
+            codec_info=asset_data.codec_info or stream_meta,
         )
 
-        if isinstance(asset_data.meta, dict):
-            apply_stream_summary_fields(asset, asset_data.meta)
-        
+        if isinstance(stream_meta, dict):
+            apply_stream_summary_fields(asset, stream_meta)
+        asset.asset_type = normalize_asset_type(asset.asset_type, stream_meta)
+
         db.add(asset)
+        await _apply_storage_delta(db, user_id, asset.size_bytes or 0)
         await db.commit()
         await db.refresh(asset)
-        
-        logger.info(f"Created asset {asset.id} for user {user_id}")
-        
-        return asset
+
+        logger.info("Created asset %s for user %s", asset.id, user_id)
+
+        serialized = await _serialize_assets(db, user_id, [asset])
+        return serialized[0]
         
     except HTTPException:
         raise
@@ -229,7 +665,8 @@ async def update_asset(
         await db.commit()
         await db.refresh(asset)
         logger.info("Updated asset %s metadata for user %s", asset.id, user_id)
-        return asset
+        serialized = await _serialize_assets(db, user_id, [asset])
+        return serialized[0]
 
     except HTTPException:
         raise
@@ -427,7 +864,14 @@ async def handle_upload_complete(
             logger.warning("Missing user_id in tusd metadata for upload %s", upload_id)
 
         if asset_owner_id:
+            enforcer = QuotaEnforcer(db, asset_owner_id)
+            await enforcer.check_assets_limit()
+            await enforcer.check_storage_limit(size_bytes)
+
+        if asset_owner_id:
             try:
+                summary_meta = stream_info if isinstance(stream_info, dict) else {}
+                resolved_asset_type = normalize_asset_type(None, summary_meta)
                 asset = Asset(
                     user_id=asset_owner_id,
                     filename=filename_override or file_path.name,
@@ -437,11 +881,14 @@ async def handle_upload_complete(
                     meta=stream_info,
                     compatible_for_copy=validation_result["compatible_for_copy"],
                     validation_errors=validation_result.get("validation_errors", []),
+                    asset_type=resolved_asset_type,
+                    codec_info=validation_result.get("meta"),
                 )
 
-                apply_stream_summary_fields(asset, stream_info)
+                apply_stream_summary_fields(asset, summary_meta)
 
                 db.add(asset)
+                await _apply_storage_delta(db, asset_owner_id, size_bytes)
                 await db.commit()
                 await db.refresh(asset)
                 created_asset = asset
@@ -468,6 +915,9 @@ async def handle_upload_complete(
 
         if created_asset:
             response_payload["asset_id"] = str(created_asset.id)
+            response_payload["asset_type"] = created_asset.asset_type
+        elif isinstance(stream_info, dict):
+            response_payload["asset_type"] = infer_asset_type(stream_info, "video")
 
         return response_payload
         
@@ -510,6 +960,8 @@ async def revalidate_asset(
             detail="Asset file missing on disk",
         )
 
+    previous_size = asset.size_bytes or 0
+
     try:
         validation_result = await validator.validate_file(file_path)
         meta = validation_result.get("meta", {})
@@ -522,10 +974,13 @@ async def revalidate_asset(
         asset.validation_errors = validation_result.get("validation_errors", [])
 
         apply_stream_summary_fields(asset, stream_info)
+        asset.asset_type = normalize_asset_type(asset.asset_type, stream_info)
 
+        await _apply_storage_delta(db, user_id, asset.size_bytes - previous_size)
         await db.commit()
         await db.refresh(asset)
-        return asset
+        serialized = await _serialize_assets(db, user_id, [asset])
+        return serialized[0]
     except HTTPException:
         raise
     except Exception as exc:
@@ -563,7 +1018,6 @@ async def create_download_link(
         )
 
     token, expires_at = generate_download_token(asset.id, user_id)
-    download_path = router.url_path_for("download_asset_by_token", token=token)
     download_url = request.url_for("download_asset_by_token", token=token)
 
     logger.debug("Generated download token for asset %s valid until %s", asset.id, expires_at)
@@ -627,7 +1081,8 @@ async def get_asset(
                 detail="Asset not found"
             )
         
-        return asset
+        serialized = await _serialize_assets(db, user_id, [asset])
+        return serialized[0]
         
     except HTTPException:
         raise
@@ -642,7 +1097,11 @@ async def get_asset(
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_asset(
     asset_id: UUID,
-    user_deps: tuple = Depends(require_user)
+    user_deps: tuple = Depends(require_user),
+    force: bool = Query(
+        default=False,
+        description="Force deletion even if asset is used in playlists, collections, or streams.",
+    ),
 ):
     """Delete an asset and its file"""
     db, user_id = user_deps
@@ -661,7 +1120,41 @@ async def delete_asset(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Asset not found"
             )
+
+        playlist_usage, collection_usage, stream_usage = await _collect_asset_usage(
+            db, user_id, [asset.id]
+        )
+        usage_summary = AssetUsageSummary(
+            playlists=playlist_usage.get(asset.id, []),
+            collections=collection_usage.get(asset.id, []),
+            streams=stream_usage.get(asset.id, []),
+        )
+
+        if isinstance(force, bool):
+            force_value = force
+        else:
+            force_value = bool(getattr(force, "default", False))
+
+        if (
+            (usage_summary.playlists or usage_summary.collections or usage_summary.streams)
+            and not force_value
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "asset_in_use",
+                    "message": "Asset is referenced by other resources; use force=true to remove it.",
+                    "usage": usage_summary.model_dump(mode="json"),
+                },
+            )
+
+        collection_rows = await db.execute(
+            select(CollectionItem.collection_id).where(CollectionItem.asset_id == asset_id)
+        )
+        impacted_collections = [row[0] for row in collection_rows if row[0]]
         
+        size_delta = -(asset.size_bytes or 0)
+
         # Delete file from disk along with associated tusd metadata (.info)
         file_path = Path(asset.storage_path)
         info_candidates = set()
@@ -683,6 +1176,20 @@ async def delete_asset(
         
         # Delete from database
         await db.execute(delete(Asset).where(Asset.id == asset_id))
+        await _apply_storage_delta(db, user_id, size_delta)
+        await _audit_collection_quorum(db, impacted_collections, asset_id)
+
+        db.add(
+            UserActivityLog(
+                user_id=user_id,
+                activity_type="asset_deleted",
+                details={
+                    "asset_id": str(asset_id),
+                    "force": force_value,
+                    "usage": usage_summary.model_dump(mode="json"),
+                },
+            )
+        )
         await db.commit()
         
         logger.info(f"Deleted asset {asset_id}")

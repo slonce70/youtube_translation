@@ -7,16 +7,48 @@ These tests verify that migrations are applied correctly and data is migrated pr
 import os
 import pytest
 import asyncio
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import uuid4
 
 from app.models.database import (
     UserProfile, SubscriptionTierLimits,
     Asset, Playlist, Destination, Stream,
-    AdminAction, SystemAlert
+    AdminAction, SystemAlert,
+    MediaFolder, AssetFolderLink, MediaCollection, CollectionItem,
 )
 from app.core.database import get_db
+
+
+async def _require_table(db: AsyncSession, table_name: str) -> None:
+    """Skip tests gracefully when optional tables are unavailable in the test DB."""
+    result = await db.execute(
+        text("SELECT to_regclass(:table_name)"),
+        {"table_name": f"public.{table_name}"},
+    )
+    if not result.scalar():
+        pytest.skip(f"{table_name} table not available in this test environment")
+
+
+async def _require_column(db: AsyncSession, table_name: str, column_name: str) -> None:
+    """Skip when a specific column is missing (migrations not yet applied)."""
+    result = await db.execute(
+        text(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = :table
+              AND column_name = :column
+            """
+        ),
+        {"table": table_name, "column": column_name},
+    )
+    if not result.scalar():
+        pytest.skip(
+            f"{table_name}.{column_name} column not available in this test environment"
+        )
 
 
 class TestUserProfilesMigration:
@@ -286,6 +318,184 @@ class TestAdminTables:
         assert saved.alert_type == 'quota_exceeded'
         assert saved.severity == 'warning'
         assert saved.resolved is False
+
+
+class TestMediaFoldersAndCollectionsMigration:
+    """Verify folder hierarchy, pivot tables, and collection constraints."""
+
+    @pytest.mark.asyncio
+    async def test_media_folders_allow_single_root_per_user(self, db: AsyncSession):
+        await _require_table(db, "media_folders")
+        user_id = uuid4()
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@folders.test",
+            subscription_tier='free',
+            subscription_status='active',
+        )
+        db.add(profile)
+        await db.flush()
+
+        db.add(MediaFolder(user_id=user_id, name="root", is_root=True))
+        await db.flush()
+
+        db.add(MediaFolder(user_id=user_id, name="second-root", is_root=True))
+        with pytest.raises(IntegrityError):
+            await db.flush()
+        await db.rollback()
+
+    @pytest.mark.asyncio
+    async def test_asset_folder_links_enforce_unique_pairs(self, db: AsyncSession):
+        await _require_table(db, "media_folders")
+        await _require_table(db, "asset_folder_links")
+        user_id = uuid4()
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@asset-links.test",
+            subscription_tier='free',
+            subscription_status='active',
+        )
+        asset = Asset(
+            user_id=user_id,
+            filename="sample.mp4",
+            storage_path=f"/tmp/{user_id}.mp4",
+            size_bytes=1234,
+            asset_type='video',
+        )
+        folder = MediaFolder(user_id=user_id, name="root", is_root=True)
+        db.add_all([profile, asset, folder])
+        await db.flush()
+
+        db.add(AssetFolderLink(asset_id=asset.id, folder_id=folder.id))
+        await db.flush()
+
+        db.add(AssetFolderLink(asset_id=asset.id, folder_id=folder.id))
+        with pytest.raises(IntegrityError):
+            await db.flush()
+        await db.rollback()
+
+    @pytest.mark.asyncio
+    async def test_media_collection_type_constraint(self, db: AsyncSession):
+        await _require_table(db, "media_collections")
+        user_id = uuid4()
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@collections.test",
+            subscription_tier='free',
+            subscription_status='active',
+        )
+        db.add(profile)
+        await db.flush()
+
+        db.add(
+            MediaCollection(
+                user_id=user_id,
+                name="Backgrounds",
+                collection_type='video_background',
+            )
+        )
+        await db.flush()
+
+        db.add(
+            MediaCollection(
+                user_id=user_id,
+                name="Bad",
+                collection_type='slideshow',
+            )
+        )
+        with pytest.raises(IntegrityError):
+            await db.flush()
+        await db.rollback()
+
+    @pytest.mark.asyncio
+    async def test_collection_item_loop_mode_constraint(self, db: AsyncSession):
+        await _require_table(db, "media_collections")
+        await _require_table(db, "collection_items")
+        user_id = uuid4()
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@collection-items.test",
+            subscription_tier='free',
+            subscription_status='active',
+        )
+        asset = Asset(
+            user_id=user_id,
+            filename="bg.mp4",
+            storage_path=f"/tmp/{user_id}.mp4",
+            size_bytes=2048,
+            asset_type='video',
+        )
+        collection = MediaCollection(
+            user_id=user_id,
+            name="Backgrounds",
+            collection_type='video_background',
+        )
+        db.add_all([profile, asset, collection])
+        await db.flush()
+
+        db.add(
+            CollectionItem(
+                collection_id=collection.id,
+                asset_id=asset.id,
+                position=0,
+                loop_mode='loop',
+            )
+        )
+        await db.flush()
+
+        db.add(
+            CollectionItem(
+                collection_id=collection.id,
+                asset_id=asset.id,
+                position=1,
+                loop_mode='invalid',
+            )
+        )
+        with pytest.raises(IntegrityError):
+            await db.flush()
+        await db.rollback()
+
+
+class TestStreamMixModeConstraint:
+    """Ensure new stream columns enforce valid values."""
+
+    @pytest.mark.asyncio
+    async def test_stream_mix_mode_allows_only_supported_values(self, db: AsyncSession):
+        await _require_table(db, "streams")
+        await _require_column(db, "streams", "video_collection_id")
+        await _require_column(db, "streams", "audio_collection_id")
+        await _require_column(db, "streams", "mix_mode")
+        user_id = uuid4()
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@streams.test",
+            subscription_tier='free',
+            subscription_status='active',
+        )
+        db.add(profile)
+        await db.flush()
+
+        db.add(
+            Stream(
+                user_id=user_id,
+                name="Valid mixed",
+                mix_mode='mixed',
+                source_type='playlist',
+            )
+        )
+        await db.flush()
+
+        db.add(
+            Stream(
+                user_id=user_id,
+                name="Invalid",
+                mix_mode='invalid',
+                source_type='playlist',
+            )
+        )
+        with pytest.raises(IntegrityError):
+            await db.flush()
+        await db.rollback()
 
 
 class TestRLSPolicies:

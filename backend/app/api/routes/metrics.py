@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Dict, Any
@@ -9,6 +10,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.database import Stream
 from uuid import UUID
+from app.core.metrics import metrics_registry
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -177,3 +179,10 @@ async def get_metrics(
         "streams": stream_metrics,
         "capacity": capacity
     }
+
+
+@router.get("/prometheus", response_class=PlainTextResponse)
+async def export_prometheus_metrics() -> PlainTextResponse:
+    """Expose metrics in Prometheus exposition format."""
+    payload = metrics_registry.export_prometheus()
+    return PlainTextResponse(payload, media_type="text/plain; version=0.0.4")

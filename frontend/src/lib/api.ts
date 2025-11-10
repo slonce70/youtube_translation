@@ -24,6 +24,13 @@ import type {
   StreamQualityResponse,
   SubscriptionTierKey,
   QuotaUsageResponse,
+  MediaFolder,
+  MediaFolderBulkMoveResponse,
+  MediaCollection,
+  MediaCollectionCreatePayload,
+  MediaCollectionUpdatePayload,
+  MediaCollectionItemsPayload,
+  StreamLiveUpdatePayload,
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
@@ -91,10 +98,15 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
 
 export const api = {
   assets: {
-    list: () => apiRequest<Asset[]>('/assets'),
+    list: (params?: { asset_type?: 'video' | 'audio'; folder_id?: string }) =>
+      apiRequest<Asset[]>('/assets', { params }),
     get: (id: string) => apiRequest<Asset>(`/assets/${id}`),
     create: (data: CreateAssetPayload) => apiRequest<Asset>('/assets', { method: 'POST', body: JSON.stringify(data) }),
-    delete: (id: string) => apiRequest<void>(`/assets/${id}`, { method: 'DELETE' }),
+    delete: (id: string, options?: { force?: boolean }) =>
+      apiRequest<void>(`/assets/${id}`, {
+        method: 'DELETE',
+        params: options?.force ? { force: options.force } : undefined,
+      }),
     update: (id: string, data: Partial<Pick<Asset, 'filename'>>) =>
       apiRequest<Asset>(`/assets/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     revalidate: (id: string) => apiRequest<Asset>(`/assets/${id}/check`, { method: 'POST' }),
@@ -135,6 +147,11 @@ export const api = {
     status: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/status`),
     logs: (id: string, lines?: number) => apiRequest<StreamLogsResponse>(`/streams/${id}/logs`, { params: { lines: lines ?? 100 } }),
     quality: (id: string) => apiRequest<StreamQualityResponse>(`/streams/${id}/quality`),
+    liveUpdate: (id: string, payload: StreamLiveUpdatePayload) =>
+      apiRequest<Stream>(`/streams/${id}/live-config`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
   },
 
   metrics: {
@@ -143,6 +160,69 @@ export const api = {
 
   quota: {
     get: () => apiRequest<QuotaUsageResponse>('/quota'),
+  },
+
+  mediaFolders: {
+    list: (params?: { parent_id?: string; is_root?: boolean; search?: string }) =>
+      apiRequest<MediaFolder[]>('/media-folders', { params }),
+    create: (data: { name: string; parent_id?: string | null }) =>
+      apiRequest<MediaFolder>('/media-folders', { method: 'POST', body: JSON.stringify(data) }),
+    update: (folderId: string, data: { name?: string; parent_id?: string | null }) =>
+      apiRequest<MediaFolder>(`/media-folders/${folderId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    delete: (folderId: string) =>
+      apiRequest<void>(`/media-folders/${folderId}`, { method: 'DELETE' }),
+    bulkMoveAssets: (
+      folderId: string,
+      payload: { asset_ids: string[]; exclusive?: boolean }
+    ) =>
+      apiRequest<MediaFolderBulkMoveResponse>(`/media-folders/${folderId}/assets/bulk`, {
+        method: 'POST',
+        body: JSON.stringify({
+          asset_ids: payload.asset_ids,
+          exclusive: payload.exclusive ?? true,
+        }),
+      }),
+  },
+
+  mediaCollections: {
+    list: (params?: {
+      collection_type?: 'video_background' | 'audio_playlist'
+      is_active?: boolean
+      include_items?: boolean
+    }) =>
+      apiRequest<MediaCollection[]>('/media-collections', {
+        params: params
+          ? {
+              collection_type: params.collection_type,
+              is_active: params.is_active,
+              include_items: params.include_items ?? false,
+            }
+          : undefined,
+      }),
+    get: (collectionId: string, includeItems = true) =>
+      apiRequest<MediaCollection>(`/media-collections/${collectionId}`, {
+        params: { include_items: includeItems },
+      }),
+    create: (payload: MediaCollectionCreatePayload) =>
+      apiRequest<MediaCollection>('/media-collections', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    update: (collectionId: string, payload: MediaCollectionUpdatePayload) =>
+      apiRequest<MediaCollection>(`/media-collections/${collectionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    replaceItems: (collectionId: string, payload: MediaCollectionItemsPayload) =>
+      apiRequest<MediaCollection>(`/media-collections/${collectionId}/items`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+    delete: (collectionId: string) =>
+      apiRequest<void>(`/media-collections/${collectionId}`, { method: 'DELETE' }),
   },
 
   admin: {

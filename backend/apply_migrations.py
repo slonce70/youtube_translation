@@ -30,6 +30,11 @@ MIGRATIONS = [
     'migrations/010_stream_quality_limits.sql',
     'migrations/011_stream_source_type.sql',
     'migrations/012_stream_assets.sql',
+    'migrations/013_update_tariffs.sql',
+    'migrations/014_asset_metadata.sql',
+    'migrations/015_media_folders.sql',
+    'migrations/016_media_collections.sql',
+    'migrations/017_streams_collection_link.sql',
 ]
 
 
