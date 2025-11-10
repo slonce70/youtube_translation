@@ -24,6 +24,7 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Progress } from '@/components/ui/Progress'
 import { formatBytes } from '@/lib/utils'
+import { logger } from '@/lib/logger'
 import type { MediaFolder } from '@/lib/types'
 import {
   BITRATE_GUIDANCE,
@@ -498,7 +499,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
           mediaInfoRef.current = instance
         })
         .catch((error) => {
-          console.error('Failed to initialise MediaInfo', error)
+          logger.error('Failed to initialise MediaInfo', error, { component: 'UploadModal' })
           if (isMountedRef.current) {
             setMediaInfoError(t('errors.metadataHelper'))
           }
@@ -563,7 +564,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
           )
         }
       } catch (error) {
-        console.error('Failed to analyse media info', error)
+        logger.error('Failed to analyse media info', error, { component: 'UploadModal', fileId: file.id })
         if (isMountedRef.current) {
           setUploadItems((items) =>
             items.map((current) =>
@@ -747,7 +748,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             source: 'local',
           })
         } catch (error) {
-          console.error('Failed to add file to Uppy', error)
+          logger.error('Failed to add file to Uppy', error, { component: 'UploadModal', fileName: file.name })
         }
       }
       if (fileInputRef.current) {

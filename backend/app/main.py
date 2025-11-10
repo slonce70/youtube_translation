@@ -2,8 +2,29 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 import asyncio
+import logging
 
 from app.core.config import settings
+
+# Sentry integration for error tracking
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+    
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        traces_sample_rate=0.1 if settings.environment == "production" else 1.0,
+        profiles_sample_rate=0.1 if settings.environment == "production" else 1.0,
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            SqlalchemyIntegration(),
+        ],
+        send_default_pii=False,  # Don't send personally identifiable information
+        before_send=lambda event, hint: event if settings.environment != "development" else None,
+    )
+    logging.getLogger(__name__).info(f"Sentry initialized for environment: {settings.environment}")
 from app.api.routes import (
     auth,
     assets,

@@ -10,6 +10,7 @@ import { SectionContainer } from './SectionContainer'
 import { PLAN_KEYS, PLAN_DETAILS, type PlanKey } from '@/lib/plans'
 import { cn } from '@/lib/utils'
 import { api, ApiError } from '@/lib/api'
+import { logger } from '@/lib/logger'
 
 const POPULAR_PLANS: PlanKey[] = ['fhd_flow']
 
@@ -46,7 +47,7 @@ export function PricingCards({ onStartStreaming }: Props) {
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
           return
         }
-        console.error('Failed to fetch active plan', error)
+        logger.error('Failed to fetch active plan', error, { component: 'PricingCards' })
       }
     }
 

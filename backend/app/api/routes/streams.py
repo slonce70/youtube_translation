@@ -303,6 +303,7 @@ async def list_streams(
             .options(
                 selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
                 selectinload(Stream.stream_assets).selectinload(StreamAsset.asset),
+                selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
                 selectinload(Stream.video_collection)
                 .selectinload(MediaCollection.items)
                 .selectinload(CollectionItem.asset),

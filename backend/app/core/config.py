@@ -74,6 +74,10 @@ class Settings(BaseSettings):
 
     # Internal integrations
     tusd_hmac_secret: Optional[str] = None
+    
+    # FFmpeg Manager Configuration
+    ffmpeg_error_history_size: int = 20  # Number of recent errors to keep
+    user_cache_max_size: int = 512  # Maximum number of cached users
 
     @property
     def cors_origins(self) -> List[str]:
