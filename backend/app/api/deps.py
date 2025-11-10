@@ -75,7 +75,9 @@ def _set_cached_user(token: str, payload: dict, exp: Optional[int]) -> None:
         try:
             expiry_candidates.append(datetime.utcfromtimestamp(exp))
         except (ValueError, OSError):
-            logger.debug("Invalid exp claim while caching Supabase user; ignoring exp override")
+            logger.debug(
+                "Invalid exp claim while caching Supabase user; ignoring exp override"
+            )
 
     expiry = min(expiry_candidates)
     leeway = max(settings.supabase_user_cache_expiry_leeway_seconds, 0)
@@ -117,10 +119,10 @@ async def get_current_user(
 ) -> dict:
     """
     Get current user from Supabase JWT token with expiration check.
-    
+
     Args:
         authorization: Bearer token from Authorization header
-        
+
     Returns:
         User dict with 'sub' (user_id) and other user info
         

@@ -164,7 +164,7 @@ class FFmpegStreamManager:
                 "destinations": [dict(dest) for dest in destinations],
                 "restart_attempts": existing_info.get("restart_attempts", 0) if restart else 0,
                 "metadata": combined_metadata,
-                "recent_errors": recent_errors if recent_errors is not None else deque(maxlen=20),
+                "recent_errors": recent_errors if recent_errors is not None else deque(maxlen=settings.ffmpeg_error_history_size),
                 "mix_mode": normalized_playlists.mix_mode,
                 "ffmpeg_plan": plan.telemetry(),
             }
