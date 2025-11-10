@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pytest
 from httpx import AsyncClient
@@ -30,9 +30,9 @@ class DummyAuthAdmin:
 
 
 class DummyAuth:
-    def __init__(self, *, raise_error: Exception | None = None):
+    def __init__(self, *, raise_error: Optional[Exception] = None):
         self.raise_error = raise_error
-        self.credentials: Dict[str, Any] | None = None
+        self.credentials: Optional[Dict[str, Any]] = None
         self.admin = DummyAuthAdmin()
 
     def sign_in_with_password(self, credentials: Dict[str, Any]):
@@ -106,7 +106,7 @@ async def test_logout_revokes_token(api_client, monkeypatch):
 
     captured_token = {}
 
-    def fake_invalidate(token: str | None):
+    def fake_invalidate(token: Optional[str]):
         captured_token["value"] = token
 
     monkeypatch.setattr(auth_routes, "invalidate_cached_user", fake_invalidate)

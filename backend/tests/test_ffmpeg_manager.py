@@ -9,6 +9,7 @@ import pytest
 
 from app.core.config import settings
 from app.streaming.ffmpeg_manager import FFmpegStreamManager
+from app.streaming.playlist_builder import PlaylistFileSet
 
 
 class TestFFmpegStreamManager:
@@ -114,9 +115,24 @@ class TestFFmpegStreamManager:
         playlist_file.write_text("ffconcat version 1.0\n")
         log_file = tmp_path / "stream.log"
 
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=playlist_file,
+            audio_playlist=None,
+            mix_mode="video_only",
+            video_loop=True,
+            audio_loop=False,
+            needs_video_placeholder=False,
+            needs_audio_placeholder=True,
+            video_copy_compatible=True,
+            audio_copy_compatible=False,
+            video_assets=[],
+            audio_assets=[],
+        )
+
         manager.stream_info[stream_id] = {
             "metadata": {"user_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"},
-            "playlist_file": str(playlist_file),
+            "playlists": playlists,
             "destinations": [{"url": "rtmp://example.com/live", "key": "secret"}],
             "log_file": str(log_file),
             "restart_attempts": 0,
@@ -135,7 +151,7 @@ class TestFFmpegStreamManager:
 
         async def fake_restart(
             sid,
-            playlist_path,
+            playlists_snapshot,
             destinations,
             log_path,
             metadata=None,
@@ -182,9 +198,137 @@ class TestFFmpegStreamManager:
         manager.start_stream.assert_not_called()
         # Alert recorded
         assert manager._create_system_alert.await_count == 1
-        # Cleanup executed
-        assert stream_id not in manager.stream_info
-        assert stream_id not in manager.active_streams
+
+    def test_build_command_includes_bitrate_limits_for_transcoding(self, tmp_path, monkeypatch):
+        """Ensure explicit bitrate flags are present when transcoding for multiple destinations."""
+        manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
+
+        video_playlist = tmp_path / "video.txt"
+        audio_playlist = tmp_path / "audio.txt"
+        video_playlist.write_text("ffconcat version 1.0\n")
+        audio_playlist.write_text("ffconcat version 1.0\n")
+
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=video_playlist,
+            audio_playlist=audio_playlist,
+            mix_mode="mixed",
+            video_loop=True,
+            audio_loop=True,
+            needs_video_placeholder=False,
+            needs_audio_placeholder=False,
+            video_copy_compatible=True,
+            audio_copy_compatible=True,
+            video_assets=[],
+            audio_assets=[],
+        )
+
+        destinations = [
+            {"url": "rtmp://a.youtube.com/live", "key": "primary"},
+            {"url": "rtmp://b.youtube.com/live", "key": "backup"},
+        ]
+
+        monkeypatch.setattr(settings, "ffmpeg_video_bitrate_kbps", 4500)
+        monkeypatch.setattr(settings, "ffmpeg_video_maxrate_kbps", 6000)
+        monkeypatch.setattr(settings, "ffmpeg_video_bufsize_kbps", 9000)
+        monkeypatch.setattr(settings, "ffmpeg_audio_bitrate_kbps", 192)
+        monkeypatch.setattr(settings, "placeholder_audio_sample_rate", 44100)
+
+        plan = manager._build_command(playlists, destinations)
+        cmd = plan.command
+
+        assert "-b:v" in cmd
+        assert cmd[cmd.index("-b:v") + 1] == "4500k"
+        assert "-maxrate" in cmd
+        assert cmd[cmd.index("-maxrate") + 1] == "6000k"
+        assert "-bufsize" in cmd
+        assert cmd[cmd.index("-bufsize") + 1] == "9000k"
+        assert "-tune" in cmd and cmd[cmd.index("-tune") + 1] == "zerolatency"
+
+        assert "-b:a" in cmd
+        assert cmd[cmd.index("-b:a") + 1] == "192k"
+
+        # Multicast should still use tee muxer
+        assert "tee" in cmd
+        tee_index = cmd.index("tee")
+        assert tee_index > 0 and cmd[tee_index - 1] == "-f"
+        assert any("fifo_format=flv" in part for part in cmd if part.startswith("[select"))
+
+        assert plan.copy_video is False
+        assert plan.copy_audio is False
+        assert plan.video_bitrate_kbps == 4500
+        assert plan.video_maxrate_kbps == 6000
+        assert plan.video_bufsize_kbps == 9000
+        assert plan.audio_bitrate_kbps == 192
+        assert plan.multi_destination is True
+        assert plan.destination_uris == [
+            "rtmp://a.youtube.com/live/primary",
+            "rtmp://b.youtube.com/live/backup",
+        ]
+
+    def test_build_command_audio_only_injects_video_placeholder(self, tmp_path, monkeypatch):
+        """Audio-only streams should generate a color input for video while reusing audio playlist."""
+        manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
+
+        audio_playlist = tmp_path / "audio.txt"
+        audio_playlist.write_text("ffconcat version 1.0\n")
+
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=None,
+            audio_playlist=audio_playlist,
+            mix_mode="audio_only",
+            video_loop=False,
+            audio_loop=True,
+            needs_video_placeholder=True,
+            needs_audio_placeholder=False,
+            video_copy_compatible=False,
+            audio_copy_compatible=True,
+            video_assets=[],
+            audio_assets=[],
+        )
+
+        monkeypatch.setattr(settings, "placeholder_video_resolution", "640x360")
+        plan = manager._build_command(
+            playlists,
+            [{"url": "rtmp://youtube.com/live", "key": "primary"}],
+        )
+
+        assert plan.copy_video is False
+        assert plan.copy_audio is True
+        assert plan.uses_video_placeholder is True
+        assert plan.uses_audio_placeholder is False
+        assert "-c:a" in plan.command
+        audio_codec_idx = plan.command.index("-c:a")
+        assert plan.command[audio_codec_idx + 1] == "copy"
+        assert any("color=" in arg for arg in plan.command if isinstance(arg, str))
+
+    def test_build_command_mixed_requires_audio_playlist(self, tmp_path):
+        """Mixed mode cannot start without an audio playlist provided."""
+        manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
+        video_playlist = tmp_path / "video.txt"
+        video_playlist.write_text("ffconcat version 1.0\n")
+
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=video_playlist,
+            audio_playlist=None,
+            mix_mode="mixed",
+            video_loop=True,
+            audio_loop=False,
+            needs_video_placeholder=False,
+            needs_audio_placeholder=False,
+            video_copy_compatible=True,
+            audio_copy_compatible=False,
+            video_assets=[],
+            audio_assets=[],
+        )
+
+        with pytest.raises(ValueError):
+            manager._build_command(
+                playlists,
+                [{"url": "rtmp://youtube.com/live", "key": "primary"}],
+            )
 
     @pytest.mark.asyncio
     async def test_handle_stream_failure_marks_stream_error(self, monkeypatch):
@@ -233,3 +377,150 @@ class TestFFmpegStreamManager:
         handler.assert_not_called()
         assert stream_id not in manager.active_streams
         assert stream_id not in manager.stream_info
+
+    @pytest.mark.asyncio
+    async def test_start_stream_records_plan_telemetry(self, tmp_path, monkeypatch):
+        """Ensure start_stream stores FFmpeg plan telemetry alongside process info."""
+
+        manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
+
+        video_playlist = tmp_path / "video.txt"
+        video_playlist.write_text("ffconcat version 1.0\n")
+        audio_playlist = tmp_path / "audio.txt"
+        audio_playlist.write_text("ffconcat version 1.0\n")
+
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=video_playlist,
+            audio_playlist=audio_playlist,
+            mix_mode="mixed",
+            video_loop=True,
+            audio_loop=True,
+            needs_video_placeholder=False,
+            needs_audio_placeholder=False,
+            video_copy_compatible=False,
+            audio_copy_compatible=False,
+            video_assets=[],
+            audio_assets=[],
+        )
+
+        destinations = [{"url": "rtmp://youtube.com/live", "key": "stream"}]
+
+        fake_process = AsyncMock()
+        fake_process.pid = 4321
+        fake_process.stdout = AsyncMock()
+        fake_process.stderr = AsyncMock()
+
+        # _monitor_process is scheduled asynchronously – replace with noop to avoid background execution
+        monitor_stub = AsyncMock()
+        monkeypatch.setattr(manager, "_monitor_process", monitor_stub)
+
+        async def fake_exec(*args, **kwargs):
+            return fake_process
+
+        monkeypatch.setattr(
+            "app.streaming.ffmpeg_manager.asyncio.create_subprocess_exec",
+            fake_exec,
+        )
+
+        scheduled = []
+
+        def fake_create_task(coro):
+            scheduled.append(coro)
+            return AsyncMock()
+
+        monkeypatch.setattr("app.streaming.ffmpeg_manager.asyncio.create_task", fake_create_task)
+
+        started = await manager.start_stream(
+            stream_id="99999999-9999-9999-9999-999999999999",
+            playlists=playlists,
+            destinations=destinations,
+            log_file=None,
+            metadata={"user_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"},
+        )
+
+        assert started is True
+        info = manager.get_stream_info("99999999-9999-9999-9999-999999999999")
+        assert info is not None
+        plan = info.get("ffmpeg_plan")
+        assert plan is not None
+        assert plan["copy_video"] is False
+        assert plan["copy_audio"] is False
+        assert plan["destination_uris"] == ["rtmp://youtube.com/live/stream"]
+        assert plan["multi_destination"] is False
+        assert plan["uses_video_placeholder"] is False
+        assert plan["uses_audio_placeholder"] is False
+
+        # ensure telemetry persisted even after retrieving info
+        assert manager.stream_info["99999999-9999-9999-9999-999999999999"]["ffmpeg_plan"]["copy_video"] is False
+
+    @pytest.mark.asyncio
+    async def test_restart_stream_stops_then_starts_with_hot_swap(self, tmp_path, monkeypatch):
+        """restart_stream should reuse metadata, stop existing process, and call start_stream with restart flag."""
+
+        manager = FFmpegStreamManager()
+        stream_id = "88888888-8888-8888-8888-888888888888"
+
+        process = AsyncMock()
+        process.pid = 123
+        manager.active_streams[stream_id] = process
+        manager.stream_info[stream_id] = {
+            "metadata": {"user_id": "dddddddd-dddd-dddd-dddd-dddddddddddd"},
+            "destinations": [{"url": "rtmp://a.youtube.com/live", "key": "one"}],
+            "log_file": str(tmp_path / "log.txt"),
+        }
+
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=None,
+            audio_playlist=None,
+            mix_mode="audio_only",
+            video_loop=False,
+            audio_loop=True,
+            needs_video_placeholder=True,
+            needs_audio_placeholder=False,
+            video_copy_compatible=False,
+            audio_copy_compatible=False,
+            video_assets=[],
+            audio_assets=[],
+        )
+
+        stop_mock = AsyncMock(return_value=True)
+        monkeypatch.setattr(manager, "stop_stream", stop_mock)
+
+        start_mock = AsyncMock(return_value=True)
+        monkeypatch.setattr(manager, "start_stream", start_mock)
+
+        await manager.restart_stream(stream_id, playlists, metadata={"reason": "hot"})
+
+        stop_mock.assert_awaited_once_with(stream_id)
+        start_mock.assert_awaited_once()
+        start_kwargs = start_mock.call_args.kwargs
+        assert start_kwargs["restart"] is True
+        assert start_kwargs["metadata"]["hot_swap"] is True
+        assert start_kwargs["metadata"]["reason"] == "hot"
+        assert start_kwargs["metadata"]["user_id"] == "dddddddd-dddd-dddd-dddd-dddddddddddd"
+        assert start_kwargs["destinations"] == [{"url": "rtmp://a.youtube.com/live", "key": "one"}]
+
+    @pytest.mark.asyncio
+    async def test_restart_stream_raises_without_destinations(self, tmp_path):
+        manager = FFmpegStreamManager()
+        stream_id = "77777777-7777-7777-7777-777777777777"
+
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=None,
+            audio_playlist=None,
+            mix_mode="audio_only",
+            video_loop=False,
+            audio_loop=True,
+            needs_video_placeholder=True,
+            needs_audio_placeholder=False,
+            video_copy_compatible=False,
+            audio_copy_compatible=False,
+            video_assets=[],
+            audio_assets=[],
+        )
+
+        with pytest.raises(ValueError):
+            await manager.restart_stream(stream_id, playlists)

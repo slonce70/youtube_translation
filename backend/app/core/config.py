@@ -53,6 +53,18 @@ class Settings(BaseSettings):
     ffprobe_bin: str = "/usr/bin/ffprobe"
     ffmpeg_auto_restart_attempts: int = 1
     ffmpeg_restart_backoff_seconds: int = 5
+    placeholder_video_path: Optional[str] = None
+    placeholder_audio_path: Optional[str] = None
+    placeholder_video_resolution: str = "1280x720"
+    placeholder_video_fps: int = 30
+    placeholder_video_color: str = "black"
+    placeholder_audio_sample_rate: int = 44100
+    placeholder_audio_channel_layout: str = "stereo"
+    ffmpeg_video_bitrate_kbps: int = 6000
+    ffmpeg_video_maxrate_kbps: int = 7500
+    ffmpeg_video_bufsize_kbps: int = 12000
+    ffmpeg_audio_bitrate_kbps: int = 160
+    ffmpeg_cleanup_interval_seconds: int = 60
 
     # Monitoring
     sentry_dsn: str = ""

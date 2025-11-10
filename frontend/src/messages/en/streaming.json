@@ -16,12 +16,16 @@
       "created": "Stream created",
       "started": "Stream started",
       "stopped": "Stream stopped",
-      "deleted": "Stream deleted"
+      "deleted": "Stream deleted",
+      "liveEdited": "Live configuration updated"
     },
     "errors": {
       "selectPlaylist": "Select a playlist",
       "selectDestination": "Select at least one destination",
-      "selectAssets": "Select at least one asset"
+      "selectAssets": "Select at least one asset",
+      "selectBackground": "Add at least one background video",
+      "selectAudio": "Add at least one audio track",
+      "scheduleTime": "Choose the scheduled start time"
     },
     "generic": {
       "errorWithMessage": "Error: {message}"
@@ -137,7 +141,7 @@
         },
         "recommended": {
           "title": "Recommended settings",
-          "description": "Encode at {resolution} · {fps} FPS using {videoCodec} video and {audioCodec} audio. Keep bitrate {bitrateRange}{targetClause}.",
+          "description": "Encode at {resolution} \u00b7 {fps} FPS using {videoCodec} video and {audioCodec} audio. Keep bitrate {bitrateRange}{targetClause}.",
           "targetClause": " (target {target} Mbps)"
         },
         "detailsHeading": "What needs attention",
@@ -155,6 +159,107 @@
         "cta": {
           "close": "Close",
           "library": "Open library"
+        }
+      },
+      "builder": {
+        "subtitle": "Craft your background, audio bed, and destinations before going live.",
+        "tabs": {
+          "video": "Background video",
+          "audio": "Audio playlist",
+          "destinations": "Destinations",
+          "schedule": "Schedule & loop"
+        },
+        "info": {
+          "capacity": "Current capacity",
+          "capacityDescription": "{count} active / {limit} allowed",
+          "alert": "Streams need attention",
+          "alertDescription": "{count, plural, one {# stream has errors} other {# streams have errors}}"
+        },
+        "video": {
+          "title": "Background video",
+          "collectionLabel": "Saved video collections",
+          "collectionPlaceholder": "Build new collection",
+          "customize": "Customize",
+          "loop": "Loop",
+          "shuffle": "Shuffle",
+          "queueHeading": "Playback order",
+          "clear": "Clear",
+          "empty": "No assets selected yet",
+          "assetsHeading": "Available video assets",
+          "noAssets": "Upload video assets in the Library to continue.",
+          "unknownAsset": "Unknown asset"
+        },
+        "audio": {
+          "title": "Audio playlist",
+          "subtitle": "Optional ambient or music bed",
+          "enable": "Enable audio",
+          "disable": "Disable audio",
+          "disabledNotice": "Audio is disabled. Enable it to add playlists.",
+          "collectionLabel": "Saved audio playlists",
+          "collectionPlaceholder": "Build new playlist",
+          "customize": "Customize",
+          "loop": "Loop",
+          "shuffle": "Shuffle",
+          "queueHeading": "Playlist order",
+          "empty": "No audio tracks selected",
+          "assetsHeading": "Available audio assets",
+          "noAssets": "Upload audio assets in the Library to continue.",
+          "unknownAsset": "Unknown audio"
+        },
+        "destinations": {
+          "title": "Destinations",
+          "subtitle": "Enable the channels you want to broadcast to.",
+          "loading": "Loading destinations...",
+          "none": "No destinations available. Add a channel first.",
+          "cta": "Open channel manager",
+          "disabled": "Disabled"
+        },
+        "schedule": {
+          "title": "Start time",
+          "startNow": "Start now",
+          "startLater": "Schedule",
+          "loop": "Loop stream",
+          "videoVolume": "Video volume",
+          "audioVolume": "Audio volume",
+          "summaryTitle": "Summary",
+          "summaryVideoCount": "Background assets: {count}",
+          "summaryVideoSaved": "Background: saved collection",
+          "summaryAudioCount": "Audio assets: {count}",
+          "summaryAudioSaved": "Audio: saved playlist",
+          "summaryAudioDisabled": "Audio disabled",
+          "summaryDestinations": "Destinations selected: {count}"
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "back": "Back",
+          "next": "Next",
+          "create": "Create stream"
+        }
+      },
+      "liveEdit": {
+        "button": "Live edit",
+        "title": "Live editing: {name}",
+        "subtitle": "Reorder playlists while streaming. Saving restarts the encoder with your changes.",
+        "loading": "Loading collections\u2026",
+        "restartNotice": "Saving applies immediately and hot-restarts the stream.",
+        "videoTitle": "Background queue",
+        "audioTitle": "Audio queue",
+        "missing": "No collection attached to this stream.",
+        "empty": "Nothing selected yet.",
+        "disabledAudio": "Audio playlist isn\u2019t configured for this stream.",
+        "queueHeading": "Playback order",
+        "availableHeading": "Available assets",
+        "availableEmpty": "No assets available. Upload media in the Library.",
+        "toggleLoop": "Loop",
+        "toggleShuffle": "Shuffle",
+        "toasts": {
+          "saved": "Live playlist updated"
+        },
+        "actions": {
+          "save": "Save & restart",
+          "close": "Close",
+          "remove": "Remove",
+          "add": "Add"
         }
       }
     }

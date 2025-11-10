@@ -11,7 +11,17 @@
       "updated": "Asset updated",
       "renameEmpty": "Filename cannot be empty",
       "validationRefreshed": "Validation refreshed",
-      "download": "Starting download for {name}"
+      "download": "Starting download for {name}",
+      "moved": "Assets moved",
+      "forceToast": "Asset is still used. Confirm force deletion to continue.",
+      "forceCheckboxRequired": "Confirm force deletion before continuing.",
+      "invalidSelection": "Select at least one uploaded asset before moving."
+    },
+    "folder": {
+      "created": "Folder created",
+      "updated": "Folder renamed",
+      "deleted": "Folder deleted",
+      "invalidTarget": "Select a valid folder before moving files"
     },
     "playlist": {
       "created": "Playlist created",
@@ -35,6 +45,12 @@
     },
     "assets": {
       "title": "Video Assets",
+      "filters": {
+        "label": "Media type",
+        "all": "All",
+        "video": "Video",
+        "audio": "Audio"
+      },
       "upload": "Upload Video",
       "badges": {
         "ready": "Ready for streaming",
@@ -84,6 +100,39 @@
       },
       "messages": {
         "incompatibleSummary": "This file isn't ready for direct streaming. Encode it with H.264 video, AAC audio, and yuv420p pixel format."
+      },
+      "selection": {
+        "count": "{count, plural, one {# asset selected} other {# assets selected}}",
+        "move": "Move",
+        "delete": "Delete",
+        "clear": "Clear",
+        "selectAll": "Select all",
+        "bulkMoveTitle": "Move assets",
+        "bulkMoveDescription": "Choose a destination folder for the selected assets.",
+        "targetLabel": "Target folder",
+        "moveConfirm": "Move assets",
+        "deleteTitle": "Delete assets",
+        "deleteDescription": "This permanently removes the selected assets. This action cannot be undone.",
+        "deleteUsageWarning": "Some assets are used by playlists or streams. Removing them may break active stream configurations.",
+        "forceTitle": "Force deletion required",
+        "forceDescription": "“{name}” is still used by the resources below. Remove the references or force the deletion to continue.",
+        "forceCheckbox": "I understand this will remove the asset from all references.",
+        "forceUsage": {
+          "streams": "Streams",
+          "collections": "Collections",
+          "playlists": "Playlists"
+        },
+        "forceUnknown": "Unknown",
+        "deleteConfirm": "Delete assets",
+        "cancel": "Cancel",
+        "checkboxLabel": "Select asset"
+      },
+      "usage": {
+        "streams": "{count, plural, one {# stream} other {# streams}}",
+        "collections": "{count, plural, one {# collection} other {# collections}}",
+        "playlists": "{count, plural, one {# playlist} other {# playlists}}",
+        "pill": "Used in {count, plural, one {# place} other {# places}}",
+        "none": "No current usage"
       }
     },
     "playlists": {
@@ -142,9 +191,37 @@
       "close": "Close"
     }
   },
+  "folders": {
+    "title": "Folders",
+    "all": "All folders",
+    "create": "New folder",
+    "rename": "Rename folder",
+    "delete": "Delete folder",
+    "loading": "Loading folders…",
+    "empty": "No folders yet",
+    "filterSoon": "folder filtering",
+    "comingSoonMessage": "Folder filters are rolling out soon. For now every asset is visible in the list.",
+    "modal": {
+      "createTitle": "New folder",
+      "renameTitle": "Rename folder",
+      "deleteTitle": "Delete folder",
+      "nameLabel": "Folder name",
+      "deleteMessage": "Delete folder “{name}”? Only empty folders can be removed."
+    }
+  },
   "uploadModal": {
     "title": "Upload video assets",
     "description": "Drag and drop files or pick them manually. We'll inspect codecs, resolution, and bitrate right away to flag potential YouTube Live issues.",
+    "assetType": {
+      "label": "Asset type",
+      "video": "Video",
+      "audio": "Audio"
+    },
+    "folder": {
+      "label": "Target folder",
+      "rootOption": "Library root",
+      "emptyOption": "No folders available"
+    },
     "actions": {
       "close": "Close",
       "clear": "Clear queue",

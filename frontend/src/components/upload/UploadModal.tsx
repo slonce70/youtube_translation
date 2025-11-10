@@ -24,6 +24,7 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Progress } from '@/components/ui/Progress'
 import { formatBytes } from '@/lib/utils'
+import type { MediaFolder } from '@/lib/types'
 import {
   BITRATE_GUIDANCE,
   matchBitrateRecommendation,
@@ -83,6 +84,7 @@ interface UploadModalProps {
   onClose: () => void
   uppy: Uppy<Record<string, string>, Record<string, any>>
   isProcessingUpload: boolean
+  folders?: MediaFolder[]
 }
 
 type Translate = ReturnType<typeof useTranslations>
@@ -403,9 +405,11 @@ function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnaly
   }
 }
 
-export function UploadModal({ isOpen, onClose, uppy, isProcessingUpload }: UploadModalProps) {
+export function UploadModal({ isOpen, onClose, uppy, isProcessingUpload, folders }: UploadModalProps) {
   const t = useTranslations('library.uploadModal')
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([])
+  const [assetKind, setAssetKind] = useState<'video' | 'audio'>('video')
+  const [targetFolderId, setTargetFolderId] = useState<string>('')
   const [isDragActive, setIsDragActive] = useState(false)
   const [mediaInfoError, setMediaInfoError] = useState<string | null>(null)
   const getStatusLabel = useCallback(
@@ -423,6 +427,60 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
       isMountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    uppy.setMeta({ asset_type: assetKind })
+  }, [assetKind, uppy])
+
+  useEffect(() => {
+    uppy.setMeta({ folder_id: targetFolderId || '' })
+  }, [targetFolderId, uppy])
+
+  useEffect(() => {
+    if (!folders || folders.length === 0) {
+      if (targetFolderId) {
+        setTargetFolderId('')
+      }
+      return
+    }
+    if (targetFolderId && !folders.some((folder) => folder.id === targetFolderId)) {
+      setTargetFolderId('')
+    }
+  }, [folders, targetFolderId])
+
+  const folderOptions = useMemo(() => {
+    if (!folders || folders.length === 0) return []
+    const grouped = new Map<string | null, MediaFolder[]>()
+    folders.forEach((folder) => {
+      const key = folder.parent_id ?? null
+      const siblings = grouped.get(key)
+      if (siblings) {
+        siblings.push(folder)
+      } else {
+        grouped.set(key, [folder])
+      }
+    })
+    grouped.forEach((entries) => entries.sort((a, b) => a.name.localeCompare(b.name)))
+
+    const traverse = (
+      parentId: string | null,
+      depth = 0,
+      acc: { id: string; label: string }[] = []
+    ) => {
+      const nodes = grouped.get(parentId) ?? []
+      nodes.forEach((node) => {
+        const nextDepth = node.is_root ? depth : depth + 1
+        if (!node.is_root) {
+          const prefix = depth ? '— '.repeat(depth) : ''
+          acc.push({ id: node.id, label: `${prefix}${node.name}` })
+        }
+        traverse(node.id, nextDepth, acc)
+      })
+      return acc
+    }
+
+    return traverse(null)
+  }, [folders])
 
   useEffect(() => {
     if (!mediaInfoPromiseRef.current) {
@@ -798,6 +856,49 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
               <p className="text-sm">{mediaInfoError}</p>
             </div>
           ) : null}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t('assetType.label')}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(['video', 'audio'] as const).map((option) => (
+                  <Button
+                    key={option}
+                    size="sm"
+                    variant={assetKind === option ? 'primary' : 'outline'}
+                    onClick={() => setAssetKind(option)}
+                  >
+                    {t(`assetType.${option}` as const)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t('folder.label')}
+              </p>
+              <select
+                value={targetFolderId}
+                onChange={(event) => setTargetFolderId(event.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                <option value="">{t('folder.rootOption')}</option>
+                {folderOptions.length === 0 ? (
+                  <option value="" disabled>
+                    {t('folder.emptyOption')}
+                  </option>
+                ) : (
+                  folderOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          </div>
 
           <div
             onDrop={handleDrop}

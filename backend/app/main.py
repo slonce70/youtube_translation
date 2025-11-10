@@ -5,10 +5,24 @@ import logging
 import asyncio
 
 from app.core.config import settings
-from app.api.routes import auth, assets, playlists, destinations, streams, metrics, quota, admin, monitoring
+from app.api.routes import (
+    auth,
+    assets,
+    playlists,
+    destinations,
+    streams,
+    metrics,
+    quota,
+    admin,
+    monitoring,
+    media_folders,
+    media_collections,
+)
 from app.middleware.rate_limiter import RateLimitMiddleware, global_rate_limiter
 from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.middleware.api_metrics import APIMetricsMiddleware
 from app.core.logging_config import setup_logging, get_logger
+from app.streaming.ffmpeg_manager import ffmpeg_manager
 
 # Configure structured logging
 setup_logging(level="INFO", json_output=settings.environment == "production")
@@ -24,6 +38,9 @@ app = FastAPI(
 
 # Security headers middleware (first)
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Metrics/logging middleware (after headers so tracing includes CSP additions)
+app.add_middleware(APIMetricsMiddleware)
 
 # Rate limiting middleware (before CORS)
 app.add_middleware(RateLimitMiddleware, rate_limiter=global_rate_limiter)
@@ -45,6 +62,8 @@ app.include_router(assets.router, prefix="/api/assets", tags=["assets"])
 app.include_router(playlists.router, prefix="/api/playlists", tags=["playlists"])
 app.include_router(destinations.router, prefix="/api/destinations", tags=["destinations"])
 app.include_router(streams.router, prefix="/api/streams", tags=["streams"])
+app.include_router(media_folders.router, prefix="/api/media-folders", tags=["media-folders"])
+app.include_router(media_collections.router, prefix="/api/media-collections", tags=["media-collections"])
 app.include_router(metrics.router, prefix="/api", tags=["metrics"])
 app.include_router(monitoring.router, prefix="/api/monitoring", tags=["monitoring"])
 
@@ -62,9 +81,10 @@ async def startup_event():
     # Check database connection
     await check_db_connection()
     await apply_schema_patches()
-    
+
     # Start periodic cleanup task for rate limiter
     asyncio.create_task(cleanup_rate_limiter())
+    asyncio.create_task(cleanup_ffmpeg_streams())
 
 
 async def cleanup_rate_limiter():
@@ -75,6 +95,17 @@ async def cleanup_rate_limiter():
             global_rate_limiter.cleanup_old_entries()
         except Exception as e:
             logger.error(f"Error cleaning up rate limiter: {e}")
+
+
+async def cleanup_ffmpeg_streams():
+    """Periodically remove stale FFmpeg stream metadata from the manager cache."""
+    interval = max(getattr(settings, "ffmpeg_cleanup_interval_seconds", 60), 5)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await ffmpeg_manager.cleanup_dead_streams()
+        except Exception as exc:
+            logger.error(f"Error cleaning up FFmpeg streams: {exc}")
 
 
 @app.on_event("shutdown")

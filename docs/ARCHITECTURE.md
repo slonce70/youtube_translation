@@ -158,6 +158,15 @@ users (managed by Supabase Auth)
 4. FFprobe analyzes compatibility
 5. Metadata stored in database
 
+### 6. Observability & Monitoring
+
+- **Structured logging** — все сервисы используют `app.core.logging_config` (JSON + masking). Дополнительный middleware `APIMetricsMiddleware` снимает длительность/статус каждого HTTP-запроса и пишет их в кореллируемые логи.
+- **Metrics Registry** — `app.core.metrics` агрегирует счётчики/гистограммы (streams, API, quotas, uploads). Экспорт доступен в двух форматах:
+  - `/api/metrics` — агрегированная статистика по CPU/RAM/disk + активным стримам и оценка пропускной способности.
+  - `/api/metrics/prometheus` — текстовый экспорт в формате Prometheus (`text/plain; version=0.0.4`).
+- **FFmpeg telemetry** — `FFmpegStreamManager` вызывает `track_stream_start`, `track_stream_stop` и `track_stream_error`, поэтому Active Streams gauge и гистограмма длительности отражают реальные процессы (включая auto-restart сценарии).
+- **Frontend hooks** — Dashboard и Streaming builder читают `/api/metrics` и отображают квоты/алерты; Jest тесты (`asset-display-info`, `builder-helpers`) проверяют логику отображения предупреждений и редакторов.
+
 ## Data Flow
 
 ### Stream Start Flow
@@ -169,9 +178,9 @@ users (managed by Supabase Auth)
    ↓
 3. Backend validates playlist and destinations
    ↓
-4. PlaylistBuilder creates concat demuxer file
+4. PlaylistBuilder prepares video/audio concat playlists (loop/shuffle aware, placeholders when required)
    ↓
-5. FFmpegManager builds command with tee muxer
+5. FFmpegManager builds command per mix mode (video-only, audio-only, mixed) with copy-first fallback to transcode
    ↓
 6. Spawns FFmpeg process (asyncio.subprocess)
    ↓

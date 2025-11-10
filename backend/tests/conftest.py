@@ -160,4 +160,58 @@ async def ensure_subscription_tiers() -> AsyncGenerator[None, None]:
         else:
             await session.rollback()
 
+        await session.execute(text(
+            """
+            DO $$
+            BEGIN
+                IF to_regclass('media_folders') IS NOT NULL THEN
+                    WITH ranked AS (
+                        SELECT
+                            id,
+                            user_id,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY user_id
+                                ORDER BY created_at NULLS LAST, id
+                            ) AS row_rank,
+                            FIRST_VALUE(id) OVER (
+                                PARTITION BY user_id
+                                ORDER BY created_at NULLS LAST, id
+                            ) AS primary_id
+                        FROM media_folders
+                        WHERE is_root
+                    )
+                    UPDATE asset_folder_links afl
+                    SET folder_id = ranked.primary_id
+                    FROM ranked
+                    WHERE afl.folder_id = ranked.id
+                      AND ranked.row_rank > 1;
+
+                    WITH ranked AS (
+                        SELECT
+                            id,
+                            user_id,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY user_id
+                                ORDER BY created_at NULLS LAST, id
+                            ) AS row_rank
+                        FROM media_folders
+                        WHERE is_root
+                    )
+                    DELETE FROM media_folders mf
+                    USING ranked
+                    WHERE mf.id = ranked.id
+                      AND ranked.row_rank > 1;
+
+                    IF to_regclass('idx_media_folders_user_root') IS NULL THEN
+                        EXECUTE '
+                            CREATE UNIQUE INDEX idx_media_folders_user_root
+                            ON media_folders(user_id)
+                            WHERE is_root
+                        ';
+                    END IF;
+                END IF;
+            END $$;
+            """
+        ))
+
     yield

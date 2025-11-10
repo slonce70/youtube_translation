@@ -62,7 +62,7 @@ export default function DashboardPage() {
 
   const { data: assets, isLoading: assetsLoading } = useQuery<Asset[]>({
     queryKey: ['assets', 'dashboard'],
-    queryFn: api.assets.list,
+    queryFn: () => api.assets.list(),
     enabled: !!user,
     staleTime: 30_000,
     refetchOnWindowFocus: true,

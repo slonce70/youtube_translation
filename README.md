@@ -10,6 +10,7 @@
 - Автоматическое создание профилей пользователей Supabase
 - Веб-панель (Next.js) + tusd для возобновляемых загрузок
 - Админский интерфейс с метриками и алертами
+- Структурированные JSON-логи + Prometheus-совместимые метрики `/api/metrics/prometheus`
 
 ## 🚀 Быстрый старт (локально)
 
@@ -69,12 +70,19 @@ Makefile               Команды для разработки и CI
 ## 📚 Документация
 
 - `docs/ARCHITECTURE.md` — архитектура решения
+- `docs/ARCHITECTURE.md#observability--monitoring` — схема логирования и метрик
 - `docs/MVP_COMPLETE.md` — реализованный функционал и API
 - `docs/SUPABASE_SETUP.md` — настройка проекта в Supabase
 - `docs/IMPLEMENTATION_REPORT.md` — отчёт по доработкам
 - `docs/TROUBLESHOOTING.md` — часто встречающиеся проблемы
 - `docs/backend_api_contract.md` и `docs/backend_api_map.md` — контракты REST API  
 - `docs/postman/` — готовые коллекции и окружения Postman
+
+- **Мониторинг**
+  - Middleware `APIMetricsMiddleware` пишет латентность, HTTP-статус и ошибки в структурные логи и увеличивает счётчики `track_api_request` / `track_api_error`.
+  - `/api/metrics` — агрегированная статистика по системным ресурсам и активным стримам.
+  - `/api/metrics/prometheus` — текстовый экспорт для Prometheus/Grafana.
+  - FFmpeg менеджер пробрасывает события `track_stream_start/stop/error`, поэтому дашборд показывает реальное число активных процессов и их длительность.
 
 ## 🛠 Команды Makefile
 
@@ -89,6 +97,15 @@ make lint               # ruff + black + eslint
 make type-check         # mypy + npm run type-check
 make clean              # очистка временных файлов
 ```
+
+## ✅ Тестування
+
+- `make test` — повний набір pytest + Jest (аналог CI).
+- `make test-backend` / `make test-frontend` — запускають лише бекенд або фронтенд.
+- `npm run build` у `frontend/` — production-білд Next.js з перевіркою типів та ESLint.
+- Точкові сценарії: `pytest backend/tests/test_ffmpeg_manager.py -vv`, `pytest backend/tests/test_auth_multitenancy.py -vv`, `pytest backend/tests/test_collection_quorum.py -vv`.
+
+Усі ці команди прогнані й успішні станом на цей коміт.
 
 ## 🐳 Docker
 

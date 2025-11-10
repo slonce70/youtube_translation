@@ -52,3 +52,9 @@ export function formatHoursHuman(hours: number): string {
 
   return minutes > 0 ? `${wholeHours}h ${minutes}m` : `${wholeHours}h`
 }
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+export function isValidUUID(value: unknown): value is string {
+  return typeof value === 'string' && UUID_REGEX.test(value)
+}

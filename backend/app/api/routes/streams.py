@@ -1,31 +1,61 @@
+from dataclasses import dataclass
 from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
-from typing import List
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 from pathlib import Path
 from datetime import datetime
 import logging
 
 from app.api.deps import require_user
-from app.models.database import Stream, StreamDestination, Playlist, Destination, PlaylistItem, StreamAsset, Asset
+from app.models.database import (
+    Stream,
+    StreamDestination,
+    Playlist,
+    Destination,
+    PlaylistItem,
+    StreamAsset,
+    Asset,
+    MediaCollection,
+    CollectionItem,
+)
 from app.schemas.api import (
     StreamResponse,
     StreamCreate,
     StreamStatus,
     StreamLogsResponse,
     StreamQualityResponse,
+    StreamLiveUpdateRequest,
 )
 from fastapi import Query
 from app.streaming.ffmpeg_manager import ffmpeg_manager
-from app.streaming.playlist_builder import PlaylistBuilder
+from app.streaming.playlist_builder import PlaylistBuilder, PlaylistFileSet
 from app.core.security import decrypt_stream_key
 from app.core.config import settings
 from app.core.quota import QuotaEnforcer
+from app.core.collections import (
+    normalize_collection_items,
+    replace_collection_items,
+    validate_collection_assets,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+ALLOWED_MIX_MODES = {"video_only", "audio_only", "mixed"}
+
+
+@dataclass
+class StreamAssetSelection:
+    video_assets: List[Dict[str, Any]]
+    audio_assets: List[Dict[str, Any]]
+    mix_mode: str
+
+    def all_assets(self) -> List[Dict[str, Any]]:
+        return list(self.video_assets) + list(self.audio_assets)
 
 
 async def _load_stream_with_relations(
@@ -41,6 +71,12 @@ async def _load_stream_with_relations(
             selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
             selectinload(Stream.stream_assets).selectinload(StreamAsset.asset),
             selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
+            selectinload(Stream.video_collection)
+            .selectinload(MediaCollection.items)
+            .selectinload(CollectionItem.asset),
+            selectinload(Stream.audio_collection)
+            .selectinload(MediaCollection.items)
+            .selectinload(CollectionItem.asset),
         )
     )
 
@@ -48,47 +84,209 @@ async def _load_stream_with_relations(
     return result.scalar_one_or_none()
 
 
-def _extract_stream_assets(stream: Stream):
-    if stream.source_type == "playlist":
+async def _get_collection_for_user(
+    db: AsyncSession,
+    user_id: UUID,
+    collection_id: UUID,
+    expected_type: str,
+) -> MediaCollection:
+    query = (
+        select(MediaCollection)
+        .where(
+            MediaCollection.id == collection_id,
+            MediaCollection.user_id == user_id,
+        )
+        .options(
+            selectinload(MediaCollection.items).selectinload(CollectionItem.asset)
+        )
+    )
+
+    result = await db.execute(query)
+    collection = result.scalar_one_or_none()
+
+    if not collection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Collection not found",
+        )
+
+    if collection.collection_type != expected_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Collection type mismatch",
+        )
+
+    return collection
+
+
+def _extract_stream_assets(stream: Stream) -> StreamAssetSelection:
+    mix_mode = (stream.mix_mode or "video_only").lower()
+
+    def build_payload(asset_obj: Asset, loop_mode: str = "loop") -> Dict[str, Any]:
+        return {
+            "path": asset_obj.storage_path,
+            "meta": asset_obj.meta or {},
+            "asset_id": str(asset_obj.id),
+            "filename": asset_obj.filename,
+            "compatible_for_copy": asset_obj.compatible_for_copy,
+            "validation_errors": asset_obj.validation_errors or [],
+            "loop_mode": loop_mode,
+        }
+
+    video_assets: List[Dict[str, Any]] = []
+    audio_assets: List[Dict[str, Any]] = []
+
+    allow_video_placeholder = mix_mode == "mixed"
+
+    if stream.video_collection:
+        items = sorted(stream.video_collection.items or [], key=lambda x: x.position)
+        for item in items:
+            if item.asset:
+                loop_mode = (item.loop_mode or "loop") if hasattr(item, "loop_mode") else "loop"
+                video_assets.append(build_payload(item.asset, loop_mode))
+    elif stream.source_type == "playlist":
         if not stream.playlist:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Playlist is missing for this stream",
             )
-        items = sorted(stream.playlist.items, key=lambda x: x.position)
-        assets_data = [
-            {
-                "path": item.asset.storage_path,
-                "meta": item.asset.meta or {},
-                "asset_id": str(item.asset.id),
-                "filename": item.asset.filename,
-                "compatible_for_copy": item.asset.compatible_for_copy,
-                "validation_errors": item.asset.validation_errors or [],
-            }
-            for item in items
-        ]
-        loop_enabled = stream.playlist.loop
+        items = sorted(stream.playlist.items or [], key=lambda x: x.position)
+        for item in items:
+            if item.asset:
+                video_assets.append(build_payload(item.asset, "loop"))
     else:
-        links = sorted(stream.stream_assets, key=lambda x: x.position)
-        if not links:
+        links = sorted(stream.stream_assets or [], key=lambda x: x.position)
+        for link in links:
+            if link.asset:
+                video_assets.append(build_payload(link.asset, "loop"))
+
+    if not video_assets and not allow_video_placeholder:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one video asset is required for this stream",
+        )
+    if not video_assets and allow_video_placeholder:
+        logger.info("Stream %s mixed mode without video assets; using placeholder background", stream.id)
+
+    if stream.audio_collection and mix_mode in {"audio_only", "mixed"}:
+        items = sorted(stream.audio_collection.items or [], key=lambda x: x.position)
+        if not items:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No assets linked to the stream",
+                detail="Audio collection has no assets",
             )
-        assets_data = [
-            {
-                "path": link.asset.storage_path,
-                "meta": link.asset.meta or {},
-                "asset_id": str(link.asset.id),
-                "filename": link.asset.filename,
-                "compatible_for_copy": link.asset.compatible_for_copy,
-                "validation_errors": link.asset.validation_errors or [],
-            }
-            for link in links
-        ]
-        loop_enabled = True
+        for item in items:
+            if item.asset:
+                loop_mode = (item.loop_mode or "loop") if hasattr(item, "loop_mode") else "loop"
+                audio_assets.append(build_payload(item.asset, loop_mode))
+    elif mix_mode == "mixed":
+        # Mixed mode without audio collection is invalid
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mixed streams require an audio collection",
+        )
 
-    return assets_data, loop_enabled
+    return StreamAssetSelection(
+        video_assets=video_assets,
+        audio_assets=audio_assets,
+        mix_mode=mix_mode,
+    )
+
+
+def _gather_stream_destinations(stream: Stream) -> List[Dict[str, str]]:
+    destinations: List[Dict[str, str]] = []
+    for stream_dest in stream.stream_destinations:
+        dest = stream_dest.destination
+        if not dest or not dest.enabled:
+            continue
+
+        decrypted_key = decrypt_stream_key(dest.stream_key_encrypted)
+        normalized_url = (dest.rtmps_url or "").strip().rstrip("/")
+        if not normalized_url:
+            logger.warning(
+                "Destination %s for stream %s has no RTMP(S) URL, skipping",
+                dest.id,
+                stream.id,
+            )
+            continue
+
+        destinations.append(
+            {
+                "url": normalized_url,
+                "key": decrypted_key,
+            }
+        )
+
+    return destinations
+
+
+async def _prepare_stream_launch(
+    db: AsyncSession,
+    user_id: UUID,
+    stream: Stream,
+    *,
+    enforcer: Optional[QuotaEnforcer] = None,
+) -> Tuple[PlaylistFileSet, List[Dict[str, str]], Path]:
+    """
+    Validate assets, build playlists, and collect destinations for a stream.
+    """
+    selection = _extract_stream_assets(stream)
+    quota = enforcer or QuotaEnforcer(db, user_id)
+    quality = await quota.evaluate_stream_quality(selection.video_assets)
+    if not quality["ok"]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "quality_rejected",
+                **quality,
+            },
+        )
+
+    compatibility_issues: List[Dict[str, Any]] = []
+    video_ok = True
+    audio_ok = True
+
+    if selection.video_assets:
+        video_ok, video_issues = PlaylistBuilder.validate_playlist_assets(selection.video_assets)
+        if not video_ok:
+            compatibility_issues.extend(video_issues)
+
+    if selection.mix_mode in {"audio_only", "mixed"}:
+        audio_ok, audio_issues = PlaylistBuilder.validate_audio_playlist_assets(selection.audio_assets)
+        if not audio_ok:
+            compatibility_issues.extend(audio_issues)
+
+    if not video_ok or not audio_ok:
+        logger.warning("Stream %s failed validation: %s", stream.id, compatibility_issues)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "Playlist assets are incompatible",
+                "issues": compatibility_issues,
+            },
+        )
+
+    builder = PlaylistBuilder()
+    stream_dir = Path(settings.stream_dir) / str(stream.id)
+    stream_dir.mkdir(parents=True, exist_ok=True)
+
+    log_file = Path(stream.log_path) if stream.log_path else stream_dir / "stream.log"
+    playlists = builder.prepare_stream_playlists(
+        stream_id=str(stream.id),
+        stream_dir=stream_dir,
+        video_assets=selection.video_assets,
+        audio_assets=selection.audio_assets,
+        mix_mode=selection.mix_mode,
+    )
+
+    destinations = _gather_stream_destinations(stream)
+    if not destinations:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No enabled destinations found",
+        )
+
+    return playlists, destinations, log_file
 
 
 @router.get("/", response_model=List[StreamResponse])
@@ -105,6 +303,12 @@ async def list_streams(
             .options(
                 selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
                 selectinload(Stream.stream_assets).selectinload(StreamAsset.asset),
+                selectinload(Stream.video_collection)
+                .selectinload(MediaCollection.items)
+                .selectinload(CollectionItem.asset),
+                selectinload(Stream.audio_collection)
+                .selectinload(MediaCollection.items)
+                .selectinload(CollectionItem.asset),
             )
         )
         
@@ -132,6 +336,8 @@ async def create_stream(
     try:
         playlist = None
         selected_assets: List[Asset] = []
+        video_collection = None
+        audio_collection = None
 
         if stream_data.playlist_id:
             playlist_query = select(Playlist).where(
@@ -146,17 +352,55 @@ async def create_stream(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Playlist not found"
                 )
-        else:
+        if stream_data.video_collection_id:
+            video_collection = await _get_collection_for_user(
+                db,
+                user_id,
+                stream_data.video_collection_id,
+                expected_type="video_background",
+            )
+            if not video_collection.items:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Video collection is empty",
+                )
+
+        if stream_data.audio_collection_id:
+            audio_collection = await _get_collection_for_user(
+                db,
+                user_id,
+                stream_data.audio_collection_id,
+                expected_type="audio_playlist",
+            )
+            if not audio_collection.items:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Audio collection is empty",
+                )
+
+        if playlist and (video_collection or audio_collection):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Choose playlist/assets or collections, not both",
+            )
+
+        if (video_collection or audio_collection) and stream_data.asset_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Asset IDs are not allowed when using collections",
+            )
+
+        if not playlist and not video_collection and not audio_collection:
             asset_ids = stream_data.asset_ids or []
             if not asset_ids:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="At least one asset must be selected"
+                    detail="At least one asset must be selected",
                 )
 
             assets_query = select(Asset).where(
                 Asset.user_id == user_id,
-                Asset.id.in_(asset_ids)
+                Asset.id.in_(asset_ids),
             )
             result = await db.execute(assets_query)
             fetched_assets = result.scalars().all()
@@ -164,24 +408,63 @@ async def create_stream(
             if len(fetched_assets) != len(set(asset_ids)):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="One or more assets were not found"
+                    detail="One or more assets were not found",
                 )
 
-            # Preserve order from payload
             asset_lookup = {str(asset.id): asset for asset in fetched_assets}
             try:
                 selected_assets = [asset_lookup[str(asset_id)] for asset_id in asset_ids]
-            except KeyError:
+            except KeyError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Asset selection contains duplicates or invalid IDs"
-                )
+                    detail="Asset selection contains duplicates or invalid IDs",
+                ) from exc
+
+        mix_mode = stream_data.mix_mode
+        if mix_mode is None:
+            if video_collection and audio_collection:
+                mix_mode = "mixed"
+            elif video_collection:
+                mix_mode = "video_only"
+            elif audio_collection:
+                mix_mode = "audio_only"
+            else:
+                mix_mode = "video_only"
+
+        if mix_mode not in ALLOWED_MIX_MODES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid mix mode",
+            )
+
+        if mix_mode in {"video_only", "mixed"} and not (playlist or selected_assets or video_collection):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video source is required for selected mix mode",
+            )
+
+        if mix_mode in {"audio_only", "mixed"} and not audio_collection:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Audio collection required for selected mix mode",
+            )
+
+        settings_json = stream_data.settings_json or {}
+        if not isinstance(settings_json, dict):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="settings_json must be an object",
+            )
 
         source_type = "playlist" if playlist else "assets"
 
         stream = Stream(
             user_id=user_id,
             playlist_id=playlist.id if playlist else None,
+            video_collection_id=video_collection.id if video_collection else None,
+            audio_collection_id=audio_collection.id if audio_collection else None,
+            mix_mode=mix_mode,
+            settings_json=settings_json,
             source_type=source_type,
             name=stream_data.name,
             status="stopped"
@@ -190,7 +473,7 @@ async def create_stream(
         db.add(stream)
         await db.flush()
 
-        if source_type == "assets":
+        if selected_assets:
             for position, asset in enumerate(selected_assets):
                 stream_asset = StreamAsset(
                     stream_id=stream.id,
@@ -259,10 +542,10 @@ async def stream_quality(
             detail="Stream not found",
         )
 
-    assets_data, _ = _extract_stream_assets(stream)
+    selection = _extract_stream_assets(stream)
 
     enforcer = QuotaEnforcer(db, user_id)
-    quality = await enforcer.evaluate_stream_quality(assets_data)
+    quality = await enforcer.evaluate_stream_quality(selection.video_assets)
 
     return StreamQualityResponse(
         ok=quality["ok"],
@@ -303,67 +586,17 @@ async def start_stream(
                 detail="Stream is already running"
             )
         
-        # Prepare playlist file
-        stream_dir = Path(settings.stream_dir) / str(stream_id)
-        stream_dir.mkdir(parents=True, exist_ok=True)
-        
-        playlist_file = stream_dir / "playlist.txt"
-        log_file = stream_dir / "stream.log"
-        
-        assets_data, loop_enabled = _extract_stream_assets(stream)
-
-        quality = await enforcer.evaluate_stream_quality(assets_data)
-        if not quality["ok"]:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={
-                    "error": "quality_rejected",
-                    **quality,
-                },
-            )
-
-        compatible, issues = PlaylistBuilder.validate_playlist_assets(assets_data)
-        if not compatible:
-            logger.warning("Stream %s failed validation: %s", stream_id, issues)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "error": "Playlist assets are incompatible",
-                    "issues": issues,
-                },
-            )
-        
-        PlaylistBuilder.build_playlist_file(assets_data, playlist_file, loop_enabled)
-        
-        # Prepare destinations with decrypted keys
-        destinations = []
-        for stream_dest in stream.stream_destinations:
-            dest = stream_dest.destination
-            if dest.enabled:
-                decrypted_key = decrypt_stream_key(dest.stream_key_encrypted)
-                normalized_url = (dest.rtmps_url or "").strip().rstrip("/")
-                if not normalized_url:
-                    logger.warning(
-                        "Destination %s for stream %s has no RTMP(S) URL, skipping",
-                        dest.id,
-                        stream.id,
-                    )
-                    continue
-                destinations.append({
-                    "url": normalized_url,
-                    "key": decrypted_key
-                })
-        
-        if not destinations:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No enabled destinations found"
-            )
+        playlists, destinations, log_file = await _prepare_stream_launch(
+            db,
+            user_id,
+            stream,
+            enforcer=enforcer,
+        )
         
         # Start FFmpeg process
         success = await ffmpeg_manager.start_stream(
             str(stream_id),
-            playlist_file,
+            playlists,
             destinations,
             log_file,
             metadata={
@@ -397,8 +630,9 @@ async def start_stream(
             uptime_seconds=0,
             is_running=True
         )
-        
+
     except HTTPException:
+        await db.rollback()
         raise
     except Exception as e:
         await db.rollback()
@@ -407,6 +641,90 @@ async def start_stream(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start stream: {str(e)}"
         )
+
+@router.patch("/{stream_id}/live-config", response_model=StreamResponse)
+async def live_update_stream(
+    stream_id: UUID,
+    update: StreamLiveUpdateRequest,
+    user_deps: tuple = Depends(require_user),
+):
+    """
+    Reorder or replace collection items for an active stream and optionally trigger a hot restart.
+    """
+    db, user_id = user_deps
+
+    stream = await _load_stream_with_relations(db, user_id, stream_id)
+    if not stream:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found",
+        )
+
+    target_collection = (
+        stream.video_collection if update.target == "video" else stream.audio_collection
+    )
+    if not target_collection:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stream does not have the requested collection",
+        )
+
+    normalized_items = normalize_collection_items(update.items)
+    expected_type = "video" if update.target == "video" else "audio"
+    await validate_collection_assets(db, user_id, normalized_items, expected_type)
+
+    try:
+        await replace_collection_items(db, target_collection, normalized_items)
+        await db.flush()
+
+        stream = await _load_stream_with_relations(db, user_id, stream_id)
+        if not stream:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Stream not found after update",
+            )
+
+        playlists, destinations, log_file = await _prepare_stream_launch(db, user_id, stream)
+
+        should_restart = update.restart and stream.status == "running"
+        if should_restart:
+            restart_ok = await ffmpeg_manager.restart_stream(
+                str(stream_id),
+                playlists,
+                destinations=destinations,
+                log_file=log_file,
+                metadata={
+                    "user_id": user_id,
+                    "stream_id": str(stream.id),
+                    "live_edit_target": update.target,
+                },
+            )
+            if not restart_ok:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to restart stream",
+                )
+
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as exc:  # pylint: disable=broad-except
+        await db.rollback()
+        logger.exception("Live update failed for stream %s: %s", stream_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update stream configuration",
+        ) from exc
+
+    updated_stream = await _load_stream_with_relations(db, user_id, stream_id)
+    if not updated_stream:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found after restart",
+        )
+
+    return updated_stream
 
 
 @router.post("/{stream_id}/stop", response_model=StreamStatus)
