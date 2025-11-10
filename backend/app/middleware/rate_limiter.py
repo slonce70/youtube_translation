@@ -7,7 +7,7 @@ Uses in-memory storage for simplicity (consider Redis for production).
 
 import time
 import logging
-from collections import defaultdict, deque
+from collections import deque
 from typing import Dict, Tuple
 from threading import RLock
 from fastapi import Request, HTTPException, status

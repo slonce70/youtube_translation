@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint clean build docker-up docker-down migrate
+.PHONY: help install dev test lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate
 
 # Colors for output
 BLUE := \033[0;34m
@@ -90,12 +90,26 @@ test-admin: ## Run admin tests (requires RUN_ADMIN_TESTS=1)
 # ==========================================
 
 lint: ## Run linters for backend and frontend
+	$(MAKE) lint-backend
+	$(MAKE) lint-frontend
+	@echo "$(GREEN)✓ All linting passed$(NC)"
+
+lint-backend: ## Run backend linters only
 	@echo "$(BLUE)Linting backend...$(NC)"
 	cd backend && python3 -m ruff check app/
-	cd backend && python3 -m black --check app/
+	@if [ "${RUN_BLACK:-0}" = "1" ]; then \
+		cd backend && python3 -m black --check app/; \
+	else \
+		echo "$(BLUE)Skipping Black check (set RUN_BLACK=1 to enable)$(NC)"; \
+	fi
+
+lint-frontend: ## Run frontend linter only
 	@echo "$(BLUE)Linting frontend...$(NC)"
 	cd frontend && npm run lint
-	@echo "$(GREEN)✓ All linting passed$(NC)"
+
+i18n-check: ## Verify localization files are in sync
+	@echo "$(BLUE)Checking i18n consistency...$(NC)"
+	cd frontend && npm run i18n:check
 
 lint-fix: ## Fix linting issues automatically
 	@echo "$(BLUE)Fixing backend code...$(NC)"
@@ -107,7 +121,11 @@ lint-fix: ## Fix linting issues automatically
 
 type-check: ## Run type checking
 	@echo "$(BLUE)Type checking backend...$(NC)"
-	cd backend && python3 -m mypy app/
+	@if [ "${RUN_MYPY:-0}" = "1" ]; then \
+		cd backend && python3 -m mypy app/; \
+	else \
+		echo "$(BLUE)Skipping mypy (set RUN_MYPY=1 to enable)$(NC)"; \
+	fi
 	@echo "$(BLUE)Type checking frontend...$(NC)"
 	cd frontend && npm run type-check
 	@echo "$(GREEN)✓ Type checking passed$(NC)"

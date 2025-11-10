@@ -9,7 +9,6 @@ Provides:
 """
 
 import logging
-import json
 import sys
 import re
 from datetime import datetime

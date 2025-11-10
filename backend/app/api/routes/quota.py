@@ -236,7 +236,7 @@ async def check_quota_internal(
         
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Error during internal quota check")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

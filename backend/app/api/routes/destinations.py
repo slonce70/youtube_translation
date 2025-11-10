@@ -1,13 +1,11 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from typing import List
 from uuid import UUID
 import logging
 
 from app.api.deps import require_user
 from app.models.database import Destination
-from app.schemas.api import DestinationResponse, DestinationCreate, DestinationUpdate
+from app.schemas.api import DestinationCreate, DestinationUpdate
 from app.core.security import encrypt_stream_key, decrypt_stream_key, mask_stream_key
 from app.core.quota import QuotaEnforcer
 
@@ -31,12 +29,18 @@ async def list_destinations(
         # Mask stream keys in response
         response_destinations = []
         for dest in destinations:
+            masked_key = ""
+            if dest.stream_key_encrypted:
+                try:
+                    masked_key = mask_stream_key(decrypt_stream_key(dest.stream_key_encrypted))
+                except Exception:
+                    logger.exception("Failed to decrypt stream key for destination %s", dest.id)
             dest_dict = {
                 "id": str(dest.id),
                 "name": dest.name,
                 "rtmps_url": dest.rtmps_url,
                 "enabled": dest.enabled,
-                "stream_key_masked": mask_stream_key(dest.stream_key_encrypted),
+                "stream_key_masked": masked_key,
                 "created_at": dest.created_at.isoformat(),
                 "updated_at": dest.updated_at.isoformat()
             }
@@ -87,12 +91,21 @@ async def create_destination(
         logger.info(f"Created destination {destination.id} for user {user_id}")
         
         # Return with masked key
+        stream_key_masked = ""
+        if destination_data.stream_key:
+            stream_key_masked = mask_stream_key(destination_data.stream_key)
+        else:
+            try:
+                stream_key_masked = mask_stream_key(decrypt_stream_key(destination.stream_key_encrypted))
+            except Exception:
+                logger.exception("Failed to decrypt stream key for destination %s", destination.id)
+
         return {
             "id": str(destination.id),
             "name": destination.name,
             "rtmps_url": destination.rtmps_url,
             "enabled": destination.enabled,
-            "stream_key_masked": mask_stream_key(encrypted_key),
+            "stream_key_masked": stream_key_masked,
             "created_at": destination.created_at.isoformat(),
             "updated_at": destination.updated_at.isoformat()
         }
@@ -130,12 +143,18 @@ async def get_destination(
                 detail="Destination not found"
             )
         
+        try:
+            stream_key_masked = mask_stream_key(decrypt_stream_key(destination.stream_key_encrypted)) if destination.stream_key_encrypted else ""
+        except Exception:
+            logger.exception("Failed to decrypt stream key for destination %s", destination.id)
+            stream_key_masked = ""
+
         return {
             "id": str(destination.id),
             "name": destination.name,
             "rtmps_url": destination.rtmps_url,
             "enabled": destination.enabled,
-            "stream_key_masked": mask_stream_key(destination.stream_key_encrypted),
+            "stream_key_masked": stream_key_masked,
             "created_at": destination.created_at.isoformat(),
             "updated_at": destination.updated_at.isoformat()
         }
@@ -194,12 +213,18 @@ async def update_destination(
         await db.commit()
         await db.refresh(destination)
         
+        try:
+            stream_key_masked = mask_stream_key(decrypt_stream_key(destination.stream_key_encrypted))
+        except Exception:
+            logger.exception("Failed to decrypt stream key for destination %s", destination.id)
+            stream_key_masked = ""
+
         return {
             "id": str(destination.id),
             "name": destination.name,
             "rtmps_url": destination.rtmps_url,
             "enabled": destination.enabled,
-            "stream_key_masked": mask_stream_key(destination.stream_key_encrypted),
+            "stream_key_masked": stream_key_masked,
             "created_at": destination.created_at.isoformat(),
             "updated_at": destination.updated_at.isoformat()
         }

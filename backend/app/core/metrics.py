@@ -13,7 +13,6 @@ Can be integrated with Prometheus, Grafana, or other monitoring systems.
 import time
 import logging
 from typing import Dict, Optional
-from collections import defaultdict
 from threading import RLock
 from enum import Enum
 

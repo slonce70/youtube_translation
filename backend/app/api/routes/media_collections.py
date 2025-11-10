@@ -15,7 +15,6 @@ from app.core.collections import (
 )
 from app.models.database import CollectionItem, MediaCollection
 from app.schemas.api import (
-    CollectionItemCreate,
     CollectionItemResponse,
     CollectionItemsUpdate,
     MediaCollectionCreate,

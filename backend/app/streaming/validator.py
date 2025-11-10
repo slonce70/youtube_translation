@@ -315,7 +315,7 @@ class VideoValidator:
             if len(parts) == 2:
                 return float(parts[0]) / float(parts[1])
             return float(fps_str)
-        except:
+        except (ValueError, ZeroDivisionError):
             return 0.0
 
     def _normalize_fps(self, fps_value: Optional[float]) -> Tuple[Optional[int], bool]:
