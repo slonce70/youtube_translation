@@ -1,5 +1,7 @@
 """Tests for authentication dependencies and multi-tenant scoping."""
 
+import asyncio
+
 import jwt
 import pytest
 
@@ -22,6 +24,9 @@ from app.models.database import (
     SubscriptionTierLimits,
     UserProfile,
 )
+
+
+_schema_reset_lock = asyncio.Lock()
 
 
 @pytest.mark.asyncio
@@ -376,26 +381,27 @@ async def db_session():
     from app.core.database import async_engine, async_session_maker
     from app.models.database import Base
 
-    # Ensure schema exists
-    async with async_engine.begin() as conn:
-        view_names = ['unresolved_critical_alerts', 'recent_admin_actions', 'recent_user_activity']
-        for view in view_names:
-            await conn.execute(text(f'DROP VIEW IF EXISTS {view}'))
-        await conn.execute(text('DROP TABLE IF EXISTS subscription_tier_limits CASCADE'))
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-        alter_statements = [
-            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS price_cents INTEGER DEFAULT 0",
-            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS daily_streaming_limit_hours INTEGER",
-            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS calendar_enabled BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS branding_enabled BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS automation_enabled BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS priority_support_level TEXT",
-            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS dedicated_manager BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS allowed_video_codecs TEXT[]"
-        ]
-        for statement in alter_statements:
-            await conn.execute(text(statement))
+    # Ensure schema exists (serialised to avoid concurrent DDL)
+    async with _schema_reset_lock:
+        async with async_engine.begin() as conn:
+            view_names = ['unresolved_critical_alerts', 'recent_admin_actions', 'recent_user_activity']
+            for view in view_names:
+                await conn.execute(text(f'DROP VIEW IF EXISTS {view}'))
+            await conn.execute(text('DROP TABLE IF EXISTS subscription_tier_limits CASCADE'))
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+            alter_statements = [
+                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS price_cents INTEGER DEFAULT 0",
+                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS daily_streaming_limit_hours INTEGER",
+                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS calendar_enabled BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS branding_enabled BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS automation_enabled BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS priority_support_level TEXT",
+                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS dedicated_manager BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS allowed_video_codecs TEXT[]"
+            ]
+            for statement in alter_statements:
+                await conn.execute(text(statement))
 
     async with async_session_maker() as session:
         # Seed tier limits if missing

@@ -1913,29 +1913,52 @@ export default function StreamingPage() {
                       destinations.map((destination) => {
                         const isSelected = streamForm.destination_ids.includes(destination.id)
                         return (
-                          <button
+                          <label
                             key={`destination-${destination.id}`}
-                            type="button"
-                            disabled={!destination.enabled}
-                            onClick={() => handleDestinationToggle(destination.id)}
-                            className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-colors ${
+                            htmlFor={`destination-checkbox-${destination.id}`}
+                            className={cn(
+                              'flex w-full items-center justify-between rounded-lg border px-3 py-3 transition-colors bg-white dark:bg-slate-900/40',
                               isSelected
-                                ? 'border-success-500 bg-success-50 dark:border-success-700 dark:bg-success-900/30'
-                                : 'border-slate-200 dark:border-slate-700 hover:border-primary-300'
-                            } ${!destination.enabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                ? 'border-success-500 bg-success-100 dark:border-success-500/80 dark:bg-success-900/30'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-primary-300 hover:bg-primary-50/40 dark:hover:border-primary-500 dark:hover:bg-primary-900/20',
+                              destination.enabled ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'
+                            )}
                           >
-                            <div>
-                              <p className="text-sm font-medium text-slate-900 dark:text-white">{destination.name}</p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400">{destination.rtmps_url}</p>
+                            <div className="flex items-start gap-3">
+                              <input
+                                id={`destination-checkbox-${destination.id}`}
+                                type="checkbox"
+                                disabled={!destination.enabled}
+                                checked={isSelected}
+                                onChange={() => handleDestinationToggle(destination.id)}
+                                className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:border-slate-300"
+                              />
+                              <div>
+                                <p className="text-sm font-medium text-slate-900 dark:text-white">{destination.name}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">{destination.rtmps_url}</p>
+                              </div>
                             </div>
-                            <Badge variant={isSelected ? 'success' : destination.enabled ? 'secondary' : 'warning'}>
-                              {destination.enabled
-                                ? isSelected
-                                  ? tStreaming('channels.badge.selected')
-                                  : tStreaming('channels.badge.tapToSelect')
-                                : tStreaming('streams.builder.destinations.disabled')}
-                            </Badge>
-                          </button>
+                            <div className="flex flex-col items-end gap-1">
+                              <Badge variant={destination.enabled ? (isSelected ? 'success' : 'secondary') : 'warning'}>
+                                {destination.enabled
+                                  ? isSelected
+                                    ? tStreaming('channels.badge.selected')
+                                    : tStreaming('channels.badge.tapToSelect')
+                                  : tStreaming('streams.builder.destinations.disabled')}
+                              </Badge>
+                              {destination.enabled ? (
+                                <span className="text-[11px] font-medium uppercase text-slate-400 dark:text-slate-500">
+                                  {isSelected
+                                    ? tStreaming('streams.builder.destinations.selected')
+                                    : tStreaming('streams.builder.destinations.toggleHint')}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-medium uppercase text-amber-500">
+                                  {tStreaming('streams.builder.destinations.enableHint')}
+                                </span>
+                              )}
+                            </div>
+                          </label>
                         )
                       })
                     ) : (

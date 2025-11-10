@@ -212,7 +212,10 @@
           "loading": "Loading destinations...",
           "none": "No destinations available. Add a channel first.",
           "cta": "Open channel manager",
-          "disabled": "Disabled"
+          "disabled": "Disabled",
+          "selected": "Selected",
+          "toggleHint": "Check to include",
+          "enableHint": "Enable channel to select"
         },
         "schedule": {
           "title": "Start time",

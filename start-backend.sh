@@ -6,11 +6,11 @@ echo "📍 API will be at: http://localhost:8000"
 echo "📖 Docs will be at: http://localhost:8000/docs"
 echo ""
 
-# Копируем .env в backend, только если там ещё нет файла
-if [ -f ".env" ] && [ ! -f "backend/.env" ]; then
+# Копируем .env в backend, только если явно разрешено и нет существующего файла
+if [ "${COPY_ROOT_ENV_TO_BACKEND:-0}" = "1" ] && [ -f ".env" ] && [ ! -f "backend/.env" ]; then
     cp .env backend/.env
     echo "✅ .env copied to backend/"
-elif [ -f ".env" ] && [ -f "backend/.env" ]; then
+elif [ "${COPY_ROOT_ENV_TO_BACKEND:-0}" = "1" ] && [ -f ".env" ] && [ -f "backend/.env" ]; then
     echo "ℹ️  Пропускаю копирование .env: backend/.env уже существует"
 fi
 

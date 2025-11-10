@@ -58,7 +58,7 @@ class PlaylistBuilder:
 
         try:
             self.streams_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as exc:
+        except Exception:
             logger.exception("Failed to prepare streams directory %s", self.streams_dir)
             raise
 

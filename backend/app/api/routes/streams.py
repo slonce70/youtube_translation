@@ -751,7 +751,7 @@ async def stop_stream(
             )
         
         # Stop FFmpeg process
-        success = await ffmpeg_manager.stop_stream(str(stream_id))
+        await ffmpeg_manager.stop_stream(str(stream_id))
         
         # Update stream status
         stream.status = "stopped"

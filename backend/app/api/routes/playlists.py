@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
@@ -16,6 +15,7 @@ from app.schemas.api import (
     PlaylistItemResponse,
 )
 from app.core.quota import QuotaEnforcer
+from app.streaming.playlist_builder import PlaylistBuilder
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

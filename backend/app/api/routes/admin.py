@@ -15,8 +15,8 @@ import logging
 
 from app.api.deps import require_user
 from app.models.database import (
-    UserProfile, SubscriptionTierLimits, AdminAction, SystemAlert, 
-    Stream, StreamDestination, Asset, Playlist, Destination, UserActivityLog
+    UserProfile, SubscriptionTierLimits, AdminAction, SystemAlert,
+    Stream, StreamDestination, Asset, Playlist, Destination
 )
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -328,12 +328,6 @@ async def get_user_detail(
                 detail="User not found"
             )
 
-        if profile.subscription_tier == request.new_tier:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User already on requested tier"
-            )
-        
         # Get counts
         assets_result = await db.execute(
             select(func.count(Asset.id)).where(Asset.user_id == user_id)
