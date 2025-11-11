@@ -22,6 +22,14 @@ def test_normalize_asset_type_rejects_invalid_values():
     assert normalize_asset_type("invalid", meta) == "audio"
 
 
+def test_normalize_asset_type_respects_audio_with_cover_art():
+    meta = {
+        "audio": {"codec": "aac"},
+        "cover_art": {"codec": "mjpeg", "width": 360, "height": 360},
+    }
+    assert normalize_asset_type("audio", meta) == "audio"
+
+
 def test_asset_create_disallows_unknown_asset_type():
     with pytest.raises(ValueError):
         AssetCreate(

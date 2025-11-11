@@ -1,10 +1,12 @@
+import asyncio
+import logging
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
-import asyncio
-import logging
+from starlette_csrf import CSRFMiddleware
 
 from app.core.config import settings
 
@@ -77,6 +79,18 @@ app.add_middleware(APIMetricsMiddleware)
 
 # Rate limiting middleware (before CORS)
 app.add_middleware(RateLimitMiddleware, rate_limiter=global_rate_limiter)
+
+# CSRF protection middleware
+app.add_middleware(
+    CSRFMiddleware,
+    secret=(settings.csrf_secret or settings.encryption_key),
+    sensitive_cookies={"csrftoken", "sb-access-token", "sb-refresh-token"},
+    header_name="X-CSRF-Token",
+    cookie_name="csrftoken",
+    cookie_path="/",
+    cookie_secure=settings.environment == "production",
+    cookie_samesite="lax",
+)
 
 # CORS middleware
 app.add_middleware(

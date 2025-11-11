@@ -31,8 +31,8 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str
-    db_pool_size: int = 3
-    db_max_overflow: int = 0
+    db_pool_size: int = 10
+    db_max_overflow: int = 5
     db_pool_timeout_seconds: int = 30
     db_pool_recycle_seconds: int = 1800
     db_use_null_pool: bool = False
@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     download_token_secret: str = "change_this_download_secret"
     download_token_ttl_seconds: int = 300  # 5 minutes
+    csrf_secret: Optional[str] = None
 
     # Storage
     upload_dir: str = "/app/uploads"

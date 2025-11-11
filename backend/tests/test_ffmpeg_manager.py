@@ -2,6 +2,7 @@
 Tests for FFmpeg stream manager (process management, cleanup).
 """
 from collections import deque
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -44,6 +45,21 @@ class TestFFmpegStreamManager:
         # Verify alive stream still exists
         assert "alive-stream" in manager.active_streams
         assert "alive-stream" in manager.stream_info
+
+    @pytest.mark.asyncio
+    async def test_cleanup_dead_streams_prunes_stale_error_history(self):
+        """Stale stream info without active process should be pruned after cutoff."""
+        manager = FFmpegStreamManager()
+
+        stale_started_at = datetime.now(timezone.utc) - timedelta(hours=2)
+        manager.stream_info["stale-stream"] = {
+            "started_at": stale_started_at,
+            "recent_errors": deque(["boom"], maxlen=20),
+        }
+
+        await manager.cleanup_dead_streams()
+
+        assert "stale-stream" not in manager.stream_info
     
     @pytest.mark.asyncio
     async def test_stop_stream_cleans_up_orphaned_info(self):

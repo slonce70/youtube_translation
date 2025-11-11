@@ -18,7 +18,7 @@ from app.schemas.api import (
 )
 from app.services.assets import AssetService, AssetUploadService
 from app.services.assets.service import AssetDownloadService, DownloadTokenService
-from app.services.assets.utils import infer_asset_type, normalize_asset_type
+from app.services.assets.utils import infer_asset_type, normalize_asset_type  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

@@ -53,7 +53,18 @@ def normalize_asset_type(
     candidate = (requested or "video").lower()
     if candidate not in {"video", "audio"}:
         candidate = "video"
-    return infer_asset_type(stream_meta, candidate)
+    inferred = infer_asset_type(stream_meta, candidate)
+
+    if (
+        inferred == "video"
+        and candidate == "audio"
+        and isinstance(stream_meta, dict)
+        and stream_meta.get("cover_art")
+        and not stream_meta.get("video")
+    ):
+        return "audio"
+
+    return inferred
 
 
 def apply_stream_summary_fields(asset, stream_meta: Optional[Dict[str, Any]]) -> None:

@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useTranslations } from 'next-intl'
-import { supabase } from '@/lib/supabase'
+import { supabase, isAuthenticated } from '@/lib/supabase'
 import { translateSupabaseError } from '@/i18n/errorMessages'
 import { Radio, Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/utils'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { LoadingState } from '@/components/LoadingState'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -20,8 +21,35 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [isSignUp, setIsSignUp] = useState(false)
+  const [isCheckingSession, setIsCheckingSession] = useState(true)
   const t = useTranslations('auth')
   const errorT = useTranslations('errors.supabase')
+
+  useEffect(() => {
+    let active = true
+
+    const verifySession = async () => {
+      try {
+        const authenticated = await isAuthenticated()
+        if (!active) return
+        if (authenticated) {
+          router.replace('/dashboard')
+          return
+        }
+      } catch (error) {
+        console.warn('[auth] Failed to verify session before login', error)
+      }
+      if (active) {
+        setIsCheckingSession(false)
+      }
+    }
+
+    void verifySession()
+
+    return () => {
+      active = false
+    }
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,6 +78,14 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (isCheckingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <LoadingState text={t('form.loading')} />
+      </div>
+    )
   }
 
   return (

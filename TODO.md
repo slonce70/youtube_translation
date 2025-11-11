@@ -11,10 +11,42 @@
 - Аналогічно відрефакторив `media_collections.py`: зʼявився `MediaCollectionService`, додано `origin_playlist_id` в `MediaCollectionCreate`, повні `make test` (pytest + Jest) знову зелені.
 - Переніс playlist CRUD/валідації в `PlaylistService`, оновив роутер на DI, зміг залишити Quota/PlaylistBuilder інʼєкцією й підтвердив стабільність `make test`.
 - Після великого бекенд-рефакторингу прогнав `make lint` + `make type-check` (backend/frontend) — обидві команди зелені, зафіксовано як контрольну точку.
+- **[2025-11-11] Проведено повний технічний аудит проекту:** backend (9/10), frontend (8/10), streaming (9/10), design (7.5/10), testing (8/10), security (8.5/10), docs (9/10). **Загальна оцінка: 8.5/10 — ВІДМІННО**. Виявлено 7 критичних issues (3-4 дні фіксів). Створено детальні звіти в `docs/AUDIT_REPORT_2025.md`, `AUDIT_SUMMARY.md` та `IMPROVEMENT_ROADMAP.md`.
 
 ## Next Up
-1. Наступна хвиля сервісної декомпозиції: фіналізувати решту media-модулів (наприклад, playlist helpers, потенційні destination hooks) та оновити відповідні DI-фабрики.
-2. Оновити `docs/operations/*`, `docs/systemd/*` і повʼязані нотатки в `docs/` з описом нової сервісної архітектури та інструкціями для операторів.
-3. Повторювати `make lint` + `make type-check` після наступних великих блоків (Python/TS) й занотовувати результати (останній прогін успішний).
-4. Провести аудит місць, де все ще напряму викликаються `QuotaEnforcer`, `ffmpeg_manager` чи інші «сирі» сервіси, та перенаправити їх через новостворені `Service`-класи.
-5. Після стабілізації бекенду перейти до фронтенду: рефакторити `frontend/src/components/upload/UploadModal.tsx`, бібліотечні компоненти (`AssetCard`, `Breadcrumbs`, `FolderCard`) і актуалізувати локалізації + тести.
+
+### 🎯 CRITICAL - Must Fix Before Production (3-4 days)
+See detailed roadmap in `IMPROVEMENT_ROADMAP.md`
+
+1. **Quick Wins** (<1 hour total):
+   - Increase `db_pool_size` from 3 to 10 (`backend/app/core/config.py`)
+   - Fix status polling for error states (`frontend/src/app/dashboard/streaming/page.tsx:172`)
+   - Add supervisor config sleep (`backend/app/core/supervisor_control.py:103`)
+   - Fix deterministic shuffle seed (`backend/app/streaming/playlist_builder.py:148`)
+
+2. **Frontend Refactor** (2-3 days):
+   - Split `StreamingPage.tsx` (2,242 lines) into components
+   - Extract business logic to helpers
+   - Implement useReducer for complex state
+
+3. **Security** (3 hours):
+   - Add CSRF protection middleware
+   - Centralize admin authorization
+
+4. **Infrastructure** (5 hours):
+   - Add FFmpeg memory cleanup
+   - Setup CI/CD pipeline
+   - Add test coverage reporting
+
+### 📚 Reference Documents
+- `docs/AUDIT_REPORT_2025.md` — повний технічний аудит (100+ pages)
+- `AUDIT_SUMMARY.md` — executive summary (оцінка 8.5/10)
+- `IMPROVEMENT_ROADMAP.md` — prioritized action items
+
+### 🔄 Post-Critical Tasks
+- Integration tests для main flows
+- Frontend component testing
+- Storybook for design system
+- Performance monitoring (Sentry, OpenTelemetry)
+
+**Project Status:** Production-ready after critical fixes (estimated 1 week)

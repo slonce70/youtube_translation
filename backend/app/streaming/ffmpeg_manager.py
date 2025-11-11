@@ -5,7 +5,7 @@ import signal
 import shutil
 from collections import deque
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import UUID
@@ -1032,6 +1032,7 @@ class FFmpegStreamManager:
                             recent_errors = info.get("recent_errors")
                             if isinstance(recent_errors, deque):
                                 recent_errors.append(decoded)
+                                info["last_error_at"] = datetime.utcnow()
                     
         except Exception as e:
             logger.exception(f"Error writing logs for stream {stream_id}: {e}")
@@ -1048,6 +1049,39 @@ class FFmpegStreamManager:
                 logger.info(f"Cleaning up dead stream {stream_id}")
                 self.active_streams.pop(stream_id, None)
                 self.stream_info.pop(stream_id, None)
+
+            self._cleanup_stale_stream_info_locked()
+
+    def _cleanup_stale_stream_info_locked(self, *, max_age_seconds: int = 3600) -> None:
+        """Remove cached stream info for stopped streams older than the allowed age."""
+
+        cutoff_utc = (datetime.utcnow() - timedelta(seconds=max_age_seconds)).replace(tzinfo=timezone.utc)
+        stale_streams: List[str] = []
+
+        for stream_id, info in list(self.stream_info.items()):
+            if stream_id in self.active_streams:
+                continue
+
+            last_activity: Optional[datetime] = None
+
+            for key in ("last_error_at", "last_failure_at", "started_at"):
+                candidate = info.get(key)
+                if isinstance(candidate, datetime):
+                    if candidate.tzinfo is None:
+                        last_activity = candidate.replace(tzinfo=timezone.utc)
+                    else:
+                        last_activity = candidate.astimezone(timezone.utc)
+                    break
+
+            if last_activity is None:
+                continue
+
+            if cutoff_utc >= last_activity:
+                stale_streams.append(stream_id)
+
+        for stream_id in stale_streams:
+            logger.debug("Pruning stale stream info cache for %s", stream_id)
+            self.stream_info.pop(stream_id, None)
 
     async def _finalize_stream_success(self, stream_id: str, manual_stop: bool) -> None:
         """Persist success status and uptime when FFmpeg завершується без помилок."""

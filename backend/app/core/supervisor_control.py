@@ -94,7 +94,7 @@ def _build_error(action: str, program: str, stdout: str, stderr: str) -> Runtime
     return RuntimeError(message)
 
 
-def _write_program_config(stream_id: UUID) -> Path:
+async def _write_program_config(stream_id: UUID) -> Path:
     cfg_path = _program_config_path(stream_id)
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     log_dir = _log_dir()
@@ -126,6 +126,7 @@ environment=PYTHONPATH="{py_path}"
     )
 
     cfg_path.write_text(config_text + "\n")
+    await asyncio.sleep(0.1)
     return cfg_path
 
 
@@ -157,7 +158,7 @@ async def _update(program: str) -> None:
 
 async def start_program(stream_id: UUID) -> None:
     program = program_name(stream_id)
-    _write_program_config(stream_id)
+    await _write_program_config(stream_id)
     await _reread()
     await _update(program)
     code, out, err = await _run_supervisorctl("start", program)
@@ -175,7 +176,7 @@ async def stop_program(stream_id: UUID) -> None:
 
 async def restart_program(stream_id: UUID) -> None:
     program = program_name(stream_id)
-    _write_program_config(stream_id)
+    await _write_program_config(stream_id)
     await _reread()
     await _update(program)
     code, out, err = await _run_supervisorctl("restart", program)

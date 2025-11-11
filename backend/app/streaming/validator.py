@@ -165,9 +165,9 @@ class VideoValidator:
         """Check if video is compatible with YouTube streaming requirements"""
         try:
             streams = meta.get("streams", [])
-            
-            # Find video and audio streams
-            video_stream = next((s for s in streams if s["codec_type"] == "video"), None)
+
+            # Find primary video and audio streams
+            video_stream, _ = self._split_video_streams(streams)
             audio_stream = next((s for s in streams if s["codec_type"] == "audio"), None)
 
             if not video_stream or not audio_stream:
@@ -205,8 +205,8 @@ class VideoValidator:
         """Get list of validation errors"""
         errors = []
         streams = meta.get("streams", [])
-        
-        video_stream = next((s for s in streams if s["codec_type"] == "video"), None)
+
+        video_stream, _ = self._split_video_streams(streams)
         audio_stream = next((s for s in streams if s["codec_type"] == "audio"), None)
 
         if not video_stream:
@@ -234,8 +234,8 @@ class VideoValidator:
         """Extract useful stream information"""
         streams = meta.get("streams", [])
         format_info = meta.get("format", {})
-        
-        video_stream = next((s for s in streams if s["codec_type"] == "video"), None)
+
+        video_stream, cover_art_stream = self._split_video_streams(streams)
         audio_stream = next((s for s in streams if s["codec_type"] == "audio"), None)
 
         info = {
@@ -253,6 +253,13 @@ class VideoValidator:
                 "fps": self._parse_fps(video_stream.get("r_frame_rate", "0/1")),
                 "pix_fmt": video_stream.get("pix_fmt"),
                 "bitrate": int(video_stream.get("bit_rate", 0))
+            }
+
+        if cover_art_stream and not video_stream:
+            info["cover_art"] = {
+                "codec": cover_art_stream.get("codec_name"),
+                "width": cover_art_stream.get("width"),
+                "height": cover_art_stream.get("height"),
             }
 
         if audio_stream:
@@ -355,3 +362,56 @@ class VideoValidator:
                 return entry, fps_bucket, fps_out_of_guideline
 
         return None, fps_bucket, fps_out_of_guideline
+
+    def _split_video_streams(self, streams: list[dict[str, Any]]) -> Tuple[Optional[dict[str, Any]], Optional[dict[str, Any]]]:
+        """Return primary video stream and optional cover art stream."""
+        primary = None
+        cover_art = None
+
+        for stream in streams:
+            if stream.get("codec_type") != "video":
+                continue
+
+            if self._is_cover_art_stream(stream):
+                if cover_art is None:
+                    cover_art = stream
+                continue
+
+            if primary is None:
+                primary = stream
+                continue
+
+            # Prefer streams with higher resolution when multiple real video streams exist
+            try:
+                current_height = int(primary.get("height") or 0)
+                candidate_height = int(stream.get("height") or 0)
+            except (TypeError, ValueError):
+                current_height = candidate_height = 0
+
+            if candidate_height > current_height:
+                primary = stream
+
+        return primary, cover_art
+
+    def _is_cover_art_stream(self, stream: dict[str, Any]) -> bool:
+        disposition = stream.get("disposition") or {}
+        if any(str(disposition.get(flag, 0)) == "1" for flag in ("attached_pic", "still_image", "cover_art")):
+            return True
+
+        codec = (stream.get("codec_name") or "").lower()
+        fps = self._parse_fps(stream.get("r_frame_rate") or stream.get("avg_frame_rate") or "0/1")
+        if codec in {"mjpeg", "png", "bmp", "jpeg"} and (fps is None or fps <= 1):
+            nb_frames = stream.get("nb_frames")
+            try:
+                nb_frames_value = int(nb_frames)
+            except (TypeError, ValueError):
+                nb_frames_value = None
+            if nb_frames_value is None or nb_frames_value <= 1:
+                return True
+
+        tags = stream.get("tags") or {}
+        title = str(tags.get("title") or "").lower()
+        if "cover" in title and "art" in title:
+            return True
+
+        return False

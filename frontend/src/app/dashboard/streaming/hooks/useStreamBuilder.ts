@@ -1,0 +1,433 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+
+import { api } from '@/lib/api'
+import type {
+  Asset,
+  CreateStreamPayload,
+  Destination,
+  MediaCollection,
+  QuotaUsageResponse,
+  Stream,
+} from '@/lib/types'
+
+import {
+  createDefaultEditorState,
+  DEFAULT_SCHEDULE_STATE,
+  deriveEditorStateFromCollection,
+  type CollectionEditorState,
+  type ScheduleState,
+} from '../builder-helpers'
+
+type Translator = (key: string, values?: Record<string, unknown>) => string
+
+export type BuilderTab = 'video' | 'audio' | 'destinations' | 'schedule'
+
+export type StreamFormState = {
+  name: string
+  destination_ids: string[]
+}
+
+type DragState = { collection: 'video' | 'audio'; index: number } | null
+
+type UseStreamBuilderOptions = {
+  destinations?: Destination[]
+  assets?: Asset[]
+  videoCollections?: MediaCollection[]
+  audioCollections?: MediaCollection[]
+  streams?: Stream[]
+  quota?: QuotaUsageResponse
+  tStreaming: Translator
+  streamingToasts: Translator
+  onCreated?: () => void
+}
+
+export const useStreamBuilder = ({
+  destinations,
+  assets,
+  videoCollections,
+  audioCollections,
+  streams,
+  quota,
+  tStreaming,
+  streamingToasts,
+  onCreated,
+}: UseStreamBuilderOptions) => {
+  const queryClient = useQueryClient()
+
+  const enabledDestinations = useMemo(
+    () => (destinations ?? []).filter((destination) => destination.enabled),
+    [destinations],
+  )
+
+  const [streamForm, setStreamForm] = useState<StreamFormState>(() => ({
+    name: '',
+    destination_ids: enabledDestinations.length > 0 ? [enabledDestinations[0].id] : [],
+  }))
+  const [activeBuilderTab, setActiveBuilderTab] = useState<BuilderTab>('video')
+  const [mixMode, setMixMode] = useState<'video_only' | 'mixed'>('mixed')
+  const [videoEditor, setVideoEditor] = useState<CollectionEditorState>(createDefaultEditorState())
+  const [audioEditor, setAudioEditor] = useState<CollectionEditorState>(
+    createDefaultEditorState({ shuffle: true }),
+  )
+  const [scheduleState, setScheduleState] = useState<ScheduleState>(DEFAULT_SCHEDULE_STATE)
+  const [dragState, setDragState] = useState<DragState>(null)
+  const [isBuilderSubmitting, setIsBuilderSubmitting] = useState(false)
+
+  const assetMap = useMemo(() => {
+    if (!assets) return new Map<string, Asset>()
+    return new Map(assets.map((asset) => [asset.id, asset]))
+  }, [assets])
+
+  const videoAssets = useMemo(
+    () => (assets ?? []).filter((asset) => asset.asset_type === 'video'),
+    [assets],
+  )
+  const audioAssets = useMemo(
+    () => (assets ?? []).filter((asset) => asset.asset_type === 'audio'),
+    [assets],
+  )
+
+  const runningStreams = useMemo(
+    () => (streams ?? []).filter((stream) => stream.status === 'running'),
+    [streams],
+  )
+  const errorStreams = useMemo(
+    () => (streams ?? []).filter((stream) => stream.status === 'error'),
+    [streams],
+  )
+
+  const concurrentStreamsLimit = quota?.streams?.limit ?? null
+  const planQualityLimits = quota?.quality
+
+  const builderTabsList: BuilderTab[] = useMemo(
+    () => ['video', 'audio', 'destinations', 'schedule'],
+    [],
+  )
+  const currentTabIndex = builderTabsList.indexOf(activeBuilderTab)
+  const isFinalTab = currentTabIndex === builderTabsList.length - 1
+
+  const audioEnabled = mixMode === 'mixed'
+
+  useEffect(() => {
+    if (enabledDestinations.length === 0) {
+      return
+    }
+
+    setStreamForm((prev) => {
+      if (prev.destination_ids.length > 0) {
+        return prev
+      }
+      return { ...prev, destination_ids: [enabledDestinations[0].id] }
+    })
+  }, [enabledDestinations])
+
+  const updateEditor = useCallback(
+    (
+      target: 'video' | 'audio',
+      updater: (current: CollectionEditorState) => CollectionEditorState,
+    ) => {
+      if (target === 'video') {
+        setVideoEditor((prev) => updater(prev))
+      } else {
+        setAudioEditor((prev) => updater(prev))
+      }
+    },
+    [],
+  )
+
+  const addAssetToEditor = useCallback(
+    (target: 'video' | 'audio', assetId: string) => {
+      updateEditor(target, (prev) => {
+        if (prev.items.some((item) => item.asset_id === assetId)) {
+          return prev
+        }
+        return {
+          ...prev,
+          items: [...prev.items, { asset_id: assetId }],
+          mode: prev.mode === 'existing' ? 'custom' : prev.mode,
+        }
+      })
+    },
+    [updateEditor],
+  )
+
+  const removeAssetFromEditor = useCallback(
+    (target: 'video' | 'audio', assetId: string) => {
+      updateEditor(target, (prev) => ({
+        ...prev,
+        items: prev.items.filter((item) => item.asset_id !== assetId),
+      }))
+    },
+    [updateEditor],
+  )
+
+  const reorderEditorItems = useCallback(
+    (target: 'video' | 'audio', fromIndex: number, toIndex: number) => {
+      updateEditor(target, (prev) => {
+        if (fromIndex === toIndex) return prev
+        const items = [...prev.items]
+        const [moved] = items.splice(fromIndex, 1)
+        items.splice(Math.max(0, Math.min(items.length, toIndex)), 0, moved)
+        return { ...prev, items }
+      })
+    },
+    [updateEditor],
+  )
+
+  const handleItemDragStart = useCallback((target: 'video' | 'audio', index: number) => {
+    setDragState({ collection: target, index })
+  }, [])
+
+  const handleItemDrop = useCallback(
+    (target: 'video' | 'audio', index: number) => {
+      setDragState((current) => {
+        if (!current || current.collection !== target) {
+          return null
+        }
+        reorderEditorItems(target, current.index, index)
+        return null
+      })
+    },
+    [reorderEditorItems],
+  )
+
+  const handleSelectCollection = useCallback(
+    (target: 'video' | 'audio', collectionId: string | 'custom') => {
+      if (collectionId === 'custom') {
+        updateEditor(target, (prev) => ({
+          ...createDefaultEditorState({ shuffle: target === 'audio' }),
+          mode: 'custom',
+          name: prev.name,
+          items: prev.items,
+        }))
+        return
+      }
+
+      const sourceCollections = target === 'video' ? videoCollections : audioCollections
+      const found = sourceCollections?.find((collection) => collection.id === collectionId)
+      if (found) {
+        const derived = deriveEditorStateFromCollection(found)
+        updateEditor(target, () => derived)
+        if (target === 'audio') {
+          setMixMode('mixed')
+        }
+      }
+    },
+    [audioCollections, updateEditor, videoCollections],
+  )
+
+  const handleCustomizeExisting = useCallback((target: 'video' | 'audio') => {
+    updateEditor(target, (prev) => ({
+      ...prev,
+      mode: 'custom',
+      selectedCollectionId: null,
+    }))
+  }, [updateEditor])
+
+  const handleDestinationToggle = useCallback((destinationId: string) => {
+    setStreamForm((prev) =>
+      prev.destination_ids.includes(destinationId)
+        ? {
+            ...prev,
+            destination_ids: prev.destination_ids.filter((id) => id !== destinationId),
+          }
+        : {
+            ...prev,
+            destination_ids: [...prev.destination_ids, destinationId],
+          },
+    )
+  }, [])
+
+  const editorHasSelection = useCallback(
+    (editor: CollectionEditorState) => Boolean(editor.selectedCollectionId) || editor.items.length > 0,
+    [],
+  )
+
+  const loopModeForEditor = useCallback((editor: CollectionEditorState) => {
+    if (editor.shuffle) return 'shuffle'
+    if (editor.loop) return 'loop'
+    return 'once'
+  }, [])
+
+  const persistEditorAsCollection = useCallback(
+    async (
+      editor: CollectionEditorState,
+      type: 'video_background' | 'audio_playlist',
+      fallbackLabel: string,
+    ): Promise<string> => {
+      const payload = {
+        name: editor.name.trim() || `${fallbackLabel} ${new Date().toLocaleTimeString()}`,
+        collection_type: type,
+        items: editor.items.map((item, index) => ({
+          asset_id: item.asset_id,
+          position: index,
+          loop_mode: loopModeForEditor(editor),
+        })),
+      }
+      const created = await api.mediaCollections.create(payload)
+      return created.id
+    },
+    [loopModeForEditor],
+  )
+
+  const handleAudioToggle = useCallback((enabled: boolean) => {
+    if (enabled) {
+      setMixMode('mixed')
+    } else {
+      setMixMode('video_only')
+      setAudioEditor(createDefaultEditorState({ shuffle: true }))
+    }
+  }, [])
+
+  const resetBuilderState = useCallback(() => {
+    setStreamForm({
+      name: '',
+      destination_ids: enabledDestinations.length > 0 ? [enabledDestinations[0].id] : [],
+    })
+    setVideoEditor(createDefaultEditorState())
+    setAudioEditor(createDefaultEditorState({ shuffle: true }))
+    setScheduleState(DEFAULT_SCHEDULE_STATE)
+    setMixMode('mixed')
+    setDragState(null)
+    setActiveBuilderTab('video')
+  }, [enabledDestinations])
+
+  const createStreamMutation = useMutation({
+    mutationFn: (payload: CreateStreamPayload) => api.streams.create(payload),
+    onSuccess: () => {
+      toast.success(streamingToasts('stream.created'))
+      queryClient.invalidateQueries({ queryKey: ['streams'] })
+      resetBuilderState()
+      onCreated?.()
+    },
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
+  })
+
+  const handleBuilderSubmit = useCallback(async () => {
+    const hasVideoSelection = editorHasSelection(videoEditor)
+    if (!hasVideoSelection) {
+      toast.error(streamingToasts('errors.selectBackground'))
+      setActiveBuilderTab('video')
+      return
+    }
+
+    if (audioEnabled && !editorHasSelection(audioEditor)) {
+      toast.error(streamingToasts('errors.selectAudio'))
+      setActiveBuilderTab('audio')
+      return
+    }
+
+    if (streamForm.destination_ids.length === 0) {
+      toast.error(streamingToasts('errors.selectDestination'))
+      setActiveBuilderTab('destinations')
+      return
+    }
+
+    if (scheduleState.startMode === 'schedule' && !scheduleState.startAt) {
+      toast.error(streamingToasts('errors.scheduleTime'))
+      setActiveBuilderTab('schedule')
+      return
+    }
+
+    setIsBuilderSubmitting(true)
+    try {
+      let videoCollectionId = videoEditor.selectedCollectionId
+      if (!videoCollectionId || videoEditor.mode === 'custom') {
+        videoCollectionId = await persistEditorAsCollection(
+          videoEditor,
+          'video_background',
+          tStreaming('streams.builder.video.title'),
+        )
+      }
+
+      let audioCollectionId: string | undefined
+      if (audioEnabled) {
+        audioCollectionId = audioEditor.selectedCollectionId ?? undefined
+        if (!audioCollectionId || audioEditor.mode === 'custom') {
+          audioCollectionId = await persistEditorAsCollection(
+            audioEditor,
+            'audio_playlist',
+            tStreaming('streams.builder.audio.title'),
+          )
+        }
+      }
+
+      const payload: CreateStreamPayload = {
+        name: streamForm.name || undefined,
+        destination_ids: streamForm.destination_ids,
+        video_collection_id: videoCollectionId ?? undefined,
+        audio_collection_id: audioEnabled ? audioCollectionId : undefined,
+        mix_mode: audioEnabled ? 'mixed' : 'video_only',
+        settings_json: {
+          start_mode: scheduleState.startMode,
+          start_at: scheduleState.startMode === 'schedule' ? scheduleState.startAt : undefined,
+          loop_stream: scheduleState.loopStream,
+          video_volume: scheduleState.videoVolume,
+          audio_volume: scheduleState.audioVolume,
+          shuffle_video: videoEditor.shuffle,
+          shuffle_audio: audioEditor.shuffle,
+        },
+      }
+
+      await createStreamMutation.mutateAsync(payload)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create collection'
+      toast.error(streamingToasts('generic.errorWithMessage', { message }))
+    } finally {
+      setIsBuilderSubmitting(false)
+    }
+  }, [
+    audioEditor,
+    audioEnabled,
+    editorHasSelection,
+    persistEditorAsCollection,
+    scheduleState,
+    streamForm,
+    streamingToasts,
+    tStreaming,
+    videoEditor,
+    createStreamMutation,
+  ])
+
+  return {
+    streamForm,
+    setStreamForm,
+    activeBuilderTab,
+    setActiveBuilderTab,
+    builderTabsList,
+    currentTabIndex,
+    isFinalTab,
+    mixMode,
+    audioEnabled,
+    videoEditor,
+    audioEditor,
+    scheduleState,
+    setScheduleState,
+    addAssetToEditor,
+    removeAssetFromEditor,
+    handleItemDragStart,
+    handleItemDrop,
+    handleSelectCollection,
+    handleCustomizeExisting,
+    handleDestinationToggle,
+    handleAudioToggle,
+    handleBuilderSubmit,
+    isBuilderSubmitting,
+    createPending: createStreamMutation.isPending,
+    videoAssets,
+    audioAssets,
+    assetMap,
+    destinations,
+    enabledDestinations,
+    dragState,
+    resetBuilderState,
+    runningStreams,
+    errorStreams,
+    concurrentStreamsLimit,
+    planQualityLimits,
+    updateEditor,
+  }
+}

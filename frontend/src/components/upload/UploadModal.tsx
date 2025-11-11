@@ -116,6 +116,8 @@ const VIDEO_EXTENSIONS = new Set([
 ])
 const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'aac', 'flac', 'ogg', 'oga', 'm4a', 'aiff', 'alac'])
 
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 * 1024 // 10 GB
+
 const buildAcceptList = (extensions: Set<string>, wildcard: 'audio' | 'video') => {
   const extList = Array.from(extensions)
     .map((ext) => `.${ext}`)
@@ -125,6 +127,9 @@ const buildAcceptList = (extensions: Set<string>, wildcard: 'audio' | 'video') =
 
 const VIDEO_ACCEPT = buildAcceptList(VIDEO_EXTENSIONS, 'video')
 const AUDIO_ACCEPT = buildAcceptList(AUDIO_EXTENSIONS, 'audio')
+const VIDEO_ALLOWED_TYPES = ['video/*', ...Array.from(VIDEO_EXTENSIONS).map((ext) => `.${ext}`)]
+const AUDIO_ALLOWED_TYPES = ['audio/*', ...Array.from(AUDIO_EXTENSIONS).map((ext) => `.${ext}`)]
+const COVER_ART_CODECS = new Set(['mjpeg', 'jpeg', 'jpg', 'png', 'bmp'])
 
 function parseNumber(value: unknown): number | undefined {
   if (typeof value === 'number') {
@@ -317,6 +322,30 @@ function detectMediaKind(file: File | DashboardFile): { isVideo: boolean; isAudi
     component: 'UploadModal',
   })
   return { isVideo: false, isAudio: false }
+}
+
+function looksLikeCoverArt(video?: UploadAnalysis['video']): boolean {
+  if (!video) return false
+  if (typeof video.codec !== 'string') {
+    return false
+  }
+
+  const normalizedCodec = video.codec.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const isCoverCodec =
+    COVER_ART_CODECS.has(normalizedCodec) ||
+    normalizedCodec.includes('mjpeg') ||
+    normalizedCodec.includes('motionjpeg')
+
+  if (!isCoverCodec) {
+    return false
+  }
+
+  const fps = typeof video.fps === 'number' && Number.isFinite(video.fps) ? video.fps : undefined
+  if (fps !== undefined && fps > 1) {
+    return false
+  }
+
+  return true
 }
 
 function normalizePixelFormat(raw?: string): string | undefined {
@@ -512,6 +541,19 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
     }
   }, [])
 
+  useEffect(() => {
+    const allowedFileTypes = assetKind === 'audio' ? AUDIO_ALLOWED_TYPES : VIDEO_ALLOWED_TYPES
+    uppy.setOptions({
+      restrictions: {
+        allowedFileTypes,
+        maxFileSize: MAX_UPLOAD_BYTES,
+      },
+    })
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [assetKind, uppy])
+
 
   useEffect(() => {
     if (!folders || folders.length === 0) {
@@ -621,6 +663,28 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
         const parsed = JSON.parse(result) as MediaInfoJson
         const analysis = buildAnalysis(parsed, t, { assetKind: assetKindHint })
 
+        if (assetKindHint === 'audio' && analysis.video && !looksLikeCoverArt(analysis.video)) {
+          logger.warn('Rejecting analysed file: detected real video streams while in audio mode', {
+            fileName: file.name,
+            codec: analysis.video.codec,
+            fps: analysis.video.fps,
+            component: 'UploadModal',
+          })
+          toast.error(t('errors.videoInAudioMode'))
+          try {
+            uppy.removeFile(file.id)
+          } catch (removeError) {
+            logger.error('Failed to remove file after audio-mode rejection', removeError, {
+              component: 'UploadModal',
+              fileId: file.id,
+            })
+          }
+          if (isMountedRef.current) {
+            setUploadItems((items) => items.filter((item) => item.id !== file.id))
+          }
+          return
+        }
+
         if (isMountedRef.current) {
           setUploadItems((items) =>
             items.map((current) =>
@@ -660,7 +724,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
         }
       }
     },
-    [t]
+    [t, uppy]
   )
 
   useEffect(() => {
