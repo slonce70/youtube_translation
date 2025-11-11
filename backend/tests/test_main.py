@@ -10,10 +10,14 @@ class DummyTask:
 
     def __init__(self, coro):
         self._coro = coro
+        self._callbacks = []
 
     def cancel(self):
         if not self._coro.cr_running:
             self._coro.close()
+
+    def add_done_callback(self, callback):
+        self._callbacks.append(callback)
 
 
 @pytest.mark.asyncio
@@ -24,14 +28,14 @@ async def test_startup_schedules_ffmpeg_cleanup(monkeypatch):
 
     scheduled_coroutines = []
 
-    def fake_create_task(coro):
+    def fake_schedule(coro):
         scheduled_coroutines.append(coro)
         return DummyTask(coro)
 
     fake_check = AsyncMock(return_value=True)
     fake_patch = AsyncMock()
 
-    monkeypatch.setattr("app.main.asyncio.create_task", fake_create_task)
+    monkeypatch.setattr(main, "schedule_background_task", fake_schedule)
     monkeypatch.setattr("app.core.database.check_db_connection", fake_check)
     monkeypatch.setattr("app.core.database.apply_schema_patches", fake_patch)
 

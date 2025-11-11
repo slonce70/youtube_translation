@@ -330,6 +330,40 @@ class TestFFmpegStreamManager:
                 [{"url": "rtmp://youtube.com/live", "key": "primary"}],
             )
 
+    def test_video_only_reuses_audio_from_video_playlist(self, tmp_path):
+        """Video-only streams with embedded audio should not inject silent placeholders."""
+        manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
+
+        video_playlist = tmp_path / "video.txt"
+        video_playlist.write_text("ffconcat version 1.0\n")
+
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=video_playlist,
+            audio_playlist=None,
+            mix_mode="video_only",
+            video_loop=True,
+            audio_loop=False,
+            needs_video_placeholder=False,
+            needs_audio_placeholder=False,
+            video_copy_compatible=True,
+            audio_copy_compatible=False,
+            video_assets=[{"path": str(video_playlist), "meta": {"audio": {"codec": "aac"}}}],
+            audio_assets=[],
+            video_has_audio=True,
+            video_audio_copy_compatible=True,
+        )
+
+        plan = manager._build_command(
+            playlists,
+            [{"url": "rtmp://youtube.com/live", "key": "primary"}],
+        )
+
+        command = " ".join(plan.command)
+        assert "anullsrc" not in command
+        # Audio should be copied from the video input
+        assert plan.copy_audio is True
+
     @pytest.mark.asyncio
     async def test_handle_stream_failure_marks_stream_error(self, monkeypatch):
         """Final FFmpeg failure should persist error state for UUID streams."""

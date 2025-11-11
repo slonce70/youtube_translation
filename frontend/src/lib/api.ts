@@ -1,4 +1,4 @@
-import { getAccessToken } from './supabase'
+import { getAccessToken, waitForAuth } from './supabase'
 import type {
   Asset,
   Playlist,
@@ -35,6 +35,36 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
+
+function resolveApiBase(): { base: string; isAbsolute: boolean } {
+  const rawBase = (API_BASE_URL || '').trim() || '/api'
+  const isAbsolute = /^https?:\/\//i.test(rawBase)
+
+  if (typeof window !== 'undefined' && isAbsolute) {
+    try {
+      const baseUrl = new URL(rawBase)
+      const currentHostname = window.location.hostname
+      if (
+        LOCAL_HOSTNAMES.has(baseUrl.hostname) &&
+        !LOCAL_HOSTNAMES.has(currentHostname)
+      ) {
+        return { base: '/api', isAbsolute: false }
+      }
+    } catch (error) {
+      console.warn('[api] Failed to parse NEXT_PUBLIC_API_URL, falling back to relative /api', error)
+      return { base: '/api', isAbsolute: false }
+    }
+  }
+
+  let normalized = rawBase.replace(/\/$/, '')
+  if (!isAbsolute) {
+    normalized = normalized.startsWith('/') ? normalized : `/${normalized}`
+  }
+
+  return { base: normalized || '/api', isAbsolute }
+}
+
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>
 }
@@ -55,19 +85,35 @@ export class ApiError extends Error {
 async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { params, ...fetchOptions } = options
 
-  // Ensure trailing slash for FastAPI compatibility
-  const normalizedEndpoint = endpoint.endsWith('/') ? endpoint : `${endpoint}/`
-  const url = new URL(`${API_BASE_URL}${normalizedEndpoint}`)
+  // Normalize base URL to support both absolute (http...) and relative (/api) forms
+  const { base: normalizedBase } = resolveApiBase()
+
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+  const endpointWithSlash = normalizedEndpoint.endsWith('/') ? normalizedEndpoint : `${normalizedEndpoint}/`
+
+  let urlString = `${normalizedBase}${endpointWithSlash}`
 
   if (params) {
+    const searchParams = new URLSearchParams()
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
-        url.searchParams.append(key, String(value))
+        searchParams.append(key, String(value))
       }
     })
+
+    const queryString = searchParams.toString()
+    if (queryString) {
+      urlString = `${urlString}?${queryString}`
+    }
   }
 
+  // Wait for auth to be ready before getting token
+  // This prevents race conditions on initial page load
+  await waitForAuth()
   const token = await getAccessToken()
+  if (!token) {
+    console.warn('[api] Missing Supabase access token for request', normalizedEndpoint)
+  }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -78,7 +124,7 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await fetch(urlString, {
     ...fetchOptions,
     headers,
   })

@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import signal
 import shutil
@@ -6,7 +7,7 @@ from collections import deque
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import UUID
 
 import aiofiles
@@ -61,6 +62,94 @@ class FFmpegStreamManager:
         self.active_streams: Dict[str, asyncio.subprocess.Process] = {}
         self.stream_info: Dict[str, Dict] = {}
         self._cleanup_lock = asyncio.Lock()  # Thread-safety for cleanup operations
+        self._monitor_tasks: Dict[str, asyncio.Task] = {}
+
+    def _register_monitor_task(self, stream_id: str, task: asyncio.Task) -> None:
+        """Track monitor tasks so they can be awaited or cancelled during shutdown."""
+        if not isinstance(task, asyncio.Task):
+            return
+
+        self._monitor_tasks[stream_id] = task
+
+        def _cleanup(completed: asyncio.Task, *, tracked_stream: str = stream_id) -> None:
+            stored = self._monitor_tasks.get(tracked_stream)
+            if stored is completed:
+                self._monitor_tasks.pop(tracked_stream, None)
+            try:
+                completed.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:  # pragma: no cover - diagnostic safeguard
+                logger.exception(
+                    "Monitor task for stream %s raised unexpected error: %s",
+                    tracked_stream,
+                    exc,
+                )
+
+        task.add_done_callback(_cleanup)
+
+    async def _await_monitor_task(self, stream_id: str) -> None:
+        task = self._monitor_tasks.get(stream_id)
+        if not isinstance(task, asyncio.Task):
+            self._monitor_tasks.pop(stream_id, None)
+            return
+
+        current = asyncio.current_task()
+        if task is current:
+            return
+
+        if not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.exception(
+                    "Waiting for monitor task of stream %s failed: %s",
+                    stream_id,
+                    exc,
+                )
+
+        self._monitor_tasks.pop(stream_id, None)
+
+    async def _await_all_monitor_tasks(self) -> None:
+        pending: List[Tuple[str, asyncio.Task]] = []
+        for stream_id, task in list(self._monitor_tasks.items()):
+            if not isinstance(task, asyncio.Task):
+                self._monitor_tasks.pop(stream_id, None)
+                continue
+            if task is asyncio.current_task():
+                continue
+            if task.done():
+                self._monitor_tasks.pop(stream_id, None)
+                try:
+                    task.result()
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:  # pragma: no cover
+                    logger.exception(
+                        "Monitor task for stream %s raised unexpected error: %s",
+                        stream_id,
+                        exc,
+                    )
+                continue
+            pending.append((stream_id, task))
+
+        for stream_id, task in pending:
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.exception(
+                    "Waiting for monitor task of stream %s failed: %s",
+                    stream_id,
+                    exc,
+                )
+            finally:
+                stored = self._monitor_tasks.get(stream_id)
+                if stored is task:
+                    self._monitor_tasks.pop(stream_id, None)
 
     def _normalize_playlists(self, playlists: Union[PlaylistFileSet, Path, str]) -> PlaylistFileSet:
         """Accept legacy playlist inputs by wrapping them in PlaylistFileSet."""
@@ -173,7 +262,10 @@ class FFmpegStreamManager:
             track_stream_start()
             
             # Monitor process in background and handle logs
-            asyncio.create_task(self._monitor_process(stream_id, process, log_file))
+            monitor_task = asyncio.create_task(
+                self._monitor_process(stream_id, process, log_file)
+            )
+            self._register_monitor_task(stream_id, monitor_task)
 
             return True
 
@@ -192,55 +284,55 @@ class FFmpegStreamManager:
         Returns:
             True if stream stopped successfully
         """
-        async with self._cleanup_lock:
-            try:
+        try:
+            stopped = False
+            async with self._cleanup_lock:
                 if stream_id not in self.active_streams:
                     logger.warning(f"Stream {stream_id} is not running")
-                    # Cleanup orphaned info
                     if stream_id in self.stream_info:
                         del self.stream_info[stream_id]
-                    return False
+                else:
+                    process = self.active_streams[stream_id]
+                    info = self.stream_info.get(stream_id)
+                    if info is not None:
+                        info["manual_stop"] = True
 
-                process = self.active_streams[stream_id]
-                info = self.stream_info.get(stream_id)
-                if info is not None:
-                    info["manual_stop"] = True
-                
-                logger.info(f"Stopping stream {stream_id} (PID {process.pid})")
+                    logger.info(f"Stopping stream {stream_id} (PID {process.pid})")
 
-                # Send SIGINT for graceful shutdown
-                try:
-                    process.send_signal(signal.SIGINT)
-                except ProcessLookupError:
-                    logger.warning(f"Process {process.pid} already terminated")
-
-                try:
-                    # Wait for process to exit
-                    await asyncio.wait_for(process.wait(), timeout=timeout)
-                    logger.info(f"Stream {stream_id} stopped gracefully")
-                except asyncio.TimeoutError:
-                    # Force kill if timeout
-                    logger.warning(f"Stream {stream_id} timeout, forcing kill")
                     try:
-                        process.kill()
-                        await process.wait()
+                        process.send_signal(signal.SIGINT)
                     except ProcessLookupError:
-                        pass
+                        logger.warning(f"Process {process.pid} already terminated")
 
-                # Cleanup
-                if stream_id in self.active_streams:
-                    del self.active_streams[stream_id]
-                if stream_id in self.stream_info:
-                    del self.stream_info[stream_id]
+                    try:
+                        await asyncio.wait_for(
+                            self._await_process_exit(stream_id, process),
+                            timeout=timeout,
+                        )
+                        logger.info(f"Stream {stream_id} stopped gracefully")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Stream {stream_id} timeout, forcing kill")
+                        try:
+                            process.kill()
+                            await self._await_process_exit(stream_id, process)
+                        except ProcessLookupError:
+                            pass
 
-                return True
+                    if stream_id in self.active_streams:
+                        del self.active_streams[stream_id]
+                    if stream_id in self.stream_info:
+                        del self.stream_info[stream_id]
+                    stopped = True
 
-            except Exception as e:
-                logger.exception(f"Error stopping stream {stream_id}: {e}")
-                # Force cleanup on error
-                self.active_streams.pop(stream_id, None)
-                self.stream_info.pop(stream_id, None)
-                return False
+            await self._await_monitor_task(stream_id)
+            return stopped
+
+        except Exception as e:
+            logger.exception(f"Error stopping stream {stream_id}: {e}")
+            self.active_streams.pop(stream_id, None)
+            self.stream_info.pop(stream_id, None)
+            await self._await_monitor_task(stream_id)
+            return False
 
     async def restart_stream(
         self,
@@ -320,6 +412,13 @@ class FFmpegStreamManager:
         stream_ids = list(self.active_streams.keys())
         for stream_id in stream_ids:
             await self.stop_stream(stream_id)
+        await self._await_all_monitor_tasks()
+
+    async def wait_for_exit(self, stream_id: str, poll_interval: float = 1.0) -> None:
+        """Wait until a managed stream finishes executing."""
+        stream_id = str(stream_id)
+        while stream_id in self.active_streams:
+            await asyncio.sleep(max(poll_interval, 0.1))
 
     def _build_command(
         self,
@@ -369,6 +468,12 @@ class FFmpegStreamManager:
         video_input_idx: Optional[int] = None
         audio_input_idx: Optional[int] = None
 
+        reuse_video_audio = (
+            playlists.mix_mode == "video_only"
+            and playlists.audio_playlist is None
+            and playlists.video_has_audio
+        )
+
         if playlists.mix_mode == "audio_only":
             if playlists.audio_playlist:
                 audio_args: List[str] = []
@@ -417,7 +522,14 @@ class FFmpegStreamManager:
             else:
                 raise ValueError("Video playlist is required for this stream mode")
 
-            if playlists.mix_mode == "video_only":
+            if reuse_video_audio:
+                audio_input_idx = video_input_idx
+                copy_audio = (
+                    playlists.video_audio_copy_compatible
+                    and not playlists.needs_audio_placeholder
+                    and not multi_destination
+                )
+            elif playlists.mix_mode == "video_only":
                 audio_input_idx = add_input(
                     self._build_audio_placeholder_args(),
                     provides_video=False,
@@ -577,10 +689,19 @@ class FFmpegStreamManager:
         """Monitor FFmpeg process, write logs, and cleanup on exit"""
         try:
             # Write logs to file if specified
+            log_task = None
             if log_file:
-                asyncio.create_task(self._write_logs_to_file(stream_id, process, log_file))
-            
-            returncode = await process.wait()
+                log_task = asyncio.create_task(
+                    self._write_logs_to_file(stream_id, process, log_file)
+                )
+
+            returncode = await self._await_process_exit(stream_id, process)
+
+            if log_task is not None:
+                try:
+                    await log_task
+                except Exception:  # pragma: no cover - defensive cleanup
+                    logger.exception("Log writer failed for stream %s", stream_id)
 
             info = self.stream_info.get(stream_id)
             if info is not None:
@@ -611,6 +732,47 @@ class FFmpegStreamManager:
 
         except Exception as e:
             logger.exception(f"Error monitoring stream {stream_id}: {e}")
+
+    async def _await_process_exit(
+        self,
+        stream_id: str,
+        process: asyncio.subprocess.Process,
+    ) -> int:
+        """Wait for FFmpeg process termination, handling mocked processes in tests."""
+
+        wait_callable = getattr(process, "wait", None)
+        returncode: Optional[int] = None
+
+        if callable(wait_callable):
+            try:
+                wait_result = wait_callable()
+            except TypeError:
+                wait_result = None
+
+            if wait_result is not None:
+                if inspect.isawaitable(wait_result):
+                    returncode = await wait_result
+                else:
+                    try:
+                        returncode = int(wait_result)
+                    except (TypeError, ValueError):
+                        logger.debug(
+                            "Non-awaitable wait() result for stream %s: %r",
+                            stream_id,
+                            wait_result,
+                        )
+
+        if returncode is None:
+            fallback_code = getattr(process, "returncode", None)
+            if fallback_code is None:
+                logger.debug(
+                    "Process %s has no awaitable wait(); assuming successful exit",
+                    stream_id,
+                )
+                fallback_code = 0
+            returncode = int(fallback_code)
+
+        return returncode
 
     async def _handle_stream_failure(self, stream_id: str, returncode: int):
         """Handle non-zero FFmpeg exit codes with alerts and optional restart."""

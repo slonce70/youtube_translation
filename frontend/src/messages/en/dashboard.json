@@ -7,11 +7,11 @@
     "storageUsed": "Storage used",
     "streamingTimeLeft": "Streaming time left",
     "activeStreams": "Active streams",
-    "libraryAssets": "Library assets"
+    "libraryAssets": "Files"
   },
   "usage": {
     "heading": "Usage overview",
-    "storageLabel": "Library storage",
+    "storageLabel": "File storage",
     "storageUsed": "{value} used",
     "storageRemaining": "Remaining {remaining} of {limit}",
     "dailyStreamingLabel": "Daily streaming time",
@@ -56,7 +56,7 @@
     "actions": {
       "upload": {
         "label": "Upload video",
-        "description": "Add new video to library"
+        "description": "Add new media file"
       },
       "goLive": {
         "label": "Go Live",
@@ -184,10 +184,10 @@
     "subtitle": "Track how close you are to plan limits",
     "badge": "{plan} tier",
     "storage": {
-      "label": "Library storage",
+      "label": "File storage",
       "summary": "{used} of {limit}",
       "remaining": "Remaining {value}",
-      "assets": "Assets in library: {count}"
+      "assets": "Files stored: {count}"
     },
     "streaming": {
       "label": "Daily streaming time",

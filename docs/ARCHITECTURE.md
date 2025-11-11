@@ -83,11 +83,16 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 **Core Modules:**
 
 #### API Routes (`app/api/routes/`)
-- `auth.py` - Supabase authentication
-- `assets.py` - Video file management
-- `playlists.py` - Playlist CRUD
-- `destinations.py` - YouTube channel management
-- `streams.py` - Stream control
+- С thin-ендпоінти, що лише приймають HTTP-запит, роблять базову валідацію та делегують роботу у відповідний сервіс. Це спрощує тестування й дає можливість повторно використовувати логіку в CLI/скриптах.
+
+#### Service Layer (`app/services/`)
+- `admin/` — `AdminService`, audit логіка, робота з алертами, моніторинг стрімів.
+- `assets/` — `AssetService`, `AssetUploadService`, токени завантажень та інтеграція з валідатором, quota-хелпери.
+- `destinations/` — `DestinationService`. Шифрування ключів, quota-перевірки, маскування.
+- `media_folders/` та `media_collections/` — інкапсульований CRUD для бібліотеки, включно з bulk-операціями та валідацією активів.
+- `playlists/` — `PlaylistService`, що поєднує квоти, валідацію активів і `PlaylistBuilder`.
+- `streams/` — `StreamService` + `StreamControlService`, які розділяють створення конфігурацій та керування FFmpeg/quotas.
+- `quota/` — `QuotaService` для tusd-хуків і клієнтських запитів.
 
 #### Streaming Engine (`app/streaming/`)
 - `validator.py` - FFprobe-based video validation
@@ -95,10 +100,10 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 - `playlist_builder.py` - Concat demuxer file generation
 
 **Key Features:**
-- Asynchronous FFmpeg process management
-- Real-time log parsing and streaming
-- System resource monitoring
-- Graceful shutdown handling
+- Asynchronous FFmpeg process management (через `StreamControlService` + `ffmpeg_manager`)
+- Реальний час логів та SSE подачі
+- Моніторинг ресурсів / reconciliation (`app/core/stream_reconciler.py`)
+- Graceful shutdown + auto-restart (supervisor/systemd режими)
 
 ### 3. FFmpeg Streaming Engine
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type Uppy from '@uppy/core'
 import type { UppyFile } from '@uppy/core'
 import MediaInfoFactory, { type MediaInfo } from 'mediainfo.js'
+import { toast } from 'sonner'
 import {
   AlertCircle,
   CheckCircle2,
@@ -78,6 +79,7 @@ interface UploadItem {
   bytesTotal: number
   error?: string
   analysis?: UploadAnalysis
+  assetKind: 'video' | 'audio'
 }
 
 interface UploadModalProps {
@@ -97,6 +99,32 @@ interface MediaInfoJson {
 }
 
 const CDN_MEDIINFO_BASE = 'https://cdn.jsdelivr.net/npm/mediainfo.js/dist/'
+
+const VIDEO_EXTENSIONS = new Set([
+  'mp4',
+  'mov',
+  'mkv',
+  'flv',
+  'wmv',
+  'avi',
+  'webm',
+  'm4v',
+  'mpg',
+  'mpeg',
+  'ts',
+  'm2ts',
+])
+const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'aac', 'flac', 'ogg', 'oga', 'm4a', 'aiff', 'alac'])
+
+const buildAcceptList = (extensions: Set<string>, wildcard: 'audio' | 'video') => {
+  const extList = Array.from(extensions)
+    .map((ext) => `.${ext}`)
+    .join(',')
+  return extList ? `${extList},${wildcard}/*` : `${wildcard}/*`
+}
+
+const VIDEO_ACCEPT = buildAcceptList(VIDEO_EXTENSIONS, 'video')
+const AUDIO_ACCEPT = buildAcceptList(AUDIO_EXTENSIONS, 'audio')
 
 function parseNumber(value: unknown): number | undefined {
   if (typeof value === 'number') {
@@ -241,6 +269,56 @@ function normalizeAudioCodec(raw?: string): string | undefined {
   return value.replace(/[^a-z0-9]/g, '') || value
 }
 
+function detectMediaKind(file: File | DashboardFile): { isVideo: boolean; isAudio: boolean } {
+  const mime = ('type' in file ? file.type : '').toLowerCase().trim()
+  const name = 'name' in file ? file.name : ''
+  const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined
+  
+  logger.debug('Detecting media kind', {
+    fileName: name,
+    mimeType: mime || '(empty)',
+    extension: ext || '(none)',
+    component: 'UploadModal',
+  })
+  
+  // First check: extension-based detection (most reliable for user-selected files)
+  const hasVideoExt = ext ? VIDEO_EXTENSIONS.has(ext) : false
+  const hasAudioExt = ext ? AUDIO_EXTENSIONS.has(ext) : false
+  
+  // If extension clearly indicates video, it's video regardless of MIME
+  if (hasVideoExt) {
+    logger.debug('Detected as VIDEO (video extension)', { fileName: name, ext })
+    return { isVideo: true, isAudio: false }
+  }
+  
+  // If extension clearly indicates audio AND no video MIME, it's audio
+  if (hasAudioExt && !mime.startsWith('video/')) {
+    logger.debug('Detected as AUDIO (audio extension, no video MIME)', { fileName: name, ext })
+    return { isVideo: false, isAudio: true }
+  }
+  
+  // Second check: MIME type (can be unreliable but provides additional info)
+  if (mime) {
+    if (mime.startsWith('video/')) {
+      logger.debug('Detected as VIDEO (video MIME type)', { fileName: name, mime })
+      return { isVideo: true, isAudio: false }
+    }
+    if (mime.startsWith('audio/') && !hasVideoExt) {
+      logger.debug('Detected as AUDIO (audio MIME type)', { fileName: name, mime })
+      return { isVideo: false, isAudio: true }
+    }
+  }
+  
+  // Unknown type - neither extension nor MIME clearly indicates type
+  logger.warn('Could not determine media kind', {
+    fileName: name,
+    mimeType: mime || '(empty)',
+    extension: ext || '(none)',
+    component: 'UploadModal',
+  })
+  return { isVideo: false, isAudio: false }
+}
+
 function normalizePixelFormat(raw?: string): string | undefined {
   if (!raw) return undefined
   const value = raw.toLowerCase()
@@ -261,11 +339,16 @@ function formatCodecDisplay(raw?: string): string {
   return raw.toUpperCase()
 }
 
-function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnalysis {
+function buildAnalysis(
+  result: MediaInfoJson,
+  translate: Translate,
+  options?: { assetKind?: 'video' | 'audio' }
+): UploadAnalysis {
   const tracks = Array.isArray(result.media?.track) ? result.media?.track ?? [] : []
   const general = tracks.find((track) => track['@type'] === 'General') ?? {}
   const videoTrack = tracks.find((track) => track['@type'] === 'Video') ?? {}
   const audioTrack = tracks.find((track) => track['@type'] === 'Audio') ?? {}
+  const treatAsVideo = (options?.assetKind ?? 'video') === 'video'
 
   const overallBitrate = parseBitrate(general.OverallBitRate ?? general.BitRate)
   const videoBitrate =
@@ -307,7 +390,7 @@ function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnaly
   let isLikelyCompatible: boolean | undefined =
     normalizedVideoCodec || normalizedAudioCodec || normalizedPixelFormat ? true : undefined
 
-  if (recommendation.rule && bitrateForCheck) {
+  if (treatAsVideo && recommendation.rule && bitrateForCheck) {
     const bitrateMbps = bitrateForCheck / 1_000_000
     if (
       bitrateMbps >= recommendation.rule.minBitrateMbps &&
@@ -328,7 +411,7 @@ function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnaly
     }
   }
 
-  if (recommendation.fpsOutOfGuideline) {
+  if (treatAsVideo && recommendation.fpsOutOfGuideline) {
     warnings.push(translate('warnings.fpsOutOfGuideline'))
   }
 
@@ -336,7 +419,7 @@ function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnaly
   const expectedAudioCodecLabel = 'AAC'
   const expectedPixelFormatLabel = 'yuv420p'
 
-  if (normalizedVideoCodec && normalizedVideoCodec !== 'h264') {
+  if (treatAsVideo && normalizedVideoCodec && normalizedVideoCodec !== 'h264') {
     warnings.push(
       translate('warnings.videoCodec', {
         expected: expectedVideoCodecLabel,
@@ -356,7 +439,7 @@ function buildAnalysis(result: MediaInfoJson, translate: Translate): UploadAnaly
     isLikelyCompatible = false
   }
 
-  if (normalizedPixelFormat && normalizedPixelFormat !== 'yuv420p') {
+  if (treatAsVideo && normalizedPixelFormat && normalizedPixelFormat !== 'yuv420p') {
     warnings.push(
       translate('warnings.pixelFormat', {
         expected: expectedPixelFormatLabel,
@@ -429,13 +512,6 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
     }
   }, [])
 
-  useEffect(() => {
-    uppy.setMeta({ asset_type: assetKind })
-  }, [assetKind, uppy])
-
-  useEffect(() => {
-    uppy.setMeta({ folder_id: targetFolderId || '' })
-  }, [targetFolderId, uppy])
 
   useEffect(() => {
     if (!folders || folders.length === 0) {
@@ -508,7 +584,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
   }, [t])
 
   const analyzeFile = useCallback(
-    async (file: DashboardFile) => {
+    async (file: DashboardFile, assetKindHint: 'video' | 'audio' = 'video') => {
       try {
         const promise = mediaInfoPromiseRef.current
         const instance =
@@ -543,7 +619,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
         )
 
         const parsed = JSON.parse(result) as MediaInfoJson
-        const analysis = buildAnalysis(parsed, t)
+        const analysis = buildAnalysis(parsed, t, { assetKind: assetKindHint })
 
         if (isMountedRef.current) {
           setUploadItems((items) =>
@@ -589,6 +665,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
 
   useEffect(() => {
     const handleFileAdded = (file: DashboardFile) => {
+      const fileKind = file.meta?.asset_type === 'audio' ? 'audio' : 'video'
       setUploadItems((items) => {
         if (items.some((item) => item.id === file.id)) {
           return items
@@ -609,10 +686,11 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             progress: 0,
             bytesUploaded: 0,
             bytesTotal: size,
+            assetKind: fileKind,
           },
         ]
       })
-      void analyzeFile(file)
+      void analyzeFile(file, fileKind)
     }
 
     const handleFileRemoved = (file: DashboardFile) => {
@@ -739,23 +817,94 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
     async (fileList: FileList | null) => {
       if (!fileList) return
       const files = Array.from(fileList)
+      
+      logger.info(`Processing ${files.length} selected file(s) for upload`, {
+        mode: assetKind,
+        component: 'UploadModal',
+      })
+      
       for (const file of files) {
+        const { isVideo, isAudio } = detectMediaKind(file)
+        const desiredKind = assetKind
+        
+        logger.debug('Validating file', {
+          fileName: file.name,
+          desiredKind,
+          detectedVideo: isVideo,
+          detectedAudio: isAudio,
+          component: 'UploadModal',
+        })
+        
+        // Stricter validation logic
+        const hasNoKind = !isVideo && !isAudio
+        
+        // Reject if type cannot be determined
+        if (hasNoKind) {
+          logger.warn('Rejecting file: unknown type', { fileName: file.name })
+          toast.error(t('errors.invalidFileType', { fileName: file.name }))
+          continue
+        }
+        
+        // Validate video mode: must be video, not audio-only
+        if (desiredKind === 'video') {
+          if (!isVideo || (isAudio && !isVideo)) {
+            logger.warn('Rejecting audio file in video mode', { fileName: file.name })
+            toast.error(t('errors.audioInVideoMode'))
+            continue
+          }
+        }
+        
+        // Validate audio mode: must be audio-only, not video
+        if (desiredKind === 'audio') {
+          if (isVideo) {
+            logger.warn('Rejecting video file in audio mode', {
+              fileName: file.name,
+              mimeType: file.type,
+            })
+            toast.error(t('errors.videoInAudioMode'))
+            continue
+          }
+          if (!isAudio) {
+            logger.warn('Rejecting non-audio file in audio mode', { fileName: file.name })
+            toast.error(t('errors.typeMismatchAudio'))
+            continue
+          }
+        }
+
+        // File passed validation, add to Uppy
         try {
+          logger.info('Adding file to upload queue', {
+            fileName: file.name,
+            size: file.size,
+            type: file.type,
+            assetType: desiredKind,
+          })
+          
           await uppy.addFile({
             name: file.name,
             type: file.type,
             data: file,
             source: 'local',
+            meta: {
+              asset_type: desiredKind,
+              folder_id: targetFolderId || '',
+            },
           })
         } catch (error) {
-          logger.error('Failed to add file to Uppy', error, { component: 'UploadModal', fileName: file.name })
+          logger.error('Failed to add file to Uppy', error, {
+            component: 'UploadModal',
+            fileName: file.name,
+          })
+          toast.error(t('errors.fileAnalysisFailed'))
         }
       }
+      
+      // Clear file input for re-selection
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
     },
-    [uppy]
+    [assetKind, targetFolderId, t, uppy]
   )
 
   const handleDrop = useCallback(
@@ -912,9 +1061,10 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             }`}
           >
             <input
+              key={assetKind}
               ref={fileInputRef}
               type="file"
-              accept="video/*"
+              accept={assetKind === 'audio' ? AUDIO_ACCEPT : VIDEO_ACCEPT}
               multiple
               className="hidden"
               onChange={(event) => void handleFilesSelected(event.target.files)}
@@ -936,7 +1086,9 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                   ),
                 })}
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{t('dropzone.hint')}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {t(assetKind === 'video' ? 'dropzone.hintVideo' : 'dropzone.hintAudio')}
+              </p>
             </div>
           </div>
 

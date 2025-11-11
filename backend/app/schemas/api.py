@@ -378,6 +378,7 @@ class MediaCollectionBase(BaseModel):
 
 class MediaCollectionCreate(MediaCollectionBase):
     items: List[CollectionItemCreate] = []
+    origin_playlist_id: Optional[UUID] = None
 
 
 class MediaCollectionResponse(MediaCollectionBase):

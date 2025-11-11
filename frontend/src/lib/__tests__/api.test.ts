@@ -2,6 +2,7 @@ import { api } from '../api'
 
 jest.mock('../supabase', () => ({
   getAccessToken: jest.fn(),
+  waitForAuth: jest.fn().mockResolvedValue(undefined),
 }))
 
 const { getAccessToken } = jest.requireMock('../supabase') as {

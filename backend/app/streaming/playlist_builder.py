@@ -30,6 +30,8 @@ class PlaylistFileSet:
     audio_copy_compatible: bool = False
     video_assets: List[Dict[str, Any]] = field(default_factory=list)
     audio_assets: List[Dict[str, Any]] = field(default_factory=list)
+    video_has_audio: bool = False
+    video_audio_copy_compatible: bool = False
 
 
 class PlaylistBuilder:
@@ -129,9 +131,11 @@ class PlaylistBuilder:
             asset.get("compatible_for_copy") is True for asset in normalized_video
         )
         audio_copy_compatible = self._audio_assets_compatible(normalized_audio)
+        video_has_audio = any((asset.get("meta") or {}).get("audio") for asset in normalized_video)
+        video_audio_copy_compatible = video_has_audio and self._audio_assets_compatible(normalized_video)
 
         needs_video_placeholder = needs_video_placeholder or (normalized_mode == "audio_only")
-        needs_audio_placeholder = (normalized_mode == "video_only")
+        needs_audio_placeholder = (normalized_mode == "video_only" and not video_has_audio)
 
         return PlaylistFileSet(
             stream_dir=stream_dir,
@@ -146,6 +150,8 @@ class PlaylistBuilder:
             audio_copy_compatible=audio_copy_compatible,
             video_assets=normalized_video,
             audio_assets=normalized_audio,
+            video_has_audio=video_has_audio,
+            video_audio_copy_compatible=video_audio_copy_compatible,
         )
 
     def _normalize_assets(self, assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

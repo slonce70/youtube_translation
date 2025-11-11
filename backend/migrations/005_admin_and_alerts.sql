@@ -1,11 +1,12 @@
--- Migration 005: Admin Actions and System Alerts
+-- Migration 005: Admin Actions and System Alerts (LOCAL VERSION)
 -- This migration adds tables for admin actions logging and system alerts
+-- For local PostgreSQL (references user_profiles instead of auth.users)
 
 -- Admin actions table (audit log)
 CREATE TABLE IF NOT EXISTS admin_actions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    admin_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    target_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    admin_user_id UUID NOT NULL REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+    target_user_id UUID REFERENCES user_profiles(user_id) ON DELETE SET NULL,
     
     action_type TEXT NOT NULL CHECK (action_type IN (
         'suspend_user',
@@ -57,7 +58,7 @@ CREATE TABLE IF NOT EXISTS system_alerts (
     
     severity TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'critical')),
     
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES user_profiles(user_id) ON DELETE CASCADE,
     stream_id UUID REFERENCES streams(id) ON DELETE CASCADE,
     asset_id UUID REFERENCES assets(id) ON DELETE CASCADE,
     
@@ -66,7 +67,7 @@ CREATE TABLE IF NOT EXISTS system_alerts (
     
     resolved BOOLEAN DEFAULT FALSE,
     resolved_at TIMESTAMPTZ,
-    resolved_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    resolved_by UUID REFERENCES user_profiles(user_id) ON DELETE SET NULL,
     resolution_notes TEXT,
     
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -85,7 +86,7 @@ CREATE INDEX idx_system_alerts_stream ON system_alerts(stream_id, created_at DES
 -- User activity log table (for monitoring suspicious activity)
 CREATE TABLE IF NOT EXISTS user_activity_log (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES user_profiles(user_id) ON DELETE CASCADE,
     
     activity_type TEXT NOT NULL CHECK (activity_type IN (
         'login',

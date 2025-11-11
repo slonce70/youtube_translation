@@ -8,7 +8,14 @@ import pytest
 from sqlalchemy import select, text
 
 from app.core.database import async_session_maker
+from app.core.config import settings
 from app.models.database import SubscriptionTierLimits
+
+# Tests should run in manager mode (no supervisor/systemd side effects)
+settings.stream_runtime_mode = "manager"
+settings.environment = "test"
+settings.ffmpeg_auto_restart_attempts = 0
+settings.ffmpeg_restart_backoff_seconds = 0
 
 # Set event loop policy for async tests
 @pytest.fixture(scope="session")
@@ -28,6 +35,25 @@ def event_loop(event_loop_policy) -> Generator:
 async def ensure_subscription_tiers() -> AsyncGenerator[None, None]:
     """Seed default subscription tier limits for tests if missing."""
     async with async_session_maker() as session:
+        await session.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
+        await session.execute(text('CREATE SCHEMA IF NOT EXISTS auth'))
+        await session.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS auth.users (
+                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                    email TEXT NOT NULL UNIQUE,
+                    raw_app_meta_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    raw_user_meta_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+                )
+                """
+            )
+        )
+        await session.execute(text('CREATE INDEX IF NOT EXISTS idx_auth_users_email ON auth.users(email)'))
+        await session.commit()
+
         table_check = await session.execute(text("SELECT to_regclass('public.subscription_tier_limits')"))
         table_exists = table_check.scalar()
         if not table_exists:

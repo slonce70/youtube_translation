@@ -43,6 +43,9 @@ import {
   type AssetWarning,
 } from './asset-utils'
 import { useDashboardContext } from '../dashboard-context'
+import { Breadcrumbs } from '@/components/library/Breadcrumbs'
+import { FolderCard } from '@/components/library/FolderCard'
+import { AssetCard } from '@/components/library/AssetCard'
 
 type AssetFilterValue = 'all' | 'video' | 'audio'
 type PlaylistFormState = PlaylistCreatePayload & { description: string }
@@ -246,6 +249,8 @@ export default function LibraryPage() {
   )
 
   useEffect(() => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
     const existingPlugin = uppy.getPlugin('Tus')
     if (existingPlugin) {
       uppy.removePlugin(existingPlugin)
@@ -266,9 +271,44 @@ export default function LibraryPage() {
       const toastId = toast.loading(libraryToasts('upload.finalizing'))
 
       try {
-        await queryClient.invalidateQueries({ queryKey: ['assets'] })
-        await queryClient.refetchQueries({ queryKey: ['assets'], type: 'active' })
+        const uploadedFiles = result.successful.map((file) => ({
+          name: file.name,
+          size: typeof file.size === 'number' ? file.size : undefined,
+        }))
 
+        const shouldVerifyPresence = assetFilter === 'all'
+        const activeAssetsKey: [string, AssetFilterValue, string | 'all'] = ['assets', assetFilter, selectedFolderId]
+
+        const refreshUntilVisible = async () => {
+          const pollSchedule = [0, 350, 900, 1600]
+          for (const delayMs of pollSchedule) {
+            if (delayMs) {
+              await sleep(delayMs)
+            }
+            await queryClient.invalidateQueries({ queryKey: ['assets'] })
+            await queryClient.refetchQueries({ queryKey: ['assets'], type: 'active' })
+
+            if (!shouldVerifyPresence || !uploadedFiles.length) {
+              continue
+            }
+
+            const currentAssets = queryClient.getQueryData<Asset[]>(activeAssetsKey)
+            if (
+              currentAssets &&
+              uploadedFiles.every((file) =>
+                currentAssets.some((asset) => {
+                  if (asset.filename !== file.name) return false
+                  if (file.size === undefined) return true
+                  return Math.abs(asset.size_bytes - file.size) <= 1
+                })
+              )
+            ) {
+              return
+            }
+          }
+        }
+
+        await refreshUntilVisible()
         toast.success(libraryToasts('upload.processed'), { id: toastId })
         setIsUploadOpen(false)
       } catch (error) {
@@ -299,7 +339,7 @@ export default function LibraryPage() {
         uppy.removePlugin(plugin)
       }
     }
-  }, [libraryToasts, queryClient, tusEndpoint, uppy])
+  }, [assetFilter, selectedFolderId, libraryToasts, queryClient, tusEndpoint, uppy])
 
   useEffect(() => {
     if (user?.id) {
@@ -522,71 +562,6 @@ export default function LibraryPage() {
     })
     return map
   }, [folders])
-
-  const renderFolderNodes = (parentId: string | null, depth = 0): JSX.Element[] => {
-    const children = folderChildren.get(parentId) ?? []
-    return children.map((folder) => (
-      <div key={folder.id} className="group">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => handleFolderSelect(folder.id)}
-            className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
-              selectedFolderId === folder.id
-                ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200'
-                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-            } ${dragOverFolderId === folder.id ? 'ring-2 ring-primary-300 dark:ring-primary-600' : ''}`}
-            style={{ paddingLeft: depth ? depth * 12 : 0 }}
-            onDragOver={(event) => {
-              if (!draggedAssetIds || draggedAssetIds.length === 0) return
-              event.preventDefault()
-              event.dataTransfer.dropEffect = 'move'
-              setDragOverFolderId(folder.id)
-            }}
-            onDragLeave={() => {
-              if (dragOverFolderId === folder.id) {
-                setDragOverFolderId(null)
-              }
-            }}
-            onDrop={(event) => {
-              event.preventDefault()
-              handleFolderDrop(folder.id)
-            }}
-          >
-            <Folder className="h-4 w-4" />
-            <span className="truncate">{folder.name}</span>
-          </button>
-          {!folder.is_root && (
-            <div className="ml-1 hidden items-center gap-1 group-hover:flex">
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  openRenameFolderModal(folder)
-                }}
-                className="rounded p-1 text-slate-400 transition-colors hover:text-slate-700 dark:hover:text-slate-100"
-              >
-                <Edit className="h-3.5 w-3.5" />
-                <span className="sr-only">{tFolders('rename')}</span>
-              </button>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  openDeleteFolderModal(folder)
-                }}
-                className="rounded p-1 text-slate-400 transition-colors hover:text-error-600 dark:hover:text-error-400"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span className="sr-only">{tFolders('delete')}</span>
-              </button>
-            </div>
-          )}
-        </div>
-        {renderFolderNodes(folder.id, depth + 1)}
-      </div>
-    ))
-  }
 
   const renderFolderSelectionTree = (parentId: string | null, depth = 0): JSX.Element[] => {
     const children = folderChildren.get(parentId) ?? []
@@ -1090,6 +1065,52 @@ export default function LibraryPage() {
       .filter((asset) => !playlistForm.items.some((item) => item.asset_id === asset.id))
   }, [assets, playlistForm.items])
 
+  // Get folders in current directory
+  const currentFolders = useMemo(() => {
+    if (!folders || folders.length === 0) return []
+    
+    // Determine parent_id for current view
+    let parentId: string | null = null
+    if (selectedFolderId !== 'all') {
+      parentId = selectedFolderId
+    } else {
+      // Show root folders when in "all" view
+      parentId = null
+    }
+    
+    return folders
+      .filter((folder) => folder.parent_id === parentId || (parentId === null && folder.is_root))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [folders, selectedFolderId])
+
+  // Calculate item count for each folder (recursive)
+  const folderItemCounts = useMemo(() => {
+    if (!folders || !assets) return new Map<string, number>()
+    
+    const counts = new Map<string, number>()
+    
+    // Helper to get all descendant folder IDs
+    const getDescendantIds = (folderId: string): string[] => {
+      const descendants: string[] = [folderId]
+      const children = folders.filter((f) => f.parent_id === folderId)
+      children.forEach((child) => {
+        descendants.push(...getDescendantIds(child.id))
+      })
+      return descendants
+    }
+    
+    // Count assets in each folder and its descendants
+    folders.forEach((folder) => {
+      const folderIds = getDescendantIds(folder.id)
+      const count = assets.filter((asset) => {
+        return asset.folders?.some((af) => folderIds.includes(af.folder_id))
+      }).length
+      counts.set(folder.id, count)
+    })
+    
+    return counts
+  }, [folders, assets])
+
   // Calculate stats
   const totalAssets = assets?.length || 0
   const totalPlaylists = playlists?.length || 0
@@ -1126,98 +1147,55 @@ export default function LibraryPage() {
 
         {/* Assets Tab */}
         <TabsContent value="assets" className="mt-6">
-          <div className="grid gap-6 lg:grid-cols-[240px,minmax(0,1fr)]">
-            <Card className="h-fit">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                <CardTitle className="text-base font-semibold">
-                  {tFolders('title')}
-                </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={openCreateFolderModal}
-                >
-                  <FolderPlus className="h-4 w-4" />
-                  <span className="sr-only">{tFolders('create')}</span>
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => handleFolderSelect('all')}
-                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
-                    selectedFolderId === 'all'
-                      ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200'
-                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                  } ${dragOverFolderId === 'all' ? 'ring-2 ring-primary-300 dark:ring-primary-600' : ''}`}
-                  onDragOver={(event) => {
-                    if (!draggedAssetIds || draggedAssetIds.length === 0) return
-                    event.preventDefault()
-                    event.dataTransfer.dropEffect = 'move'
-                    setDragOverFolderId('all')
-                  }}
-                  onDragLeave={() => {
-                    if (dragOverFolderId === 'all') {
-                      setDragOverFolderId(null)
-                    }
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    handleFolderDrop('all')
-                  }}
-                >
-                  <List className="h-4 w-4" />
-                  <span>{tFolders('all')}</span>
-                </button>
-                {isLoadingFolders ? (
-                  <div className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
-                    {tFolders('loading')}
-                  </div>
-                ) : isFoldersError ? (
-                  <div className="py-6 text-center text-sm text-error-600 dark:text-error-400">
-                    {tFolders('loading')}
-                  </div>
-                ) : folders && folders.length > 0 ? (
-                  <div className="space-y-1">{renderFolderNodes(rootFolderId ?? null)}</div>
-                ) : (
-                  <div className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
-                    {tFolders('empty')}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+          <div className="space-y-4">
+            {/* Breadcrumbs Navigation */}
+            <Breadcrumbs
+              currentFolderId={selectedFolderId}
+              folders={folders}
+              onNavigate={handleFolderSelect}
+              onDrop={handleFolderDrop}
+            />
 
-            <div className="space-y-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">{tLibrary('assets.title')}</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {tLibrary('assets.filters.label')}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {(
-                    [
-                      { value: 'all', label: tLibrary('assets.filters.all') },
-                      { value: 'video', label: tLibrary('assets.filters.video') },
-                      { value: 'audio', label: tLibrary('assets.filters.audio') },
-                    ] as { value: AssetFilterValue; label: string }[]
-                  ).map((option) => (
-                    <Button
-                      key={option.value}
-                      size="sm"
-                      variant={assetFilter === option.value ? 'primary' : 'outline'}
-                      onClick={() => handleAssetFilterChange(option.value)}
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                  <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
-                    <Plus className="w-4 h-4" />
-                    {tLibrary('assets.upload')}
-                  </Button>
-                </div>
+            {/* Header with Actions */}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">{tLibrary('assets.title')}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {tLibrary('assets.filters.label')}
+                </p>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {(
+                  [
+                    { value: 'all', label: tLibrary('assets.filters.all') },
+                    { value: 'video', label: tLibrary('assets.filters.video') },
+                    { value: 'audio', label: tLibrary('assets.filters.audio') },
+                  ] as { value: AssetFilterValue; label: string }[]
+                ).map((option) => (
+                  <Button
+                    key={option.value}
+                    size="sm"
+                    variant={assetFilter === option.value ? 'primary' : 'outline'}
+                    onClick={() => handleAssetFilterChange(option.value)}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={openCreateFolderModal}
+                  className="gap-2"
+                >
+                  <FolderPlus className="w-4 h-4" />
+                  {tFolders('create')}
+                </Button>
+                <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  {tLibrary('assets.upload')}
+                </Button>
+              </div>
+            </div>
 
               {assets && assets.length > 0 && (
                 <div className="rounded-md border border-slate-200/80 bg-slate-50/60 px-4 py-3 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
@@ -1272,257 +1250,127 @@ export default function LibraryPage() {
                 </div>
               )}
 
-            {isLoadingAssets ? (
+            {isLoadingAssets || isLoadingFolders ? (
               <LoadingState />
-            ) : assets && assets.length > 0 ? (
-              <div className="grid gap-4">
-                {assets.map((asset) => {
-                  const info = deriveAssetDisplayInfo(asset)
-                  const uploadedAt = format(new Date(asset.created_at), 'MMM d, yyyy • HH:mm')
-                  const isExpanded = expandedAssets.has(asset.id)
-                  const isSelected = selectedAssets.has(asset.id)
-                  const thumbnailUrl = asset.thumbnail_url
-                  const usageBadges = [
-                    formatUsageLabel('streams', asset.usage?.streams?.length ?? 0),
-                    formatUsageLabel('collections', asset.usage?.collections?.length ?? 0),
-                    formatUsageLabel('playlists', asset.usage?.playlists?.length ?? 0),
-                  ].filter(Boolean) as string[]
-
-                  return (
-                    <Card
-                      key={asset.id}
-                      className={`animate-slide-up ${
-                        isSelected
-                          ? 'ring-2 ring-primary-300 dark:ring-primary-600'
-                          : 'ring-1 ring-transparent'
-                      }`}
-                      draggable
-                      onDragStart={(event) => handleAssetDragStart(event, asset.id)}
-                      onDragEnd={handleAssetDragEnd}
-                    >
-                      <CardContent className="py-6 space-y-4">
-                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                          <div className="flex flex-1 items-start gap-3 min-w-0">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleAssetSelection(asset.id)}
-                              aria-label={`${tLibrary('assets.selection.checkboxLabel')} ${asset.filename}`}
-                              title={`${tLibrary('assets.selection.checkboxLabel')} ${asset.filename}`}
-                              className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                            />
-                            <div className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800/50">
-                              {thumbnailUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={thumbnailUrl}
-                                  alt={`Preview of ${asset.filename}`}
-                                  className="h-full w-full object-cover"
-                                  loading="lazy"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center text-slate-400">
-                                  <PlayCircle className="h-6 w-6" />
-                                </div>
-                              )}
-                              {asset.asset_type === 'audio' && (
-                                <span className="absolute bottom-1 right-1 rounded bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                                  {tLibrary('assets.filters.audio')}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0 space-y-2">
-                              <div className="flex flex-wrap items-center gap-3">
-                                <h3 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
-                                  {asset.filename}
-                                </h3>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
-                                <div className="flex items-center gap-2">
-                                  <Clock className="w-4 h-4" />
-                                  <span>{formatBytes(asset.size_bytes)}</span>
-                                  {asset.duration_seconds ? (
-                                    <>
-                                      <span>•</span>
-                                      <span>{formatDuration(asset.duration_seconds)}</span>
-                                    </>
-                                  ) : null}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <CalendarClock className="w-4 h-4" />
-                                  <span>{uploadedAt}</span>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Badge variant={asset.compatible_for_copy ? 'success' : 'error'}>
-                                  {asset.compatible_for_copy ? (
-                                    <>
-                                      <CheckCircle className="w-3 h-3 mr-1" />
-                                      {tLibrary('assets.badges.ready')}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <XCircle className="w-3 h-3 mr-1" />
-                                      {tLibrary('assets.badges.needsEncoding')}
-                                    </>
-                                  )}
-                                </Badge>
-                                {info.bitrateStatus === 'within' ? (
-                                  <Badge variant="success">{tLibrary('assets.badges.bitrateOk')}</Badge>
-                                ) : info.bitrateStatus === 'outside' ? (
-                                  <Badge variant="warning">{tLibrary('assets.badges.bitrateCheck')}</Badge>
-                                ) : null}
-                                {usageBadges.map((label, index) => (
-                                  <Badge key={`${asset.id}-usage-${index}`} variant="secondary">
-                                    {label}
-                                  </Badge>
-                                ))}
-                              </div>
-                              {!asset.compatible_for_copy && (
-                                <div className="text-sm text-error-600 dark:text-error-400">
-                                  {tLibrary('assets.messages.incompatibleSummary')}
-                                  {info.issues.length > 0 && (
-                                    <span className="block text-xs text-error-500/90 dark:text-error-300">
-                                      {info.issues[0]}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <AssetActionsMenu
-                            onEdit={() => handleRenameAsset(asset)}
-                            onDelete={() => handleDeleteAsset(asset.id)}
-                            onCheck={() => handleCheckAsset(asset)}
-                            onPlaylists={() => handleNotImplemented(tLibrary('assets.menu.items.playlists'))}
-                            onOptimize={() => handleNotImplemented(tLibrary('assets.menu.items.optimize'))}
-                            onMove={() => openMoveModal([asset.id])}
-                            onDownload={() => handleDownloadAsset(asset)}
-                            isDeleting={pendingDeletionIds.has(asset.id)}
-                            isChecking={checkingAssetId === asset.id}
-                            isGeneratingDownload={
-                              downloadAssetId === asset.id && downloadLinkMutation.isPending
-                            }
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
-                          <button
-                            type="button"
-                            onClick={() => toggleAssetDetails(asset.id)}
-                            className="flex items-center gap-2 text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400"
-                          >
-                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            {isExpanded
-                              ? tLibrary('assets.details.hide')
-                              : tLibrary('assets.details.show')}
-                          </button>
-                        </div>
-
-                        {isExpanded && (
-                          <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                            <div className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-                              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
-                                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                  {tLibrary('assets.metadata.video')}
-                                </span>
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <Badge variant="secondary">{info.videoCodec?.toUpperCase() ?? '—'}</Badge>
-                                  <span>{formatBitrateDisplay(info.videoBitrate)}</span>
-                                  <span>·</span>
-                                  <span>
-                                    {info.videoWidth && info.videoHeight
-                                      ? `${info.videoWidth}×${info.videoHeight}`
-                                      : '—'}
-                                  </span>
-                                  <span>·</span>
-                                  <span>{formatFpsDisplay(info.videoFps)}</span>
-                                </div>
-                              </div>
-
-                              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
-                                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                  {tLibrary('assets.metadata.audio')}
-                                </span>
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <Badge variant="secondary">{info.audioCodec?.toUpperCase() ?? '—'}</Badge>
-                                  <span>{formatBitrateDisplay(info.audioBitrate)}</span>
-                                  <span>·</span>
-                                  <span>{formatSampleRateDisplay(info.audioSampleRate)}</span>
-                                  {info.audioChannels ? (
-                                    <>
-                                      <span>·</span>
-                                      <span>{tLibrary('assets.metadata.channels', { count: info.audioChannels })}</span>
-                                    </>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </div>
-
-                            {info.recommendationLabel ? (
-                              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                                <CheckCircle className="w-4 h-4 text-primary-500" />
-                                <span>
-                                  {tLibrary('assets.recommendations', {
-                                    label: info.recommendationLabel,
-                                    details: info.recommendationDetails,
-                                  })}
-                                </span>
-                              </div>
-                            ) : null}
-
-                            {(info.issues.length > 0 || info.warnings.length > 0) && (
-                              <div className="space-y-2">
-                                {info.issues.map((issue, index) => (
-                                  <div
-                                    key={`asset-issue-${index}`}
-                                    className="flex items-start text-sm text-error-600 dark:text-error-400"
-                                  >
-                                    <XCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                                    <span>{issue}</span>
-                                  </div>
-                                ))}
-                                {info.warnings.map((warning, index) => (
-                                  <div
-                                    key={`asset-warning-${index}`}
-                                    className="flex items-start text-sm text-amber-600 dark:text-amber-400"
-                                  >
-                                    <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                                    <span>{formatWarningMessage(warning)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
             ) : (
-              <Card className="text-center py-16">
-                <div className="flex flex-col items-center space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-100 to-accent-100 dark:from-primary-900/20 dark:to-accent-900/20 flex items-center justify-center">
-                    <Upload className="w-8 h-8 text-primary-500" />
+              <div className="space-y-4">
+                {/* Render folders in grid */}
+                {currentFolders.length > 0 && (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {currentFolders.map((folder) => (
+                      <FolderCard
+                        key={folder.id}
+                        folder={folder}
+                        itemCount={folderItemCounts.get(folder.id) || 0}
+                        onOpen={handleFolderSelect}
+                        onRename={!folder.is_root ? openRenameFolderModal : undefined}
+                        onDelete={!folder.is_root ? openDeleteFolderModal : undefined}
+                        onDragOver={(event) => {
+                          if (!draggedAssetIds || draggedAssetIds.length === 0) return
+                          event.preventDefault()
+                          event.dataTransfer.dropEffect = 'move'
+                          setDragOverFolderId(folder.id)
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverFolderId === folder.id) {
+                            setDragOverFolderId(null)
+                          }
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault()
+                          handleFolderDrop(folder.id)
+                        }}
+                        isDragOver={dragOverFolderId === folder.id}
+                      />
+                    ))}
                   </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-                      {tLibrary('assets.empty.title')}
-                    </h3>
-                    <p className="text-slate-500 dark:text-slate-400 mb-4">
-                      {tLibrary('assets.empty.description')}
-                    </p>
+                )}
+
+                {/* Render assets as list */}
+                {assets && assets.length > 0 ? (
+                  <div className="flex flex-col gap-3">
+                    {assets.map((asset) => (
+                      <AssetCard
+                        key={asset.id}
+                        asset={asset}
+                        isSelected={selectedAssets.has(asset.id)}
+                        onSelect={(checked) => {
+                          if (checked) {
+                            setSelectedAssets((prev) => new Set(prev).add(asset.id))
+                          } else {
+                            setSelectedAssets((prev) => {
+                              const next = new Set(prev)
+                              next.delete(asset.id)
+                              return next
+                            })
+                          }
+                        }}
+                        onRename={() => handleRenameAsset(asset)}
+                        onDelete={() => handleDeleteAsset(asset.id)}
+                        onCheck={() => handleCheckAsset(asset)}
+                        onMove={() => openMoveModal([asset.id])}
+                        onDownload={() => handleDownloadAsset(asset)}
+                        onPlaylistAdd={() => handleNotImplemented(tLibrary('assets.menu.items.playlists'))}
+                        onOptimize={() => handleNotImplemented(tLibrary('assets.menu.items.optimize'))}
+                        onDragStart={(event) => handleAssetDragStart(event, asset.id)}
+                        onDragEnd={handleAssetDragEnd}
+                        isDeleting={pendingDeletionIds.has(asset.id)}
+                        isChecking={checkingAssetId === asset.id}
+                        isGeneratingDownload={downloadAssetId === asset.id && downloadLinkMutation.isPending}
+                        formatWarningMessage={formatWarningMessage}
+                        formatUsageLabel={formatUsageLabel}
+                        t={{
+                          filters: { audio: tLibrary('assets.filters.audio') },
+                          badges: {
+                            ready: tLibrary('assets.badges.ready'),
+                            needsEncoding: tLibrary('assets.badges.needsEncoding'),
+                            bitrateOk: tLibrary('assets.badges.bitrateOk'),
+                            bitrateCheck: tLibrary('assets.badges.bitrateCheck'),
+                          },
+                          messages: { incompatibleSummary: tLibrary('assets.messages.incompatibleSummary') },
+                          details: {
+                            hide: tLibrary('assets.details.hide'),
+                            show: tLibrary('assets.details.show'),
+                          },
+                          metadata: {
+                            video: tLibrary('assets.metadata.video'),
+                            audio: tLibrary('assets.metadata.audio'),
+                            channels: (count: number) => tLibrary('assets.metadata.channels', { count }),
+                          },
+                          recommendations: (params: { label: string; details: string }) =>
+                            tLibrary('assets.recommendations', params),
+                          selection: { checkboxLabel: tLibrary('assets.selection.checkboxLabel') },
+                        }}
+                      />
+                    ))}
                   </div>
-                  <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
-                    <Upload className="w-4 h-4" />
-                    {tLibrary('assets.empty.cta')}
-                  </Button>
-                </div>
-              </Card>
+                ) : null}
+
+                {/* Empty state - shown when no folders and no assets */}
+                {!currentFolders.length && (!assets || assets.length === 0) && (
+                  <Card className="text-center py-16">
+                    <div className="flex flex-col items-center space-y-4">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-100 to-accent-100 dark:from-primary-900/20 dark:to-accent-900/20 flex items-center justify-center">
+                        <Upload className="w-8 h-8 text-primary-500" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                          {tLibrary('assets.empty.title')}
+                        </h3>
+                        <p className="text-slate-500 dark:text-slate-400 mb-4">
+                          {tLibrary('assets.empty.description')}
+                        </p>
+                      </div>
+                      <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
+                        <Upload className="w-4 h-4" />
+                        {tLibrary('assets.empty.cta')}
+                      </Button>
+                    </div>
+                  </Card>
+                )}
+              </div>
             )}
           </div>
-        </div>
         </TabsContent>
 
         {/* Playlists Tab */}

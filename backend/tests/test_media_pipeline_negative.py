@@ -177,6 +177,8 @@ class TestFFmpegManagerNegative:
             # Try to start duplicate
             success2 = await manager.start_stream("stream1", playlist, destinations)
             assert not success2
+
+        await manager.stop_all_streams()
     
     @pytest.mark.asyncio
     async def test_stop_nonexistent_stream(self):
@@ -195,9 +197,10 @@ class TestFFmpegManagerNegative:
         destinations = [{"url": "rtmps://a.rtmp.youtube.com/live2", "key": "test-key"}]
         
         # This should fail since playlist doesn't exist
-        success = await manager.start_stream("stream1", playlist, destinations)
-        # Depending on implementation, might succeed but process will fail
-        # Either way, we're testing error handling
+        try:
+            await manager.start_stream("stream1", playlist, destinations)
+        finally:
+            await manager.stop_all_streams()
     
     @pytest.mark.asyncio
     async def test_empty_destinations(self, tmp_path):
@@ -236,6 +239,8 @@ class TestFFmpegManagerNegative:
             # Should still succeed in starting but will fail quickly
             # Manager should handle cleanup
             await asyncio.sleep(0.1)
+
+        await manager.stop_all_streams()
     
     @pytest.mark.asyncio
     async def test_stop_timeout_force_kill(self, tmp_path):
@@ -377,6 +382,8 @@ class TestMediaPipelineIntegration:
             # Manager should have cleaned up the failed stream
             await asyncio.sleep(0.1)
             # Stream should be removed from active streams eventually
+
+        await manager.stop_all_streams()
     
     @pytest.mark.asyncio
     async def test_concurrent_stream_limit(self, tmp_path):

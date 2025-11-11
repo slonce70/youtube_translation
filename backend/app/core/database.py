@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 
+from fastapi import HTTPException
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,18 @@ async def _managed_session():
         async with async_session_maker() as session:
             try:
                 yield session
+            except HTTPException as http_exc:
+                await session.rollback()
+                status = getattr(http_exc, "status_code", None)
+                if status is not None and status < 500:
+                    logger.warning(
+                        "Database session rolled back due to HTTP %s", status
+                    )
+                else:
+                    logger.exception(
+                        "Database error (HTTPException), rolling back: %s", http_exc
+                    )
+                raise
             except Exception as e:
                 await session.rollback()
                 logger.exception(f"Database error, rolling back: {e}")
@@ -112,14 +126,31 @@ async def init_db():
 
 async def _apply_schema_patches(conn):
     """Apply idempotent schema updates for new columns."""
+    # Ensure local auth schema exists for tests/local development
+    await conn.execute(text('CREATE SCHEMA IF NOT EXISTS auth'))
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS auth.users (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                email TEXT NOT NULL UNIQUE,
+                raw_app_meta_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+                raw_user_meta_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+            )
+            """
+        )
+    )
+
     await conn.execute(
         text(
             """
             ALTER TABLE subscription_tier_limits
             ADD COLUMN IF NOT EXISTS max_resolution_height INTEGER,
             ADD COLUMN IF NOT EXISTS max_fps INTEGER,
-            ADD COLUMN IF NOT EXISTS max_video_bitrate_mbps INTEGER,
-            ADD COLUMN IF NOT EXISTS min_video_bitrate_mbps INTEGER,
+            ADD COLUMN IF NOT EXISTS max_video_bitrate_mbps FLOAT,
+            ADD COLUMN IF NOT EXISTS min_video_bitrate_mbps FLOAT,
             ADD COLUMN IF NOT EXISTS enforce_stream_quality BOOLEAN DEFAULT TRUE
             """
         )
@@ -162,62 +193,99 @@ async def _apply_schema_patches(conn):
         )
     )
 
-    # Ensure legacy databases enforce a single root folder per user
+    # Add missing columns to streams table
+    await conn.execute(
+        text(
+            """
+            ALTER TABLE streams
+            ADD COLUMN IF NOT EXISTS video_collection_id UUID REFERENCES media_collections(id) ON DELETE SET NULL,
+            ADD COLUMN IF NOT EXISTS audio_collection_id UUID REFERENCES media_collections(id) ON DELETE SET NULL,
+            ADD COLUMN IF NOT EXISTS mix_mode TEXT NOT NULL DEFAULT 'video_only',
+            ADD COLUMN IF NOT EXISTS settings_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            ADD COLUMN IF NOT EXISTS total_duration_seconds FLOAT DEFAULT 0
+            """
+        )
+    )
+    
+    # Add check constraint for mix_mode if not exists
     await conn.execute(
         text(
             """
             DO $$
             BEGIN
-                IF to_regclass('media_folders') IS NOT NULL THEN
-                    WITH ranked AS (
-                        SELECT
-                            id,
-                            user_id,
-                            ROW_NUMBER() OVER (
-                                PARTITION BY user_id
-                                ORDER BY created_at NULLS LAST, id
-                            ) AS row_rank,
-                            FIRST_VALUE(id) OVER (
-                                PARTITION BY user_id
-                                ORDER BY created_at NULLS LAST, id
-                            ) AS primary_id
-                        FROM media_folders
-                        WHERE is_root
-                    )
-                    UPDATE asset_folder_links afl
-                    SET folder_id = ranked.primary_id
-                    FROM ranked
-                    WHERE afl.folder_id = ranked.id
-                      AND ranked.row_rank > 1;
-
-                    WITH ranked AS (
-                        SELECT
-                            id,
-                            user_id,
-                            ROW_NUMBER() OVER (
-                                PARTITION BY user_id
-                                ORDER BY created_at NULLS LAST, id
-                            ) AS row_rank
-                        FROM media_folders
-                        WHERE is_root
-                    )
-                    DELETE FROM media_folders mf
-                    USING ranked
-                    WHERE mf.id = ranked.id
-                      AND ranked.row_rank > 1;
-
-                    IF to_regclass('idx_media_folders_user_root') IS NULL THEN
-                        EXECUTE '
-                            CREATE UNIQUE INDEX idx_media_folders_user_root
-                            ON media_folders(user_id)
-                            WHERE is_root
-                        ';
-                    END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'check_stream_mix_mode'
+                ) THEN
+                    ALTER TABLE streams ADD CONSTRAINT check_stream_mix_mode
+                    CHECK (mix_mode IN ('video_only', 'audio_only', 'mixed'));
                 END IF;
             END $$;
             """
         )
     )
+    
+    # Add missing statistics columns to destinations table
+    await conn.execute(
+        text(
+            """
+            ALTER TABLE destinations
+            ADD COLUMN IF NOT EXISTS total_streams INTEGER DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS total_stream_hours FLOAT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP WITH TIME ZONE
+            """
+        )
+    )
+    
+    await conn.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS idx_destinations_last_used ON destinations(last_used_at)
+            """
+        )
+    )
+    
+    # Add missing columns to assets table
+    await conn.execute(
+        text(
+            """
+            ALTER TABLE assets
+            ADD COLUMN IF NOT EXISTS asset_type TEXT NOT NULL DEFAULT 'video',
+            ADD COLUMN IF NOT EXISTS video_codec TEXT,
+            ADD COLUMN IF NOT EXISTS audio_codec TEXT,
+            ADD COLUMN IF NOT EXISTS resolution TEXT,
+            ADD COLUMN IF NOT EXISTS bitrate INTEGER,
+            ADD COLUMN IF NOT EXISTS fps INTEGER,
+            ADD COLUMN IF NOT EXISTS codec_info JSONB,
+            ADD COLUMN IF NOT EXISTS validation_status TEXT NOT NULL DEFAULT 'pending'
+            """
+        )
+    )
+    
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_assets_asset_type ON assets(asset_type)")
+    )
+    
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_assets_validation_status ON assets(validation_status)")
+    )
+    
+    # Add missing columns to subscription_tier_limits table
+    await conn.execute(
+        text(
+            """
+            ALTER TABLE subscription_tier_limits
+            ADD COLUMN IF NOT EXISTS daily_streaming_limit_hours INTEGER,
+            ADD COLUMN IF NOT EXISTS calendar_enabled BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS branding_enabled BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS automation_enabled BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS priority_support_level TEXT,
+            ADD COLUMN IF NOT EXISTS dedicated_manager BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS allowed_video_codecs TEXT[]
+            """
+        )
+    )
+    
+    # Note: media_folders root constraint removed - managed by application logic
 
 
 async def apply_schema_patches():

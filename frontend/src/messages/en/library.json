@@ -34,24 +34,24 @@
     }
   },
   "page": {
-    "loading": "Loading library...",
+    "loading": "Loading files...",
     "header": {
-      "title": "Library",
-      "description": "Manage your video assets and playlists"
+      "title": "Files",
+      "description": "Manage your media files and playlists"
     },
     "tabs": {
-      "assets": "Videos ({count})",
+      "assets": "Files ({count})",
       "playlists": "Playlists ({count})"
     },
     "assets": {
-      "title": "Video Assets",
+      "title": "Files",
       "filters": {
         "label": "Media type",
         "all": "All",
         "video": "Video",
         "audio": "Audio"
       },
-      "upload": "Upload Video",
+      "upload": "Upload files",
       "badges": {
         "ready": "Ready for streaming",
         "needsEncoding": "Needs re-encoding",
@@ -64,23 +64,23 @@
         "audio": "Audio",
         "channels": "{count} channels"
       },
-    "warnings": {
-      "bitrateRange": "Video bitrate is outside the recommended range. For {resolution} at {fps} FPS, aim for {min}–{max} Mbps (target {target} Mbps).",
-      "fpsOutOfGuideline": "Frame rate differs from the recommended 30 or 60 FPS for live streaming.",
-      "videoCodec": "Video codec must be {expected} for stream copy. Detected {found}.",
-      "audioCodec": "Audio codec must be {expected} for stream copy. Detected {found}.",
-      "pixelFormat": "Pixel format must be {expected} for stream copy. Detected {found}.",
-      "requiresTranscode": "Re-encode this file with {video} video, {audio} audio, and {pixel} pixel format before streaming.",
-      "missingMetadata": "Video metadata is incomplete. Refresh validation after re-uploading.",
-      "gopTooLarge": "GOP size is {found}, exceeding the recommended limit of {limit}.",
-      "noVideoStream": "Video stream missing in the uploaded file.",
-      "noAudioStream": "Audio stream missing in the uploaded file.",
-      "unknownValue": "unknown"
-    },
+      "warnings": {
+        "bitrateRange": "Video bitrate is outside the recommended range. For {resolution} at {fps} FPS, aim for {min}–{max} Mbps (target {target} Mbps).",
+        "fpsOutOfGuideline": "Frame rate differs from the recommended 30 or 60 FPS for live streaming.",
+        "videoCodec": "Video codec must be {expected} for stream copy. Detected {found}.",
+        "audioCodec": "Audio codec must be {expected} for stream copy. Detected {found}.",
+        "pixelFormat": "Pixel format must be {expected} for stream copy. Detected {found}.",
+        "requiresTranscode": "Re-encode this file with {video} video, {audio} audio, and {pixel} pixel format before streaming.",
+        "missingMetadata": "Video metadata is incomplete. Refresh validation after re-uploading.",
+        "gopTooLarge": "GOP size is {found}, exceeding the recommended limit of {limit}.",
+        "noVideoStream": "Video stream missing in the uploaded file.",
+        "noAudioStream": "Audio stream missing in the uploaded file.",
+        "unknownValue": "unknown"
+      },
       "empty": {
         "title": "No assets yet",
-        "description": "Upload your first video asset to get started",
-        "cta": "Upload Asset"
+        "description": "Upload your first file to get started",
+        "cta": "Upload file"
       },
       "details": {
         "hide": "Hide technical details",
@@ -189,6 +189,15 @@
       "loading": "Revalidating asset…",
       "unavailable": "Validation results unavailable. Try again in a moment.",
       "close": "Close"
+    },
+    "breadcrumbs": {
+      "home": "Home",
+      "allFiles": "All Files"
+    },
+    "folderDisplay": {
+      "itemCount": "{count, plural, =0 {No items} one {1 item} other {# items}}",
+      "openFolder": "Open folder",
+      "emptyFolder": "Empty folder"
     }
   },
   "folders": {
@@ -207,11 +216,12 @@
       "deleteTitle": "Delete folder",
       "nameLabel": "Folder name",
       "deleteMessage": "Delete folder “{name}”? Only empty folders can be removed."
-    }
+    },
+    "root": "Root"
   },
   "uploadModal": {
-    "title": "Upload video assets",
-    "description": "Drag and drop files or pick them manually. We'll inspect codecs, resolution, and bitrate right away to flag potential YouTube Live issues.",
+    "title": "Upload media files",
+    "description": "Drag and drop media or pick them manually. We'll inspect video and audio codecs, resolution, and bitrate right away to flag potential YouTube Live issues.",
     "assetType": {
       "label": "Asset type",
       "video": "Video",
@@ -219,7 +229,7 @@
     },
     "folder": {
       "label": "Target folder",
-      "rootOption": "Library root",
+      "rootOption": "Root folder",
       "emptyOption": "No folders available"
     },
     "actions": {
@@ -234,7 +244,9 @@
     },
     "dropzone": {
       "instructions": "Drag & drop files here or <button>browse from disk</button>",
-      "hint": "Supported formats: MP4, MOV, MKV, FLV, WMV, AVI. Maximum size: 10 GB per file."
+      "hint": "Supported formats: MP4, MOV, MKV, FLV, WMV, AVI, MP3, WAV, AAC. Maximum size: 10 GB per file.",
+      "hintVideo": "Supported video formats: MP4, MOV, MKV, FLV, WMV, AVI, WebM. Maximum size: 10 GB per file.",
+      "hintAudio": "Supported audio formats: MP3, WAV, AAC, FLAC, OGG, M4A, AIFF. Maximum size: 10 GB per file."
     },
     "stats": {
       "total": "Files total: {count}",
@@ -246,7 +258,7 @@
         "pending": "preparing",
         "ready": "ready to upload",
         "uploading": "uploading",
-        "processing": "processing",
+        "processing": "Finalising upload and refreshing your file list…",
         "complete": "done",
         "error": "error",
         "needsEncoding": "needs re-encoding"
@@ -277,7 +289,13 @@
       "unknownValue": "unknown"
     },
     "errors": {
-      "metadataHelper": "Couldn't load the MediaInfo helper. We'll refresh metadata after the upload completes."
+      "metadataHelper": "Couldn't load the MediaInfo helper. We'll refresh metadata after the upload completes.",
+      "typeMismatchVideo": "Video mode is selected. Please choose a video file.",
+      "typeMismatchAudio": "Audio mode is selected. Please choose an audio file.",
+      "videoInAudioMode": "Cannot upload video files when 'Audio' is selected. This file contains video streams.",
+      "audioInVideoMode": "Cannot upload audio-only files when 'Video' is selected. This file has no video stream.",
+      "invalidFileType": "Could not determine file type for '{fileName}'. Please ensure the file has a valid extension.",
+      "fileAnalysisFailed": "Failed to analyze file. Please try again or use a different file."
     },
     "table": {
       "title": "YouTube live encoding guidance",
