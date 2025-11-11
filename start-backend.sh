@@ -30,6 +30,25 @@ export UPLOAD_DIR="${UPLOAD_DIR:-$(pwd)/backend/uploads}"
 export STREAM_DIR="${STREAM_DIR:-$(pwd)/backend/streams}"
 export LOG_DIR="${LOG_DIR:-$(pwd)/backend/logs}"
 
+SUPERVISOR_CONF_PATH="$(pwd)/backend/supervisord.conf"
+
+if [ "${STREAM_RUNTIME_MODE}" = "supervisor" ]; then
+    if ! command -v supervisord >/dev/null 2>&1 || ! command -v supervisorctl >/dev/null 2>&1; then
+        echo "⚠️  supervisor не знайдено. Перемикаю STREAM_RUNTIME_MODE на manager."
+        export STREAM_RUNTIME_MODE="manager"
+    else
+        RUNNING_PID=$(supervisorctl -c "$SUPERVISOR_CONF_PATH" pid 2>/dev/null | tr -d '[:space:]')
+        if [ -n "$RUNNING_PID" ] && [ "$RUNNING_PID" != "unknown" ]; then
+            echo "♻️  Перезапускаю supervisord (PID: $RUNNING_PID) з оновленим оточенням..."
+            supervisorctl -c "$SUPERVISOR_CONF_PATH" shutdown >/dev/null 2>&1 || true
+            sleep 1
+        fi
+        echo "▶️  Запускаю supervisord (config: $SUPERVISOR_CONF_PATH)..."
+        supervisord -c "$SUPERVISOR_CONF_PATH"
+        sleep 1
+    fi
+fi
+
 # Освобождаем порт API, если он уже занят прошлым процессом
 PORT_TO_FREE="${API_PORT:-8000}"
 if command -v lsof >/dev/null 2>&1; then

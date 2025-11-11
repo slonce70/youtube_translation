@@ -2,12 +2,10 @@
 
 import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { LandingNavBar } from './LandingNavBar'
 import { HeroSection } from './HeroSection'
 import { FeaturesGrid } from './FeaturesGrid'
 import { HowItWorks } from './HowItWorks'
-import { StatsSection } from './StatsSection'
 import { PricingCards } from './PricingCards'
 import { ComparisonTable } from './ComparisonTable'
 import { BenefitsSection } from './BenefitsSection'
@@ -17,9 +15,8 @@ import { Footer } from './Footer'
 export function HomePageClient() {
   const router = useRouter()
 
-  const handleStartStreaming = useCallback(async () => {
-    const { data } = await supabase.auth.getSession()
-    router.push(data.session ? '/dashboard' : '/login')
+  const handleStartStreaming = useCallback(() => {
+    router.push('/login')
   }, [router])
 
   return (
@@ -28,7 +25,6 @@ export function HomePageClient() {
       <HeroSection onStartStreaming={handleStartStreaming} />
       <FeaturesGrid />
       <HowItWorks />
-      <StatsSection />
       <PricingCards onStartStreaming={handleStartStreaming} />
       <ComparisonTable />
       <BenefitsSection />

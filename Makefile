@@ -35,8 +35,8 @@ install-frontend: ## Install frontend dependencies only
 # Development
 # ==========================================
 
-dev: ## Start all services in development mode
-	@echo "$(BLUE)Starting services...$(NC)"
+dev: ## Start all services (local only)
+	@echo "$(BLUE)Starting services (local only)...$(NC)"
 	@echo "Backend: http://localhost:8000"
 	@echo "Frontend: http://localhost:3000"
 	@echo "tusd: http://localhost:1080"
@@ -45,6 +45,8 @@ dev: ## Start all services in development mode
 		./start-frontend.sh & \
 		./start-tusd.sh & \
 		wait
+
+dev-local: dev ## Start all services (local only)
 
 dev-backend: ## Start backend only
 	@echo "$(BLUE)Starting backend at http://localhost:8000...$(NC)"

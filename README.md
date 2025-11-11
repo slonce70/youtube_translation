@@ -1,60 +1,143 @@
 # YouTube Multi-Channel Streaming Platform
 
-Многоарендная платформа для круглосуточных YouTube‑стримов с разделением квот, загрузкой больших файлов через tusd и административной панелью.
+Багатокористувацька платформа для круглодобових YouTube-стрімів з розподілом квот, завантаженням великих файлів через tusd та адміністративною панеллю.
 
-## ⚡️ Основные возможности
+## ⚡️ Основні можливості
 
-- Многоканальные 24/7 стримы без перекодирования (FFmpeg `-c copy`)
-- Квоты и тарифы (storage, streams, assets, playlists, destinations)
-- Изоляция файлов `/uploads/{user_id}` и RLS в Supabase
-- Автоматическое создание профилей пользователей Supabase
-- Веб-панель (Next.js) + tusd для возобновляемых загрузок
-- Админский интерфейс с метриками и алертами
-- Структурированные JSON-логи + Prometheus-совместимые метрики `/api/metrics/prometheus`
+- Багатоканальні 24/7 стріми без перекодування (FFmpeg `-c copy`)
+- Квоти та тарифи (storage, streams, assets, playlists, destinations)
+- Ізоляція файлів `/uploads/{user_id}` на рівні БД
+- Автоматичне створення профілів користувачів через Supabase Auth
+- Веб-панель (Next.js) + tusd для відновлюваних завантажень
+- Адмінський інтерфейс з метриками та алертами
+- Структуровані JSON-логи + Prometheus-сумісні метрики `/api/metrics/prometheus`
+- **Локальна PostgreSQL БД** для швидкості та масштабування
+- **Supabase Auth** для безпечної автентифікації (OAuth, JWT)
 
-## 🚀 Быстрый старт (локально)
+## 🚀 Швидкий старт (локально на macOS)
+
+### Передумови
+- macOS (Apple Silicon або Intel)
+- Python 3.11+
+- Node.js 18+
+- Homebrew
+
+### Крок 1: Встановити PostgreSQL
+
+```bash
+# Встановити PostgreSQL 16
+brew install postgresql@16
+
+# Запустити службу
+brew services start postgresql@16
+
+# Створити БД та користувача
+createdb youtube_streaming
+psql postgres -c "CREATE USER youtube_user WITH PASSWORD 'dev_password_local_only';"
+psql postgres -c "GRANT ALL PRIVILEGES ON DATABASE youtube_streaming TO youtube_user;"
+psql postgres -c "ALTER DATABASE youtube_streaming OWNER TO youtube_user;"
+```
+
+### Крок 2: Встановити Supervisor
+
+```bash
+# Для керування FFmpeg процесами
+brew install supervisor
+
+# Запустити supervisord
+cd backend
+supervisord -c supervisord.conf
+```
+
+### Крок 3: Клонувати та налаштувати проект
 
 ```bash
 git clone https://github.com/slonce70/youtube_translation.git
 cd youtube_translation
 
-# 1. Python окружение
-python3 -m venv .venv
-source .venv/bin/activate
-make install-backend
+# Встановити залежності
+make install
 
-# 2. Node окружение
-cd frontend
-npm install
-cd ..
-
-# 3. Конфигурация
+# Налаштувати конфігурацію
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
-# Заполните ключи Supabase, DATABASE_URL, TUSD_HMAC_SECRET и пути к ffmpeg
 
-# 4. Запуск всех сервисов
-make dev
-
-# Backend:  http://localhost:8000
-# Frontend: http://localhost:3000
-# tusd:     http://localhost:1080/files/
+# Відредагувати backend/.env:
+# - DATABASE_URL (вже налаштовано для локальної БД)
+# - SUPABASE_URL, SUPABASE_KEY, SUPABASE_JWT_SECRET (тільки для Auth!)
+# - ENCRYPTION_KEY, ENCRYPTION_SALT (згенерувати: openssl rand -hex 32)
+# - TUSD_HMAC_SECRET (згенерувати: openssl rand -base64 32)
+# - FFMPEG_BIN=/opt/homebrew/bin/ffmpeg (для Apple Silicon)
 ```
 
-Скрипт `make dev` стартует FastAPI, Next.js и tusd. Для корректного копирования файлов в `/uploads/{user_id}` требуется валидный `TUSD_HMAC_SECRET` в `backend/.env`.
+### Крок 4: Застосувати міграції БД
 
-## 🔑 Важные переменные окружения
+```bash
+cd backend
+python3 apply_migrations.py
+```
 
-| Переменная | Назначение |
-|------------|------------|
-| `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_JWT_SECRET` | Авторизация и профили пользователей |
-| `DATABASE_URL` | Подключение к Supabase Postgres (порт 5432, session mode) |
-| `ENCRYPTION_KEY`, `ENCRYPTION_SALT` | Шифрование стрим-ключей |
-| `TUSD_HMAC_SECRET` | Подпись запросов tusd → FastAPI |
-| `UPLOAD_DIR`, `STREAM_DIR` | Рабочие каталоги (по умолчанию `./uploads`, `./streams`) |
-| `FFMPEG_BIN`, `FFPROBE_BIN` | Пути к бинарям FFmpeg/FFprobe |
+### Крок 5: Запустити все
 
-Все значения хранятся в `backend/.env` и не должны попадать в git.
+```bash
+# З корневої директорії
+make dev
+
+# Або окремо:
+./start-backend.sh   # Backend:  http://localhost:8000
+./start-frontend.sh  # Frontend: http://localhost:3000
+./start-tusd.sh      # tusd:     http://localhost:1080/files/
+```
+
+### Перевірка
+
+```bash
+# Перевірити PostgreSQL
+psql postgresql://youtube_user:dev_password_local_only@localhost:5432/youtube_streaming -c "SELECT version();"
+
+# Перевірити Supervisor
+supervisorctl status
+
+# Перевірити Backend
+curl http://localhost:8000/health
+```
+
+## 🔑 Важливі змінні оточення
+
+### База даних
+| Змінна | Призначення | Приклад |
+|--------|-------------|---------|
+| `DATABASE_URL` | Підключення до локальної PostgreSQL | `postgresql://youtube_user:password@localhost:5432/youtube_streaming` |
+| `DB_POOL_SIZE` | Розмір connection pool (10 для локальної БД) | `10` |
+
+### Автентифікація (тільки Supabase Auth!)
+| Змінна | Призначення |
+|--------|-------------|
+| `SUPABASE_URL` | URL проекту Supabase (тільки для Auth!) |
+| `SUPABASE_KEY` | Anon key з Supabase (публічний) |
+| `SUPABASE_JWT_SECRET` | JWT secret для валідації токенів |
+
+**Важливо:** Supabase використовується **тільки для автентифікації** (OAuth, JWT). База даних локальна!
+
+### Безпека
+| Змінна | Призначення | Генерація |
+|--------|-------------|-----------|
+| `ENCRYPTION_KEY` | Шифрування stream keys | `openssl rand -hex 32` |
+| `ENCRYPTION_SALT` | Сіль для шифрування | `openssl rand -hex 16` |
+| `TUSD_HMAC_SECRET` | Підпис запитів tusd → FastAPI | `openssl rand -base64 32` |
+
+### FFmpeg
+| Змінна | macOS (Homebrew) | Linux |
+|--------|------------------|-------|
+| `FFMPEG_BIN` | `/opt/homebrew/bin/ffmpeg` | `/usr/bin/ffmpeg` |
+| `FFPROBE_BIN` | `/opt/homebrew/bin/ffprobe` | `/usr/bin/ffprobe` |
+
+### Stream Runtime
+| Змінна | Опції | Рекомендація |
+|--------|-------|--------------|
+| `STREAM_RUNTIME_MODE` | `manager` \| `supervisor` \| `systemd` | `supervisor` для macOS/Docker, `systemd` для Linux |
+
+Всі значення зберігаються в `backend/.env` та не повинні потрапляти в git.
 
 ## 🧭 Структура проекта
 
@@ -67,16 +150,36 @@ start-*.sh             Локальные скрипты запуска
 Makefile               Команды для разработки и CI
 ```
 
-## 📚 Документация
+## 📚 Документація
 
-- `docs/ARCHITECTURE.md` — архитектура решения
-- `docs/ARCHITECTURE.md#observability--monitoring` — схема логирования и метрик
-- `docs/MVP_COMPLETE.md` — реализованный функционал и API
-- `docs/SUPABASE_SETUP.md` — настройка проекта в Supabase
-- `docs/IMPLEMENTATION_REPORT.md` — отчёт по доработкам
-- `docs/TROUBLESHOOTING.md` — часто встречающиеся проблемы
-- `docs/backend_api_contract.md` и `docs/backend_api_map.md` — контракты REST API  
-- `docs/postman/` — готовые коллекции и окружения Postman
+- `docs/ARCHITECTURE.md` — архітектура рішення
+- `docs/MVP_COMPLETE.md` — реалізований функціонал та API
+- `docs/IMPLEMENTATION_REPORT.md` — звіт по доопрацюванням
+- `docs/TROUBLESHOOTING.md` — часті проблеми та рішення
+- `docs/backend_api_contract.md` та `docs/backend_api_map.md` — контракти REST API  
+- `docs/postman/` — готові колекції та оточення Postman
+- `docs/operations/supervisor.md` — налаштування Supervisor для автономних стрімів (macOS/Docker)
+- `docs/systemd/` — налаштування systemd для Linux production
+- `LOCAL_DB_SETUP.md` — інструкції по локальній PostgreSQL БД
+
+### Автономные стримы через systemd
+
+CLI-скрипт `python -m app.cli.run_stream <stream_id>` теперь умеет поднимать FFmpeg-процесс вне FastAPI и держит его запущенным, пока служба активна. Чтобы стримы не падали при рестарте API:
+
+1. Скопируйте `docs/systemd/ffmpeg@.service.example` в `/etc/systemd/system/ffmpeg@.service` и подправьте пути/пользователя.
+2. Включите режим `STREAM_RUNTIME_MODE=systemd` в `backend/.env`.
+3. Поднимайте конкретные стримы через `systemctl enable --now ffmpeg@<stream_uuid>` — CLI сам соберёт плейлисты, запустит FFmpeg и обновит статус в БД.
+
+Подробности: `docs/operations/systemd.md`.
+
+### Альтернатива: Supervisord (macOS / Docker)
+
+Если systemd недоступен (наприклад, macOS або Docker-контейнери), використовуйте
+`STREAM_RUNTIME_MODE=supervisor`. Конфігурація описана в
+`docs/operations/supervisor.md`: Supervisord запускає CLI
+`python -m app.cli.run_stream <stream_id>` для кожного UUID і перезапускає його
+після збоїв. Бекендові ендпоінти `start/stop/status` працюють через
+`supervisorctl`, а фронтенд бачить реальний стан стріму.
 
 - **Мониторинг**
   - Middleware `APIMetricsMiddleware` пишет латентность, HTTP-статус и ошибки в структурные логи и увеличивает счётчики `track_api_request` / `track_api_error`.

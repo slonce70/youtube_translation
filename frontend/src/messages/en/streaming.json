@@ -86,6 +86,9 @@
         "status": "Status",
         "created": "Created"
       },
+      "statusCheck": {
+        "unreachable": "Live status unavailable \u2014 backend unreachable"
+      },
       "unknownPlaylist": "Unknown playlist",
       "buttons": {
         "logs": "Logs",
@@ -114,14 +117,14 @@
         "playlistLabel": "Playlist",
         "playlistItems": "{count, plural, one {# item} other {# items}}",
         "playlistNoneTitle": "No playlists available",
-        "playlistNoneDescription": "Create a playlist first in the Library section.",
+        "playlistNoneDescription": "Create a playlist first in the Files section.",
         "destinationsLabel": "Destinations",
         "destinationsNoneTitle": "No active destinations",
         "destinationsNoneDescription": "Add a destination in the Channels sidebar.",
         "assetsLabel": "Choose Assets",
         "assetTapToSelect": "Tap to select",
         "assetSelectedOrder": "Added as #{index}",
-        "assetsNoneDescription": "No assets available. Upload videos in the Library first.",
+        "assetsNoneDescription": "No assets available. Upload media in Files first.",
         "cancel": "Cancel",
         "create": "Create Stream"
       },
@@ -158,7 +161,7 @@
         },
         "cta": {
           "close": "Close",
-          "library": "Open library"
+          "library": "Open files"
         }
       },
       "builder": {
@@ -186,7 +189,7 @@
           "clear": "Clear",
           "empty": "No assets selected yet",
           "assetsHeading": "Available video assets",
-          "noAssets": "Upload video assets in the Library to continue.",
+          "noAssets": "Upload video files in Files to continue.",
           "unknownAsset": "Unknown asset"
         },
         "audio": {
@@ -203,7 +206,7 @@
           "queueHeading": "Playlist order",
           "empty": "No audio tracks selected",
           "assetsHeading": "Available audio assets",
-          "noAssets": "Upload audio assets in the Library to continue.",
+          "noAssets": "Upload audio files in Files to continue.",
           "unknownAsset": "Unknown audio"
         },
         "destinations": {
@@ -252,7 +255,7 @@
         "disabledAudio": "Audio playlist isn\u2019t configured for this stream.",
         "queueHeading": "Playback order",
         "availableHeading": "Available assets",
-        "availableEmpty": "No assets available. Upload media in the Library.",
+        "availableEmpty": "No assets available. Upload media in Files.",
         "toggleLoop": "Loop",
         "toggleShuffle": "Shuffle",
         "toasts": {

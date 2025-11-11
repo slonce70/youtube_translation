@@ -1,0 +1,26 @@
+# Copy to /etc/systemd/system/ffmpeg@.service and adjust paths/users.
+
+[Unit]
+Description=YouTube translation stream %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Path to repo backend
+WorkingDirectory=/opt/youtube_translation/backend
+# Export environment variables for Pydantic settings
+EnvironmentFile=/opt/youtube_translation/backend/.env
+# Ensure Python can resolve the app package
+Environment=PYTHONPATH=/opt/youtube_translation/backend
+# Virtualenv interpreter
+ExecStart=/opt/youtube_translation/.venv/bin/python -m app.cli.run_stream %i
+Restart=always
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+User=streambot
+Group=streambot
+
+[Install]
+WantedBy=multi-user.target

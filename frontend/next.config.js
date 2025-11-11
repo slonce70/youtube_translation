@@ -3,11 +3,21 @@ const fs = require('fs')
 const withNextIntl = require('next-intl/plugin')('./i18n.ts')
 
 /** @type {import('next').NextConfig} */
+const DEV_API_PROXY_TARGET = process.env.DEV_API_PROXY_TARGET || 'http://localhost:8000'
+
+const DEV_ORIGIN_ENV = process.env.NEXT_ALLOWED_DEV_ORIGINS || ''
+const DEV_ORIGIN_TOKENS = DEV_ORIGIN_ENV.split(',').map((origin) => origin.trim()).filter(Boolean)
+const DEFAULT_DEV_ORIGINS = ['localhost', '127.0.0.1']
+
+const unique = (arr) => [...new Set(arr)]
+
 const nextConfig = {
   reactStrictMode: true,
+  allowedDevOrigins: unique([...DEFAULT_DEV_ORIGINS, ...DEV_ORIGIN_TOKENS]),
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',
+      allowedOrigins: unique([...DEFAULT_DEV_ORIGINS, ...DEV_ORIGIN_TOKENS]),
     },
   },
   async redirects() {
@@ -31,6 +41,22 @@ const nextConfig = {
         source: '/dashboard/streams',
         destination: '/dashboard/streaming',
         permanent: true,
+      },
+    ]
+  },
+  async rewrites() {
+    if (process.env.NODE_ENV !== 'development' && !process.env.ENABLE_API_PROXY) {
+      return []
+    }
+
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${DEV_API_PROXY_TARGET}/api/:path*`,
+      },
+      {
+        source: '/thumbnails/:path*',
+        destination: `${DEV_API_PROXY_TARGET}/thumbnails/:path*`,
       },
     ]
   },

@@ -19,14 +19,17 @@ from app.core.config import settings
 
 
 # List of migrations to apply (in order)
+# Note: 001, 020, 021 are Supabase-specific and skipped for local PostgreSQL
+# Note: 002, 006 are RLS/Supabase-specific policies, skipped for local
+# Note: 003 is SKIPPED - already created by 000_local_initial_schema.sql
 MIGRATIONS = [
-    'migrations/003_user_profiles_and_tiers.sql',
-    'migrations/004_add_user_id_columns.sql',
-    'migrations/005_admin_and_alerts.sql',
-    'migrations/006_update_rls_policies.sql',
+    # 'migrations/003_user_profiles_and_tiers.sql',  # SKIP: duplicates 000_local_initial_schema.sql
+    'migrations/004_add_user_id_columns.sql',       # LOCAL: Additional indexes only
+    'migrations/005_admin_and_alerts.sql',          # LOCAL: FK to user_profiles
+    # 'migrations/006_update_rls_policies.sql',     # SKIP: RLS (Supabase only)
     'migrations/007_remove_projects.sql',
-    'migrations/008_update_admin_alert_fk.sql',
-    'migrations/009_update_user_fk.sql',
+    'migrations/008_update_admin_alert_fk.sql',     # Fixes FK to user_profiles
+    # 'migrations/009_update_user_fk.sql',          # SKIP: FK already correct from 000
     'migrations/010_stream_quality_limits.sql',
     'migrations/011_stream_source_type.sql',
     'migrations/012_stream_assets.sql',
@@ -35,6 +38,8 @@ MIGRATIONS = [
     'migrations/015_media_folders.sql',
     'migrations/016_media_collections.sql',
     'migrations/017_streams_collection_link.sql',
+    'migrations/018_performance_indexes.sql',
+    'migrations/019_fix_system_alerts.sql',         # Fixes FK to user_profiles
 ]
 
 
@@ -182,8 +187,8 @@ async def apply_migration(conn: AsyncConnection, migration_file: str):
     # Read migration file
     migration_path = Path(__file__).parent / migration_file
     if not migration_path.exists():
-        print(f"❌ Migration file not found: {migration_file}")
-        return False
+        print(f"⚠️  Migration file not found: {migration_file} — skipping")
+        return True
     
     with open(migration_path, 'r') as f:
         sql_content = f.read()
@@ -465,13 +470,23 @@ async def main():
         
         print(f"\n⚠️  About to apply {len(pending)} pending migration(s):")
         for num in pending:
-            migration_file = next(m for m in MIGRATIONS if num in m)
-            print(f"   - {migration_file}")
+            try:
+                migration_file = next(m for m in MIGRATIONS if num in m)
+                print(f"   - {migration_file}")
+            except StopIteration:
+                print(f"   - Migration {num} (SKIPPED: not in active MIGRATIONS list)")
         
         response = input("\nProceed with migrations? (yes/no): ")
         if response.lower() not in ['yes', 'y']:
             print("❌ Migration cancelled by user")
             return
+        
+        # Filter pending to only include migrations that are in MIGRATIONS list
+        migrations_to_apply = []
+        for migration_file in MIGRATIONS:
+            migration_num = Path(migration_file).stem.split('_')[0]
+            if migration_num in pending:
+                migrations_to_apply.append((migration_file, migration_num))
         
         # Apply pending migrations
         print("\n🔄 Applying migrations...")

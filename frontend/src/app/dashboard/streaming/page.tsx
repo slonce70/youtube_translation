@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, useQueries } from '@tanstack/react-query'
+import type { UseQueryResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
 import type { Locale as DateFnsLocale } from 'date-fns'
@@ -259,12 +260,36 @@ export default function StreamingPage() {
     enabled: !!user,
   })
 
-  const { data: streams, isLoading: isLoadingStreams } = useQuery<Stream[]>({
-    queryKey: ['streams'],
-    queryFn: () => api.streams.list(),
-    enabled: !!user,
-    refetchInterval: 3000,
+const { data: streams, isLoading: isLoadingStreams } = useQuery<Stream[]>({
+  queryKey: ['streams'],
+  queryFn: () => api.streams.list(),
+  enabled: !!user,
+  refetchInterval: 3000,
+})
+
+const streamStatusQueries = useQueries({
+  queries: (streams ?? []).map((stream) => ({
+    queryKey: ['stream-status', stream.id],
+    queryFn: () => api.streams.status(stream.id),
+    enabled: !!user && Boolean(stream?.id),
+    // CRITICAL FIX: Poll ALL streams, not just running ones!
+    // Running streams - every 5 seconds (important)
+    // Other streams - every 15 seconds (still need updates!)
+    refetchInterval: stream.status === 'running' ? 5000 : 15000,
+    retry: false,
+  })),
+}) as UseQueryResult<StreamStatusResponse>[]
+
+const liveStatusMap = useMemo(() => {
+  const map = new Map<string, UseQueryResult<StreamStatusResponse>>()
+  streams?.forEach((stream, index) => {
+    const query = streamStatusQueries[index]
+    if (stream && query) {
+      map.set(stream.id, query)
+    }
   })
+  return map
+}, [streamStatusQueries, streams])
 
   const { data: playlists } = useQuery<Playlist[]>({
     queryKey: ['playlists'],
@@ -1150,21 +1175,30 @@ export default function StreamingPage() {
                 <LoadingState text={tStreaming('fetching')} />
               ) : streams && streams.length > 0 ? (
                 <div className="space-y-4">
-                  {streams.map((stream) => (
-                    <motion.div
-                      key={stream.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-2">
-                            <h3 className="text-lg font-semibold">{stream.name || tStreaming('streams.untitled')}</h3>
-                            {renderStatusBadge(stream.status)}
-                          </div>
+                  {streams.map((stream) => {
+                    const statusQuery = liveStatusMap.get(stream.id)
+                    const derivedStatus = statusQuery?.data?.status ?? stream.status
+                    return (
+                      <motion.div
+                        key={stream.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <h3 className="text-lg font-semibold">{stream.name || tStreaming('streams.untitled')}</h3>
+                            {renderStatusBadge(derivedStatus)}
+                            {statusQuery?.isError && (
+                              <span className="inline-flex items-center space-x-1 text-xs text-amber-600 dark:text-amber-400">
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>{tStreaming('streams.statusCheck.unreachable')}</span>
+                              </span>
+                            )}
+                            </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                             <div>
                               <p className="text-slate-500 dark:text-slate-400">{tStreaming('streams.labels.playlist')}</p>
                               <p className="font-medium">
@@ -1175,7 +1209,10 @@ export default function StreamingPage() {
                             </div>
                             <div>
                               <p className="text-slate-500 dark:text-slate-400">{tStreaming('streams.labels.status')}</p>
-                              <p className="font-medium">{streamingStatus(stream.status)}</p>
+                              <p className="font-medium flex items-center gap-2">
+                                {streamingStatus(derivedStatus)}
+                                {statusQuery?.isFetching && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+                              </p>
                             </div>
                             <div>
                               <p className="text-slate-500 dark:text-slate-400">{tStreaming('streams.labels.created')}</p>
@@ -1237,7 +1274,8 @@ export default function StreamingPage() {
                         </div>
                       </div>
                     </motion.div>
-                  ))}
+                  );
+                })}
                 </div>
               ) : (
                 <div className="text-center py-16">

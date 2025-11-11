@@ -4,11 +4,12 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from threading import RLock
 from typing import Optional, Tuple
-from uuid import UUID
+from uuid import UUID, uuid5, NAMESPACE_DNS
 
 import jwt
 from fastapi import Depends, HTTPException, Header, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -19,12 +20,14 @@ from supabase import Client, create_client
 logger = logging.getLogger(__name__)
 
 # Supabase client
-supabase: Client = create_client(settings.supabase_url, settings.supabase_key)
+supabase_auth_key = settings.supabase_service_key or settings.supabase_key
+supabase: Client = create_client(settings.supabase_url, supabase_auth_key)
 
 # Token → (user_payload, cache_expiration)
 _UserCacheEntry = Tuple[dict, datetime]
 _user_cache: OrderedDict[str, _UserCacheEntry] = OrderedDict()
 _cache_lock = RLock()
+_dev_user_cache: Optional[dict] = None
 
 
 def _cache_enabled() -> bool:
@@ -113,6 +116,26 @@ async def _fetch_supabase_user(token: str):
     """Fetch user details from Supabase auth in a thread to avoid blocking."""
     return await asyncio.to_thread(supabase.auth.get_user, token)
 
+def _dev_user_payload() -> Optional[dict]:
+    if not settings.enable_dev_auth:
+        return None
+
+    email = settings.dev_user_email or "dev@example.com"
+    raw_user_id = settings.dev_user_id
+
+    try:
+        user_uuid = UUID(str(raw_user_id)) if raw_user_id else uuid5(NAMESPACE_DNS, email)
+    except (ValueError, TypeError):
+        user_uuid = uuid5(NAMESPACE_DNS, email)
+
+    payload = {
+        "sub": str(user_uuid),
+        "email": email,
+        "user_metadata": {"dev_mode": True},
+        "exp": None,
+    }
+    return payload
+
 
 async def get_current_user(
     authorization: Optional[str] = Header(None)
@@ -129,10 +152,24 @@ async def get_current_user(
     Raises:
         HTTPException: If token is invalid or missing
     """
-    if not authorization or not authorization.startswith("Bearer "):
+    if not authorization:
+        dev_payload = _dev_user_payload()
+        if dev_payload:
+            logger.info("Using dev auth fallback for %s", dev_payload["email"])
+            return dev_payload
+
+        logger.debug("Auth request without Authorization header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid authorization header",
+            detail="Missing authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not authorization.startswith("Bearer "):
+        logger.debug("Auth request with invalid Authorization header format: %s", authorization[:20])
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -146,13 +183,12 @@ async def get_current_user(
                 settings.supabase_jwt_secret,
                 algorithms=[settings.algorithm],
                 options={
-                    "verify_signature": True, 
+                    "verify_signature": True,
                     "verify_exp": True,
-                    "verify_aud": False  # Supabase tokens don't require audience validation
-                }
+                    "verify_aud": False,
+                },
             )
-            
-            # Check expiration manually as well
+
             exp = payload.get("exp")
             if exp and datetime.utcfromtimestamp(exp) < datetime.utcnow():
                 raise HTTPException(
@@ -160,21 +196,29 @@ async def get_current_user(
                     detail="Token has expired",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-                
+
         except jwt.ExpiredSignatureError:
-            logger.warning("Expired JWT token attempt")
+            logger.info("Rejected expired JWT token")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has expired",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         except jwt.InvalidTokenError as e:
-            logger.warning(f"Invalid JWT token: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-                headers={"WWW-Authenticate": "Bearer"},
+            if settings.environment != "development":
+                logger.info("Rejected invalid JWT token: %s", str(e)[:100])
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            logger.debug(
+                "JWT decode failed locally in development; falling back to Supabase validation: %s",
+                e,
             )
+            payload = {}
+            exp = None
 
         cached_user = _get_cached_user(token)
         if cached_user:
@@ -184,6 +228,11 @@ async def get_current_user(
         user = await _fetch_supabase_user(token)
 
         if not user or not user.user:
+            logger.info("Supabase rejected token: user not found or session invalid")
+            dev_payload = _dev_user_payload()
+            if dev_payload:
+                logger.warning("Falling back to dev auth payload after Supabase rejection")
+                return dev_payload
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token",
@@ -206,6 +255,10 @@ async def get_current_user(
         raise
     except Exception as e:
         logger.exception(f"Error verifying token: {e}")
+        dev_payload = _dev_user_payload()
+        if dev_payload:
+            logger.warning("Dev auth fallback engaged after verification error")
+            return dev_payload
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
@@ -239,6 +292,25 @@ async def _ensure_user_profile(db: AsyncSession, user_payload: dict) -> UUID:
     metadata = user_payload.get("user_metadata") or {}
     full_name = metadata.get("full_name") or metadata.get("name")
 
+    if profile is None and email:
+        existing_by_email = await db.execute(
+            select(UserProfile)
+            .where(UserProfile.email == email)
+            .order_by(UserProfile.created_at.desc())
+        )
+        existing_profile = existing_by_email.scalar_one_or_none()
+        if existing_profile:
+            logger.info(
+                "Reusing existing profile %s for Supabase user %s (email %s)",
+                existing_profile.user_id,
+                user_id,
+                email,
+            )
+            if full_name and existing_profile.full_name != full_name:
+                existing_profile.full_name = full_name
+                await db.commit()
+            return existing_profile.user_id
+
     if profile:
         updated = False
         if email and profile.email != email:
@@ -266,8 +338,20 @@ async def _ensure_user_profile(db: AsyncSession, user_payload: dict) -> UUID:
     )
 
     db.add(new_profile)
+
     try:
         await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        # Параллельный запрос мог создать профиль чуть раньше — пробуем получить его
+        existing_result = await db.execute(
+            select(UserProfile).where(UserProfile.user_id == user_id)
+        )
+        existing_profile = existing_result.scalar_one_or_none()
+        if existing_profile:
+            return existing_profile.user_id
+        # Если профиль всё же отсутствует, пробрасываем ошибку для диагностики
+        raise
     except Exception:
         await db.rollback()
         raise

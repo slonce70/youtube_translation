@@ -34,7 +34,15 @@ class APIMetricsMiddleware(BaseHTTPMiddleware):
             elif response.status_code >= 400:
                 log_method = self.logger.warning
             else:
-                log_method = self.logger.info
+                log_method = self.logger.debug
+
+            if response.status_code == 401:
+                auth_header = request.headers.get("authorization")
+                log_method(
+                    "401 response (auth header %s)",
+                    "present" if auth_header else "missing",
+                    extra={"path": path, "method": method},
+                )
 
             log_method(
                 "API request processed",

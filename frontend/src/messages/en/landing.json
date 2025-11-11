@@ -13,14 +13,14 @@
     "subtitle": "Upload your shows once, set a simple schedule, and let our platform keep the broadcast running while you sleep.",
     "primaryCTA": "Start for free",
     "secondaryCTA": "Watch a quick demo",
-    "trustIndicator": "Free tier included • Upgrade only when you grow"
+    "trustIndicator": "Free tier included \u2022 Upgrade only when you grow"
   },
   "features": {
     "title": "Built for creators who stream around the clock",
     "items": {
       "streaming": {
         "title": "Hands-off broadcasting",
-        "description": "Loop playlists, swap fallbacks, and recover from hiccups automatically—no 3 a.m. restarts."
+        "description": "Loop playlists, swap fallbacks, and recover from hiccups automatically\u2014no 3 a.m. restarts."
       },
       "multiChannel": {
         "title": "All channels in one place",
@@ -48,7 +48,7 @@
     "title": "From upload to live in four clear steps",
     "steps": {
       "upload": {
-        "title": "Load your library",
+        "title": "Load your files",
         "description": "Drop pre-produced sets into secure storage with resumable uploads."
       },
       "playlist": {
@@ -57,7 +57,7 @@
       },
       "stream": {
         "title": "Go live",
-        "description": "Provision RTMPS outputs for YouTube in one click—FFmpeg orchestration included."
+        "description": "Provision RTMPS outputs for YouTube in one click\u2014FFmpeg orchestration included."
       },
       "monitor": {
         "title": "Monitor the feed",
@@ -178,7 +178,7 @@
       "manager": "Success manager"
     },
     "notes": {
-      "dailyLimit": "“24/7” means no daily cap.",
+      "dailyLimit": "\u201c24/7\u201d means no daily cap.",
       "resolution": "Lower resolutions are available on every plan."
     }
   },
@@ -239,6 +239,6 @@
       "security": "Security",
       "compliance": "Compliance"
     },
-    "copyright": "© 2024 YouTube Streaming. All rights reserved."
+    "copyright": "\u00a9 2024 YouTube Streaming. All rights reserved."
   }
 }

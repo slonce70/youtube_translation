@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     supabase_user_cache_ttl_seconds: int = 60
     supabase_user_cache_max_entries: int = 512
     supabase_user_cache_expiry_leeway_seconds: int = 5
+    enable_dev_auth: bool = False
+    dev_user_id: Optional[str] = None
+    dev_user_email: Optional[str] = None
 
     # Database
     database_url: str
@@ -78,12 +81,23 @@ class Settings(BaseSettings):
     # FFmpeg Manager Configuration
     ffmpeg_error_history_size: int = 20  # Number of recent errors to keep
     user_cache_max_size: int = 512  # Maximum number of cached users
+    stream_runtime_mode: str = "manager"  # manager | systemd | supervisor
+    systemd_unit_template: str = "ffmpeg@{stream_id}"
+    systemctl_path: str = "systemctl"
+    supervisor_program_template: str = "stream_{stream_id}"
+    supervisor_ctl_path: str = "supervisorctl"
+    supervisor_conf_path: str = "supervisord.conf"
+    supervisor_config_dir: str = "supervisord/programs"
+    supervisor_log_dir: str = "supervisord/logs"
 
     @property
     def cors_origins(self) -> List[str]:
+        origins = []
         if isinstance(self.allowed_origins, str):
-            return [origin.strip() for origin in self.allowed_origins.split(",")]
-        return self.allowed_origins
+            origins = [origin.strip() for origin in self.allowed_origins.split(",")]
+        else:
+            origins = self.allowed_origins
+        return origins
 
     @field_validator('database_url')
     @classmethod
@@ -187,6 +201,28 @@ class Settings(BaseSettings):
         environment = (info.data or {}).get('environment', 'development')
         if environment != 'development' and value == "change_this_download_secret":
             raise ValueError("DOWNLOAD_TOKEN_SECRET must be configured")
+        return value
+
+    @field_validator('stream_runtime_mode')
+    @classmethod
+    def validate_stream_runtime_mode(cls, value: str) -> str:
+        normalized = value.lower()
+        if normalized not in {"manager", "systemd", "supervisor"}:
+            raise ValueError("STREAM_RUNTIME_MODE must be 'manager', 'systemd', or 'supervisor'")
+        return normalized
+
+    @field_validator('systemd_unit_template')
+    @classmethod
+    def validate_systemd_unit_template(cls, value: str) -> str:
+        if '{stream_id}' not in value:
+            raise ValueError("SYSTEMD_UNIT_TEMPLATE must include '{stream_id}' placeholder")
+        return value
+
+    @field_validator('supervisor_program_template')
+    @classmethod
+    def validate_supervisor_program_template(cls, value: str) -> str:
+        if '{stream_id}' not in value:
+            raise ValueError("SUPERVISOR_PROGRAM_TEMPLATE must include '{stream_id}' placeholder")
         return value
 
 

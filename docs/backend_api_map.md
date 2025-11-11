@@ -13,16 +13,18 @@ This document summarizes the current FastAPI routing surface for the YouTube Mul
 
 ## Route Matrix
 
-| Router | Prefix | Key Dependencies | Core Responsibilities | Notable Observations |
-| ------ | ------ | ---------------- | --------------------- | -------------------- |
-| `auth` | `/api/auth` | _None yet (placeholders)_ | Placeholder login/logout/me endpoints for Supabase auth | `login` and `me` return 501 – align with plan item 8 to finalize or remove placeholder flow. |
-| `quota` | `/api` | `get_db`, `QuotaEnforcer`, `SubscriptionTierLimits`, HMAC header | Internal tusd quota checks and authenticated quota usage reads | `POST /api/internal/check-quota` expects `X-Tusd-Signature`; lacks network-level enforcement in repo – ensure proxy ACLs exist. |
-| `admin` | `/api/admin` | `require_user`, SQLAlchemy models, admin gating | User management, stream monitoring, alert lifecycle, audit logs | Admin check queries `UserProfile`; ensure Supabase metadata sync populates `is_admin`. Pagination parameters currently missing. |
-| `assets` | `/api/assets` | `require_user`, `QuotaEnforcer`, `VideoValidator`, tusd webhook | CRUD for uploaded media assets; webhook validates uploads and creates records | `validator` falls back to `None` if ffprobe missing – add startup health check? Background quota updates rely on `QuotaEnforcer`. |
-| `playlists` | `/api/playlists` | `require_user`, `PlaylistBuilder`, SQLAlchemy models | CRUD for playlists and playlist items | Ensures asset ownership per item; update/delete endpoints commit entire list – consider optimistic locking. |
-| `destinations` | `/api/destinations` | `require_user`, stream-key crypto helpers | Manage RTMPS destinations with encrypted keys | `ensure_destination_allowed` enforces tier/domain rules (see security plan items). |
-| `streams` | `/api/streams` | `require_user`, `QuotaEnforcer`, `ffmpeg_manager`, playlist builder | Create/start/stop streams, attach destinations, fetch logs/status | SSE/log endpoints rely on filesystem reads; ensure pruning per plan §4. |
-| `metrics` | `/api/metrics` | `get_current_user`, `get_db`, psutil | Report system resource usage and streaming capacity estimates | Collects host metrics; `get_current_user` requires valid Supabase Bearer token. |
+| Router | Prefix | Service Layer | Core Responsibilities | Notable Observations |
+| ------ | ------ | ------------- | --------------------- | -------------------- |
+| `auth` | `/api/auth` | Supabase client helpers | Email/password login, logout, `me` endpoint | Env vars `SUPABASE_URL/KEY` must exist; router already production-ready. |
+| `quota` | `/api` | `QuotaService` | tusd quota hook + authenticated usage snapshot | `POST /api/internal/check-quota` вимагає `X-Tusd-Signature`; проксі повинен обмежувати доступ до localhost. |
+| `admin` | `/api/admin` | `AdminService` + `schemas/admin.py` | User/stream/audit tooling, alerts, suspensions | Потрібна пагінація та rate-limit; сервіс логує всі дії. |
+| `assets` | `/api/assets` | `AssetService`, `AssetUploadService`, download helpers | CRUD, валідація аплоадів, токени завантаження | Вся quota/stream-summary логіка тепер у сервісі; роутер тонкий. |
+| `playlists` | `/api/playlists` | `PlaylistService` | Playlist CRUD, asset validation, builder інтеграція | Сервіс перевіряє квоти й сумісність активів перед створенням або оновленням. |
+| `media_folders` | `/api/media/folders` | `MediaFolderService` | Папки та bulk-привʼязки активів | Exclusive bulk-режим спершу очищує всі попередні привʼязки. |
+| `media_collections` | `/api/media/collections` | `MediaCollectionService` | Відео/аудіо колекції, синхронізація з плейлистами | `origin_playlist_id` відстежує походження; router повертає Pydantic response. |
+| `destinations` | `/api/destinations` | `DestinationService` | RTMPS-канали з шифруванням ключів | Маскування ключів і quota-чек централізовані; router залишено dict-сумісним для існуючих тестів. |
+| `streams` | `/api/streams` | `StreamService` + `StreamControlService` | Конфіг стрімів, старт/стоп FFmpeg, логи | Control-сервіс працює з `ffmpeg_manager`; Service перевіряє джерела/квоти. |
+| `metrics` | `/api/metrics` | psutil helpers + middleware | System/stream метрики, Prometheus export | Потребує валідного Supabase токена; забезпечує `/api/metrics/prometheus`. |
 
 ## Endpoint Details
 
@@ -43,11 +45,12 @@ This document summarizes the current FastAPI routing surface for the YouTube Mul
 
 ### Playlists (`/api/playlists`)
 
-- `GET /` → list playlists with items
-- `POST /` → create playlist; validates asset ownership
-- `GET /{playlist_id}` → fetch playlist with eager-loaded items
-- `PUT /{playlist_id}` → update metadata/items (full replace)
-- `DELETE /{playlist_id}` → remove playlist and items cascade
+- `GET /` → list playlists with items (`PlaylistService.list_playlists`)
+- `POST /` → create playlist; перевіряє квоти та власність активів
+- `GET /{playlist_id}` → fetch playlist з items
+- `PUT /{playlist_id}` → оновити метадані/loop
+- `DELETE /{playlist_id}` → видалити плейлист (заборонено, якщо асоційовані стріми)
+- `POST /{playlist_id}/validate` → перевірити сумісність активів
 
 ### Destinations (`/api/destinations`)
 
@@ -58,16 +61,14 @@ This document summarizes the current FastAPI routing surface for the YouTube Mul
 - `DELETE /{destination_id}` → remove destination
 - `POST /{destination_id}/test` *(if implemented later)* → **Not present** – plan callout if needed for health checks
 
-### Streams (`/api/streams`)
-
-- `GET /` → list streams for current user
-- `POST /` → create stream config (validates playlist & destinations)
-- `POST /{stream_id}/start` → check quotas, hydrate playlist, launch FFmpeg via manager
-- `POST /{stream_id}/stop` → stop FFmpeg, update status
-- `GET /{stream_id}` → fetch stream details (with playlist/destinations)
-- `DELETE /{stream_id}` → delete stream + destinations link
-- `GET /{stream_id}/status` → returns cached status info
-- `GET /{stream_id}/logs` → stream log tail (filesystem read)
+- `GET /` → list streams (BД + повʼязані ресурси)
+- `POST /` → create stream config (перевіряє playlist/collections/destinations)
+- `POST /{stream_id}/start` → quota + старт FFmpeg через `StreamControlService`
+- `POST /{stream_id}/stop` → stop FFmpeg, оновити статус
+- `GET /{stream_id}` → fetch stream details
+- `DELETE /{stream_id}` → delete stream + links
+- `GET /{stream_id}/status` → статус
+- `GET /{stream_id}/logs` → tail з файлової системи
 
 ### Admin (`/api/admin`)
 
@@ -84,12 +85,9 @@ This document summarizes the current FastAPI routing surface for the YouTube Mul
 
 ## Gaps & Follow-Up
 
-1. `auth` router remains unimplemented – align with plan §8.
-2. Pagination for admin listings is absent; large datasets will load entirely.
-3. Quota enforcement relies on background tasks (e.g., storage recalculation) – confirm scheduled jobs exist.
-4. `metrics` router depends on psutil; container image must include it.
-5. Ensure all routers consistently use `require_user` vs `get_current_user` (metrics currently uses different dependency).
-6. Documented endpoints should be exported via OpenAPI/Swagger (`plan §6`).
+1. Pagination для `/api/admin/users|streams|alerts` досі відсутня.
+2. Storage quota майже повністю покладається на фон оновлень; переконайтеся, що CRON/validators регулярно оновлюють `current_storage_bytes`.
+3. `metrics` залежить від psutil; додавайте його у prod image.
+4. Варто формально опублікувати OpenAPI (`/docs`) у README/ops-нотатках для партнерів.
 
 This mapping satisfies Plan §1.1 (“Карта API и маршрутизация”). Update `plan.md` when subsequent verification steps complete.
-

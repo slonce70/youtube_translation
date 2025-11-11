@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Check } from 'lucide-react'
 import { Button } from '../ui/Button'
@@ -9,9 +9,6 @@ import { Badge } from '../ui/Badge'
 import { SectionContainer } from './SectionContainer'
 import { PLAN_KEYS, PLAN_DETAILS, type PlanKey } from '@/lib/plans'
 import { cn } from '@/lib/utils'
-import { api, ApiError } from '@/lib/api'
-import { logger } from '@/lib/logger'
-
 const POPULAR_PLANS: PlanKey[] = ['fhd_flow']
 
 type Props = {
@@ -28,35 +25,7 @@ export function PricingCards({ onStartStreaming }: Props) {
     button: string
     features: string[]
   }
-  const [activePlan, setActivePlan] = useState<PlanKey | null>(null)
   const [selectedPlan, setSelectedPlan] = useState<PlanKey>(POPULAR_PLANS[0])
-
-  useEffect(() => {
-    let mounted = true
-
-    const loadActivePlan = async () => {
-      try {
-        const quota = await api.quota.get()
-        if (!mounted) return
-        if (quota?.tier) {
-          const tier = quota.tier as PlanKey
-          setActivePlan(tier)
-          setSelectedPlan(tier)
-        }
-      } catch (error) {
-        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-          return
-        }
-        logger.error('Failed to fetch active plan', error, { component: 'PricingCards' })
-      }
-    }
-
-    void loadActivePlan()
-
-    return () => {
-      mounted = false
-    }
-  }, [])
 
   const formatPrice = (price: number) => {
     if (price === 0) {
@@ -116,21 +85,14 @@ export function PricingCards({ onStartStreaming }: Props) {
               <div className="flex w-full md:w-auto">
                 <Button
                   variant="secondary"
-                  className={cn(
-                    'w-full bg-white text-slate-900 hover:bg-slate-100 md:w-auto',
-                    activePlan === 'free' ? 'cursor-default opacity-80' : ''
-                  )}
-                  disabled={activePlan === 'free'}
+                  className="w-full bg-white text-slate-900 hover:bg-slate-100 md:w-auto"
                   onClick={() => {
-                    if (activePlan === 'free') {
-                      return
-                    }
                     if (onStartStreaming) {
                       void onStartStreaming()
                     }
                   }}
                 >
-                  {activePlan === 'free' ? t('selection.button.current') : freePlanCopy.button}
+                  {freePlanCopy.button}
                 </Button>
               </div>
             </div>
@@ -146,8 +108,8 @@ export function PricingCards({ onStartStreaming }: Props) {
                 badge?: string
               }
               const resolutionLabel = plan.maxResolution === '2160p' ? '4K' : 'Full HD'
-              const isActive = activePlan === planKey
               const isSelected = selectedPlan === planKey
+              const isActive = isSelected
               const features: string[] = [
                 t('featureLabels.storage', { value: plan.storageGb }),
                 t('featureLabels.streams', { value: plan.streams }),
@@ -170,17 +132,11 @@ export function PricingCards({ onStartStreaming }: Props) {
               }
 
               const isPopular = POPULAR_PLANS.includes(planKey)
-              const selectionBadge = isActive
-                ? t('selection.badges.current')
-                : isSelected
-                  ? t('selection.badges.selected')
-                  : null
-              const buttonVariant = isActive ? 'outline' : isSelected ? 'primary' : 'secondary'
-              const buttonLabel = isActive
-                ? t('selection.button.current')
-                : isSelected
-                  ? t('selection.button.selected', { plan: planMeta?.name ?? planKey })
-                  : t('selection.button.default')
+              const selectionBadge = isSelected ? t('selection.badges.selected') : null
+              const buttonVariant = isSelected ? 'primary' : 'secondary'
+              const buttonLabel = isSelected
+                ? t('selection.button.selected', { plan: planMeta?.name ?? planKey })
+                : t('selection.button.default')
 
               return (
                 <motion.div

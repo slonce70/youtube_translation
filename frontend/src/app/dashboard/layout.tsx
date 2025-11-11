@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { supabase, waitForAuth } from '@/lib/supabase'
 import { NavBar } from '@/components/NavBar'
 import { LoadingState } from '@/components/LoadingState'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -16,10 +16,15 @@ type Props = {
   children: React.ReactNode
 }
 
+const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
+const DEV_USER_EMAIL = process.env.NEXT_PUBLIC_DEV_USER_EMAIL ?? 'dev@example.com'
+const DEV_USER_ID = process.env.NEXT_PUBLIC_DEV_USER_ID ?? 'dev-user-id'
+
 export default function DashboardLayout({ children }: Props) {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [authReady, setAuthReady] = useState(false)
 
   const {
     data: quota,
@@ -27,12 +32,27 @@ export default function DashboardLayout({ children }: Props) {
   } = useQuery<QuotaUsageResponse>({
     queryKey: ['quota'],
     queryFn: api.quota.get,
-    enabled: !!user,
+    enabled: !!user && authReady,
     staleTime: 60_000,
   })
 
   useEffect(() => {
+    if (DEV_BYPASS) {
+      const stubUser = {
+        id: DEV_USER_ID,
+        email: DEV_USER_EMAIL,
+        user_metadata: { display_name: 'Developer' },
+      }
+      setUser(stubUser)
+      setAuthReady(true)
+      setLoading(false)
+      return
+    }
+
     const loadSession = async () => {
+      // Wait for auth to be fully initialized
+      await waitForAuth()
+      
       const { data } = await supabase.auth.getSession()
       const sessionUser = data.session?.user
 
@@ -42,6 +62,7 @@ export default function DashboardLayout({ children }: Props) {
       }
 
       setUser(sessionUser)
+      setAuthReady(true)
       setLoading(false)
     }
 
@@ -50,10 +71,14 @@ export default function DashboardLayout({ children }: Props) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (DEV_BYPASS) {
+        return
+      }
       if (!session?.user) {
         router.replace('/login')
       } else {
         setUser(session.user)
+        setAuthReady(true)
         setLoading(false)
       }
     })

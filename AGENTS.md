@@ -1,46 +1,35 @@
 # Repository Guidelines
 
-This repository delivers the multi-tenant YouTube streaming platform through a FastAPI backend, a Next.js frontend, and tusd upload helpers.
-
 ## Project Structure & Module Organization
-
-- `backend/app` holds FastAPI routers (`api/`), domain services (`core/`, `streaming/`), Pydantic schemas, and SQL models; migrations reside in `backend/migrations`, tests in `backend/tests/`.
-- `frontend/src` uses the App Router with UI elements inside `components/`, utilities in `lib/`, and locale assets under `i18n/` and `messages/`.
-- `docs/` contains architecture notes, `docker/` covers deployment manifests, and root scripts `start-*.sh` plus the `Makefile` manage local workflows.
+- `backend/` hosts the FastAPI service, CLI utilities, and tusd hooks; keep domain logic under `backend/app/` and reusable scripts under `backend/scripts/`.
+- `backend/tests/` mirrors the app layout; add fixtures beside the features they cover.
+- `frontend/src/` contains the Next.js App Router tree plus UI primitives in `frontend/src/components/`; colocate page-specific hooks or stores inside the related feature folder.
+- `docs/` stores architecture notes, API contracts, and ops playbooks (systemd, Supervisor, Postman); update the relevant file whenever behavior shifts.
+- `docker/` and root `start-*.sh` scripts encode local orchestration; align new services with these entrypoints before editing CI.
 
 ## Build, Test, and Development Commands
-
-Prefer the Makefile shortcuts:
-
-```bash
-make dev              # start FastAPI, Next.js, and tusd together
-make test             # run pytest and Jest suites
-make lint             # ruff + black + eslint
-make type-check       # mypy + TypeScript checks
-make migrate          # apply database migrations
-```
-
-Use underlying commands as needed: `pytest -v`, `npm run dev`, `npm test`, or `python3 apply_migrations.py`.
+- `make install` — installs backend (pip) and frontend (npm) dependencies in one step.
+- `make dev` — runs backend, frontend, and tusd together; prefer this for full-stack QA.
+- Targeted helpers: `make dev-backend`, `make dev-frontend`, or `./start-tusd.sh` when debugging a single service.
+- `make test` — executes pytest plus Jest/React Testing Library suites; CI expects it to pass cleanly.
+- `make lint` and `make type-check` — run Ruff+Black, ESLint, and mypy/tsc; fix formatting locally before pushing.
 
 ## Coding Style & Naming Conventions
-
-- Backend code uses Python 3.11+, four-space indentation, type hints, and `snake_case` modules; enforce style with `ruff`, `black`, and `mypy`. Classes (SQLAlchemy, Pydantic, enums) stay in `PascalCase`.
-- Frontend TypeScript keeps functional React components, Tailwind utility classes, and `camelCase` variables. `npm run lint` and `npm run type-check` must be clean before review.
-- Keep `backend/.env.example` and `frontend/.env.example` updated when adding configuration.
-- Interface localization ships in three languages (en, uk, ru). Any new UI strings must land in all three message bundles before merging.
-- Prefer the smallest viable code changes and avoid gratuitous abstractions so diffs stay lean and reviewable.
-- Maintain the established project structure when adding files; place new modules alongside related code paths rather than inventing new top-level directories.
+- Python: 4-space indent, explicit type hints, and descriptive snake_case module names; format with Black and keep imports Ruff-compliant.
+- TypeScript/React: 2-space indent, functional components in PascalCase, hooks in camelCase with the `use` prefix, and translations grouped under `frontend/src/i18n`.
+- Configuration files (`.env`, `supervisord.conf`, `docs/systemd/*`) must stay ASCII and documented when keys change.
 
 ## Testing Guidelines
-
-Place pytest modules in `backend/tests/` alongside route or service names (e.g., `test_stream_routes.py`); run coverage with `make test-backend-coverage` when touching critical flows. Frontend behavior tests belong near their components or in `frontend/src/__tests__`, using Jest and Testing Library with the helpers defined in `jest.setup.ts`. Pull requests must pass `make test`.
+- Backend tests live in `backend/tests/test_*.py`; mock external services (Supabase, FFmpeg) via fixtures in `tests/conftest.py`.
+- Frontend tests follow `*.spec.tsx` or `*.test.ts` inside feature folders; use Jest snapshots sparingly and favor behavior assertions.
+- Maintain ≥80% coverage on new modules; if coverage dips, explain the trade-off in the PR and add a follow-up issue.
 
 ## Commit & Pull Request Guidelines
-
-- Follow Conventional Commits as in history (`feat(streams): …`, `fix: …`); group refactors under `chore:` and config changes under `build:` or `ci:`.
-- PRs need a concise summary, linked issue, screenshots for UI changes, and the list of verification commands run (`make lint`, `make test`, migrations). Document new environment variables and reference doc updates when applicable.
-- Rebase onto `main` before review and keep PRs small; include design notes in `docs/` if the change alters architecture.
+- Follow the Conventional Commit pattern seen in history (`feat:`, `chore(repo):`, `fix(streams):`); keep the subject ≤72 chars and list key changes as bullet points in the body when needed.
+- Every PR should include: a concise summary, linked issue/linear ticket, screenshots or curl output for UI/API tweaks, test evidence (`make test` log), and notes on env or migration impacts.
+- Request at least one reviewer familiar with the touched area (backend, frontend, or ops) and ensure docs are updated in the same PR.
 
 ## Security & Configuration Tips
-
-Store secrets only in `backend/.env` and `frontend/.env.local`, not in Git. Validate `TUSD_HMAC_SECRET`, FFmpeg paths, and Supabase credentials before `make dev`. Rotate tokens regularly and run `make security-audit` ahead of releases.
+- Never commit secrets; keep `backend/.env` and `frontend/.env.local` in `.gitignore` and rotate keys via `openssl rand` as documented in `README.md`.
+- Validate `DATABASE_URL`, Supabase keys, and `FFMPEG_BIN` before running `make dev`; misconfigured paths are the top cause of failing local streams.
+- When altering streaming runtime behavior, update both `docs/operations/supervisor.md` and `docs/systemd/*.md` so operators can mirror your config.
