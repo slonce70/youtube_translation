@@ -157,7 +157,7 @@ class AssetUploadService:
         if user_requested_type not in ALLOWED_ASSET_TYPES:
             user_requested_type = "video"
 
-        resolved_asset_type = normalize_asset_type(None, summary_meta)
+        resolved_asset_type = normalize_asset_type(user_requested_type, summary_meta)
         if user_requested_type == "audio" and resolved_asset_type == "video":
             logger.warning(
                 "Asset type mismatch for upload %s: user requested 'audio' but file contains video streams."

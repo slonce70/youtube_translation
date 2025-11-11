@@ -59,6 +59,7 @@ Thumbs.db
 /backend/streams/
 /backend/logs/
 *.mp4
+*.mp3
 # MPEG transport stream video files (not TypeScript)
 /backend/**/*.ts
 /frontend/**/*.ts

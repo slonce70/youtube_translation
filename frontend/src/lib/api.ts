@@ -36,6 +36,16 @@ import type {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
+const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
+
+function getCsrfToken(): string | undefined {
+  if (typeof document === 'undefined') {
+    return undefined
+  }
+
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)
+  return match ? decodeURIComponent(match[1]) : undefined
+}
 
 function resolveApiBase(): { base: string; isAbsolute: boolean } {
   const rawBase = (API_BASE_URL || '').trim() || '/api'
@@ -84,6 +94,7 @@ export class ApiError extends Error {
 
 async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { params, ...fetchOptions } = options
+  const requestInit: RequestInit = { ...fetchOptions }
 
   // Normalize base URL to support both absolute (http...) and relative (/api) forms
   const { base: normalizedBase } = resolveApiBase()
@@ -124,10 +135,22 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const response = await fetch(urlString, {
-    ...fetchOptions,
-    headers,
-  })
+  const method = (requestInit.method ?? 'GET').toString().toUpperCase()
+
+  if (requestInit.credentials === undefined) {
+    requestInit.credentials = 'include'
+  }
+
+  if (!CSRF_SAFE_METHODS.has(method)) {
+    const csrfToken = getCsrfToken()
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken
+    }
+  }
+
+  requestInit.headers = headers
+
+  const response = await fetch(urlString, requestInit)
 
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => ({ detail: 'Unknown error' }))

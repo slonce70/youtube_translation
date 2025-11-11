@@ -5,16 +5,12 @@ Endpoints for admin panel: user management, stream monitoring, system alerts.
 Only accessible by users with is_admin=True.
 """
 
-import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import require_user
-from app.models.database import UserProfile
+from app.api.deps import require_admin
 from app.schemas.admin import (
     AdminAccessResponse,
     AdminActionLog,
@@ -28,46 +24,7 @@ from app.schemas.admin import (
 )
 from app.services.admin import AdminService
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-# ==========================================
-# Admin Permission Check
-# ==========================================
-
-async def require_admin(user_deps: tuple = Depends(require_user)) -> tuple[AsyncSession, UUID]:
-    """
-    Dependency to ensure user is an admin.
-    
-    Returns:
-        Tuple of (db_session, admin_user_id)
-    
-    Raises:
-        HTTPException: If user is not an admin
-    """
-    db, user_id = user_deps
-    
-    # Check if user is admin
-    result = await db.execute(
-        select(UserProfile).where(UserProfile.user_id == user_id)
-    )
-    profile = result.scalar_one_or_none()
-    
-    if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User profile not found"
-        )
-    
-    if not profile.is_admin:
-        logger.warning(f"Non-admin user {user_id} attempted to access admin endpoint")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
-    
-    return db, user_id
 
 
 async def get_admin_service(

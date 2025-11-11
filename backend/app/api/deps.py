@@ -431,4 +431,46 @@ class UserDependency:
 
 # Dependency instances
 require_user = UserDependency(required=True)
+
+
+async def require_admin(
+    user_deps: tuple[AsyncSession, Optional[str]] = Depends(require_user),
+) -> tuple[AsyncSession, UUID]:
+    """Ensure the current user has admin privileges."""
+
+    db, user_id_str = user_deps
+
+    if not user_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    try:
+        user_id = UUID(str(user_id_str))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user identifier",
+        )
+
+    result = await db.execute(select(UserProfile).where(UserProfile.user_id == user_id))
+    profile = result.scalar_one_or_none()
+
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found",
+        )
+
+    if not getattr(profile, "is_admin", False):
+        logger.warning("Non-admin user %s attempted to access admin endpoint", user_id)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+
+    return db, user_id
+
+
 optional_user = UserDependency(required=False)
