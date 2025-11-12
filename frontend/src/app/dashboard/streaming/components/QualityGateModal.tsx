@@ -27,6 +27,11 @@ const violationTranslationKey: Record<string, string> = {
   bitrate_missing: 'streams.quality.violations.bitrateMissing',
   guideline_missing: 'streams.quality.violations.guidelineMissing',
   missing_metadata: 'streams.quality.violations.missingMetadata',
+  audio_codec_not_allowed: 'streams.quality.violations.audioCodec',
+  audio_sample_rate_low: 'streams.quality.violations.audioSampleRate',
+  audio_bitrate_out_of_range: 'streams.quality.violations.audioBitrate',
+  audio_metadata_missing: 'streams.quality.violations.audioMetadata',
+  audio_channels_high: 'streams.quality.violations.audioChannels',
 }
 
 export function QualityGateModal({
@@ -42,38 +47,41 @@ export function QualityGateModal({
     return null
   }
 
+
   const { quality, streamName } = state
-  const recommended = quality.recommended
+  const recommended = quality.recommended ?? null
+  const audioRecommendation = quality.audio_recommended ?? null
+  const qualityMode = quality.mode ?? (recommended ? 'video' : audioRecommendation ? 'audio' : 'video')
+  const isAudioOnly = qualityMode === 'audio'
+  const isMixedMode = qualityMode === 'mixed'
 
-  const resolution = (() => {
-    if (recommended?.resolution) {
-      return recommended.resolution
-    }
-    if (quality.limits.max_resolution_height) {
-      return `${quality.limits.max_resolution_height}p`
-    }
-    if (planQualityLimits?.max_resolution) {
-      return planQualityLimits.max_resolution
-    }
-    return t('streams.quality.limits.unlimited')
-  })()
+  const resolution = !isAudioOnly
+    ? (() => {
+        if (recommended?.resolution) {
+          return recommended.resolution
+        }
+        if (quality.limits.max_resolution_height) {
+          return `${quality.limits.max_resolution_height}p`
+        }
+        if (planQualityLimits?.max_resolution) {
+          return planQualityLimits.max_resolution
+        }
+        return t('streams.quality.limits.unlimited')
+      })()
+    : null
 
-  const fpsLimit =
-    recommended?.fps ??
-    quality.limits.max_fps ??
-    planQualityLimits?.max_fps ??
-    null
+  const fpsLimit = !isAudioOnly
+    ? recommended?.fps ?? quality.limits.max_fps ?? planQualityLimits?.max_fps ?? null
+    : null
   const fpsDisplay = fpsLimit != null ? fpsLimit.toString() : '∞'
 
-  const minBitrate =
-    recommended?.min_bitrate_mbps ??
-    quality.limits.min_video_bitrate_mbps ??
-    null
-  const maxBitrate =
-    recommended?.max_bitrate_mbps ??
-    quality.limits.max_video_bitrate_mbps ??
-    null
-  const targetBitrate = recommended?.target_bitrate_mbps ?? null
+  const minBitrate = !isAudioOnly
+    ? recommended?.min_bitrate_mbps ?? quality.limits.min_video_bitrate_mbps ?? null
+    : null
+  const maxBitrate = !isAudioOnly
+    ? recommended?.max_bitrate_mbps ?? quality.limits.max_video_bitrate_mbps ?? null
+    : null
+  const targetBitrate = !isAudioOnly ? recommended?.target_bitrate_mbps ?? null : null
 
   const formatValue = (value: number | null) => {
     if (value == null) return null
@@ -81,17 +89,19 @@ export function QualityGateModal({
     return trimmed
   }
 
-  const rangeText = (() => {
-    const min = formatValue(minBitrate)
-    const max = formatValue(maxBitrate)
+  const rangeText = !isAudioOnly
+    ? (() => {
+        const min = formatValue(minBitrate)
+        const max = formatValue(maxBitrate)
 
-    if (min && max) return `${min}–${max} Mbps`
-    if (min) return `≥ ${min} Mbps`
-    if (max) return `≤ ${max} Mbps`
-    return t('streams.quality.limits.unlimited')
-  })()
+        if (min && max) return `${min}–${max} Mbps`
+        if (min) return `≥ ${min} Mbps`
+        if (max) return `≤ ${max} Mbps`
+        return t('streams.quality.limits.unlimited')
+      })()
+    : null
 
-  const targetClause = targetBitrate != null
+  const targetClause = !isAudioOnly && targetBitrate != null
     ? t('streams.quality.recommended.targetClause', {
         target: formatValue(targetBitrate) ?? '—',
       })
@@ -99,6 +109,15 @@ export function QualityGateModal({
 
   const videoCodec = recommended?.video_codec ?? 'H.264'
   const audioCodec = recommended?.audio_codec ?? 'AAC'
+  const audioCodecLabel = audioRecommendation?.codec ?? 'AAC'
+  const audioSampleRate = audioRecommendation?.sample_rate_hz ?? null
+  const audioMinBitrate = audioRecommendation?.min_bitrate_kbps ?? null
+  const audioTargetBitrate = audioRecommendation?.target_bitrate_kbps ?? audioMinBitrate
+  const audioChannels = audioRecommendation?.channels ?? null
+  const audioSampleRateDisplay = audioSampleRate ? `${Math.round(audioSampleRate / 1000)} kHz` : '48 kHz'
+  const audioMinBitrateDisplay = audioMinBitrate != null ? `${audioMinBitrate} kbps` : '128 kbps'
+  const audioTargetBitrateDisplay = audioTargetBitrate != null ? `${audioTargetBitrate} kbps` : audioMinBitrateDisplay
+  const audioChannelsDisplay = audioChannels ?? 2
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
@@ -115,52 +134,75 @@ export function QualityGateModal({
           </Badge>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('streams.quality.limits.resolution')}
-              </p>
-              <p className="text-base font-semibold text-slate-900 dark:text-white">
-                {quality.limits.max_resolution_height
-                  ? `${quality.limits.max_resolution_height}p`
-                  : t('streams.quality.limits.unlimited')}
-              </p>
+          {!isAudioOnly && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {t('streams.quality.limits.resolution')}
+                </p>
+                <p className="text-base font-semibold text-slate-900 dark:text-white">
+                  {quality.limits.max_resolution_height
+                    ? `${quality.limits.max_resolution_height}p`
+                    : t('streams.quality.limits.unlimited')}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {t('streams.quality.limits.fps')}
+                </p>
+                <p className="text-base font-semibold text-slate-900 dark:text-white">
+                  {quality.limits.max_fps ?? t('streams.quality.limits.unlimited')}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {t('streams.quality.limits.bitrate')}
+                </p>
+                <p className="text-base font-semibold text-slate-900 dark:text-white">
+                  {quality.limits.max_video_bitrate_mbps
+                    ? `${quality.limits.max_video_bitrate_mbps} Mbps`
+                    : t('streams.quality.limits.unlimited')}
+                </p>
+              </div>
             </div>
-            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('streams.quality.limits.fps')}
-              </p>
-              <p className="text-base font-semibold text-slate-900 dark:text-white">
-                {quality.limits.max_fps ?? t('streams.quality.limits.unlimited')}
-              </p>
-            </div>
-            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('streams.quality.limits.bitrate')}
-              </p>
-              <p className="text-base font-semibold text-slate-900 dark:text-white">
-                {quality.limits.max_video_bitrate_mbps
-                  ? `${quality.limits.max_video_bitrate_mbps} Mbps`
-                  : t('streams.quality.limits.unlimited')}
-              </p>
-            </div>
-          </div>
+          )}
 
-          <div className="rounded-lg border border-primary-200 dark:border-primary-700/60 bg-primary-50/60 dark:bg-primary-900/30 p-4">
-            <p className="text-sm font-semibold text-primary-700 dark:text-primary-300">
-              {t('streams.quality.recommended.title')}
-            </p>
-            <p className="text-sm text-primary-700 dark:text-primary-300 mt-1">
-              {t('streams.quality.recommended.description', {
-                resolution,
-                fps: fpsDisplay,
-                videoCodec,
-                audioCodec,
-                bitrateRange: rangeText,
-                targetClause,
-              })}
-            </p>
-          </div>
+          {!isAudioOnly && recommended && (
+            <div className="rounded-lg border border-primary-200 dark:border-primary-700/60 bg-primary-50/60 dark:bg-primary-900/30 p-4">
+              <p className="text-sm font-semibold text-primary-700 dark:text-primary-300">
+                {t('streams.quality.recommended.title')}
+              </p>
+              <p className="text-sm text-primary-700 dark:text-primary-300 mt-1">
+                {t('streams.quality.recommended.description', {
+                  resolution,
+                  fps: fpsDisplay,
+                  videoCodec,
+                  audioCodec,
+                  bitrateRange: rangeText ?? t('streams.quality.limits.unlimited'),
+                  targetClause,
+                })}
+              </p>
+            </div>
+          )}
+
+          {audioRecommendation && (
+            <div className="rounded-lg border border-primary-200 dark:border-primary-700/60 bg-primary-50/60 dark:bg-primary-900/30 p-4">
+              <p className="text-sm font-semibold text-primary-700 dark:text-primary-300">
+                {isMixedMode
+                  ? t('streams.quality.audio.recommended.mixedTitle')
+                  : t('streams.quality.audio.recommended.title')}
+              </p>
+              <p className="text-sm text-primary-700 dark:text-primary-300 mt-1">
+                {t('streams.quality.audio.recommended.description', {
+                  codec: audioCodecLabel,
+                  sampleRate: audioSampleRateDisplay,
+                  channels: audioChannelsDisplay,
+                  minBitrate: audioMinBitrateDisplay,
+                  targetBitrate: audioTargetBitrateDisplay,
+                })}
+              </p>
+            </div>
+          )}
 
           <div className="space-y-3">
             <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">

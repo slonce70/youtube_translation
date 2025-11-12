@@ -135,6 +135,39 @@ def test_prepare_stream_playlists_creates_files(tmp_path):
     assert result.audio_copy_compatible is True
 
 
+def test_prepare_stream_playlists_flags_mp3_for_transcode(tmp_path):
+    builder = PlaylistBuilder()
+
+    video_source = tmp_path / "video.mp4"
+    video_source.write_text("dummy")
+    audio_source = tmp_path / "audio.mp3"
+    audio_source.write_text("dummy")
+
+    result = builder.prepare_stream_playlists(
+        stream_id="mp3-audio",
+        stream_dir=tmp_path / "artifacts-mp3",
+        video_assets=[
+            {
+                "path": str(video_source),
+                "meta": sample_meta(),
+                "loop_mode": "loop",
+                "compatible_for_copy": True,
+            }
+        ],
+        audio_assets=[
+            {
+                "path": str(audio_source),
+                "meta": {"audio": {"codec": "mp3", "sample_rate": 44100}},
+                "loop_mode": "loop",
+            }
+        ],
+        mix_mode="mixed",
+    )
+
+    assert result.audio_playlist is not None
+    assert result.audio_copy_compatible is False
+
+
 def test_prepare_stream_playlists_mixed_uses_placeholder_when_video_missing(tmp_path):
     builder = PlaylistBuilder()
 

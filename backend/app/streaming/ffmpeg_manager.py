@@ -22,7 +22,14 @@ from app.streaming.playlist_builder import PlaylistFileSet
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_KEYFRAME_INTERVAL_SECONDS = 2.0
+MIN_KEYFRAME_INTERVAL_SECONDS = 0.5
+MAX_KEYFRAME_INTERVAL_SECONDS = 4.0
+
+
 @dataclass
+
+
 class FFmpegCommandPlan:
     """Structured summary of the FFmpeg command and encoding decisions."""
 
@@ -37,6 +44,8 @@ class FFmpegCommandPlan:
     uses_video_placeholder: bool
     uses_audio_placeholder: bool
     destination_uris: List[str]
+    keyframe_interval_seconds: Optional[float] = None
+    keyframe_gop_frames: Optional[int] = None
 
     def telemetry(self) -> Dict[str, Any]:
         """Return a sanitized dictionary for logging or in-memory state."""
@@ -51,6 +60,8 @@ class FFmpegCommandPlan:
             "uses_video_placeholder": self.uses_video_placeholder,
             "uses_audio_placeholder": self.uses_audio_placeholder,
             "destination_uris": list(self.destination_uris),
+            "keyframe_interval_seconds": self.keyframe_interval_seconds,
+            "keyframe_gop_frames": self.keyframe_gop_frames,
         }
 
 
@@ -574,6 +585,9 @@ class FFmpegStreamManager:
         video_maxrate: Optional[int] = None
         video_bufsize: Optional[int] = None
 
+        keyframe_interval_seconds: Optional[float] = None
+        keyframe_gop_frames: Optional[int] = None
+
         if copy_video:
             cmd.extend(["-c:v", "copy", "-bsf:v", "h264_mp4toannexb", "-tag:v", "7"])
         else:
@@ -581,17 +595,25 @@ class FFmpegStreamManager:
             video_maxrate = max(int(getattr(settings, "ffmpeg_video_maxrate_kbps", video_bitrate)), video_bitrate)
             video_bufsize = max(int(getattr(settings, "ffmpeg_video_bufsize_kbps", video_maxrate * 2)), video_maxrate)
 
+            keyframe_gop_frames, keyframe_interval_seconds = self._select_keyframe_settings(playlists)
+            gop_value = max(1, keyframe_gop_frames)
+            keyframe_expr = f"expr:gte(t,n_forced*{keyframe_interval_seconds:.3f})"
+
             cmd.extend(
                 [
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-pix_fmt", "yuv420p",
                     "-profile:v", "high",
-                    "-g", "60",
+                    "-g", str(gop_value),
+                    "-keyint_min", str(gop_value),
+                    "-sc_threshold", "0",
                     "-b:v", f"{video_bitrate}k",
                     "-maxrate", f"{video_maxrate}k",
                     "-bufsize", f"{video_bufsize}k",
                     "-tune", "zerolatency",
+                    "-force_key_frames",
+                    keyframe_expr,
                 ]
             )
         video_bitrate_value = video_bitrate if not copy_video else None
@@ -636,7 +658,76 @@ class FFmpegStreamManager:
             uses_video_placeholder=playlists.needs_video_placeholder and playlists.video_playlist is None,
             uses_audio_placeholder=playlists.needs_audio_placeholder and playlists.audio_playlist is None,
             destination_uris=destination_uris,
+            keyframe_interval_seconds=keyframe_interval_seconds,
+            keyframe_gop_frames=keyframe_gop_frames,
         )
+
+    @staticmethod
+    def _parse_fps_value(raw: Any) -> Optional[float]:
+        if raw is None:
+            return None
+
+        if isinstance(raw, (int, float)):
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):  # pragma: no cover - defensive conversion
+                return None
+            return value if value > 0 else None
+
+        if isinstance(raw, str):
+            text = raw.strip()
+            if not text:
+                return None
+            if "/" in text:
+                parts = text.split("/", 1)
+                try:
+                    numerator = float(parts[0])
+                    denominator = float(parts[1])
+                    if denominator == 0:
+                        return None
+                    value = numerator / denominator
+                except (ValueError, ZeroDivisionError):
+                    return None
+            else:
+                try:
+                    value = float(text)
+                except ValueError:
+                    return None
+            return value if value > 0 else None
+
+        return None
+
+    def _select_keyframe_settings(self, playlists: PlaylistFileSet) -> Tuple[int, float]:
+        fps_candidates: List[float] = []
+
+        for asset in playlists.video_assets:
+            meta = asset.get("meta") or {}
+            video_meta = meta.get("video") or {}
+
+            for key in ("fps", "avg_frame_rate", "r_frame_rate"):
+                fps_value = self._parse_fps_value(video_meta.get(key))
+                if fps_value:
+                    fps_candidates.append(fps_value)
+                    break
+
+        if not fps_candidates:
+            placeholder_fps = getattr(settings, "placeholder_video_fps", 30)
+            fps_value = self._parse_fps_value(placeholder_fps) or 30.0
+        else:
+            fps_value = fps_candidates[0]
+
+        fps_value = max(min(fps_value, 120.0), 1.0)
+
+        configured_interval = getattr(settings, "ffmpeg_keyframe_interval_seconds", DEFAULT_KEYFRAME_INTERVAL_SECONDS)
+        try:
+            configured_interval = float(configured_interval)
+        except (TypeError, ValueError):  # pragma: no cover - fallback to default
+            configured_interval = DEFAULT_KEYFRAME_INTERVAL_SECONDS
+
+        interval_seconds = max(min(configured_interval, MAX_KEYFRAME_INTERVAL_SECONDS), MIN_KEYFRAME_INTERVAL_SECONDS)
+        gop_frames = max(1, int(round(fps_value * interval_seconds)))
+
+        return gop_frames, interval_seconds
 
     def _build_video_placeholder_args(self, playlists: PlaylistFileSet) -> List[str]:
         placeholder_path = getattr(settings, "placeholder_video_path", None)
@@ -971,9 +1062,15 @@ class FFmpegStreamManager:
                     )
                     return
 
-                now = datetime.utcnow()
-                if stream.started_at:
-                    elapsed = (now - stream.started_at).total_seconds()
+                now = datetime.now(timezone.utc)
+                started_at = stream.started_at
+                if started_at:
+                    if started_at.tzinfo is None:
+                        started_at = started_at.replace(tzinfo=timezone.utc)
+                    else:
+                        started_at = started_at.astimezone(timezone.utc)
+
+                    elapsed = (now - started_at).total_seconds()
                     if elapsed > 0:
                         current_total = stream.total_duration_seconds or 0.0
                         stream.total_duration_seconds = current_total + elapsed

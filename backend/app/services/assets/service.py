@@ -121,7 +121,11 @@ class AssetService:
 
         if isinstance(stream_meta, dict):
             apply_stream_summary_fields(asset, stream_meta)
-        asset.asset_type = normalize_asset_type(asset.asset_type, stream_meta)
+        asset.asset_type = normalize_asset_type(
+            asset.asset_type,
+            stream_meta,
+            filename=asset.filename,
+        )
 
         self.db.add(asset)
         await apply_storage_delta(self.db, self.user_id, asset.size_bytes or 0)
@@ -179,7 +183,11 @@ class AssetService:
         asset.validation_errors = validation_result.get("validation_errors", [])
 
         apply_stream_summary_fields(asset, stream_info)
-        asset.asset_type = normalize_asset_type(asset.asset_type, stream_info)
+        asset.asset_type = normalize_asset_type(
+            asset.asset_type,
+            stream_info,
+            filename=asset.filename,
+        )
 
         await apply_storage_delta(self.db, self.user_id, asset.size_bytes - previous_size)
         await self.db.commit()

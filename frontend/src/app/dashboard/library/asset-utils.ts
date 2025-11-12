@@ -81,6 +81,7 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
   const rawValidationErrors = Array.isArray(asset.validation_errors)
     ? [...(asset.validation_errors as string[])]
     : []
+  const isAudioAsset = asset.asset_type === 'audio'
   const backendRecommendation = meta?.recommendation as
     | {
         label?: string
@@ -124,6 +125,8 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
       normalizedFps: (backendRecommendation.normalized_fps as 30 | 60 | null) ?? null,
       fpsOutOfGuideline: Boolean(backendRecommendation.fps_out_of_guideline),
     }
+  } else if (isAudioAsset) {
+    recommendation = { rule: undefined, normalizedFps: null, fpsOutOfGuideline: false }
   }
 
   const warnings: AssetWarning[] = []
@@ -153,6 +156,7 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
   }
 
   const pushBitrateWarning = (): boolean => {
+    if (isAudioAsset) return false
     const rule = recommendation.rule
     if (!rule) return false
     if (warnings.some((warning) => warning.kind === 'bitrateRange')) return true
@@ -174,12 +178,14 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
   }
 
   const pushFpsWarning = (): void => {
+    if (isAudioAsset) return
     if (!warnings.some((warning) => warning.kind === 'fpsOutOfGuideline')) {
       warnings.push({ kind: 'fpsOutOfGuideline' })
     }
   }
 
   const pushVideoCodecWarning = (found?: string | null, expected: string = STREAM_VIDEO_EXPECTED) => {
+    if (isAudioAsset) return
     warnings.push({
       kind: 'videoCodec',
       payload: {
@@ -202,6 +208,7 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
   }
 
   const pushPixelFormatWarning = (found?: string | null, expected: string = STREAM_PIXEL_EXPECTED) => {
+    if (isAudioAsset) return
     warnings.push({
       kind: 'pixelFormat',
       payload: {
@@ -220,6 +227,7 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
   }
 
   const pushNoVideoStreamWarning = () => {
+    if (isAudioAsset) return
     if (!warnings.some((warning) => warning.kind === 'noVideoStream')) {
       warnings.push({ kind: 'noVideoStream' })
     }
@@ -234,12 +242,30 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
   }
 
   const pushGopWarning = (found: string, limit: string) => {
+    if (isAudioAsset) return
     warnings.push({ kind: 'gopTooLarge', payload: { found, limit } })
     ensureRequiresTranscode()
   }
 
   for (const warning of backendWarnings) {
     const normalized = warning.toLowerCase()
+
+    if (isAudioAsset) {
+      if (normalized.includes('audio codec')) {
+        const expectedMatch = warning.match(/must be\s+([a-z0-9\.\-]+)/i)
+        const foundMatch = warning.match(/(?:got|found)\s+([a-z0-9\.\-]+)/i)
+        pushAudioCodecWarning(foundMatch?.[1] ?? null, (expectedMatch?.[1] ?? STREAM_AUDIO_EXPECTED).toUpperCase())
+        continue
+      }
+
+      if (normalized.includes('no audio stream')) {
+        pushNoAudioStreamWarning()
+        continue
+      }
+
+      warnings.push({ kind: 'custom', message: warning })
+      continue
+    }
     if (normalized.startsWith('video bitrate is outside')) {
       if (pushBitrateWarning()) {
         continue
@@ -310,6 +336,23 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
     const normalized = issue.toLowerCase()
     let handled = false
 
+    if (isAudioAsset) {
+      if (normalized.includes('audio codec must')) {
+        const expectedMatch = issue.match(/must be\s+([a-z0-9\.\-]+)/i)
+        const foundMatch = issue.match(/(?:got|found)\s+([a-z0-9\.\-]+)/i)
+        pushAudioCodecWarning(foundMatch?.[1] ?? null, (expectedMatch?.[1] ?? STREAM_AUDIO_EXPECTED).toUpperCase())
+        handled = true
+      } else if (normalized.includes('no audio stream')) {
+        pushNoAudioStreamWarning()
+        handled = true
+      }
+
+      if (!handled) {
+        unresolvedValidationIssues.push(issue)
+      }
+      continue
+    }
+
     if (normalized.includes('video codec must')) {
       const expectedMatch = issue.match(/must be\s+([a-z0-9\.\-]+)/i)
       const foundMatch = issue.match(/(?:got|found)\s+([a-z0-9\.\-]+)/i)
@@ -358,7 +401,7 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
       ? 'outside'
       : 'unknown'
 
-  if (recommendation.rule && videoBitrate && bitrateStatus === 'unknown') {
+  if (!isAudioAsset && recommendation.rule && videoBitrate && bitrateStatus === 'unknown') {
     const bitrateMbps = videoBitrate / 1_000_000
     if (
       bitrateMbps >= recommendation.rule.minBitrateMbps &&
@@ -371,16 +414,18 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
     }
   }
 
-  if (
-    backendRecommendation?.fps_out_of_guideline ?? recommendation.fpsOutOfGuideline
-  ) {
+  if (!isAudioAsset && (backendRecommendation?.fps_out_of_guideline ?? recommendation.fpsOutOfGuideline)) {
     pushFpsWarning()
   }
 
   const hasVideoMetadata = video && Object.keys(video).length > 0
   const hasAudioMetadata = audio && Object.keys(audio).length > 0
 
-  if (!hasVideoMetadata || !hasAudioMetadata) {
+  if (!hasAudioMetadata) {
+    pushMissingMetadataWarning()
+  }
+
+  if (!isAudioAsset && !hasVideoMetadata) {
     pushMissingMetadataWarning()
   }
 

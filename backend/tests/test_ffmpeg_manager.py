@@ -261,6 +261,12 @@ class TestFFmpegStreamManager:
         assert cmd[cmd.index("-bufsize") + 1] == "9000k"
         assert "-tune" in cmd and cmd[cmd.index("-tune") + 1] == "zerolatency"
 
+        assert "-keyint_min" in cmd
+        assert "-sc_threshold" in cmd
+        assert "-force_key_frames" in cmd
+        force_key_idx = cmd.index("-force_key_frames")
+        assert cmd[force_key_idx + 1].startswith("expr:gte(t,n_forced*")
+
         assert "-b:a" in cmd
         assert cmd[cmd.index("-b:a") + 1] == "192k"
 
@@ -276,6 +282,11 @@ class TestFFmpegStreamManager:
         assert plan.video_maxrate_kbps == 6000
         assert plan.video_bufsize_kbps == 9000
         assert plan.audio_bitrate_kbps == 192
+        assert plan.keyframe_interval_seconds is not None
+        assert plan.keyframe_interval_seconds > 0
+        assert plan.keyframe_interval_seconds <= 4
+        assert plan.keyframe_gop_frames is not None
+        assert plan.keyframe_gop_frames >= 1
         assert plan.multi_destination is True
         assert plan.destination_uris == [
             "rtmp://a.youtube.com/live/primary",

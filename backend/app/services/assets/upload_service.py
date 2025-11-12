@@ -136,7 +136,11 @@ class AssetUploadService:
             response_payload["asset_id"] = str(created_asset.id)
             response_payload["asset_type"] = created_asset.asset_type
         elif isinstance(stream_info, dict):
-            response_payload["asset_type"] = infer_asset_type(stream_info, "video")
+            response_payload["asset_type"] = infer_asset_type(
+                stream_info,
+                "video",
+                filename=meta_payload.get("filename") or file_path.name,
+            )
 
         return response_payload
 
@@ -157,7 +161,11 @@ class AssetUploadService:
         if user_requested_type not in ALLOWED_ASSET_TYPES:
             user_requested_type = "video"
 
-        resolved_asset_type = normalize_asset_type(user_requested_type, summary_meta)
+        resolved_asset_type = normalize_asset_type(
+            user_requested_type,
+            summary_meta,
+            filename=filename_override or file_path.name,
+        )
         if user_requested_type == "audio" and resolved_asset_type == "video":
             logger.warning(
                 "Asset type mismatch for upload %s: user requested 'audio' but file contains video streams."

@@ -25,7 +25,8 @@
       "selectAssets": "Select at least one asset",
       "selectBackground": "Add at least one background video",
       "selectAudio": "Add at least one audio track",
-      "scheduleTime": "Choose the scheduled start time"
+      "scheduleTime": "Choose the scheduled start time",
+      "concurrentLimit": "Concurrent stream limit reached ({current}/{limit}). Stop an active stream or upgrade your plan."
     },
     "generic": {
       "errorWithMessage": "Error: {message}"
@@ -157,11 +158,23 @@
           "bitrateMissing": "Bitrate metadata is missing. Re-run validation after encoding.",
           "guidelineMissing": "Plan requires encoding at {allowed}.",
           "missingMetadata": "Metadata is missing. Re-run validation for this asset.",
+          "audioCodec": "Audio codec {current} is not supported; use one of {allowed}.",
+          "audioSampleRate": "Audio sample rate {current}; expected at least {allowed}.",
+          "audioBitrate": "Audio bitrate {current}; keep at {allowed}.",
+          "audioMetadata": "Audio metadata is missing. Re-run validation for this track.",
+          "audioChannels": "Audio channel count {current}; keep to {allowed} channels for reliability.",
           "default": "Review this file before streaming."
         },
         "cta": {
           "close": "Close",
           "library": "Open files"
+        },
+        "audio": {
+          "recommended": {
+            "title": "Recommended audio settings",
+            "mixedTitle": "Recommended audio settings for your mix",
+            "description": "Encode as {codec} at {sampleRate} · {channels} channels. Keep bitrate ≥ {minBitrate} (target {targetBitrate})."
+          }
         }
       },
       "builder": {

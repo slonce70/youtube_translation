@@ -253,12 +253,22 @@ export interface StreamQualityRecommendation {
   audio_codec?: string | null
 }
 
+export interface StreamAudioQualityRecommendation {
+  codec?: string | null
+  sample_rate_hz?: number | null
+  min_bitrate_kbps?: number | null
+  target_bitrate_kbps?: number | null
+  channels?: number | null
+}
+
 export interface StreamQualityResponse {
   ok: boolean
   tier: string
   limits: StreamQualityLimits
   violations: StreamQualityViolation[]
   recommended?: StreamQualityRecommendation | null
+  mode?: 'video' | 'audio' | 'mixed'
+  audio_recommended?: StreamAudioQualityRecommendation | null
 }
 
 export interface MetricsResponse {

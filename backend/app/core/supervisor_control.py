@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shlex
 import sys
 from asyncio.subprocess import PIPE
 from pathlib import Path
@@ -76,9 +77,24 @@ def _program_config_path(stream_id: UUID | str) -> Path:
     return _config_dir() / f"{program_name(stream_id)}.ini"
 
 
+def _supervisorctl_command() -> Tuple[str, ...]:
+    raw_path = settings.supervisor_ctl_path.strip()
+    if not raw_path:
+        raise RuntimeError("SUPERVISOR_CTL_PATH is empty")
+
+    if raw_path == "supervisorctl":
+        return (sys.executable, "-m", "supervisor.supervisorctl")
+
+    if " " in raw_path:
+        return tuple(shlex.split(raw_path))
+
+    return (raw_path,)
+
+
 async def _run_supervisorctl(*args: str) -> Tuple[int, str, str]:
+    command = _supervisorctl_command()
     process = await asyncio.create_subprocess_exec(
-        settings.supervisor_ctl_path,
+        *command,
         "-c",
         str(_supervisor_conf()),
         *args,

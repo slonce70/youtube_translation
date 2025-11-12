@@ -43,7 +43,14 @@ async def test_live_edit_updates_video_collection_and_restarts_stream(monkeypatc
     monkeypatch.setattr(streams_routes.ffmpeg_manager, "restart_stream", mock_restart)
 
     mock_quality = AsyncMock(
-        return_value={"ok": True, "violations": [], "limits": {}, "tier": "free"}
+        return_value={
+            "ok": True,
+            "violations": [],
+            "limits": {},
+            "tier": "free",
+            "mode": "video",
+            "audio_recommended": None,
+        }
     )
     monkeypatch.setattr(
         streams_routes.QuotaEnforcer,

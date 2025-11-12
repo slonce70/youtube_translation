@@ -200,11 +200,13 @@ class PlaylistBuilder:
         if not assets:
             return False
 
+        preferred_codec = VideoValidator.PREFERRED_AUDIO_CODEC.lower()
+
         for asset in assets:
             meta = asset.get("meta") or {}
             audio = meta.get("audio") or {}
             codec = str(audio.get("codec") or "").lower()
-            if codec != VideoValidator.REQUIRED_AUDIO_CODEC:
+            if codec != preferred_codec:
                 return False
         return True
 
@@ -415,13 +417,15 @@ class PlaylistBuilder:
                         index,
                         asset,
                     )
-                elif audio_codec != VideoValidator.REQUIRED_AUDIO_CODEC:
+                elif audio_codec not in VideoValidator.ALLOWED_AUDIO_CODECS:
                     add_issue(
                         "audio_codec_invalid",
-                        f"Audio codec must be {VideoValidator.REQUIRED_AUDIO_CODEC.upper()} for direct streaming.",
+                        "Audio codec must be one of "
+                        f"{VideoValidator.allowed_audio_codec_labels()} "
+                        "for direct streaming.",
                         index,
                         asset,
-                        expected=VideoValidator.REQUIRED_AUDIO_CODEC,
+                        expected=VideoValidator.allowed_audio_codec_labels(),
                         found=audio_codec,
                     )
 
@@ -540,7 +544,7 @@ class PlaylistBuilder:
 
     @staticmethod
     def validate_audio_playlist_assets(assets: List[Dict]) -> Tuple[bool, List[Dict[str, Any]]]:
-        """Validate that audio-only assets are ready for AAC streaming."""
+        """Validate that audio-only assets are ready for direct streaming."""
 
         issues: List[Dict[str, Any]] = []
 
@@ -579,13 +583,15 @@ class PlaylistBuilder:
                 continue
 
             codec = str(audio.get("codec") or "").lower()
-            if codec != VideoValidator.REQUIRED_AUDIO_CODEC:
+            if codec not in VideoValidator.ALLOWED_AUDIO_CODECS:
                 add_issue(
                     "audio_codec_invalid",
-                    f"Audio codec must be {VideoValidator.REQUIRED_AUDIO_CODEC.upper()} for direct streaming.",
+                    "Audio codec must be one of "
+                    f"{VideoValidator.allowed_audio_codec_labels()} "
+                    "for direct streaming.",
                     index,
                     asset,
-                    expected=VideoValidator.REQUIRED_AUDIO_CODEC,
+                    expected=VideoValidator.allowed_audio_codec_labels(),
                     found=codec,
                 )
 

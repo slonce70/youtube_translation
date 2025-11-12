@@ -62,7 +62,11 @@ class StreamControlService:
 
         selection = extract_stream_assets(stream)
         enforcer = self.quota_cls(self.db, self.user_id)
-        quality = await enforcer.evaluate_stream_quality(selection.video_assets)
+        quality = await enforcer.evaluate_stream_quality(
+            selection.video_assets,
+            audio_assets=selection.audio_assets,
+            mix_mode=selection.mix_mode,
+        )
 
         return StreamQualityResponse(
             ok=quality["ok"],
@@ -70,6 +74,8 @@ class StreamControlService:
             limits=quality["limits"],
             violations=quality["violations"],
             recommended=quality.get("recommended"),
+            mode=quality.get("mode", "video"),
+            audio_recommended=quality.get("audio_recommended"),
         )
 
     async def start_stream(self, stream_id: UUID) -> StreamStatus:

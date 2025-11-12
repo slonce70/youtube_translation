@@ -200,7 +200,11 @@ async def prepare_stream_launch(
     settings_obj=default_settings,
 ) -> Tuple[PlaylistFileSet, List[Dict[str, str]], Path]:
     selection = extract_stream_assets(stream)
-    quality = await quota_evaluator.evaluate_stream_quality(selection.video_assets)
+    quality = await quota_evaluator.evaluate_stream_quality(
+        selection.video_assets,
+        audio_assets=selection.audio_assets,
+        mix_mode=selection.mix_mode,
+    )
     if not quality["ok"]:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
