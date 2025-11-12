@@ -332,12 +332,22 @@ class StreamQualityRecommendation(BaseModel):
     target_bitrate_mbps: Optional[float] = None
 
 
+class StreamAudioQualityRecommendation(BaseModel):
+    codec: Optional[str] = None
+    sample_rate_hz: Optional[int] = None
+    min_bitrate_kbps: Optional[int] = None
+    target_bitrate_kbps: Optional[int] = None
+    channels: Optional[int] = None
+
+
 class StreamQualityResponse(BaseModel):
     ok: bool
     tier: str
     limits: StreamQualityLimits
     violations: List[StreamQualityViolation]
     recommended: Optional[StreamQualityRecommendation] = None
+    mode: Literal["video", "audio", "mixed"] = "video"
+    audio_recommended: Optional[StreamAudioQualityRecommendation] = None
 
 
 # Pagination

@@ -75,6 +75,37 @@ function resolveApiBase(): { base: string; isAbsolute: boolean } {
   return { base: normalized || '/api', isAbsolute }
 }
 
+export function resolveAssetUrl(path?: string | null): string | null {
+  if (!path) {
+    return null
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return path
+  }
+
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const { base, isAbsolute } = resolveApiBase()
+
+  if (isAbsolute) {
+    try {
+      const url = new URL(base)
+      const origin = `${url.protocol}//${url.host}`
+      const basePath = url.pathname.replace(/\/api\/?$/, '').replace(/\/$/, '')
+      return `${origin}${basePath}${normalizedPath}`
+    } catch (error) {
+      console.warn('[api] Failed to resolve asset URL from base', base, error)
+      return normalizedPath
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${normalizedPath}`
+  }
+
+  return normalizedPath
+}
+
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>
 }
@@ -360,3 +391,5 @@ export const api = {
     },
   },
 }
+
+export { ApiError }

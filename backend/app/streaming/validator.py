@@ -15,10 +15,17 @@ class VideoValidator:
 
     # YouTube requirements for stream copy
     REQUIRED_VIDEO_CODEC = "h264"
-    REQUIRED_AUDIO_CODEC = "aac"
+    ALLOWED_AUDIO_CODECS = {"aac", "mp3", "mpga"}
+    AUDIO_CODEC_LABELS = {
+        "aac": "AAC",
+        "mp3": "MP3",
+        "mpga": "MP3",
+    }
+    PREFERRED_AUDIO_CODEC = "aac"
     REQUIRED_PIX_FMT = "yuv420p"
     MAX_GOP_SIZE = 120  # 4 seconds at 30fps
     RECOMMENDED_GOP_SIZE = 60  # 2 seconds at 30fps
+    MAX_KEYFRAME_INTERVAL_SECONDS = 4.0
 
     BITRATE_GUIDANCE = [
         {
@@ -113,28 +120,36 @@ class VideoValidator:
         )
 
     async def validate_file(self, file_path: Path) -> Dict[str, Any]:
-        """
-        Validate video file for YouTube streaming compatibility.
-        Returns validation result with metadata.
-        """
+        """Validate media file for streaming compatibility and return metadata."""
         try:
-            # Get file metadata using ffprobe
             meta = await self._get_metadata(file_path)
-            
-            # Check compatibility
-            is_compatible = self._check_compatibility(meta)
-            
+
+            try:
+                keyframe_stats = await self._analyze_keyframes(file_path)
+            except Exception as exc:  # pragma: no cover - defensive logging around ffprobe
+                logger.warning("Keyframe analysis failed for %s: %s", file_path, exc)
+                keyframe_stats = None
+
+            is_compatible, media_kind = self._check_compatibility(meta, keyframe_stats=keyframe_stats)
+            validation_errors = [] if is_compatible else self._get_validation_errors(
+                meta,
+                media_kind,
+                keyframe_stats=keyframe_stats,
+            )
+
             return {
                 "compatible_for_copy": is_compatible,
                 "meta": meta,
-                "validation_errors": self._get_validation_errors(meta) if not is_compatible else []
+                "validation_errors": validation_errors,
+                "keyframe_stats": keyframe_stats,
             }
-        except Exception as e:
-            logger.error(f"Error validating file {file_path}: {e}")
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("Error validating file %s: %s", file_path, exc)
             return {
                 "compatible_for_copy": False,
                 "meta": {},
-                "validation_errors": [str(e)]
+                "validation_errors": [str(exc)],
+                "keyframe_stats": None,
             }
 
     async def _get_metadata(self, file_path: Path) -> Dict[str, Any]:
@@ -161,74 +176,122 @@ class VideoValidator:
 
         return json.loads(stdout.decode())
 
-    def _check_compatibility(self, meta: Dict[str, Any]) -> bool:
-        """Check if video is compatible with YouTube streaming requirements"""
+    def _check_compatibility(
+        self,
+        meta: Dict[str, Any],
+        *,
+        keyframe_stats: Optional[Dict[str, Any]] = None,
+    ) -> tuple[bool, str]:
+        """Return compatibility flag and detected media kind."""
         try:
-            streams = meta.get("streams", [])
+            video_stream, audio_stream, _cover_art, media_kind = self._classify_streams(meta)
 
-            # Find primary video and audio streams
-            video_stream, _ = self._split_video_streams(streams)
-            audio_stream = next((s for s in streams if s["codec_type"] == "audio"), None)
+            if media_kind == "audio":
+                if not audio_stream:
+                    return False, media_kind
+                codec = (audio_stream.get("codec_name") or "").lower()
+                if codec not in self.ALLOWED_AUDIO_CODECS:
+                    return False, media_kind
+                return True, media_kind
 
             if not video_stream or not audio_stream:
-                return False
+                return False, media_kind
 
-            # Check video codec
             if video_stream.get("codec_name") != self.REQUIRED_VIDEO_CODEC:
-                return False
+                return False, media_kind
 
-            # Check audio codec
-            if audio_stream.get("codec_name") != self.REQUIRED_AUDIO_CODEC:
-                return False
+            codec = (audio_stream.get("codec_name") or "").lower()
+            if codec not in self.ALLOWED_AUDIO_CODECS:
+                return False, media_kind
 
-            # Check pixel format
             if video_stream.get("pix_fmt") != self.REQUIRED_PIX_FMT:
-                return False
+                return False, media_kind
 
-            # Check GOP size (if available)
             gop_size = video_stream.get("gop_size")
             if gop_size and int(gop_size) > self.MAX_GOP_SIZE:
-                return False
+                return False, media_kind
 
-            # Check profile (should be High or Main)
-            profile = video_stream.get("profile", "").lower()
-            if profile not in ["high", "main"]:
-                logger.warning(f"Profile {profile} may not be optimal for YouTube")
+            if keyframe_stats:
+                max_interval = keyframe_stats.get("max_interval_seconds")
+                if max_interval and max_interval > self.MAX_KEYFRAME_INTERVAL_SECONDS:
+                    return False, media_kind
 
-            return True
+            profile = (video_stream.get("profile") or "").lower()
+            if profile and profile not in ["high", "main"]:
+                logger.warning("Non-optimal profile for stream copy: %s", profile)
 
-        except Exception as e:
-            logger.error(f"Error checking compatibility: {e}")
-            return False
+            return True, media_kind
 
-    def _get_validation_errors(self, meta: Dict[str, Any]) -> list:
-        """Get list of validation errors"""
-        errors = []
-        streams = meta.get("streams", [])
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("Error checking compatibility: %s", exc)
+            return False, "unknown"
 
-        video_stream, _ = self._split_video_streams(streams)
-        audio_stream = next((s for s in streams if s["codec_type"] == "audio"), None)
+    def _get_validation_errors(
+        self,
+        meta: Dict[str, Any],
+        media_kind: str,
+        *,
+        keyframe_stats: Optional[Dict[str, Any]] = None,
+    ) -> list[str]:
+        """Return validation errors tailored to detected media kind."""
+        errors: list[str] = []
+        video_stream, audio_stream, _cover_art, _ = self._classify_streams(meta)
+
+        if media_kind == "audio":
+            if not audio_stream:
+                errors.append("No audio stream found")
+            else:
+                codec = (audio_stream.get("codec_name") or "").lower()
+                if codec not in self.ALLOWED_AUDIO_CODECS:
+                    errors.append(
+                        "Audio codec must be one of "
+                        f"{self.allowed_audio_codec_labels()}, "
+                        f"got {audio_stream.get('codec_name')}"
+                    )
+            return errors
 
         if not video_stream:
             errors.append("No video stream found")
         else:
             if video_stream.get("codec_name") != self.REQUIRED_VIDEO_CODEC:
-                errors.append(f"Video codec must be {self.REQUIRED_VIDEO_CODEC}, got {video_stream.get('codec_name')}")
-            
+                errors.append(
+                    f"Video codec must be {self.REQUIRED_VIDEO_CODEC}, got {video_stream.get('codec_name')}"
+                )
+
             if video_stream.get("pix_fmt") != self.REQUIRED_PIX_FMT:
-                errors.append(f"Pixel format must be {self.REQUIRED_PIX_FMT}, got {video_stream.get('pix_fmt')}")
-            
+                errors.append(
+                    f"Pixel format must be {self.REQUIRED_PIX_FMT}, got {video_stream.get('pix_fmt')}"
+                )
+
             gop_size = video_stream.get("gop_size")
             if gop_size and int(gop_size) > self.MAX_GOP_SIZE:
                 errors.append(f"GOP size too large: {gop_size} (max {self.MAX_GOP_SIZE})")
 
+            if keyframe_stats:
+                max_interval = keyframe_stats.get("max_interval_seconds")
+                if max_interval and max_interval > self.MAX_KEYFRAME_INTERVAL_SECONDS:
+                    errors.append(
+                        "Keyframe interval exceeds YouTube guidance. "
+                        f"Detected up to {max_interval:.2f}s between keyframes (max {self.MAX_KEYFRAME_INTERVAL_SECONDS:.0f}s)."
+                    )
+
         if not audio_stream:
             errors.append("No audio stream found")
         else:
-            if audio_stream.get("codec_name") != self.REQUIRED_AUDIO_CODEC:
-                errors.append(f"Audio codec must be {self.REQUIRED_AUDIO_CODEC}, got {audio_stream.get('codec_name')}")
+            codec = (audio_stream.get("codec_name") or "").lower()
+            if codec not in self.ALLOWED_AUDIO_CODECS:
+                errors.append(
+                    "Audio codec must be one of "
+                    f"{self.allowed_audio_codec_labels()}, "
+                    f"got {audio_stream.get('codec_name')}"
+                )
 
         return errors
+
+    @classmethod
+    def allowed_audio_codec_labels(cls) -> str:
+        labels = {cls.AUDIO_CODEC_LABELS.get(codec, codec.upper()) for codec in cls.ALLOWED_AUDIO_CODECS}
+        return ", ".join(sorted(labels))
 
     def get_stream_info(self, meta: Dict[str, Any]) -> Dict[str, Any]:
         """Extract useful stream information"""
@@ -415,3 +478,102 @@ class VideoValidator:
             return True
 
         return False
+
+    def _classify_streams(
+        self, meta: Dict[str, Any]
+    ) -> Tuple[Optional[dict[str, Any]], Optional[dict[str, Any]], Optional[dict[str, Any]], str]:
+        streams = meta.get("streams", [])
+        video_stream, cover_art = self._split_video_streams(streams)
+        audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
+
+        if video_stream and audio_stream:
+            return video_stream, audio_stream, cover_art, "video"
+        if audio_stream and not video_stream:
+            return None, audio_stream, cover_art, "audio"
+        if video_stream and not audio_stream:
+            return video_stream, None, cover_art, "video"
+        return None, None, cover_art, "unknown"
+
+    async def _analyze_keyframes(self, file_path: Path) -> Optional[Dict[str, Any]]:
+        """Inspect keyframe timestamps to derive interval statistics."""
+
+        cmd = [
+            self.ffprobe_bin,
+            "-v",
+            "quiet",
+            "-select_streams",
+            "v:0",
+            "-skip_frame",
+            "nokey",
+            "-show_entries",
+            "frame=pkt_pts_time,best_effort_timestamp_time,pkt_dts_time",
+            "-of",
+            "json",
+            str(file_path),
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            raise RuntimeError(f"ffprobe keyframe analysis failed: {stderr.decode().strip()}")
+
+        try:
+            payload = json.loads(stdout.decode())
+        except json.JSONDecodeError as exc:  # pragma: no cover - malformed ffprobe output
+            raise RuntimeError("Unable to parse ffprobe keyframe output") from exc
+
+        frames = payload.get("frames") or []
+        if len(frames) < 2:
+            return {
+                "keyframe_count": len(frames),
+                "max_interval_seconds": None,
+                "min_interval_seconds": None,
+                "average_interval_seconds": None,
+            }
+
+        timestamps: list[float] = []
+
+        for frame in frames:
+            raw_ts = frame.get("pkt_pts_time") or frame.get("best_effort_timestamp_time") or frame.get("pkt_dts_time")
+            if raw_ts is None:
+                continue
+            try:
+                timestamps.append(float(raw_ts))
+            except (TypeError, ValueError):
+                continue
+
+        if len(timestamps) < 2:
+            return {
+                "keyframe_count": len(timestamps),
+                "max_interval_seconds": None,
+                "min_interval_seconds": None,
+                "average_interval_seconds": None,
+            }
+
+        timestamps.sort()
+
+        intervals = [b - a for a, b in zip(timestamps, timestamps[1:]) if b >= a]
+        if not intervals:
+            return {
+                "keyframe_count": len(timestamps),
+                "max_interval_seconds": None,
+                "min_interval_seconds": None,
+                "average_interval_seconds": None,
+            }
+
+        max_interval = max(intervals)
+        min_interval = min(intervals)
+        avg_interval = sum(intervals) / len(intervals)
+
+        return {
+            "keyframe_count": len(timestamps),
+            "max_interval_seconds": max_interval,
+            "min_interval_seconds": min_interval,
+            "average_interval_seconds": avg_interval,
+        }

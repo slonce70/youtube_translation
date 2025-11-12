@@ -13,9 +13,85 @@ from fastapi import HTTPException, status
 
 from app.core.config import settings
 
+AUDIO_FILE_EXTENSIONS = {
+    "aac",
+    "aiff",
+    "alac",
+    "flac",
+    "m4a",
+    "mp3",
+    "ogg",
+    "oga",
+    "opus",
+    "wav",
+    "wma",
+}
 
-def infer_asset_type(stream_meta: Optional[Dict[str, Any]], fallback: str = "video") -> str:
+VIDEO_FILE_EXTENSIONS = {
+    "3gp",
+    "avi",
+    "flv",
+    "m2ts",
+    "m4v",
+    "mkv",
+    "mov",
+    "mp4",
+    "mpeg",
+    "mpg",
+    "ts",
+    "webm",
+    "wmv",
+}
+
+
+def _normalize_extension(filename: Optional[str]) -> Optional[str]:
+    if not filename or "." not in filename:
+        return None
+    suffix = filename.rsplit(".", 1)[-1].strip().lower()
+    return suffix or None
+
+
+def _only_cover_art(video_meta: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(video_meta, dict):
+        return False
+
+    codec = str(video_meta.get("codec") or "").lower()
+    if codec not in {"mjpeg", "jpeg", "jpg", "png", "bmp"}:
+        return False
+
+    try:
+        width = int(video_meta.get("width") or 0)
+        height = int(video_meta.get("height") or 0)
+    except (TypeError, ValueError):
+        width = height = 0
+
+    if width == 0 and height == 0:
+        return True
+
+    fps_value = video_meta.get("fps")
+    try:
+        fps = float(fps_value) if fps_value is not None else 0.0
+    except (TypeError, ValueError):
+        fps = 0.0
+
+    return fps <= 1 and width <= 2000 and height <= 2000
+
+
+def infer_asset_type(
+    stream_meta: Optional[Dict[str, Any]],
+    fallback: str = "video",
+    *,
+    filename: Optional[str] = None,
+) -> str:
     """Infer whether provided metadata represents audio or video."""
+
+    extension = _normalize_extension(filename)
+    if extension:
+        if extension in AUDIO_FILE_EXTENSIONS:
+            return "audio"
+        if extension in VIDEO_FILE_EXTENSIONS:
+            return "video"
+
     if not isinstance(stream_meta, dict):
         return fallback
 
@@ -40,20 +116,26 @@ def infer_asset_type(stream_meta: Optional[Dict[str, Any]], fallback: str = "vid
         )
     )
 
-    if has_video:
+    if has_video and not _only_cover_art(video_meta):
         return "video"
     if has_audio and not has_video:
+        return "audio"
+    if has_audio and _only_cover_art(video_meta):
         return "audio"
     return fallback
 
 
 def normalize_asset_type(
-    requested: Optional[str], stream_meta: Optional[Dict[str, Any]]
+    requested: Optional[str],
+    stream_meta: Optional[Dict[str, Any]],
+    *,
+    filename: Optional[str] = None,
 ) -> str:
     candidate = (requested or "video").lower()
     if candidate not in {"video", "audio"}:
         candidate = "video"
-    inferred = infer_asset_type(stream_meta, candidate)
+
+    inferred = infer_asset_type(stream_meta, candidate, filename=filename)
 
     if (
         inferred == "video"
@@ -123,7 +205,11 @@ def apply_stream_summary_fields(asset, stream_meta: Optional[Dict[str, Any]]) ->
     if fps_value is not None:
         asset.fps = int(round(fps_value))
 
-    asset.asset_type = infer_asset_type(stream_meta, asset.asset_type or "video")
+    asset.asset_type = infer_asset_type(
+        stream_meta,
+        asset.asset_type or "video",
+        filename=getattr(asset, "filename", None),
+    )
 
 
 def _sign_download_payload(payload: str) -> str:

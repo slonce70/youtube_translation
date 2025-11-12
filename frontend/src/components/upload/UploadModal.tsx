@@ -118,18 +118,33 @@ const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'aac', 'flac', 'ogg', 'oga', 'm4
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 * 1024 // 10 GB
 
-const buildAcceptList = (extensions: Set<string>, wildcard: 'audio' | 'video') => {
+const buildAcceptList = (extensions: Set<string>, wildcard?: 'audio' | 'video') => {
   const extList = Array.from(extensions)
     .map((ext) => `.${ext}`)
     .join(',')
-  return extList ? `${extList},${wildcard}/*` : `${wildcard}/*`
+  if (!extList && wildcard) {
+    return `${wildcard}/*`
+  }
+  if (wildcard) {
+    return `${extList},${wildcard}/*`
+  }
+  return extList
 }
 
 const VIDEO_ACCEPT = buildAcceptList(VIDEO_EXTENSIONS, 'video')
-const AUDIO_ACCEPT = buildAcceptList(AUDIO_EXTENSIONS, 'audio')
+const AUDIO_ACCEPT = buildAcceptList(AUDIO_EXTENSIONS)
 const VIDEO_ALLOWED_TYPES = ['video/*', ...Array.from(VIDEO_EXTENSIONS).map((ext) => `.${ext}`)]
-const AUDIO_ALLOWED_TYPES = ['audio/*', ...Array.from(AUDIO_EXTENSIONS).map((ext) => `.${ext}`)]
-const COVER_ART_CODECS = new Set(['mjpeg', 'jpeg', 'jpg', 'png', 'bmp'])
+const AUDIO_ALLOWED_TYPES = Array.from(AUDIO_EXTENSIONS).map((ext) => `.${ext}`)
+const COVER_ART_CODECS = new Set([
+  'mjpeg',
+  'jpeg',
+  'jpg',
+  'png',
+  'bmp',
+  'gif',
+  'webp',
+  'tiff',
+])
 
 function parseNumber(value: unknown): number | undefined {
   if (typeof value === 'number') {
@@ -326,26 +341,34 @@ function detectMediaKind(file: File | DashboardFile): { isVideo: boolean; isAudi
 
 function looksLikeCoverArt(video?: UploadAnalysis['video']): boolean {
   if (!video) return false
-  if (typeof video.codec !== 'string') {
-    return false
-  }
-
-  const normalizedCodec = video.codec.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const rawCodec = typeof video.codec === 'string' ? video.codec : ''
+  const normalizedCodec = rawCodec.toLowerCase().replace(/[^a-z0-9]/g, '')
   const isCoverCodec =
-    COVER_ART_CODECS.has(normalizedCodec) ||
-    normalizedCodec.includes('mjpeg') ||
-    normalizedCodec.includes('motionjpeg')
+    (rawCodec &&
+      (COVER_ART_CODECS.has(normalizedCodec) ||
+        normalizedCodec.includes('mjpeg') ||
+        normalizedCodec.includes('motionjpeg') ||
+        normalizedCodec.includes('image')))
+    || !rawCodec
 
-  if (!isCoverCodec) {
-    return false
+  const width = typeof video.width === 'number' && Number.isFinite(video.width) ? video.width : 0
+  const height = typeof video.height === 'number' && Number.isFinite(video.height) ? video.height : 0
+  const fps = typeof video.fps === 'number' && Number.isFinite(video.fps) ? video.fps : 0
+  const bitrate = typeof video.bitrate === 'number' && Number.isFinite(video.bitrate) ? video.bitrate : 0
+
+  const hasImageDimensions = width <= 4096 && height <= 4096
+  const hasMinimalMotion = fps <= 1
+  const hasTinyBitrate = bitrate === 0 || bitrate <= 1_000_000
+
+  if (isCoverCodec && hasImageDimensions && hasMinimalMotion && hasTinyBitrate) {
+    return true
   }
 
-  const fps = typeof video.fps === 'number' && Number.isFinite(video.fps) ? video.fps : undefined
-  if (fps !== undefined && fps > 1) {
-    return false
+  if (!video.width && !video.height && hasMinimalMotion && hasTinyBitrate) {
+    return true
   }
 
-  return true
+  return false
 }
 
 function normalizePixelFormat(raw?: string): string | undefined {
@@ -888,6 +911,19 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
       })
       
       for (const file of files) {
+        const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() : undefined
+        if (assetKind === 'audio') {
+          if (!extension || !AUDIO_EXTENSIONS.has(extension)) {
+            logger.warn('Rejecting file: extension not allowed in audio mode', {
+              fileName: file.name,
+              extension: extension ?? '(none)',
+              component: 'UploadModal',
+            })
+            toast.error(t('errors.typeMismatchAudio'))
+            continue
+          }
+        }
+
         const { isVideo, isAudio } = detectMediaKind(file)
         const desiredKind = assetKind
         

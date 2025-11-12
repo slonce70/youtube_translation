@@ -10,7 +10,7 @@ import { Play, Loader2, X } from 'lucide-react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from 'next/navigation'
 
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -236,6 +236,49 @@ export default function StreamingPage() {
         openQualityGate({ streamName: variables?.streamName, quality: error.quality })
         return
       }
+
+      if (error instanceof ApiError) {
+        const detail = error.detail as
+          | {
+              error?: string
+              resource?: string
+              current?: number
+              limit?: number
+              message?: string
+            }
+          | undefined
+
+        if (detail?.error === 'quota_exceeded') {
+          if (detail.resource === 'concurrent streams') {
+            const rawCurrent =
+              typeof detail.current === 'number'
+                ? detail.current
+                : typeof (detail as { count?: number }).count === 'number'
+                  ? (detail as { count?: number }).count
+                  : undefined
+            const rawLimit = typeof detail.limit === 'number' ? detail.limit : undefined
+
+            toast.error(
+              streamingToasts('errors.concurrentLimit', {
+                current: rawCurrent ?? '?',
+                limit: rawLimit ?? '?',
+              }),
+            )
+            return
+          }
+
+          if (typeof detail.message === 'string' && detail.message.trim()) {
+            toast.error(streamingToasts('generic.errorWithMessage', { message: detail.message }))
+            return
+          }
+        }
+
+        if (typeof detail?.message === 'string' && detail.message.trim()) {
+          toast.error(streamingToasts('generic.errorWithMessage', { message: detail.message }))
+          return
+        }
+      }
+
       toast.error(streamingToasts('generic.errorWithMessage', { message: error.message }))
     },
   })

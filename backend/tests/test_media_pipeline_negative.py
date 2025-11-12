@@ -61,10 +61,9 @@ class TestVideoValidatorNegative:
             ]
         }
         
-        is_compatible = validator._check_compatibility(mock_meta)
-        assert not is_compatible
-        
-        errors = validator._get_validation_errors(mock_meta)
+        is_compatible, media_kind = validator._check_compatibility(mock_meta)
+        assert is_compatible is False
+        errors = validator._get_validation_errors(mock_meta, media_kind)
         assert any("codec" in err.lower() for err in errors)
     
     @pytest.mark.asyncio
@@ -83,10 +82,9 @@ class TestVideoValidatorNegative:
             ]
         }
         
-        is_compatible = validator._check_compatibility(mock_meta)
-        assert not is_compatible
-        
-        errors = validator._get_validation_errors(mock_meta)
+        is_compatible, media_kind = validator._check_compatibility(mock_meta)
+        assert is_compatible is False
+        errors = validator._get_validation_errors(mock_meta, media_kind)
         assert any("audio" in err.lower() for err in errors)
     
     @pytest.mark.asyncio
@@ -109,12 +107,44 @@ class TestVideoValidatorNegative:
             ]
         }
         
-        is_compatible = validator._check_compatibility(mock_meta)
-        assert not is_compatible
-        
-        errors = validator._get_validation_errors(mock_meta)
+        is_compatible, media_kind = validator._check_compatibility(mock_meta)
+        assert is_compatible is False
+        errors = validator._get_validation_errors(mock_meta, media_kind)
         assert any("gop" in err.lower() for err in errors)
     
+    @pytest.mark.asyncio
+    async def test_keyframe_interval_too_long(self):
+        """Videos exceeding max keyframe interval should be flagged."""
+        validator = VideoValidator()
+
+        mock_meta = {
+            "streams": [
+                {
+                    "codec_type": "video",
+                    "codec_name": "h264",
+                    "pix_fmt": "yuv420p",
+                },
+                {
+                    "codec_type": "audio",
+                    "codec_name": "aac",
+                },
+            ]
+        }
+
+        keyframe_stats = {"max_interval_seconds": VideoValidator.MAX_KEYFRAME_INTERVAL_SECONDS + 1.5}
+
+        is_compatible, media_kind = validator._check_compatibility(
+            mock_meta,
+            keyframe_stats=keyframe_stats,
+        )
+        assert is_compatible is False
+        errors = validator._get_validation_errors(
+            mock_meta,
+            media_kind,
+            keyframe_stats=keyframe_stats,
+        )
+        assert any("keyframe interval" in err.lower() for err in errors)
+
     @pytest.mark.asyncio
     async def test_wrong_pixel_format(self):
         """Test validation with wrong pixel format"""
@@ -134,10 +164,9 @@ class TestVideoValidatorNegative:
             ]
         }
         
-        is_compatible = validator._check_compatibility(mock_meta)
-        assert not is_compatible
-        
-        errors = validator._get_validation_errors(mock_meta)
+        is_compatible, media_kind = validator._check_compatibility(mock_meta)
+        assert is_compatible is False
+        errors = validator._get_validation_errors(mock_meta, media_kind)
         assert any("pixel format" in err.lower() or "pix_fmt" in err.lower() for err in errors)
     
     @pytest.mark.asyncio

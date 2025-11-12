@@ -27,7 +27,23 @@ def test_normalize_asset_type_respects_audio_with_cover_art():
         "audio": {"codec": "aac"},
         "cover_art": {"codec": "mjpeg", "width": 360, "height": 360},
     }
-    assert normalize_asset_type("audio", meta) == "audio"
+    assert normalize_asset_type("audio", meta, filename="song.mp3") == "audio"
+
+
+def test_normalize_asset_type_prefers_extension_for_audio():
+    meta = {
+        "video": {"codec": "mjpeg", "width": 800, "height": 800, "fps": 0.5},
+        "audio": {"codec": "aac", "channels": 2},
+    }
+    assert normalize_asset_type("audio", meta, filename="song.m4a") == "audio"
+
+
+def test_normalize_asset_type_prefers_extension_for_video():
+    meta = {
+        "video": {"codec": "h264", "width": 1920, "height": 1080, "fps": 30},
+        "audio": {"codec": "aac", "channels": 2},
+    }
+    assert normalize_asset_type("audio", meta, filename="clip.mp4") == "video"
 
 
 def test_asset_create_disallows_unknown_asset_type():

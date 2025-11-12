@@ -1,6 +1,9 @@
 # TODO / Progress Log
 
 ## Completed
+- Hardened asset uploads: enforced audio/video extensions on frontend, normalized backend asset typing (cover art aware), and refreshed cards with compact layout + thumbnail resolution.
+- Rebuilt Upload modal restrictions so audio mode rejects video streams up front and updated backend/unit tests to respect user-selected media type.
+- Refactored library asset cards with tighter density, responsive thumbnails, and consistent badge layout to improve scrolling through large lists.
 - Extracted asset API logic into dedicated services (`backend/app/services/assets/*`) and slimmed down `app/api/routes/assets.py` to HTTP orchestration only.
 - Refactored stream routes to rely on `StreamService` + `StreamControlService`, moved playlist/destination prep, quota checks, and runtime orchestration into `backend/app/services/streams/*`.
 - Updated CLI runner and tests to use the new helpers, ensuring full backend `pytest` suite passes.
@@ -15,38 +18,31 @@
 
 ## Next Up
 
-### 🎯 CRITICAL - Must Fix Before Production (3-4 days)
-See detailed roadmap in `IMPROVEMENT_ROADMAP.md`
+### 🔧 In Progress / Scheduled
 
-1. **Quick Wins** (<1 hour total):
-   - Increase `db_pool_size` from 3 to 10 (`backend/app/core/config.py`)
-   - Fix status polling for error states (`frontend/src/app/dashboard/streaming/page.tsx:172`)
-   - Add supervisor config sleep (`backend/app/core/supervisor_control.py:103`)
-   - Fix deterministic shuffle seed (`backend/app/streaming/playlist_builder.py:148`)
+1. **Audio vs Video validation parity**
+   - Split backend validator paths so audio assets skip video-only checks and expose audio-focused guidance.
+   - Adjust library + quality gate UIs to surface audio recommendations only where relevant.
+   - Re-test revalidation/stream start flows with pure audio queues.
 
-2. **Frontend Refactor** (2-3 days):
-   - Split `StreamingPage.tsx` (2,242 lines) into components
-   - Extract business logic to helpers
-   - Implement useReducer for complex state
+2. **Stream builder consistency**
+   - Align terminology between "collections" in builder and playlists in Files section (copy, labels, available actions).
+   - Expose/manage saved presets (video & audio) from a single UX entry point or provide clear CTAs to Library playlists.
 
-3. **Security** (3 hours):
-   - Add CSRF protection middleware
-   - Centralize admin authorization
+3. **Documentation & contributor guide refresh**
+   - Update `AGENTS.md` to reflect current architecture, bilingual (EN/UA/RU) localization setup, and new workflow expectations.
 
-4. **Infrastructure** (5 hours):
-   - Add FFmpeg memory cleanup
-   - Setup CI/CD pipeline
-   - Add test coverage reporting
+4. **Quality tasks backlog**
+   - Evaluate remaining items from `IMPROVEMENT_ROADMAP.md` Sprint 2 once above parity tasks are done.
 
 ### 📚 Reference Documents
 - `docs/AUDIT_REPORT_2025.md` — повний технічний аудит (100+ pages)
 - `AUDIT_SUMMARY.md` — executive summary (оцінка 8.5/10)
 - `IMPROVEMENT_ROADMAP.md` — prioritized action items
 
-### 🔄 Post-Critical Tasks
-- Integration tests для main flows
-- Frontend component testing
-- Storybook for design system
-- Performance monitoring (Sentry, OpenTelemetry)
+### 🔄 Post-parity ideas
+- Expand integration tests for builder/audio streams
+- Add Storybook coverage for media management components
+- Instrument performance/observability once parity fixes land
 
 **Project Status:** Production-ready after critical fixes (estimated 1 week)

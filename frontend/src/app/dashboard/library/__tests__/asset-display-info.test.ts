@@ -35,7 +35,7 @@ describe('deriveAssetDisplayInfo', () => {
       },
       validation_errors: [
         'Video codec must be h264',
-        'Audio codec must be AAC',
+        'Audio codec must be one of AAC, MP3 for direct streaming.',
       ],
       compatible_for_copy: true,
     })
@@ -90,7 +90,8 @@ describe('deriveAssetDisplayInfo', () => {
     const info = deriveAssetDisplayInfo(asset)
     const kinds = info.warnings.map((warning) => warning.kind)
 
-    expect(kinds).toContain('missingMetadata')
+    expect(kinds).not.toContain('missingMetadata')
+    expect(kinds).not.toContain('noVideoStream')
     expect(kinds).toContain('requiresTranscode')
     expect(info.audioSampleRate).toBe(44100)
   })

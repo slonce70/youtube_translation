@@ -23,6 +23,18 @@ from app.streaming.validator import VideoValidator
 
 logger = logging.getLogger(__name__)
 
+AUDIO_QUALITY_GUIDANCE = {
+    "codec": "aac",
+    "codec_label": "AAC or MP3",
+    "sample_rate_hz": 48_000,
+    "min_bitrate_kbps": 128,
+    "target_bitrate_kbps": 192,
+    "channels": 2,
+}
+
+SUPPORTED_AUDIO_CODECS = {"aac", "mp4a", "mp3", "mpga"}
+MIN_AUDIO_SAMPLE_RATE_HZ = 44_100
+
 
 class QuotaExceededError(HTTPException):
     """Custom exception for quota exceeded errors"""
@@ -279,14 +291,34 @@ class QuotaEnforcer:
                     }
                 )
 
-    async def evaluate_stream_quality(self, assets: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Validate selected assets against tier quality limits.
+    async def evaluate_stream_quality(
+        self,
+        video_assets: List[Dict[str, Any]],
+        *,
+        audio_assets: Optional[List[Dict[str, Any]]] = None,
+        mix_mode: str = "video_only",
+    ) -> Dict[str, Any]:
+        """Validate selected assets against tier quality limits."""
 
-        Returns dict with keys: ok, violations, limits, tier, recommended.
-        """
         await self.check_suspended()
         await self._load_limits()
+
+        audio_assets = list(audio_assets or [])
+        normalized_mix = (mix_mode or "video_only").lower()
+        if normalized_mix not in {"video_only", "audio_only", "mixed"}:
+            normalized_mix = "video_only"
+
+        has_video = bool(video_assets)
+        has_audio = bool(audio_assets)
+
+        if normalized_mix == "audio_only" or (not has_video and has_audio):
+            mode = "audio"
+        elif normalized_mix == "mixed" and has_audio and has_video:
+            mode = "mixed"
+        elif normalized_mix == "mixed" and has_audio:
+            mode = "audio"
+        else:
+            mode = "video"
 
         limits = self._limits
         result: Dict[str, Any] = {
@@ -300,45 +332,20 @@ class QuotaEnforcer:
             },
             "violations": [],
             "ok": True,
+            "mode": mode,
+            "audio_recommended": None,
         }
 
+        if has_audio:
+            result["audio_recommended"] = {
+                "codec": AUDIO_QUALITY_GUIDANCE["codec_label"],
+                "sample_rate_hz": AUDIO_QUALITY_GUIDANCE["sample_rate_hz"],
+                "min_bitrate_kbps": AUDIO_QUALITY_GUIDANCE["min_bitrate_kbps"],
+                "target_bitrate_kbps": AUDIO_QUALITY_GUIDANCE["target_bitrate_kbps"],
+                "channels": AUDIO_QUALITY_GUIDANCE["channels"],
+            }
+
         if not limits.enforce_stream_quality:
-            return result
-
-        for index, asset in enumerate(assets):
-            meta = asset.get("meta") or {}
-            video = meta.get("video") or {}
-            audio = meta.get("audio") or {}
-            label = asset.get("filename") or asset.get("asset_id") or f"asset #{index + 1}"
-
-            if asset.get("compatible_for_copy") is False:
-                result["violations"].append(
-                    {
-                        "code": "incompatible_codecs",
-                        "asset_index": index,
-                        "asset_label": label,
-                        "message": (
-                            "Asset must use H.264 video, AAC audio, and yuv420p pixel format "
-                            "for direct streaming."
-                        ),
-                        "details": {
-                            "validation_errors": asset.get("validation_errors") or [],
-                        },
-                    }
-                )
-
-            if not video or not audio:
-                result["violations"].append(
-                    {
-                        "code": "missing_metadata",
-                        "asset_index": index,
-                        "asset_label": label,
-                        "message": "Asset metadata is incomplete for quality checks.",
-                    }
-                )
-
-        if result["violations"]:
-            result["ok"] = False
             return result
 
         guidance_table = VideoValidator.BITRATE_GUIDANCE
@@ -349,16 +356,6 @@ class QuotaEnforcer:
             if isinstance(value, str) and value.strip():
                 try:
                     return int(float(value))
-                except ValueError:
-                    return None
-            return None
-
-        def _safe_float(value: Any) -> Optional[float]:
-            if isinstance(value, (int, float)):
-                return float(value)
-            if isinstance(value, str) and value.strip():
-                try:
-                    return float(value)
                 except ValueError:
                     return None
             return None
@@ -385,7 +382,6 @@ class QuotaEnforcer:
             if diff_60 <= 5:
                 return 60, False
 
-            # Outside guideline, but return the closest bucket
             bucket = 30 if diff_30 < diff_60 else 60
             return bucket, True
 
@@ -423,9 +419,46 @@ class QuotaEnforcer:
                 return None
             return f"{value:.2f} Mbps"
 
+        # Pre-flight validation: incompatible assets should not proceed further.
+        for index, asset in enumerate(video_assets):
+            meta = asset.get("meta") or {}
+            video = meta.get("video") or {}
+            audio = meta.get("audio") or {}
+            label = asset.get("filename") or asset.get("asset_id") or f"asset #{index + 1}"
+
+            if asset.get("compatible_for_copy") is False:
+                result["violations"].append(
+                    {
+                        "code": "incompatible_codecs",
+                        "asset_index": index,
+                        "asset_label": label,
+                        "message": (
+                            "Asset must use H.264 video, AAC audio, and yuv420p pixel format "
+                            "for direct streaming."
+                        ),
+                        "details": {
+                            "validation_errors": asset.get("validation_errors") or [],
+                        },
+                    }
+                )
+
+            if not video or not audio:
+                result["violations"].append(
+                    {
+                        "code": "missing_metadata",
+                        "asset_index": index,
+                        "asset_label": label,
+                        "message": "Asset metadata is incomplete for quality checks.",
+                    }
+                )
+
+        if result["violations"]:
+            result["ok"] = False
+            return result
+
         recommended_info_set = False
 
-        for index, asset in enumerate(assets):
+        for index, asset in enumerate(video_assets):
             meta = asset.get("meta") or {}
             video = meta.get("video") or {}
             allowed_codecs = {
@@ -454,7 +487,7 @@ class QuotaEnforcer:
                 )
                 continue
 
-            codec_name = (video.get("codec_name") or "").lower()
+            codec_name = (video.get("codec_name") or video.get("codec") or "").lower()
             if allowed_codecs and codec_name and codec_name not in allowed_codecs:
                 add_violation(
                     "codec_not_allowed",
@@ -626,9 +659,93 @@ class QuotaEnforcer:
                         allowed=f"≤ {tier_max_bitrate} Mbps",
                     )
 
+        if audio_assets:
+            expected_codec_label = AUDIO_QUALITY_GUIDANCE["codec_label"]
+
+            for index, asset in enumerate(audio_assets):
+                meta = asset.get("meta") or {}
+                audio = meta.get("audio") or {}
+                label = asset.get("filename") or asset.get("asset_id") or f"audio #{index + 1}"
+
+                def add_audio_violation(code: str, message: str, *, current: Any = None, allowed: Any = None):
+                    result["violations"].append(
+                        {
+                            "code": code,
+                            "message": message,
+                            "asset_id": asset.get("asset_id"),
+                            "filename": label,
+                            "position": len(video_assets) + index,
+                            "current": current,
+                            "allowed": allowed,
+                        }
+                    )
+
+                def _format_codec(name: str) -> str:
+                    normalized = (name or "").lower()
+                    if normalized in {"mp3", "mpga"}:
+                        return "MP3"
+                    if normalized in {"aac", "mp4a"}:
+                        return "AAC"
+                    return (name or "").upper()
+
+                if not audio:
+                    add_audio_violation(
+                        "audio_metadata_missing",
+                        "Audio metadata is missing. Revalidate the file before streaming.",
+                    )
+                    continue
+
+                codec_name = (audio.get("codec_name") or audio.get("codec") or "").lower()
+                if codec_name and codec_name not in SUPPORTED_AUDIO_CODECS:
+                    add_audio_violation(
+                        "audio_codec_not_allowed",
+                        "Audio codec is not supported for live streaming.",
+                        current=_format_codec(codec_name),
+                        allowed=expected_codec_label,
+                    )
+
+                sample_rate = _safe_int(
+                    audio.get("sample_rate")
+                    or audio.get("sampleRate")
+                    or audio.get("sample_rate_hz")
+                    or audio.get("sampleRateHz")
+                )
+                if sample_rate and sample_rate < MIN_AUDIO_SAMPLE_RATE_HZ:
+                    add_audio_violation(
+                        "audio_sample_rate_low",
+                        "Audio sample rate is below the recommended value.",
+                        current=f"{sample_rate} Hz",
+                        allowed=f"≥ {MIN_AUDIO_SAMPLE_RATE_HZ} Hz",
+                    )
+
+                bitrate_bps = _safe_float(audio.get("bitrate") or meta.get("bitrate"))
+                if bitrate_bps is not None:
+                    bitrate_kbps = bitrate_bps / 1_000
+                    if bitrate_kbps < AUDIO_QUALITY_GUIDANCE["min_bitrate_kbps"]:
+                        add_audio_violation(
+                            "audio_bitrate_out_of_range",
+                            "Audio bitrate is below the recommended range.",
+                            current=f"{int(bitrate_kbps)} kbps",
+                            allowed=f"≥ {AUDIO_QUALITY_GUIDANCE['min_bitrate_kbps']} kbps",
+                        )
+                else:
+                    add_audio_violation(
+                        "audio_metadata_missing",
+                        "Audio bitrate metadata is missing. Revalidate the file before streaming.",
+                    )
+
+                channels = _safe_int(audio.get("channels"))
+                if channels and channels > AUDIO_QUALITY_GUIDANCE["channels"] + 2:
+                    add_audio_violation(
+                        "audio_channels_high",
+                        "Audio channel count may not be supported by YouTube.",
+                        current=str(channels),
+                        allowed=str(AUDIO_QUALITY_GUIDANCE["channels"]),
+                    )
+
         if result["violations"]:
             result["ok"] = False
-            if "recommended" not in result:
+            if "recommended" not in result and has_video:
                 fallback_rule = None
                 if limits.max_resolution_height:
                     fallback_rule = next(
