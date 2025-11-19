@@ -216,6 +216,9 @@ class Stream(Base):
     audio_collection_id = Column(UUID(as_uuid=True), ForeignKey("media_collections.id", ondelete="SET NULL"))
     mix_mode = Column(Text, nullable=False, default='video_only')
     settings_json = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    scheduled_start_enabled = Column(Boolean, nullable=False, server_default=text("false"))
+    scheduled_start_time = Column(TIMESTAMP(timezone=True))
+    scheduled_start_attempted_at = Column(TIMESTAMP(timezone=True))
 
     # Track total duration for billing
     total_duration_seconds = Column(Float, default=0)
@@ -232,7 +235,7 @@ class Stream(Base):
     audio_collection = relationship("MediaCollection", foreign_keys=[audio_collection_id])
 
     __table_args__ = (
-        CheckConstraint("status IN ('stopped', 'starting', 'running', 'error', 'stopping')", name='check_status'),
+        CheckConstraint("status IN ('stopped', 'starting', 'running', 'error', 'stopping', 'scheduled')", name='check_status'),
         CheckConstraint("source_type IN ('playlist', 'assets')", name='check_source_type'),
         CheckConstraint("mix_mode IN ('video_only', 'audio_only', 'mixed')", name='check_stream_mix_mode'),
     )

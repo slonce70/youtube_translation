@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
-from typing import List, Optional, Sequence, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.collections import (
     normalize_collection_items,
@@ -26,10 +28,11 @@ from app.models.database import (
     StreamAsset,
     StreamDestination,
 )
-from app.schemas.api import StreamCreate, StreamLiveUpdateRequest
+from app.schemas.api import StreamCreate, StreamLiveUpdateRequest, StreamQueueAppend
 
 from .helpers import (
     ALLOWED_MIX_MODES,
+    build_asset_payload,
     fetch_destinations,
     get_collection_for_user,
     load_stream_with_relations,
@@ -37,6 +40,9 @@ from .helpers import (
 
 if TYPE_CHECKING:  # pragma: no cover - for type hints only
     from .control import StreamControlService
+
+
+logger = logging.getLogger(__name__)
 
 
 class StreamService:
@@ -131,6 +137,9 @@ class StreamService:
             )
 
         source_type = "playlist" if playlist else "assets"
+        scheduled_start_enabled = stream_data.schedule_mode == "schedule"
+        scheduled_start_time = stream_data.schedule_start_at if scheduled_start_enabled else None
+        initial_status = "scheduled" if scheduled_start_enabled else "stopped"
 
         stream = Stream(
             user_id=self.user_id,
@@ -141,7 +150,9 @@ class StreamService:
             settings_json=settings_json,
             source_type=source_type,
             name=stream_data.name,
-            status="stopped",
+            status=initial_status,
+            scheduled_start_enabled=scheduled_start_enabled,
+            scheduled_start_time=scheduled_start_time,
         )
 
         self.db.add(stream)
@@ -236,11 +247,47 @@ class StreamService:
                 detail="Failed to update collection",
             ) from exc
 
+        loop_enabled = True
+        shuffle_enabled = False
+        if normalized_items:
+            loop_enabled = any(item.loop_mode != "once" for item in normalized_items)
+            shuffle_enabled = any(item.loop_mode == "shuffle" for item in normalized_items)
+
+        runtime_assets: List[Dict[str, Any]] = []
+        should_hot_swap = not update.restart and stream.status == "running"
+        if should_hot_swap:
+            items_with_assets = await self._fetch_collection_items_with_assets(target_collection.id)
+            runtime_assets = [
+                build_asset_payload(item.asset, item.loop_mode or "loop")
+                for item in items_with_assets
+                if item.asset is not None
+            ]
+
+            if not runtime_assets:
+                await self.db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No assets available for live update",
+                )
+
         control = control_service
         if control is None:
             from .control import StreamControlService  # local import to avoid cycle
 
             control = StreamControlService(self.db, self.user_id)
+
+        if should_hot_swap:
+            try:
+                await control.apply_live_collection_update(
+                    stream,
+                    update.target,
+                    runtime_assets,
+                    loop_enabled=loop_enabled,
+                    shuffle_enabled=shuffle_enabled,
+                )
+            except HTTPException:
+                await self.db.rollback()
+                raise
 
         if update.restart:
             await control.restart_stream(stream_id, update.target)
@@ -253,6 +300,101 @@ class StreamService:
                 detail="Stream not found after update",
             )
         return updated_stream
+
+    async def enqueue_stream_asset(
+        self,
+        stream_id: UUID,
+        payload: StreamQueueAppend,
+        control_service: Optional["StreamControlService"] = None,
+    ) -> None:
+        from app.models.database import CollectionItem, PlaylistItem, StreamAsset
+
+        stream = await load_stream_with_relations(self.db, self.user_id, stream_id)
+        if not stream:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Stream not found",
+            )
+
+        target = payload.target
+        if target not in {"video", "audio"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid target")
+
+        asset = await self._get_asset(payload.asset_id)
+        expected_type = "video" if target == "video" else "audio"
+        if asset.asset_type != expected_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Asset must be of type {expected_type}",
+            )
+
+        loop_mode = payload.loop_mode or "loop"
+        asset_payload = build_asset_payload(asset, loop_mode=loop_mode)
+
+        if target == "video" and stream.video_collection:
+            next_position = max((item.position for item in stream.video_collection.items), default=-1) + 1
+            self.db.add(
+                CollectionItem(
+                    collection_id=stream.video_collection.id,
+                    asset_id=asset.id,
+                    position=next_position,
+                    loop_mode=loop_mode,
+                )
+            )
+        elif target == "audio" and stream.audio_collection:
+            next_position = max((item.position for item in stream.audio_collection.items), default=-1) + 1
+            self.db.add(
+                CollectionItem(
+                    collection_id=stream.audio_collection.id,
+                    asset_id=asset.id,
+                    position=next_position,
+                    loop_mode=loop_mode,
+                )
+            )
+        elif stream.playlist and target == "video":
+            next_position = max((item.position for item in stream.playlist.items), default=-1) + 1
+            self.db.add(
+                PlaylistItem(
+                    playlist_id=stream.playlist.id,
+                    asset_id=asset.id,
+                    position=next_position,
+                )
+            )
+        else:
+            next_position = max((link.position for link in stream.stream_assets), default=-1) + 1
+            self.db.add(
+                StreamAsset(stream_id=stream.id, asset_id=asset.id, position=next_position)
+            )
+
+        control = control_service
+        if control is None:
+            from .control import StreamControlService  # local import to avoid cycle
+
+            control = StreamControlService(self.db, self.user_id)
+
+        try:
+            await control.enqueue_hot_swap(stream_id, target, asset_payload)
+            await self.db.commit()
+        except HTTPException:
+            await self.db.rollback()
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            await self.db.rollback()
+            logger.exception("Failed to enqueue runtime update for stream %s", stream_id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to enqueue stream update",
+            ) from exc
+
+    async def _fetch_collection_items_with_assets(self, collection_id: UUID) -> List[CollectionItem]:
+        query = (
+            select(CollectionItem)
+            .where(CollectionItem.collection_id == collection_id)
+            .options(selectinload(CollectionItem.asset))
+            .order_by(CollectionItem.position)
+        )
+        result = await self.db.execute(query)
+        return result.scalars().all()
 
     async def _get_playlist(self, playlist_id: UUID) -> Playlist:
         query = select(Playlist).where(Playlist.id == playlist_id, Playlist.user_id == self.user_id)
@@ -294,6 +436,17 @@ class StreamService:
                     detail="Asset selection contains duplicates or invalid IDs",
                 ) from exc
         return ordered_assets
+
+    async def _get_asset(self, asset_id: UUID) -> Asset:
+        query = select(Asset).where(Asset.id == asset_id, Asset.user_id == self.user_id)
+        result = await self.db.execute(query)
+        asset = result.scalar_one_or_none()
+        if not asset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asset not found",
+            )
+        return asset
 
     def _determine_mix_mode(
         self,

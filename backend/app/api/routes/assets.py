@@ -1,28 +1,65 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.schemas.api import (
     AssetCreate,
     AssetDownloadLinkResponse,
     AssetResponse,
     AssetUpdate,
+    UploadTokenResponse,
 )
-from app.services.assets import AssetService, AssetUploadService
+from app.services.assets import AssetService, AssetUploadService, UploadTokenService
 from app.services.assets.service import AssetDownloadService, DownloadTokenService
 from app.services.assets.utils import infer_asset_type, normalize_asset_type  # noqa: F401
 
 logger = logging.getLogger(__name__)
+_warned_missing_tusd_secret = False
 
 router = APIRouter()
+def _verify_tusd_signature(raw_body: bytes, signature: Optional[str]) -> None:
+    """Validate incoming tusd webhook signatures."""
+
+    global _warned_missing_tusd_secret
+
+    secret = settings.tusd_hmac_secret
+    if not secret:
+        environment = settings.environment.lower()
+        if environment in {"production", "staging"}:
+            logger.error("TUSD_HMAC_SECRET must be configured to verify tusd hooks")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Upload hook misconfigured",
+            )
+        if not _warned_missing_tusd_secret:
+            logger.warning("TUSD_HMAC_SECRET not configured; accepting unsigned tusd hooks")
+            _warned_missing_tusd_secret = True
+        return
+
+    if not signature:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing tusd signature",
+        )
+
+    expected_signature = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected_signature, signature):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid tusd signature",
+        )
 
 
 @router.get("/", response_model=List[AssetResponse])
@@ -56,23 +93,51 @@ async def update_asset(
     return await service.update_asset(asset_id, asset_update)
 
 
+@router.post("/upload-token", response_model=UploadTokenResponse)
+async def create_upload_token(user_deps: tuple = Depends(require_user)):
+    """Issue a short-lived token for authenticated tus uploads."""
+    _, user_id = user_deps
+    service = UploadTokenService(user_id)
+    return service.create_token()
+
+
 @router.post("/upload-complete")
-async def handle_upload_complete(request: Request, db: AsyncSession = Depends(get_db)):
+async def handle_upload_complete(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    signature: Optional[str] = Header(default=None, alias="X-Tusd-Signature"),
+):
     """Webhook invoked by tusd once file upload completes."""
+    raw_body = await request.body()
+    if not raw_body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing tusd webhook payload",
+        )
+
     try:
-        payload = await request.json()
-    except Exception as parse_error:  # pylint: disable=broad-except
-        raw_body = await request.body()
+        payload = json.loads(raw_body.decode("utf-8"))
+    except json.JSONDecodeError as parse_error:
         logger.error(
-            "Invalid webhook payload from tusd: %s (%s)", raw_body[:500], parse_error
+            "Invalid webhook payload from tusd: %s (%s)",
+            raw_body[:500],
+            parse_error,
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid tusd webhook payload",
         ) from parse_error
 
-    service = AssetUploadService(db)
-    return await service.handle_upload_complete(payload)
+    _verify_tusd_signature(raw_body, signature)
+
+    try:
+        service = AssetUploadService(db)
+        return await service.handle_upload_complete(payload)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to process tusd webhook")
+        raise
 
 
 @router.post("/{asset_id}/check", response_model=AssetResponse)

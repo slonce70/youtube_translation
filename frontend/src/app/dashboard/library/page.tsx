@@ -198,6 +198,7 @@ export default function LibraryPage() {
     open: false,
     assetIds: [],
   })
+  const [uploadTokenState, setUploadTokenState] = useState<{ token: string; expiresAt: number } | null>(null)
   const [deleteModalState, setDeleteModalState] = useState<{
     open: boolean
     assetIds: string[]
@@ -277,7 +278,12 @@ export default function LibraryPage() {
         }))
 
         const shouldVerifyPresence = assetFilter === 'all'
-        const activeAssetsKey: [string, AssetFilterValue, string | 'all'] = ['assets', assetFilter, selectedFolderId]
+        const activeAssetsKey: [string, string | undefined, AssetFilterValue, string | 'all'] = [
+          'assets',
+          user?.id,
+          assetFilter,
+          selectedFolderId,
+        ]
 
         const refreshUntilVisible = async () => {
           const pollSchedule = [0, 350, 900, 1600]
@@ -285,8 +291,8 @@ export default function LibraryPage() {
             if (delayMs) {
               await sleep(delayMs)
             }
-            await queryClient.invalidateQueries({ queryKey: ['assets'] })
-            await queryClient.refetchQueries({ queryKey: ['assets'], type: 'active' })
+            await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
+            await queryClient.refetchQueries({ queryKey: ['assets', user?.id], type: 'active' })
 
             if (!shouldVerifyPresence || !uploadedFiles.length) {
               continue
@@ -339,19 +345,66 @@ export default function LibraryPage() {
         uppy.removePlugin(plugin)
       }
     }
-  }, [assetFilter, selectedFolderId, libraryToasts, queryClient, tusEndpoint, uppy])
+  }, [assetFilter, selectedFolderId, libraryToasts, queryClient, tusEndpoint, uppy, user?.id])
+
+  const refreshUploadToken = useCallback(async () => {
+    if (!user?.id) {
+      setUploadTokenState(null)
+      return
+    }
+
+    try {
+      const response = await api.assets.createUploadToken()
+      const expiresAt = new Date(response.expires_at).getTime()
+      setUploadTokenState({ token: response.token, expiresAt })
+      uppy.setMeta({ upload_token: response.token })
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : (error as Error)?.message ?? 'Unable to refresh upload token'
+      toast.error(libraryToasts('generic.errorWithMessage', { message }))
+    }
+  }, [libraryToasts, uppy, user?.id])
 
   useEffect(() => {
-    if (user?.id) {
-      uppy.setMeta({
-        user_id: user.id,
-      })
+    if (!user?.id) {
+      setUploadTokenState(null)
+      return
     }
-  }, [uppy, user?.id])
+    void refreshUploadToken()
+  }, [refreshUploadToken, user?.id])
+
+  useEffect(() => {
+    if (!uploadTokenState || typeof window === 'undefined') {
+      return
+    }
+
+    const now = Date.now()
+    const refreshIn = Math.max(uploadTokenState.expiresAt - now - 60_000, 5_000)
+    const timer = window.setTimeout(() => {
+      void refreshUploadToken()
+    }, refreshIn)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [refreshUploadToken, uploadTokenState])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    const meta: Record<string, string> = { user_id: user.id }
+    if (uploadTokenState?.token) {
+      meta.upload_token = uploadTokenState.token
+    }
+    uppy.setMeta(meta)
+  }, [uppy, uploadTokenState?.token, user?.id])
 
   // API Queries
   const { data: assets, isLoading: isLoadingAssets } = useQuery<Asset[]>({
-    queryKey: ['assets', assetFilter, selectedFolderId],
+    queryKey: ['assets', user?.id, assetFilter, selectedFolderId],
     queryFn: () =>
       api.assets.list(
         assetFilter === 'all'
@@ -371,13 +424,13 @@ export default function LibraryPage() {
     isLoading: isLoadingFolders,
     isError: isFoldersError,
   } = useQuery<MediaFolder[]>({
-    queryKey: ['media-folders'],
+    queryKey: ['media-folders', user?.id],
     queryFn: () => api.mediaFolders.list(),
     enabled: !!user,
   })
 
   const { data: playlists, isLoading: isLoadingPlaylists } = useQuery<Playlist[]>({
-    queryKey: ['playlists'],
+    queryKey: ['playlists', user?.id],
     queryFn: () => api.playlists.list(),
     enabled: !!user,
   })
@@ -420,7 +473,7 @@ export default function LibraryPage() {
   const revalidateAssetMutation = useMutation({
     mutationFn: (assetId: string) => api.assets.revalidate(assetId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['assets'] })
+      await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
     },
     onError: (error: Error) => {
       toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
@@ -431,7 +484,7 @@ export default function LibraryPage() {
     mutationFn: ({ id, data }: { id: string; data: { filename?: string } }) =>
       api.assets.update(id, data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['assets'] })
+      await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
       toast.success(libraryToasts('asset.updated'))
     },
     onError: (error: Error) => {
@@ -466,7 +519,7 @@ export default function LibraryPage() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['assets'] })
+      queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
       toast.success(libraryToasts('asset.moved'))
     },
     onError: (error: Error) => {
@@ -478,7 +531,7 @@ export default function LibraryPage() {
     mutationFn: (data: { name: string; parent_id?: string | null }) =>
       api.mediaFolders.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['media-folders'] })
+      queryClient.invalidateQueries({ queryKey: ['media-folders', user?.id] })
       toast.success(libraryToasts('folder.created'))
     },
     onError: (error: Error) => {
@@ -490,7 +543,7 @@ export default function LibraryPage() {
     mutationFn: ({ folderId, name }: { folderId: string; name: string }) =>
       api.mediaFolders.update(folderId, { name }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['media-folders'] })
+      queryClient.invalidateQueries({ queryKey: ['media-folders', user?.id] })
       toast.success(libraryToasts('folder.updated'))
     },
     onError: (error: Error) => {
@@ -501,7 +554,7 @@ export default function LibraryPage() {
   const deleteFolderMutation = useMutation({
     mutationFn: (folderId: string) => api.mediaFolders.delete(folderId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['media-folders'] })
+      queryClient.invalidateQueries({ queryKey: ['media-folders', user?.id] })
       toast.success(libraryToasts('folder.deleted'))
     },
     onError: (error: Error) => {
@@ -512,7 +565,7 @@ export default function LibraryPage() {
   const createPlaylistMutation = useMutation({
     mutationFn: (data: PlaylistCreatePayload) => api.playlists.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['playlists'] })
+      queryClient.invalidateQueries({ queryKey: ['playlists', user?.id] })
       toast.success(libraryToasts('playlist.created'))
       resetPlaylistForm()
     },
@@ -531,7 +584,7 @@ export default function LibraryPage() {
       return api.playlists.update(id, payload)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['playlists'] })
+      queryClient.invalidateQueries({ queryKey: ['playlists', user?.id] })
       toast.success(libraryToasts('playlist.updated'))
       resetPlaylistForm()
     },
@@ -542,7 +595,7 @@ export default function LibraryPage() {
   const deletePlaylistMutation = useMutation({
     mutationFn: (playlistId: string) => api.playlists.delete(playlistId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['playlists'] })
+      queryClient.invalidateQueries({ queryKey: ['playlists', user?.id] })
       toast.success(libraryToasts('playlist.deleted'))
     },
     onError: (error: Error) =>
@@ -898,13 +951,14 @@ export default function LibraryPage() {
       for (const assetId of assetIds) {
         await api.assets.delete(assetId, { force: options?.force })
       }
-      await queryClient.invalidateQueries({ queryKey: ['assets'] })
+      await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
       toast.success(libraryToasts('asset.deleted'))
       setSelectedAssets((prev) => {
         const next = new Set(prev)
         assetIds.forEach((id) => next.delete(id))
         return next
       })
+      closeDeleteModal()
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         const conflictAssetId = assetIds[0]
@@ -912,6 +966,7 @@ export default function LibraryPage() {
         const detail = (error.detail as { usage?: Asset['usage'] }) ?? {}
         setDeleteModalState((prev) => ({
           ...prev,
+          open: true,
           forceRequired: true,
           forceConfirmed: false,
           forceTarget: {
@@ -925,6 +980,7 @@ export default function LibraryPage() {
       }
       const message = error instanceof Error ? error.message : 'Failed to delete assets'
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
+      closeDeleteModal()
     } finally {
       markAssetsAsDeleting(assetIds, false)
     }
@@ -941,7 +997,7 @@ export default function LibraryPage() {
       return
     }
     await deleteAssets(ids, { force: deleteModalState.forceRequired })
-    closeDeleteModal()
+    // Modal is closed in deleteAssets on success or error (except 409)
   }
 
   const handleConfirmMove = async () => {
@@ -1340,6 +1396,7 @@ export default function LibraryPage() {
                           recommendations: (params: { label: string; details: string }) =>
                             tLibrary('assets.recommendations', params),
                           selection: { checkboxLabel: tLibrary('assets.selection.checkboxLabel') },
+                          previewAlt: (params: { filename: string }) => tLibrary('assets.previewAlt', params),
                         }}
                       />
                     ))}

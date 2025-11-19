@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +33,9 @@ class PlaylistFileSet:
     audio_assets: List[Dict[str, Any]] = field(default_factory=list)
     video_has_audio: bool = False
     video_audio_copy_compatible: bool = False
+    video_slots: List[Path] = field(default_factory=list)
+    audio_slots: List[Path] = field(default_factory=list)
+    queue_state_file: Optional[Path] = None
 
 
 class PlaylistBuilder:
@@ -106,25 +110,32 @@ class PlaylistBuilder:
         audio_shuffle = self._should_shuffle(normalized_audio)
 
         video_playlist_path: Optional[Path] = None
+        video_slots: List[Path] = []
+        audio_slots: List[Path] = []
+        queue_state_file: Optional[Path] = None
+
         if normalized_video:
-            video_playlist_path = stream_dir / "video.txt"
-            PlaylistBuilder.build_playlist_file(
-                normalized_video,
-                video_playlist_path,
+            video_playlist_path, video_slots, queue_state_file = self._build_dynamic_playlist(
+                stream_dir=stream_dir,
+                assets=normalized_video,
+                mix_mode=normalized_mode,
+                target="video",
+                stream_id=stream_id,
                 loop=video_loop,
                 shuffle=video_shuffle,
-                seed=self._seed_from_components(stream_id, "video"),
             )
 
         audio_playlist_path: Optional[Path] = None
         if normalized_audio:
-            audio_playlist_path = stream_dir / "audio.txt"
-            PlaylistBuilder.build_playlist_file(
-                normalized_audio,
-                audio_playlist_path,
+            audio_playlist_path, audio_slots, queue_state_file = self._build_dynamic_playlist(
+                stream_dir=stream_dir,
+                assets=normalized_audio,
+                mix_mode=normalized_mode,
+                target="audio",
+                stream_id=stream_id,
                 loop=audio_loop,
                 shuffle=audio_shuffle,
-                seed=self._seed_from_components(stream_id, "audio"),
+                queue_state_path=queue_state_file,
             )
 
         video_copy_compatible = bool(normalized_video) and all(
@@ -152,6 +163,9 @@ class PlaylistBuilder:
             audio_assets=normalized_audio,
             video_has_audio=video_has_audio,
             video_audio_copy_compatible=video_audio_copy_compatible,
+            video_slots=video_slots,
+            audio_slots=audio_slots,
+            queue_state_file=queue_state_file,
         )
 
     def _normalize_assets(self, assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -164,7 +178,18 @@ class PlaylistBuilder:
             if not raw_path:
                 raise ValueError("Asset entry missing 'path'")
 
-            file_path = Path(str(raw_path)).expanduser()
+            file_path = Path(str(raw_path)).expanduser().resolve()
+            
+            # Verify file exists before adding to playlist
+            if not file_path.exists():
+                asset_id = entry.get("asset_id", "unknown")
+                filename = entry.get("filename", str(file_path))
+                logger.error(f"Asset file does not exist: {file_path} (asset_id={asset_id}, filename={filename})")
+                raise FileNotFoundError(
+                    f"Asset file not found: {filename}. The file may have been moved or deleted. "
+                    f"Please re-upload this asset before streaming."
+                )
+            
             entry["path"] = str(file_path)
 
             loop_mode = self._sanitize_loop_mode(entry.get("loop_mode"))
@@ -209,6 +234,139 @@ class PlaylistBuilder:
             if codec != preferred_codec:
                 return False
         return True
+
+    def _build_dynamic_playlist(
+        self,
+        *,
+        stream_dir: Path,
+        assets: List[Dict[str, Any]],
+        mix_mode: str,
+        target: str,
+        stream_id: str,
+        loop: bool,
+        shuffle: bool,
+        queue_state_path: Optional[Path] = None,
+    ) -> Tuple[Path, List[Path], Optional[Path]]:
+        slot_dir = stream_dir / "slots" / target
+        slot_dir.mkdir(parents=True, exist_ok=True)
+
+        slot_count = max(2, min(4, len(assets))) if assets else 2
+        slot_paths: List[Path] = [slot_dir / f"{target}_slot_{index:02d}.media" for index in range(slot_count)]
+
+        playlist_path = stream_dir / f"{target}.ffconcat"
+        self._write_slot_playlist(playlist_path, slot_paths)
+
+        queue_state_path = queue_state_path or (stream_dir / "queue_state.json")
+        queue_state = self._load_queue_state(queue_state_path)
+
+        assigned_assets: List[Dict[str, Any]] = []
+        valid_slot_paths: List[Path] = []
+        remaining_assets = list(assets)
+
+        for slot_path in slot_paths:
+            asset = remaining_assets.pop(0) if remaining_assets else None
+            if self._assign_slot_file(slot_path, asset):
+                valid_slot_paths.append(slot_path)
+                if asset:
+                    assigned_assets.append(asset)
+
+        queue_state[target] = {
+            "loop": loop,
+            "shuffle": shuffle,
+            "mix_mode": mix_mode,
+            "stream_id": stream_id,
+            "slots": [str(path) for path in valid_slot_paths],
+            "assigned": [asset.get("asset_id") for asset in assigned_assets if asset],
+            "pending": remaining_assets,
+        }
+
+        self._write_queue_state(queue_state_path, queue_state)
+        
+        # Rebuild playlist with only valid slots
+        self._write_slot_playlist(playlist_path, valid_slot_paths)
+        
+        logger.debug(f"Dynamic playlist for {target} has {len(valid_slot_paths)} valid slots (skipped {len(slot_paths) - len(valid_slot_paths)} empty)")
+
+        return playlist_path, valid_slot_paths, queue_state_path
+
+    @staticmethod
+    def _write_slot_playlist(playlist_path: Path, slots: List[Path]) -> None:
+        base_dir = playlist_path.parent
+        base_dir_abs = base_dir.absolute()
+        entries: List[str] = ["ffconcat version 1.0"]
+
+        def _format(slot_path: Path) -> str:
+            slot_abs = slot_path.absolute()
+            try:
+                relative = os.path.relpath(slot_abs, base_dir_abs)
+                return Path(relative).as_posix()
+            except ValueError:
+                return slot_abs.as_posix()
+
+        formatted_slots = [_format(slot) for slot in slots]
+        entries.extend([f"file '{slot}'" for slot in formatted_slots])
+        entries.extend([f"file '{slot}'" for slot in formatted_slots])
+
+        playlist_path.write_text("\n".join(entries), encoding="utf-8")
+
+    @staticmethod
+    def _assign_slot_file(slot_path: Path, asset: Optional[Dict[str, Any]]) -> bool:
+        """Assign an asset to a slot file. Returns True if successful, False if no asset."""
+        try:
+            if slot_path.exists() or slot_path.is_symlink():
+                slot_path.unlink()
+        except FileNotFoundError:
+            pass
+
+        if not asset:
+            logger.warning(f"No asset provided for slot {slot_path}, skipping slot creation")
+            return False
+
+        source_path = Path(str(asset.get("path")))
+        if not source_path.exists():
+            logger.error(f"Asset file does not exist: {source_path}")
+            return False
+
+        # Verify source path is absolute
+        if not source_path.is_absolute():
+            logger.warning(f"Asset path is not absolute: {source_path}, resolving...")
+            source_path = source_path.resolve()
+
+        temp_path = slot_path.with_suffix(".tmp")
+        if temp_path.exists() or temp_path.is_symlink():
+            temp_path.unlink()
+
+        try:
+            temp_path.symlink_to(source_path.resolve())
+        except (AttributeError, NotImplementedError, OSError) as e:
+            logger.debug(f"Symlink failed for {slot_path}: {e}, falling back to copy")
+            # Fall back to hard link or copy
+            try:
+                temp_path.hardlink_to(source_path)
+            except (OSError, AttributeError):
+                import shutil
+                shutil.copy2(source_path, temp_path)
+
+        temp_path.replace(slot_path)
+        logger.debug(f"Assigned slot {slot_path} -> {source_path}")
+        return True
+
+    @staticmethod
+    def _load_queue_state(state_path: Path) -> Dict[str, Any]:
+        if state_path.exists():
+            try:
+                import json
+
+                return json.loads(state_path.read_text(encoding="utf-8"))
+            except Exception:
+                return {}
+        return {}
+
+    @staticmethod
+    def _write_queue_state(state_path: Path, state: Dict[str, Any]) -> None:
+        import json
+
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
     @staticmethod
     def _seed_from_components(stream_id: str, suffix: str) -> int:

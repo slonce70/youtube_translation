@@ -31,6 +31,9 @@ import type {
   MediaCollectionUpdatePayload,
   MediaCollectionItemsPayload,
   StreamLiveUpdatePayload,
+  StreamQueueAppendPayload,
+  StreamQueueResponse,
+  UploadTokenResponse,
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
@@ -212,6 +215,8 @@ export const api = {
     revalidate: (id: string) => apiRequest<Asset>(`/assets/${id}/check`, { method: 'POST' }),
     createDownloadLink: (id: string) =>
       apiRequest<AssetDownloadLink>(`/assets/${id}/download-link`, { method: 'POST' }),
+    createUploadToken: () =>
+      apiRequest<UploadTokenResponse>('/assets/upload-token', { method: 'POST' }),
   },
 
   playlists: {
@@ -250,6 +255,11 @@ export const api = {
     liveUpdate: (id: string, payload: StreamLiveUpdatePayload) =>
       apiRequest<Stream>(`/streams/${id}/live-config`, {
         method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    enqueue: (id: string, payload: StreamQueueAppendPayload) =>
+      apiRequest<StreamQueueResponse>(`/streams/${id}/queue`, {
+        method: 'POST',
         body: JSON.stringify(payload),
       }),
   },

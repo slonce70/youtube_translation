@@ -46,7 +46,10 @@ export const deriveEditorStateFromCollection = (
   name: collection.name,
   items: [...collection.items]
     .sort((a, b) => a.position - b.position)
-    .map((item) => ({ asset_id: item.asset_id })),
+    .map((item) => ({ 
+      asset_id: item.asset_id,
+      ...(item.asset ? { asset: item.asset } : {}),
+    })),
   shuffle: collection.items.some((item) => item.loop_mode === 'shuffle'),
   loop: collection.items.every((item) => item.loop_mode !== 'once'),
 })

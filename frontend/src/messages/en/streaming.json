@@ -4,7 +4,8 @@
     "stopped": "Stopped",
     "starting": "Starting",
     "stopping": "Stopping",
-    "error": "Error"
+    "error": "Error",
+    "scheduled": "Scheduled"
   },
   "toasts": {
     "destination": {
@@ -17,7 +18,9 @@
       "started": "Stream started",
       "stopped": "Stream stopped",
       "deleted": "Stream deleted",
-      "liveEdited": "Live configuration updated"
+      "liveEdited": "Live configuration updated",
+      "enqueued": "Asset added to live queue",
+      "enqueuedNamed": "\"{name}\" added to live queue"
     },
     "errors": {
       "selectPlaylist": "Select a playlist",
@@ -84,8 +87,16 @@
       "untitled": "Untitled Stream",
       "labels": {
         "playlist": "Playlist",
+        "destinations": "Channel",
         "status": "Status",
-        "created": "Created"
+        "created": "Created",
+        "liveDuration": "Live duration",
+        "totalDuration": "Total streamed",
+        "quotaRemaining": "Daily quota remaining",
+        "scheduledStart": "Scheduled start"
+      },
+      "destinations": {
+        "none": "No destinations configured"
       },
       "statusCheck": {
         "unreachable": "Live status unavailable \u2014 backend unreachable"
@@ -94,7 +105,8 @@
       "buttons": {
         "logs": "Logs",
         "stop": "Stop",
-        "start": "Start"
+        "start": "Start",
+        "cancelSchedule": "Cancel schedule"
       },
       "empty": {
         "title": "No active streams",
@@ -132,6 +144,9 @@
       "logs": {
         "title": "Stream Logs",
         "empty": "No logs available"
+      },
+      "quota": {
+        "limitReached": "Daily streaming limit reached"
       },
       "quality": {
         "title": "Quality requirements not met",
@@ -256,11 +271,11 @@
         }
       },
       "liveEdit": {
-        "button": "Live edit",
+        "button": "Edit stream",
         "title": "Live editing: {name}",
-        "subtitle": "Reorder playlists while streaming. Saving restarts the encoder with your changes.",
+        "subtitle": "Reorder playlists while streaming.",
         "loading": "Loading collections\u2026",
-        "restartNotice": "Saving applies immediately and hot-restarts the stream.",
+        "restartNotice": "Changes are queued instantly without interrupting your live broadcast.",
         "videoTitle": "Background queue",
         "audioTitle": "Audio queue",
         "missing": "No collection attached to this stream.",
@@ -271,14 +286,26 @@
         "availableEmpty": "No assets available. Upload media in Files.",
         "toggleLoop": "Loop",
         "toggleShuffle": "Shuffle",
+        "queueing": "Adding…",
+        "reorderHint": "Changes will flow into the next slot automatically—no restart required.",
         "toasts": {
           "saved": "Live playlist updated"
         },
         "actions": {
-          "save": "Save & restart",
+          "apply": "Apply changes",
           "close": "Close",
           "remove": "Remove",
           "add": "Add"
+        },
+        "confirmation": {
+          "title": "Apply live changes?",
+          "description": "Updated ordering will take effect as soon as the current segment finishes. This operation will not interrupt the stream.",
+          "confirm": "Apply now",
+          "cancel": "Cancel"
+        },
+        "errors": {
+          "videoEmpty": "Add at least one video before applying changes.",
+          "audioEmpty": "Add at least one audio track before applying changes."
         }
       }
     }

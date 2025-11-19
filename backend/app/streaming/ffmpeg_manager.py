@@ -14,10 +14,12 @@ import aiofiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
+from app.core.quota import QuotaEnforcer
 from app.core.metrics import track_stream_error, track_stream_start, track_stream_stop
 from app.core.database import get_db_context
 from app.models.database import Stream, SystemAlert
 from app.streaming.playlist_builder import PlaylistFileSet
+from app.streaming.hot_swap import hot_swap_manager
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +273,11 @@ class FFmpegStreamManager:
 
             logger.info(f"Stream {stream_id} started with PID {process.pid}")
             track_stream_start()
+
+            try:
+                await hot_swap_manager.register_stream(stream_id, normalized_playlists)
+            except Exception:
+                logger.exception("Failed to initialize hot swap manager for stream %s", stream_id)
             
             # Monitor process in background and handle logs
             monitor_task = asyncio.create_task(
@@ -336,6 +343,7 @@ class FFmpegStreamManager:
                     stopped = True
 
             await self._await_monitor_task(stream_id)
+            await hot_swap_manager.unregister_stream(stream_id)
             return stopped
 
         except Exception as e:
@@ -786,6 +794,14 @@ class FFmpegStreamManager:
                     self._write_logs_to_file(stream_id, process, log_file)
                 )
 
+            quota_task: Optional[asyncio.Task] = None
+            try:
+                quota_task = asyncio.create_task(
+                    self._enforce_runtime_limit(stream_id, process)
+                )
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception("Failed to start quota monitor for stream %s", stream_id)
+
             returncode = await self._await_process_exit(stream_id, process)
 
             if log_task is not None:
@@ -794,13 +810,26 @@ class FFmpegStreamManager:
                 except Exception:  # pragma: no cover - defensive cleanup
                     logger.exception("Log writer failed for stream %s", stream_id)
 
+            if quota_task is not None:
+                quota_task.cancel()
+                try:
+                    await quota_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:  # pragma: no cover - diagnostic logging
+                    logger.exception(
+                        "Quota monitor for stream %s raised error", stream_id
+                    )
+
             info = self.stream_info.get(stream_id)
             if info is not None:
                 info["last_exit_code"] = returncode
                 info["last_finished_at"] = datetime.utcnow()
                 manual_stop = bool(info.get("manual_stop"))
+                quota_context = info.get("quota_stop")
             else:
                 manual_stop = False
+                quota_context = None
 
             if returncode == 0 or manual_stop:
                 if manual_stop and returncode != 0:
@@ -812,11 +841,12 @@ class FFmpegStreamManager:
                 else:
                     logger.info(f"Stream {stream_id} exited normally")
 
-                await self._finalize_stream_success(stream_id, manual_stop)
+                await self._finalize_stream_success(stream_id, manual_stop, quota_context)
 
                 async with self._cleanup_lock:
                     self.active_streams.pop(stream_id, None)
                     self.stream_info.pop(stream_id, None)
+                await hot_swap_manager.unregister_stream(stream_id)
             else:
                 logger.error(f"Stream {stream_id} exited with code {returncode}")
                 await self._handle_stream_failure(stream_id, returncode)
@@ -985,6 +1015,110 @@ class FFmpegStreamManager:
         async with self._cleanup_lock:
             self.active_streams.pop(stream_id, None)
             self.stream_info.pop(stream_id, None)
+        await hot_swap_manager.unregister_stream(stream_id)
+
+    async def _enforce_runtime_limit(
+        self,
+        stream_id: str,
+        process: asyncio.subprocess.Process,
+    ) -> None:
+        info = self.stream_info.get(stream_id)
+        if not info:
+            return
+
+        metadata = info.get("metadata") or {}
+        raw_user_id = metadata.get("user_id")
+        try:
+            user_uuid = UUID(str(raw_user_id))
+        except (TypeError, ValueError):
+            return
+
+        interval_setting = getattr(settings, "stream_quota_poll_seconds", 60)
+        try:
+            poll_interval = float(interval_setting)
+        except (TypeError, ValueError):  # pragma: no cover - misconfig safeguard
+            poll_interval = 60.0
+        poll_interval = max(poll_interval, 15.0)
+
+        had_error = False
+
+        while process.returncode is None:
+            usage = await self._fetch_daily_usage(user_uuid)
+            if usage is None:
+                if not had_error:
+                    logger.exception(
+                        "Failed to evaluate quota usage for user %s; will retry",
+                        user_uuid,
+                    )
+                    had_error = True
+                await asyncio.sleep(poll_interval)
+                continue
+
+            had_error = False
+
+            limit_seconds = usage.get("limit_seconds")
+            if not limit_seconds:
+                return
+
+            used_seconds = usage.get("used_seconds", 0.0)
+            if used_seconds >= limit_seconds:
+                limit_hours = usage.get("limit_hours")
+                remaining_seconds = usage.get("remaining_seconds", 0.0)
+                message = (
+                    f"Daily streaming limit reached ({limit_hours:.0f}h). Stream stopped automatically."
+                    if limit_hours
+                    else "Daily streaming limit reached. Stream stopped automatically."
+                )
+
+                payload = {
+                    "message": message,
+                    "limit_hours": limit_hours,
+                    "limit_seconds": limit_seconds,
+                    "used_seconds": used_seconds,
+                    "remaining_seconds": remaining_seconds,
+                    "tier": usage.get("tier"),
+                }
+
+                refreshed_info = self.stream_info.get(stream_id)
+                if refreshed_info is not None:
+                    refreshed_info["quota_stop"] = payload
+                    refreshed_info["manual_stop"] = True
+
+                logger.warning(
+                    "Stopping stream %s after exceeding daily limit (used=%s, limit=%s)",
+                    stream_id,
+                    used_seconds,
+                    limit_seconds,
+                )
+
+                try:
+                    process.send_signal(signal.SIGINT)
+                except ProcessLookupError:
+                    logger.debug("Process for stream %s no longer exists", stream_id)
+                return
+
+            try:
+                await asyncio.sleep(poll_interval)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception(
+                    "Quota monitor sleep failed for stream %s", stream_id
+                )
+                await asyncio.sleep(poll_interval)
+
+    async def _fetch_daily_usage(self, user_id: UUID) -> Optional[Dict[str, Any]]:
+        try:
+            async with get_db_context() as session:
+                enforcer = QuotaEnforcer(session, user_id)
+                return await enforcer.get_daily_streaming_usage()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to compute daily streaming usage for user %s: %s",
+                user_id,
+                exc,
+            )
+            return None
 
     async def _create_system_alert(
         self,
@@ -1180,7 +1314,12 @@ class FFmpegStreamManager:
             logger.debug("Pruning stale stream info cache for %s", stream_id)
             self.stream_info.pop(stream_id, None)
 
-    async def _finalize_stream_success(self, stream_id: str, manual_stop: bool) -> None:
+    async def _finalize_stream_success(
+        self,
+        stream_id: str,
+        manual_stop: bool,
+        quota_context: Optional[Dict[str, Any]],
+    ) -> None:
         """Persist success status and uptime when FFmpeg завершується без помилок."""
         duration_seconds: Optional[float] = None
         try:
@@ -1211,7 +1350,10 @@ class FFmpegStreamManager:
 
                     stream.pid = None
                     stream.stopped_at = now
-                    stream.error_message = None
+                    if quota_context and quota_context.get("message"):
+                        stream.error_message = str(quota_context["message"])[:500]
+                    else:
+                        stream.error_message = None
                     if stream.status != "stopped":
                         stream.status = "stopped"
 

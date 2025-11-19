@@ -1,6 +1,7 @@
 const path = require('path')
 const fs = require('fs')
-const withNextIntl = require('next-intl/plugin')('./src/i18n/request.ts')
+const os = require('os')
+const withNextIntl = require('next-intl/plugin')('./i18n.ts')
 
 /** @type {import('next').NextConfig} */
 const DEV_API_PROXY_TARGET = process.env.DEV_API_PROXY_TARGET || 'http://localhost:8000'
@@ -9,16 +10,34 @@ const DEV_ORIGIN_ENV = process.env.NEXT_ALLOWED_DEV_ORIGINS || ''
 const DEV_ORIGIN_TOKENS = DEV_ORIGIN_ENV.split(',').map((origin) => origin.trim()).filter(Boolean)
 const DEFAULT_DEV_ORIGINS = ['localhost', '127.0.0.1']
 
+const resolveLocalNetworkHosts = () => {
+  try {
+    const interfaces = os.networkInterfaces()
+    return Object.values(interfaces)
+      .flat()
+      .filter((entry) => entry && entry.family === 'IPv4' && !entry.internal)
+      .map((entry) => entry.address)
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn('[next.config] Failed to resolve local network hosts:', error)
+    return []
+  }
+}
+
+const LOCAL_NETWORK_ORIGINS = resolveLocalNetworkHosts()
+
 const unique = (arr) => [...new Set(arr)]
+
+const allowedOrigins = unique([...DEFAULT_DEV_ORIGINS, ...DEV_ORIGIN_TOKENS, ...LOCAL_NETWORK_ORIGINS])
 
 const nextConfig = {
   transpilePackages: ['@supabase/supabase-js'],
   reactStrictMode: true,
-  allowedDevOrigins: unique([...DEFAULT_DEV_ORIGINS, ...DEV_ORIGIN_TOKENS]),
+  allowedDevOrigins: allowedOrigins,
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',
-      allowedOrigins: unique([...DEFAULT_DEV_ORIGINS, ...DEV_ORIGIN_TOKENS]),
+      allowedOrigins,
     },
   },
   async redirects() {

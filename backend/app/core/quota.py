@@ -157,65 +157,120 @@ class QuotaEnforcer:
 
         return True
 
-    async def _check_daily_streaming_limit(self) -> bool:
-        """Ensure the user has not exceeded the daily streaming allowance."""
+    async def get_daily_streaming_usage(self) -> Dict[str, Any]:
+        """Return detailed usage data for the rolling 24-hour streaming window."""
 
         await self._load_limits()
 
         limit_hours = self._limits.daily_streaming_limit_hours
+        tier = self._profile.subscription_tier if self._profile else None
+
+        usage: Dict[str, Any] = {
+            "limit_hours": float(limit_hours) if limit_hours is not None else None,
+            "limit_seconds": float(limit_hours * 3600) if limit_hours is not None else None,
+            "used_seconds": 0.0,
+            "remaining_seconds": None,
+            "limit_reached": False,
+            "tier": tier,
+        }
+
         if not limit_hours:
-            return True
+            return usage
 
         window_end = datetime.now(timezone.utc)
         window_start = window_end - timedelta(hours=24)
 
+        streams = await self._streams_within_window(window_start)
+        total_seconds = self._calculate_streaming_seconds(streams, window_start, window_end)
+
+        limit_seconds = float(limit_hours) * 3600.0
+        remaining_seconds = max(limit_seconds - total_seconds, 0.0)
+
+        usage.update(
+            {
+                "used_seconds": total_seconds,
+                "remaining_seconds": remaining_seconds,
+                "limit_seconds": limit_seconds,
+                "limit_reached": remaining_seconds <= 0.0,
+            }
+        )
+
+        return usage
+
+    async def _check_daily_streaming_limit(self) -> bool:
+        """Ensure the user has not exceeded the daily streaming allowance."""
+
+        usage = await self.get_daily_streaming_usage()
+        limit_seconds = usage.get("limit_seconds")
+        if not limit_seconds:
+            return True
+
+        used_seconds = usage.get("used_seconds", 0.0)
+        if used_seconds < limit_seconds:
+            return True
+
+        limit_hours = usage.get("limit_hours") or (limit_seconds / 3600.0)
+        used_hours = used_seconds / 3600.0
+
+        await self._create_alert(
+            'quota_exceeded',
+            f'Daily streaming limit exceeded: {used_hours:.2f}/{limit_hours:.2f} hours',
+            {
+                'resource': 'daily_streaming_hours',
+                'count_hours': round(used_hours, 2),
+                'limit_hours': limit_hours,
+            },
+        )
+
+        raise QuotaExceededError(
+            resource="daily streaming hours",
+            current=round(used_hours, 2),
+            limit=limit_hours,
+            tier=self._profile.subscription_tier,
+        )
+
+    async def _streams_within_window(self, window_start: datetime) -> List[Stream]:
         result = await self.db.execute(
             select(Stream).where(
                 Stream.user_id == self.user_id,
                 Stream.started_at.isnot(None),
-                func.coalesce(Stream.stopped_at, func.now()) >= window_start
+                func.coalesce(Stream.stopped_at, func.now()) >= window_start,
             )
         )
-        streams = result.scalars().all()
+        return result.scalars().all()
 
+    @staticmethod
+    def _calculate_streaming_seconds(
+        streams: List[Stream],
+        window_start: datetime,
+        window_end: datetime,
+    ) -> float:
         total_seconds = 0.0
 
         for stream in streams:
-            started_at = stream.started_at
+            started_at = QuotaEnforcer._ensure_aware(stream.started_at)
             if not started_at:
                 continue
 
-            stopped_at = stream.stopped_at or window_end
+            stopped_at = QuotaEnforcer._ensure_aware(stream.stopped_at) or window_end
 
             if stopped_at <= window_start:
                 continue
 
             effective_start = max(started_at, window_start)
-            effective_end = max(stopped_at, effective_start)
+            effective_end = min(max(stopped_at, effective_start), window_end)
 
             total_seconds += (effective_end - effective_start).total_seconds()
 
-        total_hours = total_seconds / 3600.0
+        return max(total_seconds, 0.0)
 
-        if total_hours >= limit_hours:
-            await self._create_alert(
-                'quota_exceeded',
-                f'Daily streaming limit exceeded: {total_hours:.2f}/{limit_hours} hours',
-                {
-                    'resource': 'daily_streaming_hours',
-                    'count_hours': round(total_hours, 2),
-                    'limit_hours': limit_hours,
-                },
-            )
-
-            raise QuotaExceededError(
-                resource="daily streaming hours",
-                current=round(total_hours, 2),
-                limit=limit_hours,
-                tier=self._profile.subscription_tier,
-            )
-
-        return True
+    @staticmethod
+    def _ensure_aware(value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
     async def check_assets_limit(self) -> bool:
         """
@@ -426,30 +481,38 @@ class QuotaEnforcer:
             audio = meta.get("audio") or {}
             label = asset.get("filename") or asset.get("asset_id") or f"asset #{index + 1}"
 
+            def add_preflight_violation(code: str, message: str, *, current: Optional[Any] = None, allowed: Optional[Any] = None) -> None:
+                entry = {
+                    "code": code,
+                    "message": message,
+                    "asset_id": asset.get("asset_id"),
+                    "filename": label,
+                    "position": index,
+                }
+                if current is not None:
+                    entry["current"] = current
+                if allowed is not None:
+                    entry["allowed"] = allowed
+                result["violations"].append(entry)
+
             if asset.get("compatible_for_copy") is False:
-                result["violations"].append(
-                    {
-                        "code": "incompatible_codecs",
-                        "asset_index": index,
-                        "asset_label": label,
-                        "message": (
-                            "Asset must use H.264 video, AAC audio, and yuv420p pixel format "
-                            "for direct streaming."
-                        ),
-                        "details": {
-                            "validation_errors": asset.get("validation_errors") or [],
-                        },
-                    }
+                validation_errors = asset.get("validation_errors") or []
+                error_suffix = ""
+                if validation_errors:
+                    error_suffix = f" Validation issues: {'; '.join(validation_errors)}."
+
+                add_preflight_violation(
+                    "incompatible_codecs",
+                    (
+                        "Asset must use H.264 video, AAC audio, and yuv420p pixel format "
+                        "for direct streaming." + error_suffix
+                    ).strip(),
                 )
 
             if not video or not audio:
-                result["violations"].append(
-                    {
-                        "code": "missing_metadata",
-                        "asset_index": index,
-                        "asset_label": label,
-                        "message": "Asset metadata is incomplete for quality checks.",
-                    }
+                add_preflight_violation(
+                    "missing_metadata",
+                    "Asset metadata is incomplete for quality checks.",
                 )
 
         if result["violations"]:

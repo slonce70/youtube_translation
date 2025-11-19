@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Users, Search, Filter, Ban, CheckCircle, TrendingUp } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -24,6 +24,8 @@ export default function UsersManagement() {
   const t = useTranslations('admin.users')
   const locale = useLocale()
   const [tierSelections, setTierSelections] = useState<Record<string, SubscriptionTierKey>>({})
+  const PAGE_SIZE = 50
+  const [page, setPage] = useState(0)
 
   const dateLocales: Record<string, DateFnsLocale> = {
     en: enUS,
@@ -35,13 +37,24 @@ export default function UsersManagement() {
   const tierOptions: SubscriptionTierKey[] = ['free', 'fhd_start', 'fhd_flow', 'fhd_boost', 'uhd_start', 'uhd_flow', 'uhd_boost']
 
   const { data: usersData, isLoading } = useQuery({
-    queryKey: ['admin-users', filterTier, filterStatus],
+    queryKey: ['admin-users', filterTier, filterStatus, page],
     queryFn: () => api.admin.users.list({
       tier: filterTier !== 'all' ? filterTier : undefined,
       is_suspended: filterStatus === 'suspended' ? true : filterStatus === 'active' ? false : undefined,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
     }),
     refetchInterval: 10000,
   })
+
+  useEffect(() => {
+    setPage(0)
+  }, [filterTier, filterStatus])
+
+  useEffect(() => {
+    setPage(0)
+  }, [searchQuery])
+
 
   const getSubscriptionStatusLabel = (status?: string | null) => {
     if (!status) return t('subscriptionStatus.unknown')
@@ -153,6 +166,11 @@ export default function UsersManagement() {
                          (user.full_name || '').toLowerCase().includes(searchQuery.toLowerCase())
     return matchesSearch
   })
+
+  const totalFetched = filteredUsers.length
+  const pageStart = totalFetched > 0 ? page * PAGE_SIZE + 1 : 0
+  const pageEnd = totalFetched > 0 ? pageStart + totalFetched - 1 : 0
+  const hasNextPage = (usersData?.length ?? 0) === PAGE_SIZE
 
   return (
     <div className="space-y-6">
@@ -427,6 +445,32 @@ export default function UsersManagement() {
               })}
             </div>
           )}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-6 gap-3">
+            <div className="text-sm text-slate-500 dark:text-slate-400">
+              {t('pagination.showing', { start: pageStart, end: pageEnd })}
+            </div>
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
+                disabled={page === 0}
+              >
+                {t('pagination.previous')}
+              </Button>
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                {t('pagination.page', { page: page + 1 })}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPage((prev) => prev + 1)}
+                disabled={!hasNextPage}
+              >
+                {t('pagination.next')}
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

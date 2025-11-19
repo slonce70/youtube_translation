@@ -1,9 +1,12 @@
 'use client'
 
+import { useState } from 'react'
+import type { TranslationValues } from 'next-intl'
 import {
   ChevronDown,
   ChevronUp,
   GripVertical,
+  Loader2,
   Trash2,
   X,
 } from 'lucide-react'
@@ -16,23 +19,24 @@ import type { Asset, Stream } from '@/lib/types'
 
 import type { CollectionEditorState } from '../builder-helpers'
 
-type Translator = (key: string, values?: any) => string
+type Translator = (key: string, values?: TranslationValues) => string
 
 type LiveEditorModalProps = {
   stream: Stream | null
   isLoading: boolean
-  saving: { video: boolean; audio: boolean }
+  applying: boolean
+  canApply: boolean
+  queueing: { video: string | null; audio: string | null }
   state: { video: CollectionEditorState | null; audio: CollectionEditorState | null }
   assetMap: Map<string, Asset>
   videoAssets: Asset[]
   audioAssets: Asset[]
   onClose: () => void
-  onSave: (target: 'video' | 'audio') => void | Promise<void>
-  onAddAsset: (target: 'video' | 'audio', assetId: string) => void
+  onApply: () => void | Promise<void>
+  onAddAsset: (target: 'video' | 'audio', assetId: string) => void | Promise<void>
   onRemoveItem: (target: 'video' | 'audio', index: number) => void
   onMoveItem: (target: 'video' | 'audio', from: number, to: number) => void
   onToggleOption: (target: 'video' | 'audio', option: 'loop' | 'shuffle') => void
-  hasSelection: (target: 'video' | 'audio') => boolean
   t: Translator
 }
 
@@ -41,13 +45,11 @@ type EditorPanelProps = {
   editor: CollectionEditorState | null
   assets: Asset[]
   assetMap: Map<string, Asset>
-  onAddAsset: (target: 'video' | 'audio', assetId: string) => void
+  onAddAsset: (target: 'video' | 'audio', assetId: string) => void | Promise<void>
   onRemoveItem: (target: 'video' | 'audio', index: number) => void
   onMoveItem: (target: 'video' | 'audio', from: number, to: number) => void
   onToggleOption: (target: 'video' | 'audio', option: 'loop' | 'shuffle') => void
-  onSave: (target: 'video' | 'audio') => void | Promise<void>
-  isSaving: boolean
-  hasSelection: boolean
+  queueingAssetId: string | null
   t: Translator
 }
 
@@ -60,9 +62,7 @@ const EditorPanel = ({
   onRemoveItem,
   onMoveItem,
   onToggleOption,
-  onSave,
-  isSaving,
-  hasSelection,
+  queueingAssetId,
   t,
 }: EditorPanelProps) => {
   if (!editor) {
@@ -174,19 +174,32 @@ const EditorPanel = ({
           {assets.length > 0 ? (
             assets.map((asset) => {
               const alreadySelected = editor.items.some((item) => item.asset_id === asset.id)
+              const isQueueing = queueingAssetId === asset.id
+              const queueingBusy = queueingAssetId !== null
               return (
                 <button
                   key={asset.id}
                   className={cn(
                     'w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                    queueingBusy
+                      ? 'cursor-not-allowed opacity-50'
+                      : 'cursor-pointer',
                     alreadySelected
                       ? 'border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-800'
                       : 'border-slate-200 hover:border-primary-500 hover:text-primary-600 dark:border-slate-700',
                   )}
-                  disabled={alreadySelected}
+                  disabled={alreadySelected || queueingBusy}
                   onClick={() => onAddAsset(target, asset.id)}
                 >
-                  {asset.filename}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">{asset.filename}</span>
+                    {isQueueing && (
+                      <span className="flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {t('streams.liveEdit.queueing')}
+                      </span>
+                    )}
+                  </div>
                 </button>
               )
             })
@@ -198,9 +211,6 @@ const EditorPanel = ({
         </div>
       </div>
 
-      <Button className="mt-auto" onClick={() => onSave(target)} isLoading={isSaving} disabled={!hasSelection}>
-        {t('streams.liveEdit.actions.save')}
-      </Button>
     </div>
   )
 }
@@ -208,22 +218,30 @@ const EditorPanel = ({
 export function LiveEditorModal({
   stream,
   isLoading,
-  saving,
+  applying,
+  canApply,
+  queueing,
   state,
   assetMap,
   videoAssets,
   audioAssets,
   onClose,
-  onSave,
+  onApply,
   onAddAsset,
   onRemoveItem,
   onMoveItem,
   onToggleOption,
-  hasSelection,
   t,
 }: LiveEditorModalProps) {
+  const [confirming, setConfirming] = useState(false)
+
   if (!stream) {
     return null
+  }
+
+  const handleConfirm = async () => {
+    setConfirming(false)
+    await onApply()
   }
 
   return (
@@ -262,10 +280,8 @@ export function LiveEditorModal({
                   onRemoveItem={onRemoveItem}
                   onMoveItem={onMoveItem}
                   onToggleOption={onToggleOption}
-                  onSave={onSave}
-                  isSaving={saving.video}
-                  hasSelection={hasSelection('video')}
                   t={t}
+              queueingAssetId={queueing.video}
                 />
                 {stream.audio_collection_id ? (
                   <EditorPanel
@@ -277,10 +293,8 @@ export function LiveEditorModal({
                     onRemoveItem={onRemoveItem}
                     onMoveItem={onMoveItem}
                     onToggleOption={onToggleOption}
-                    onSave={onSave}
-                    isSaving={saving.audio}
-                    hasSelection={hasSelection('audio')}
                     t={t}
+                queueingAssetId={queueing.audio}
                   />
                 ) : (
                   <div className="rounded-xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
@@ -293,13 +307,48 @@ export function LiveEditorModal({
               </div>
             </div>
           )}
-          <div className="flex justify-end">
-            <Button variant="outline" onClick={onClose}>
-              {t('streams.liveEdit.actions.close')}
-            </Button>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {t('streams.liveEdit.reorderHint')}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={onClose}>
+                {t('streams.liveEdit.actions.close')}
+              </Button>
+              <Button
+                onClick={() => setConfirming(true)}
+                disabled={!canApply || applying}
+                isLoading={applying}
+              >
+                {t('streams.liveEdit.actions.apply')}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {confirming && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 px-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>{t('streams.liveEdit.confirmation.title')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                {t('streams.liveEdit.confirmation.description')}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setConfirming(false)}>
+                  {t('streams.liveEdit.confirmation.cancel')}
+                </Button>
+                <Button onClick={handleConfirm} disabled={applying}>
+                  {t('streams.liveEdit.confirmation.confirm')}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

@@ -65,6 +65,7 @@ interface AssetCardProps {
     }
     recommendations: (params: { label: string; details: string }) => string
     selection: { checkboxLabel: string }
+    previewAlt: (params: { filename: string }) => string
   }
 }
 
@@ -135,7 +136,7 @@ export function AssetCard({
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={thumbnailSrc}
-                alt={`Preview of ${asset.filename}`}
+                alt={t.previewAlt({ filename: asset.filename })}
                 className="h-full w-full object-cover"
                 loading="lazy"
               />

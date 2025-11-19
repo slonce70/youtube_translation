@@ -8,6 +8,54 @@
 
 # Exit on error for critical failures
 set -e
+resolve_user_from_token() {
+    local token="$1"
+
+    if [ -z "${UPLOAD_TOKEN_SECRET:-}" ]; then
+        echo "[pre-create] ERROR: UPLOAD_TOKEN_SECRET is not set" >&2
+        return 1
+    fi
+
+    local sanitized
+    sanitized=$(printf '%s' "$token" | tr -d '\r\n')
+    if [ -z "$sanitized" ]; then
+        echo "[pre-create] ERROR: Upload token missing" >&2
+        return 1
+    fi
+
+    local decoded
+    if ! decoded=$(printf '%s' "$sanitized" | base64 --decode 2>/dev/null); then
+        echo "[pre-create] ERROR: Failed to decode upload token" >&2
+        return 1
+    fi
+
+    local payload="${decoded%:*}"
+    local signature="${decoded##*:}"
+    local expected
+    expected=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$UPLOAD_TOKEN_SECRET" | awk '{print $NF}')
+    if [ "$signature" != "$expected" ]; then
+        echo "[pre-create] ERROR: Upload token signature mismatch" >&2
+        return 1
+    fi
+
+    local user_id
+    user_id=$(printf '%s' "$payload" | cut -d':' -f1)
+    local expires_at
+    expires_at=$(printf '%s' "$payload" | cut -d':' -f2)
+    if [ -z "$user_id" ] || [ -z "$expires_at" ]; then
+        echo "[pre-create] ERROR: Upload token missing fields" >&2
+        return 1
+    fi
+
+    local now
+    now=$(date +%s)
+    if [ "$expires_at" -le "$now" ]; then
+        echo "[pre-create] ERROR: Upload token expired" >&2
+        return 1
+    fi
+
+    printf '%s' "$user_id"
+}
 
 # Read webhook data from stdin (tusd may send multi-line JSON)
 HOOK_DATA=$(cat)
@@ -22,21 +70,35 @@ fi
 echo "[pre-create] RAW HOOK DATA: $HOOK_DATA" >&2
 
 # Extract metadata
-USER_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.user_id // .Upload.MetaData.user_id // empty')
+TOKEN_METADATA=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.upload_token // .Upload.MetaData.upload_token // empty')
+USER_ID_METADATA=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.user_id // .Upload.MetaData.user_id // empty')
 FILE_SIZE=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.Size // .Upload.Size // 0')
 UPLOAD_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.ID // .Upload.ID // empty')
 
 # Debug logging
 echo "[pre-create] Upload ID: $UPLOAD_ID" >&2
-echo "[pre-create] User ID: $USER_ID" >&2
+echo "[pre-create] User ID (metadata): $USER_ID_METADATA" >&2
+echo "[pre-create] Upload token present: $([ -n "$TOKEN_METADATA" ] && echo "yes" || echo "no")" >&2
 echo "[pre-create] File Size: $FILE_SIZE bytes" >&2
 
-# Validate user_id
-if [ -z "$USER_ID" ] || [ "$USER_ID" = "null" ]; then
-    echo "ERROR: Missing user_id in upload metadata" >&2
-    echo '{"HTTPResponse":{"StatusCode":400,"Body":"Missing user_id in metadata","Headers":{"Content-Type":"text/plain"}}}' >&1
+# Validate token
+if [ -z "$TOKEN_METADATA" ] || [ "$TOKEN_METADATA" = "null" ]; then
+    echo "[pre-create] ERROR: Missing upload token in metadata" >&2
+    echo '{"HTTPResponse":{"StatusCode":400,"Body":"Missing upload token","Headers":{"Content-Type":"text/plain"}}}' >&1
     exit 1
 fi
+
+RESOLVED_USER_ID=$(resolve_user_from_token "$TOKEN_METADATA") || {
+    echo '{"HTTPResponse":{"StatusCode":403,"Body":"Invalid upload token","Headers":{"Content-Type":"text/plain"}}}' >&1
+    exit 1
+}
+
+if [ -n "$USER_ID_METADATA" ] && [ "$USER_ID_METADATA" != "$RESOLVED_USER_ID" ]; then
+    echo "[pre-create] WARNING: user_id metadata ($USER_ID_METADATA) mismatches token owner ($RESOLVED_USER_ID)" >&2
+fi
+
+USER_ID="$RESOLVED_USER_ID"
+echo "[pre-create] Resolved User ID: $USER_ID" >&2
 
 # Check quota via backend API
 BACKEND_URL="http://localhost:8000/api/internal/check-quota"

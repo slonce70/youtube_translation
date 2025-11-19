@@ -30,6 +30,43 @@ from app.streaming.playlist_builder import PlaylistBuilder, PlaylistFileSet
 
 ALLOWED_MIX_MODES = {"video_only", "audio_only", "mixed"}
 
+logger = logging.getLogger(__name__)
+
+
+def build_asset_payload(asset_obj: Asset, loop_mode: str = "loop") -> Dict[str, Any]:
+    meta = asset_obj.meta or {}
+    duration = meta.get("duration")
+    if duration is None:
+        video_meta = meta.get("video") if isinstance(meta, dict) else None
+        if isinstance(video_meta, dict):
+            duration = video_meta.get("duration")
+
+    # Verify that storage_path points to an existing file
+    storage_path = Path(asset_obj.storage_path)
+    if not storage_path.exists():
+        logger.error(
+            "Asset %s (%s) has invalid storage_path: %s (file not found)",
+            asset_obj.id,
+            asset_obj.filename,
+            storage_path,
+        )
+        resolved_path = storage_path
+    else:
+        resolved_path = storage_path.resolve()
+
+    payload = {
+        "path": str(resolved_path),
+        "meta": meta,
+        "asset_id": str(asset_obj.id),
+        "filename": asset_obj.filename,
+        "compatible_for_copy": asset_obj.compatible_for_copy,
+        "validation_errors": asset_obj.validation_errors or [],
+        "loop_mode": loop_mode,
+    }
+    if duration is not None:
+        payload.setdefault("meta", {}).setdefault("duration", duration)
+    return payload
+
 
 @dataclass
 class StreamAssetSelection:
@@ -100,15 +137,7 @@ def extract_stream_assets(stream: Stream) -> StreamAssetSelection:
     mix_mode = (stream.mix_mode or "video_only").lower()
 
     def build_payload(asset_obj: Asset, loop_mode: str = "loop") -> Dict[str, Any]:
-        return {
-            "path": asset_obj.storage_path,
-            "meta": asset_obj.meta or {},
-            "asset_id": str(asset_obj.id),
-            "filename": asset_obj.filename,
-            "compatible_for_copy": asset_obj.compatible_for_copy,
-            "validation_errors": asset_obj.validation_errors or [],
-            "loop_mode": loop_mode,
-        }
+        return build_asset_payload(asset_obj, loop_mode)
 
     video_assets: List[Dict[str, Any]] = []
     audio_assets: List[Dict[str, Any]] = []
@@ -142,7 +171,6 @@ def extract_stream_assets(stream: Stream) -> StreamAssetSelection:
             detail="At least one video asset is required for this stream",
         )
     if not video_assets and allow_video_placeholder:
-        logger = logging.getLogger(__name__)
         logger.info(
             "Stream %s mixed mode without video assets; using placeholder background",
             stream.id,
@@ -178,7 +206,6 @@ def gather_stream_destinations(stream: Stream) -> List[Dict[str, str]]:
         decrypted_key = decrypt_stream_key(dest.stream_key_encrypted)
         normalized_url = (dest.rtmps_url or "").strip().rstrip("/")
         if not normalized_url:
-            logger = logging.getLogger(__name__)
             logger.warning(
                 "Destination %s for stream %s has no RTMP(S) URL, skipping",
                 dest.id,
@@ -281,4 +308,5 @@ __all__ = [
     "gather_stream_destinations",
     "prepare_stream_launch",
     "fetch_destinations",
+    "build_asset_payload",
 ]

@@ -119,6 +119,7 @@ class AdminActionLog(BaseModel):
     action_type: str
     target_user_id: Optional[UUID]
     target_user_email: Optional[str]
+    reason: Optional[str]
     details: dict
     created_at: datetime
 

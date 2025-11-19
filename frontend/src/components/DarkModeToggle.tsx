@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useTranslations } from 'next-intl'
 
 export function DarkModeToggle() {
+  const t = useTranslations('common.theme')
   const [isDark, setIsDark] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -37,7 +39,7 @@ export function DarkModeToggle() {
   // Prevent hydration mismatch by not rendering until mounted
   if (!mounted) {
     return (
-      <div className="p-2 w-9 h-9" aria-label="Loading theme toggle">
+      <div className="p-2 w-9 h-9" aria-label={t('loading')}>
         <div className="w-5 h-5" />
       </div>
     )
@@ -49,7 +51,7 @@ export function DarkModeToggle() {
       className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
-      aria-label="Toggle dark mode"
+      aria-label={t('toggle')}
     >
       {isDark ? (
         <Sun className="w-5 h-5 text-yellow-500" />

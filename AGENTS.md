@@ -1,35 +1,40 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `backend/` hosts the FastAPI service, CLI utilities, and tusd hooks; keep domain logic under `backend/app/` and reusable scripts under `backend/scripts/`.
-- `backend/tests/` mirrors the app layout; add fixtures beside the features they cover.
-- `frontend/src/` contains the Next.js App Router tree plus UI primitives in `frontend/src/components/`; colocate page-specific hooks or stores inside the related feature folder.
-- `docs/` stores architecture notes, API contracts, and ops playbooks (systemd, Supervisor, Postman); update the relevant file whenever behavior shifts.
-- `docker/` and root `start-*.sh` scripts encode local orchestration; align new services with these entrypoints before editing CI.
+- `backend/` hosts the FastAPI service, async SQLAlchemy models, and tusd hooks. Key subfolders: `app/` (domain logic), `tests/`, `tusd-hooks/`, and deployment scripts.
+- `frontend/` contains the Next.js dashboard, shared components, and React Query hooks; `public/` holds static assets.
+- `docker/`, `Makefile`, and root scripts (`start-backend.sh`, `start-frontend.sh`, `start-tusd.sh`) orchestrate local services and integrations.
 
-## Build, Test, and Development Commands
-- `make install` — installs backend (pip) and frontend (npm) dependencies in one step.
-- `make dev` — runs backend, frontend, and tusd together; prefer this for full-stack QA.
-- Targeted helpers: `make dev-backend`, `make dev-frontend`, or `./start-tusd.sh` when debugging a single service.
-- `make test` — executes pytest plus Jest/React Testing Library suites; CI expects it to pass cleanly.
-- `make lint` and `make type-check` — run Ruff+Black, ESLint, and mypy/tsc; fix formatting locally before pushing.
+## Build, Test & Development Commands
+- **Backend**: `cd backend && python3 -m pytest` runs the async test suite; ensure dependencies from `requirements.txt` are installed. `uvicorn app.main:app --reload` launches the API locally.
+- **Frontend**: `cd frontend && npm install && npm run dev` starts the Next.js app; `npm run lint` enforces ESLint/TypeScript rules.
+- **Infra**: `./start-tusd.sh` boots the tusd uploader with quota hooks; export `TUSD_HMAC_SECRET` and `UPLOAD_TOKEN_SECRET` before running.
 
 ## Coding Style & Naming Conventions
-- Python: 4-space indent, explicit type hints, and descriptive snake_case module names; format with Black and keep imports Ruff-compliant.
-- TypeScript/React: 2-space indent, functional components in PascalCase, hooks in camelCase with the `use` prefix, and translations grouped under `frontend/src/i18n`.
-- Configuration files (`.env`, `supervisord.conf`, `docs/systemd/*`) must stay ASCII and documented when keys change.
+- Python files follow Black-compatible 4-space indentation, descriptive snake_case names, and FastAPI/SQLAlchemy best practices. Use type hints and async/await for DB or IO operations.
+- TypeScript/React uses ESLint + Prettier defaults: 2-space indent, camelCase for vars, PascalCase for components. Prefer hooks and React Query for data fetching.
+- Keep modules small: service-layer classes belong in `backend/app/services/*`, UI atoms in `frontend/src/components/*`.
 
 ## Testing Guidelines
-- Backend tests live in `backend/tests/test_*.py`; mock external services (Supabase, FFmpeg) via fixtures in `tests/conftest.py`.
-- Frontend tests follow `*.spec.tsx` or `*.test.ts` inside feature folders; use Jest snapshots sparingly and favor behavior assertions.
-- Maintain ≥80% coverage on new modules; if coverage dips, explain the trade-off in the PR and add a follow-up issue.
+- Backend tests use `pytest` with async fixtures; name files `test_*.py` and mirror module paths (e.g., `test_stream_live_edit.py` for `services/streams`). Target meaningful coverage for quota, uploads, and streaming flows.
+- Frontend relies on `@testing-library/react` (see `frontend/src/components/library/__tests__/`). Use descriptive `it('renders …')` blocks and mock API calls.
+- Run `npm run lint` and `python3 -m pytest` before committing; add new tests when touching service logic or React hooks.
 
 ## Commit & Pull Request Guidelines
-- Follow the Conventional Commit pattern seen in history (`feat:`, `chore(repo):`, `fix(streams):`); keep the subject ≤72 chars and list key changes as bullet points in the body when needed.
-- Every PR should include: a concise summary, linked issue/linear ticket, screenshots or curl output for UI/API tweaks, test evidence (`make test` log), and notes on env or migration impacts.
-- Request at least one reviewer familiar with the touched area (backend, frontend, or ops) and ensure docs are updated in the same PR.
+- Follow imperative, concise commit messages (`Secure tus upload webhook`, `Add admin pagination`). Group related backend/frontend changes into logical commits.
+- Pull requests should describe the change, list testing done, and mention any secrets/config updates. Include screenshots or GIFs for UI tweaks, and reference Jira/GitHub issues when applicable.
 
-## Security & Configuration Tips
-- Never commit secrets; keep `backend/.env` and `frontend/.env.local` in `.gitignore` and rotate keys via `openssl rand` as documented in `README.md`.
-- Validate `DATABASE_URL`, Supabase keys, and `FFMPEG_BIN` before running `make dev`; misconfigured paths are the top cause of failing local streams.
-- When altering streaming runtime behavior, update both `docs/operations/supervisor.md` and `docs/systemd/*.md` so operators can mirror your config.
+## Skills & Auto-Activation (Claude/Droid)
+
+This repo also ships with Claude/Droid skills adapted to this codebase. They live in `.claude/skills/` and are auto-activated via a Droid `UserPromptSubmit` hook (`.factory/hooks/check_skill_activation.py` using `skill-rules.json`).
+
+- `backend-dev-guidelines` – FastAPI backend patterns for `backend/app/**` and `backend/tests/**` (services, streaming, quota, Sentry, async SQLAlchemy).
+- `frontend-dev-guidelines` – Next.js 15 + React 19 + Tailwind guidelines for `frontend/src/**` (App Router, UI components, i18n, tests).
+- `route-tester` – patterns for testing `/api/*` endpoints (pytest + httpx, curl) in youtube_translation.
+- `error-tracking` – how to use/extend Sentry integration in `backend/app/main.py` and related core/middleware code.
+- `skill-developer` – meta-skill for adding new skills and editing `skill-rules.json` in a way compatible with the Droid hook.
+
+When working in this repo with Droid:
+
+- The `UserPromptSubmit` hook will automatically inject relevant skill context when you ask about backend/frontend patterns, route testing, or error handling.
+- You can also explicitly request a skill (e.g., “use backend-dev-guidelines for this change”) if you want a focused deep dive.

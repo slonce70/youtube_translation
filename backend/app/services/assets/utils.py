@@ -7,7 +7,7 @@ import hashlib
 import hmac
 import time
 from typing import Any, Dict, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 
@@ -248,4 +248,48 @@ def parse_download_token(token: str) -> tuple[UUID, UUID, int]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired download token",
+        ) from exc
+
+
+def _sign_upload_payload(payload: str) -> str:
+    return hmac.new(
+        settings.upload_token_secret.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def generate_upload_token(user_id: UUID) -> tuple[str, int]:
+    expires_at = int(time.time()) + max(settings.upload_token_ttl_seconds, 60)
+    nonce = uuid4().hex
+    payload = f"{user_id}:{expires_at}:{nonce}"
+    signature = _sign_upload_payload(payload)
+    token = base64.urlsafe_b64encode(f"{payload}:{signature}".encode("utf-8")).decode("utf-8")
+    return token, expires_at
+
+
+def verify_upload_token(token: str) -> UUID:
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        try:
+            payload, signature = decoded.rsplit(":", 1)
+        except ValueError as exc:
+            raise ValueError("missing signature") from exc
+        parts = payload.split(":")
+        if len(parts) != 3:
+            raise ValueError("invalid token format")
+        user_id_str, expires_at_str, nonce = parts
+        if not nonce:
+            raise ValueError("invalid token payload")
+        expected_signature = _sign_upload_payload(payload)
+        if not hmac.compare_digest(signature, expected_signature):
+            raise ValueError("invalid signature")
+        expires_at = int(expires_at_str)
+        if expires_at < int(time.time()):
+            raise ValueError("token expired")
+        return UUID(user_id_str)
+    except Exception as exc:  # pylint: disable=broad-except
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid upload token",
         ) from exc
