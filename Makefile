@@ -1,9 +1,24 @@
-.PHONY: help install dev test lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate
+.PHONY: help install install-backend install-frontend backend-venv dev test lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate
 
 # Colors for output
 BLUE := \033[0;34m
 GREEN := \033[0;32m
 NC := \033[0m # No Color
+
+ROOT_DIR := $(CURDIR)
+BACKEND_DIR_REL := backend
+BACKEND_DIR := $(ROOT_DIR)/backend
+BACKEND_VENV := $(BACKEND_DIR)/.venv
+PY311 := $(shell command -v python3.11 || command -v python3)
+BACKEND_PY := $(BACKEND_VENV)/bin/python
+BACKEND_PIP := $(BACKEND_VENV)/bin/pip
+
+$(BACKEND_VENV)/bin/python:
+	@echo "$(BLUE)Creating backend virtualenv with $(PY311)...$(NC)"
+	cd $(BACKEND_DIR) && $(PY311) -m venv .venv
+
+backend-venv: $(BACKEND_VENV)/bin/python ## Ensure backend virtualenv exists
+	@:
 
 help: ## Show this help message
 	@echo "$(BLUE)YouTube Multi-Channel Streaming Platform - Make Commands$(NC)"
@@ -14,16 +29,16 @@ help: ## Show this help message
 # Installation
 # ==========================================
 
-install: ## Install all dependencies (backend + frontend)
+install: backend-venv ## Install all dependencies (backend + frontend)
 	@echo "$(BLUE)Installing backend dependencies...$(NC)"
-	cd backend && python3 -m pip install -r requirements.txt
+	cd backend && $(BACKEND_PIP) install --upgrade pip && $(BACKEND_PIP) install -r requirements.txt
 	@echo "$(BLUE)Installing frontend dependencies...$(NC)"
 	cd frontend && npm install
 	@echo "$(GREEN)✓ All dependencies installed$(NC)"
 
-install-backend: ## Install backend dependencies only
+install-backend: backend-venv ## Install backend dependencies only
 	@echo "$(BLUE)Installing backend dependencies...$(NC)"
-	cd backend && python3 -m pip install -r requirements.txt
+	cd backend && $(BACKEND_PIP) install --upgrade pip && $(BACKEND_PIP) install -r requirements.txt
 	@echo "$(GREEN)✓ Backend dependencies installed$(NC)"
 
 install-frontend: ## Install frontend dependencies only
@@ -64,20 +79,20 @@ dev-tusd: ## Start tusd only
 # Testing
 # ==========================================
 
-test: ## Run all tests
+test: backend-venv ## Run all tests
 	@echo "$(BLUE)Running backend tests...$(NC)"
-	cd backend && pytest -v
+	cd backend && FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest -v
 	@echo "$(BLUE)Running frontend tests...$(NC)"
 	cd frontend && CI=1 npm test
 	@echo "$(GREEN)✓ All tests passed$(NC)"
 
-test-backend: ## Run backend tests
+test-backend: backend-venv ## Run backend tests
 	@echo "$(BLUE)Running backend tests...$(NC)"
-	cd backend && pytest -v
+	cd backend && FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest -v
 
-test-backend-coverage: ## Run backend tests with coverage
+test-backend-coverage: backend-venv ## Run backend tests with coverage
 	@echo "$(BLUE)Running backend tests with coverage...$(NC)"
-	cd backend && pytest --cov=app --cov-report=html --cov-report=term
+	cd backend && FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest --cov=app --cov-report=html --cov-report=term
 
 test-frontend: ## Run frontend tests
 	@echo "$(BLUE)Running frontend tests...$(NC)"
@@ -96,11 +111,11 @@ lint: ## Run linters for backend and frontend
 	$(MAKE) lint-frontend
 	@echo "$(GREEN)✓ All linting passed$(NC)"
 
-lint-backend: ## Run backend linters only
+lint-backend: backend-venv ## Run backend linters only
 	@echo "$(BLUE)Linting backend...$(NC)"
-	cd backend && python3 -m ruff check app/
+	cd backend && $(BACKEND_PY) -m ruff check app/
 	@if [ "${RUN_BLACK:-0}" = "1" ]; then \
-		cd backend && python3 -m black --check app/; \
+		cd backend && $(BACKEND_PY) -m black --check app/; \
 	else \
 		echo "$(BLUE)Skipping Black check (set RUN_BLACK=1 to enable)$(NC)"; \
 	fi
@@ -113,18 +128,18 @@ i18n-check: ## Verify localization files are in sync
 	@echo "$(BLUE)Checking i18n consistency...$(NC)"
 	cd frontend && npm run i18n:check
 
-lint-fix: ## Fix linting issues automatically
+lint-fix: backend-venv ## Fix linting issues automatically
 	@echo "$(BLUE)Fixing backend code...$(NC)"
-	cd backend && python3 -m ruff check --fix app/
-	cd backend && python3 -m black app/
+	cd backend && $(BACKEND_PY) -m ruff check --fix app/
+	cd backend && $(BACKEND_PY) -m black app/
 	@echo "$(BLUE)Fixing frontend code...$(NC)"
 	cd frontend && npm run lint -- --fix
 	@echo "$(GREEN)✓ Code formatting completed$(NC)"
 
-type-check: ## Run type checking
+type-check: backend-venv ## Run type checking
 	@echo "$(BLUE)Type checking backend...$(NC)"
 	@if [ "${RUN_MYPY:-0}" = "1" ]; then \
-		cd backend && python3 -m mypy app/; \
+		cd backend && $(BACKEND_PY) -m mypy app/; \
 	else \
 		echo "$(BLUE)Skipping mypy (set RUN_MYPY=1 to enable)$(NC)"; \
 	fi
@@ -136,24 +151,24 @@ type-check: ## Run type checking
 # Database
 # ==========================================
 
-migrate: ## Apply database migrations
+migrate: backend-venv ## Apply database migrations
 	@echo "$(BLUE)Applying database migrations...$(NC)"
-	cd backend && python3 apply_migrations.py
+	cd backend && $(BACKEND_PY) apply_migrations.py
 	@echo "$(GREEN)✓ Migrations applied$(NC)"
 
-create-admin: ## Create an admin user
+create-admin: backend-venv ## Create an admin user
 	@echo "$(BLUE)Creating admin user...$(NC)"
-	cd backend && python3 create_admin.py
+	cd backend && $(BACKEND_PY) create_admin.py
 	@echo "$(GREEN)✓ Admin user created$(NC)"
 
 # ==========================================
 # Build
 # ==========================================
 
-build: ## Build production artifacts
+build: backend-venv ## Build production artifacts
 	@echo "$(BLUE)Building backend...$(NC)"
-	cd backend && python3 -m pip install --upgrade pip
-	cd backend && python3 -m pip install -r requirements.txt
+	cd backend && $(BACKEND_PIP) install --upgrade pip
+	cd backend && $(BACKEND_PIP) install -r requirements.txt
 	@echo "$(BLUE)Building frontend...$(NC)"
 	cd frontend && npm run build
 	@echo "$(GREEN)✓ Build completed$(NC)"
@@ -228,10 +243,10 @@ ps: ## Show running processes
 	@echo "$(BLUE)tusd:$(NC)"
 	@pgrep -f "tusd" | xargs ps -p 2>/dev/null || echo "  Not running"
 
-security-audit: ## Run security audit
+security-audit: backend-venv ## Run security audit
 	@echo "$(BLUE)Auditing backend dependencies...$(NC)"
-	cd backend && python3 -m pip install pip-audit
-	cd backend && pip-audit
+	cd backend && $(BACKEND_PIP) install pip-audit
+	cd backend && $(BACKEND_VENV)/bin/pip-audit
 	@echo "$(BLUE)Auditing frontend dependencies...$(NC)"
 	cd frontend && npm audit --production
 	@echo "$(GREEN)✓ Security audit completed$(NC)"

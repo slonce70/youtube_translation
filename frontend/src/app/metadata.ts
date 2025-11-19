@@ -29,6 +29,9 @@ export async function buildMetadata({
   return {
     title,
     description,
+    icons: {
+      icon: '/favicon.svg',
+    },
     alternates: {
       canonical: baseLanguages[locale] ?? normalizedPath,
       languages: baseLanguages,

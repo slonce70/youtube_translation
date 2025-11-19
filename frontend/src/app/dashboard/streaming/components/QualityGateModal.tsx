@@ -4,10 +4,11 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import type { QuotaUsageResponse } from '@/lib/types'
+import type { TranslationValues } from 'next-intl'
 
 import type { QualityGateState, QualityViolationGroup } from '../hooks/useQualityGate'
 
-type Translator = (key: string, values?: any) => string
+type Translator = (key: string, values?: TranslationValues) => string
 
 type QualityGateModalProps = {
   state: QualityGateState

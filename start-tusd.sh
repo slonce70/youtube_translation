@@ -28,6 +28,11 @@ if [ -z "${TUSD_HMAC_SECRET:-}" ]; then
     exit 1
 fi
 
+if [ -z "${UPLOAD_TOKEN_SECRET:-}" ]; then
+    echo "❌ UPLOAD_TOKEN_SECRET не задан. Добавьте его в backend/.env перед запуском tusd." >&2
+    exit 1
+fi
+
 mkdir -p "${UPLOAD_ROOT}"
 mkdir -p "${TEMP_DIR}"
 

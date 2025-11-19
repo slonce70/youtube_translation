@@ -74,7 +74,10 @@ fi
 cd backend
 
 # Используем локальное виртуальное окружение, если оно создано
-PYTHON_BIN="$(cd .. && pwd)/.venv/bin/python"
+PYTHON_BIN="$(pwd)/backend/.venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+    PYTHON_BIN="$(pwd)/.venv/bin/python"
+fi
 if [ ! -x "$PYTHON_BIN" ]; then
     PYTHON_BIN="python3"
 fi

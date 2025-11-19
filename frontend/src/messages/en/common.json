@@ -12,5 +12,9 @@
     "cancel": "Cancel",
     "close": "Close",
     "save": "Save"
+  },
+  "theme": {
+    "toggle": "Toggle dark mode",
+    "loading": "Loading theme toggle"
   }
 }

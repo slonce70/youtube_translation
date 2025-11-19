@@ -1,0 +1,227 @@
+{
+    "version": "1.0",
+    "description": "Skill activation triggers for Claude Code. Controls when skills automatically suggest or block actions.",
+    "skills": {
+        "skill-developer": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Meta-skill for creating and managing Claude Code skills",
+            "promptTriggers": {
+                "keywords": [
+                    "skill system",
+                    "create skill",
+                    "add skill",
+                    "skill triggers",
+                    "skill rules",
+                    "hook system",
+                    "skill development",
+                    "skill-rules.json"
+                ],
+                "intentPatterns": [
+                    "(how do|how does|explain).*?skill",
+                    "(create|add|modify|build).*?skill",
+                    "skill.*?(work|trigger|activate|system)"
+                ]
+            }
+        },
+        "backend-dev-guidelines": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Backend development patterns for youtube_translation (FastAPI, async SQLAlchemy, Sentry, streaming services)",
+            "promptTriggers": {
+                "keywords": [
+                    "backend",
+                    "backend development",
+                    "microservice",
+                    "API",
+                    "endpoint",
+                    "route",
+                    "routing",
+                    "service",
+                    "quota",
+                    "streaming",
+                    "ffmpeg",
+                    "FastAPI",
+                    "SQLAlchemy",
+                    "database access",
+                    "rate limiting",
+                    "middleware",
+                    "Sentry",
+                    "error handling",
+                    "configuration"
+                ],
+                "intentPatterns": [
+                    "(create|add|implement|build).*?(route|endpoint|API|service)",
+                    "(fix|handle|debug).*?(error|exception|backend|stream|quota)",
+                    "(add|implement).*?(middleware|validation|error.*?handling)",
+                    "(organize|structure|refactor).*?(backend|service|API|streams)",
+                    "(how to|best practice).*?(backend|route|service|FastAPI)"
+                ]
+            },
+            "fileTriggers": {
+                "pathPatterns": [
+                    "backend/app/**/*.py",
+                    "backend/tests/**/*.py"
+                ],
+                "contentPatterns": [
+                    "from fastapi import FastAPI",
+                    "from fastapi import APIRouter",
+                    "APIRouter\\(",
+                    "async def ",
+                    "from app\\.services",
+                    "from app\\.core",
+                    "sentry_sdk.init",
+                    "SqlalchemyIntegration"
+                ]
+            }
+        },
+        "frontend-dev-guidelines": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Frontend development guidelines for youtube_translation (Next.js 15 App Router, React 19, Tailwind CSS, React Query)",
+            "promptTriggers": {
+                "keywords": [
+                    "component",
+                    "react component",
+                    "UI",
+                    "interface",
+                    "page",
+                    "modal",
+                    "dialog",
+                    "form",
+                    "Next.js",
+                    "Tailwind",
+                    "styling",
+                    "frontend",
+                    "React"
+                ],
+                "intentPatterns": [
+                    "(create|add|make|build|update|modify|edit).*?(component|UI|page|modal|dialog|form|layout)",
+                    "(how to|best practice).*?(component|react|Next|Tailwind)",
+                    "(style|design|layout).*?(component|UI)"
+                ]
+            },
+            "fileTriggers": {
+                "pathPatterns": [
+                    "frontend/src/**/*.tsx",
+                    "frontend/src/**/*.ts",
+                    "client/src/**/*.tsx",
+                    "client/src/**/*.ts",
+                    "src/**/*.tsx"
+                ],
+                "pathExclusions": [
+                    "**/*.test.tsx",
+                    "**/*.test.ts",
+                    "**/*.spec.tsx",
+                    "**/*.spec.ts",
+                    "**/*.styles.ts"
+                ],
+                "contentPatterns": [
+                    "from 'react'",
+                    "from 'next/",
+                    "className=\\\".*\\bflex\\b",
+                    "className=\\\".*\\bgrid\\b",
+                    "from '@/lib/",
+                    "from '@/components/",
+                    "from '@/app/"
+                ]
+            }
+        },
+        "route-tester": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Testing FastAPI routes and youtube_translation API endpoints (auth, assets, streams, quota)",
+            "promptTriggers": {
+                "keywords": [
+                    "test route",
+                    "test endpoint",
+                    "test API",
+                    "route testing",
+                    "API testing",
+                    "authenticated route",
+                    "JWT testing",
+                    "test with auth",
+                    "FastAPI test",
+                    "pytest client",
+                    "httpx"
+                ],
+                "intentPatterns": [
+                    "(test|debug|verify).*?(route|endpoint|API)",
+                    "(how to|how do I).*?test.*?(route|endpoint|API)",
+                    "test.*?(authenticated|auth|JWT|cookie)"
+                ]
+            },
+            "fileTriggers": {
+                "pathPatterns": [
+                    "backend/app/api/routes/**/*.py",
+                    "backend/tests/test_*api.py"
+                ],
+                "contentPatterns": [
+                    "from fastapi import APIRouter",
+                    "APIRouter\\(",
+                    "from httpx import AsyncClient",
+                    "AsyncClient\("
+                ]
+            }
+        },
+        "error-tracking": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Sentry error tracking and performance monitoring patterns for youtube_translation (FastAPI + SQLAlchemy)",
+            "promptTriggers": {
+                "keywords": [
+                    "error handling",
+                    "exception",
+                    "sentry",
+                    "error tracking",
+                    "captureException",
+                    "monitoring",
+                    "performance tracking",
+                    "FastAPI",
+                    "SqlalchemyIntegration"
+                ],
+                "intentPatterns": [
+                    "(add|create|implement|setup).*?(error handling|sentry|error tracking)",
+                    "(fix|handle|catch).*?(error|exception)",
+                    "(how to|best practice).*?(error|sentry|monitoring)"
+                ]
+            },
+            "fileTriggers": {
+                "pathPatterns": [
+                    "backend/app/main.py",
+                    "backend/app/core/**/*.py",
+                    "backend/app/middleware/**/*.py"
+                ],
+                "contentPatterns": [
+                    "sentry_sdk.init",
+                    "FastApiIntegration",
+                    "SqlalchemyIntegration",
+                    "capture_exception"
+                ]
+            }
+        }
+    },
+    "notes": {
+        "enforcement_types": {
+            "suggest": "Skill suggestion appears but doesn't block execution",
+            "block": "Requires skill to be used before proceeding (guardrail)",
+            "warn": "Shows warning but allows proceeding"
+        },
+        "priority_levels": {
+            "critical": "Highest - Always trigger when matched",
+            "high": "Important - Trigger for most matches",
+            "medium": "Moderate - Trigger for clear matches",
+            "low": "Optional - Trigger only for explicit matches"
+        },
+        "customization": {
+            "pathPatterns": "Adjust to match your project structure (blog-api, auth-service, etc.)",
+            "keywords": "Add domain-specific terms relevant to your project",
+            "intentPatterns": "Use regex for flexible user intent matching"
+        }
+    }
+}

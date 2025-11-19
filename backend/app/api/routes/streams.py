@@ -16,6 +16,8 @@ from app.schemas.api import (
     StreamQualityResponse,
     StreamResponse,
     StreamStatus,
+    StreamQueueAppend,
+    StreamQueueResponse,
 )
 from app.services.streams import StreamControlService, StreamService
 from app.streaming.ffmpeg_manager import ffmpeg_manager  # noqa: F401 - compatibility for tests
@@ -80,6 +82,18 @@ async def stop_stream(stream_id: UUID, user_deps: tuple = Depends(require_user))
     db, user_id = user_deps
     _, control = _build_services(db, user_id)
     return await control.stop_stream(stream_id)
+
+
+@router.post("/{stream_id}/queue", response_model=StreamQueueResponse)
+async def append_stream_queue(
+    stream_id: UUID,
+    payload: StreamQueueAppend,
+    user_deps: tuple = Depends(require_user),
+):
+    db, user_id = user_deps
+    service, control = _build_services(db, user_id)
+    await service.enqueue_stream_asset(stream_id, payload, control)
+    return StreamQueueResponse()
 
 
 @router.get("/{stream_id}/status", response_model=StreamStatus)

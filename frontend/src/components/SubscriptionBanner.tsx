@@ -66,6 +66,7 @@ const tierDotColor: Record<SubscriptionTierKey, string> = {
 
 const BANNER_STORAGE_KEY = 'subscription-banner-dismissed'
 const BANNER_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const REMIND_LATER_TTL_MS = 24 * 60 * 60 * 1000
 
 const getStorageKey = (tier: string) => `${BANNER_STORAGE_KEY}:${tier}`
 
@@ -81,12 +82,13 @@ const shouldDisplayBanner = (tier: SubscriptionTierKey) => {
   }
 
   try {
-    const parsed = JSON.parse(raw) as { timestamp?: number }
+    const parsed = JSON.parse(raw) as { timestamp?: number; ttlMs?: number }
     if (!parsed?.timestamp) {
       return true
     }
 
-    return Date.now() - parsed.timestamp > BANNER_TTL_MS
+    const ttlMs = typeof parsed.ttlMs === 'number' && parsed.ttlMs > 0 ? parsed.ttlMs : BANNER_TTL_MS
+    return Date.now() - parsed.timestamp > ttlMs
   } catch {
     return true
   }
@@ -115,12 +117,15 @@ export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionB
     setVisible(shouldDisplayBanner(tier))
   }, [tier])
 
-  const persistDismissal = () => {
+  const persistDismissal = (ttlMs: number = BANNER_TTL_MS) => {
     if (typeof window === 'undefined') {
       return
     }
 
-    window.localStorage.setItem(getStorageKey(tier), JSON.stringify({ timestamp: Date.now() }))
+    window.localStorage.setItem(
+      getStorageKey(tier),
+      JSON.stringify({ timestamp: Date.now(), ttlMs }),
+    )
   }
 
   const handleDismiss = () => {
@@ -131,6 +136,11 @@ export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionB
   const handleUpgradeClick = () => {
     persistDismissal()
     onUpgrade?.()
+  }
+
+  const handleRemindLater = () => {
+    persistDismissal(REMIND_LATER_TTL_MS)
+    setVisible(false)
   }
 
   if (!visible) {
@@ -196,7 +206,7 @@ export function SubscriptionBanner({ tier, expiresAt, onUpgrade }: SubscriptionB
                       <TrendingUp className="w-4 h-4 mr-2" />
                       {translations.primaryAction}
                     </Button>
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" onClick={handleRemindLater}>
                       {banner('secondaryAction')}
                     </Button>
                   </div>

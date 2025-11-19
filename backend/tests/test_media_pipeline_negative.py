@@ -113,8 +113,8 @@ class TestVideoValidatorNegative:
         assert any("gop" in err.lower() for err in errors)
     
     @pytest.mark.asyncio
-    async def test_keyframe_interval_too_long(self):
-        """Videos exceeding max keyframe interval should be flagged."""
+    async def test_keyframe_interval_warning_only(self):
+        """Keyframe interval advisories should not mark file incompatible."""
         validator = VideoValidator()
 
         mock_meta = {
@@ -137,13 +137,13 @@ class TestVideoValidatorNegative:
             mock_meta,
             keyframe_stats=keyframe_stats,
         )
-        assert is_compatible is False
+        assert is_compatible is True
         errors = validator._get_validation_errors(
             mock_meta,
             media_kind,
             keyframe_stats=keyframe_stats,
         )
-        assert any("keyframe interval" in err.lower() for err in errors)
+        assert all("keyframe interval" not in err.lower() for err in errors)
 
     @pytest.mark.asyncio
     async def test_wrong_pixel_format(self):

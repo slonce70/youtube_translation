@@ -99,20 +99,26 @@ async def reconcile_streams(db: AsyncSession) -> dict:
                     f"✗ Stream {stream_id} not running "
                     f"(state={state})"
                 )
+                reason_detail = stream_status.get("error") or stream_status.get("details")
+                if reason_detail and not isinstance(reason_detail, str):
+                    reason_detail = str(reason_detail)
+                if isinstance(reason_detail, str):
+                    reason_detail = " ".join(reason_detail.split())
+                reason = state if not reason_detail else f"{state}:{reason_detail}"
                 stream.status = "stopped"
                 stream.stopped_at = datetime.now(timezone.utc)
                 stream.pid = None
                 if not stream.error_message:
                     stream.error_message = (
                         f"Stream stopped unexpectedly (detected on reconciliation). "
-                        f"State: {state}"
+                        f"State: {reason}"
                     )
                 stats["stopped"] += 1
                 stats["streams_checked"].append({
                     "id": str(stream_id),
                     "status": "stopped",
                     "action": "marked_stopped",
-                    "reason": state,
+                    "reason": reason,
                 })
 
         except Exception as e:

@@ -152,15 +152,6 @@
               "fhd_boost": "200 ГБ"
             }
           },
-            "audio": {
-              "label": "Якість аудіо",
-              "values": {
-                "free": "AAC 128 кбіт/с",
-                "fhd_start": "AAC 192 кбіт/с",
-                "fhd_flow": "AAC 256 кбіт/с",
-                "fhd_boost": "AAC 320 кбіт/с"
-              }
-            },
             "destinations": {
               "label": "Напрямки",
               "values": {
@@ -221,15 +212,6 @@
               "uhd_boost": "800 ГБ"
             }
           },
-            "audio": {
-              "label": "Якість аудіо",
-              "values": {
-                "free": "AAC 128 кбіт/с",
-                "uhd_start": "AAC 256 кбіт/с",
-                "uhd_flow": "AAC 320 кбіт/с",
-                "uhd_boost": "AAC 320 кбіт/с + 5.1"
-              }
-            },
             "destinations": {
               "label": "Напрямки",
               "values": {

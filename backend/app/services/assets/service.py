@@ -20,7 +20,13 @@ from app.models.database import (
     MediaFolder,
     UserActivityLog,
 )
-from app.schemas.api import AssetCreate, AssetResponse, AssetUpdate, AssetUsageSummary
+from app.schemas.api import (
+    AssetCreate,
+    AssetResponse,
+    AssetUpdate,
+    AssetUsageSummary,
+    UploadTokenResponse,
+)
 
 from .serializers import (
     collect_asset_usage,
@@ -31,6 +37,7 @@ from .storage import apply_storage_delta, audit_collection_quorum
 from .utils import (
     apply_stream_summary_fields,
     generate_download_token,
+    generate_upload_token,
     normalize_asset_type,
     parse_download_token,
 )
@@ -304,6 +311,20 @@ class DownloadTokenService:
         return parse_download_token(token)
 
 
+class UploadTokenService:
+    """Issues short-lived upload tokens."""
+
+    def __init__(self, user_id: UUID):
+        self.user_id = user_id
+
+    def create_token(self) -> UploadTokenResponse:
+        token, expires_at = generate_upload_token(self.user_id)
+        return UploadTokenResponse(
+            token=token,
+            expires_at=datetime.fromtimestamp(expires_at, tz=timezone.utc),
+        )
+
+
 class AssetDownloadService:
     """Helpers for serving downloads via signed tokens."""
 
@@ -334,4 +355,5 @@ __all__ = [
     "AssetService",
     "AssetDownloadService",
     "DownloadTokenService",
+    "UploadTokenService",
 ]

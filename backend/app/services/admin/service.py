@@ -33,6 +33,7 @@ from app.schemas.admin import (
     UserDetail,
     UserListItem,
 )
+from app.services.streams import StreamControlService
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +174,7 @@ class AdminService:
                 action_type="suspend_user",
                 target_user_id=user_id,
                 details={"reason": payload.reason},
+                reason=payload.reason,
             )
 
             await self.db.commit()
@@ -245,6 +247,7 @@ class AdminService:
                     "reason": payload.reason,
                     "previous_started_at": previous_started_at.isoformat() if previous_started_at else None,
                 },
+                reason=payload.reason,
             )
 
             await self.db.commit()
@@ -336,10 +339,8 @@ class AdminService:
             if not stream:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found")
 
-            from app.streaming.ffmpeg_manager import ffmpeg_manager
-
-            ffmpeg_manager.stop_stream(str(stream_id))
-            stream.status = "stopped"
+            control = StreamControlService(self.db, stream.user_id)
+            status_payload = await control.stop_stream(stream_id)
 
             await self._log_admin_action(
                 action_type="force_stop_stream",
@@ -349,7 +350,7 @@ class AdminService:
 
             await self.db.commit()
             logger.info("Stream %s force stopped by admin %s", stream_id, self.admin_user_id)
-            return {"stream_id": str(stream_id), "status": stream.status}
+            return {"stream_id": str(stream_id), "status": status_payload.status}
         except HTTPException:
             await self.db.rollback()
             raise
@@ -489,6 +490,7 @@ class AdminService:
                     UserProfile.email,
                     AdminAction.action_type,
                     AdminAction.target_user_id,
+                    AdminAction.reason,
                     AdminAction.details,
                     AdminAction.created_at,
                 )
@@ -524,8 +526,9 @@ class AdminService:
                         action_type=row[3],
                         target_user_id=target_user_id,
                         target_user_email=target_email,
-                        details=row[5],
-                        created_at=row[6],
+                        reason=row[5],
+                        details=row[6],
+                        created_at=row[7],
                     )
                 )
 
@@ -566,6 +569,7 @@ class AdminService:
         action_type: str,
         target_user_id: Optional[UUID] = None,
         details: Optional[dict] = None,
+        reason: Optional[str] = None,
     ) -> None:
         try:
             action = AdminAction(
@@ -573,6 +577,7 @@ class AdminService:
                 action_type=action_type,
                 target_user_id=target_user_id,
                 details=details or {},
+                reason=reason,
             )
             self.db.add(action)
             await self.db.flush()
@@ -580,4 +585,3 @@ class AdminService:
         except Exception as exc:
             logger.error("Failed to log admin action %s: %s", action_type, exc)
             # Don't fail the main operation if logging fails
-

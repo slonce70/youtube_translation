@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, computed_field
 from typing import Optional, List, Dict, Any, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 ALLOWED_ASSET_TYPES = {"video", "audio"}
@@ -83,6 +83,11 @@ class AssetResponse(AssetBase):
 
 class AssetDownloadLinkResponse(BaseModel):
     download_url: str
+    expires_at: datetime
+
+
+class UploadTokenResponse(BaseModel):
+    token: str
     expires_at: datetime
 
 
@@ -210,6 +215,8 @@ class StreamCreate(StreamBase):
     audio_collection_id: Optional[UUID] = None
     mix_mode: Optional[str] = None
     settings_json: Optional[dict] = None
+    schedule_mode: Literal["now", "schedule"] = "now"
+    schedule_start_at: Optional[datetime] = None
 
     @model_validator(mode="after")
     def validate_source(cls, model):
@@ -227,6 +234,25 @@ class StreamCreate(StreamBase):
         if asset_ids is not None and len(asset_ids) == 0:
             raise ValueError("asset_ids must contain at least one asset")
 
+        mode = (model.schedule_mode or "now").lower()
+        if mode not in {"now", "schedule"}:
+            raise ValueError("schedule_mode must be 'now' or 'schedule'")
+        model.schedule_mode = mode
+
+        if model.schedule_mode == "schedule":
+            if not model.schedule_start_at:
+                raise ValueError("schedule_start_at is required when schedule_mode is 'schedule'")
+            start_at = model.schedule_start_at
+            if start_at.tzinfo is None:
+                start_at = start_at.replace(tzinfo=timezone.utc)
+            else:
+                start_at = start_at.astimezone(timezone.utc)
+            if start_at <= datetime.now(timezone.utc):
+                raise ValueError("schedule_start_at must be in the future")
+            model.schedule_start_at = start_at
+        else:
+            model.schedule_start_at = None
+
         return model
 
 
@@ -237,6 +263,22 @@ class StreamUpdate(BaseModel):
     audio_collection_id: Optional[UUID] = None
     mix_mode: Optional[str] = None
     settings_json: Optional[dict] = None
+
+
+class DestinationSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    rtmps_url: str
+    enabled: bool
+
+
+class StreamDestinationLink(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    destination_id: UUID
+    destination: Optional[DestinationSummary] = None
 
 
 class StreamResponse(StreamBase):
@@ -255,9 +297,23 @@ class StreamResponse(StreamBase):
     audio_collection_id: Optional[UUID]
     mix_mode: str
     settings_json: dict
+    total_duration_seconds: Optional[float]
     created_at: datetime
     updated_at: datetime
     stream_assets: List['StreamAssetLink'] = []
+    stream_destinations: List['StreamDestinationLink'] = Field(default_factory=list, exclude=True)
+    scheduled_start_enabled: bool = False
+    scheduled_start_time: Optional[datetime] = None
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def destinations(self) -> List[DestinationSummary]:
+        summaries: List[DestinationSummary] = []
+        for link in self.stream_destinations:
+            destination = link.destination
+            if destination:
+                summaries.append(destination)
+        return summaries
 
 
 class StreamStatus(BaseModel):
@@ -266,6 +322,11 @@ class StreamStatus(BaseModel):
     uptime_seconds: Optional[int] = 0
     is_running: bool
     error_message: Optional[str] = None
+    live_duration_seconds: Optional[int] = None
+    total_duration_seconds: Optional[int] = None
+    daily_limit_seconds: Optional[int] = None
+    remaining_daily_seconds: Optional[int] = None
+    quota_limit_reached: Optional[bool] = None
 
 
 class StreamAssetLink(BaseModel):
@@ -274,6 +335,16 @@ class StreamAssetLink(BaseModel):
 
 
 StreamResponse.model_rebuild()
+
+
+class StreamQueueAppend(BaseModel):
+    target: Literal["video", "audio"] = "video"
+    asset_id: UUID
+    loop_mode: Optional[str] = None
+
+
+class StreamQueueResponse(BaseModel):
+    success: bool = True
 
 
 # Stream event schemas
@@ -377,6 +448,7 @@ class CollectionItemResponse(CollectionItemBase):
     collection_id: UUID
     created_at: datetime
     updated_at: datetime
+    asset: Optional['AssetResponse'] = None
 
 
 class MediaCollectionBase(BaseModel):

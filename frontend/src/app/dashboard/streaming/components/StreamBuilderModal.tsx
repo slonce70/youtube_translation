@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useTranslations } from 'next-intl'
+import type { TranslationValues } from 'next-intl'
 import {
   AlertTriangle,
   Clock3,
@@ -34,7 +35,7 @@ import type {
 
 import { useStreamBuilder } from '../hooks/useStreamBuilder'
 
-type Translator = (key: string, values?: any) => string
+type Translator = (key: string, values?: TranslationValues) => string
 
 type StreamBuilderModalProps = {
   open: boolean
@@ -269,7 +270,19 @@ export function StreamBuilderModal({
                       </Button>
                     )}
                   </div>
-                  <div className="space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-900/50 max-h-72 overflow-y-auto">
+                  <div
+                    className="space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-900/50 max-h-72 overflow-y-auto"
+                    onDragOver={(event) => {
+                      if (videoEditor.mode !== 'custom') return
+                      event.preventDefault()
+                    }}
+                    onDrop={(event) => {
+                      if (videoEditor.mode !== 'custom') return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      handleItemDrop('video', videoEditor.items.length, event)
+                    }}
+                  >
                     {videoEditor.items.length > 0 ? (
                       videoEditor.items.map((item, index) => {
                         const asset = assetMap.get(item.asset_id)
@@ -279,12 +292,17 @@ export function StreamBuilderModal({
                             key={`${item.asset_id}-${index}`}
                             className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
                             draggable={draggable}
-                            onDragStart={() => handleItemDragStart('video', index)}
+                            onDragStart={(event) => handleItemDragStart('video', index, event)}
                             onDragOver={(event) => {
                               if (!draggable) return
                               event.preventDefault()
                             }}
-                            onDrop={() => draggable && handleItemDrop('video', index)}
+                            onDrop={(event) => {
+                              if (!draggable) return
+                              event.preventDefault()
+                              event.stopPropagation()
+                              handleItemDrop('video', index, event)
+                            }}
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <GripVertical className={`h-4 w-4 text-slate-400 ${!draggable ? 'opacity-40' : ''}`} />
@@ -420,7 +438,19 @@ export function StreamBuilderModal({
                       <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                         {t('streams.builder.audio.queueHeading')}
                       </h4>
-                      <div className="space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-900/50 max-h-64 overflow-y-auto">
+                      <div
+                        className="space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-900/50 max-h-64 overflow-y-auto"
+                        onDragOver={(event) => {
+                          if (audioEditor.mode !== 'custom') return
+                          event.preventDefault()
+                        }}
+                        onDrop={(event) => {
+                          if (audioEditor.mode !== 'custom') return
+                          event.preventDefault()
+                          event.stopPropagation()
+                          handleItemDrop('audio', audioEditor.items.length, event)
+                        }}
+                      >
                         {audioEditor.items.length > 0 ? (
                           audioEditor.items.map((item, index) => {
                             const asset = assetMap.get(item.asset_id)
@@ -430,12 +460,17 @@ export function StreamBuilderModal({
                                 key={`${item.asset_id}-${index}`}
                                 className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
                                 draggable={draggable}
-                                onDragStart={() => handleItemDragStart('audio', index)}
+                                onDragStart={(event) => handleItemDragStart('audio', index, event)}
                                 onDragOver={(event) => {
                                   if (!draggable) return
                                   event.preventDefault()
                                 }}
-                                onDrop={() => draggable && handleItemDrop('audio', index)}
+                                onDrop={(event) => {
+                                  if (!draggable) return
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  handleItemDrop('audio', index, event)
+                                }}
                               >
                                 <div className="flex items-center gap-2 min-w-0">
                                   <GripVertical className={`h-4 w-4 text-slate-400 ${!draggable ? 'opacity-40' : ''}`} />

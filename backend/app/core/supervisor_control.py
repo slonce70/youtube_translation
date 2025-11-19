@@ -233,7 +233,21 @@ async def program_status(stream_id: UUID) -> Dict[str, str]:
     program = program_name(stream_id)
     code, out, err = await _run_supervisorctl("status", program)
     if code != 0:
-        return {"state": "UNKNOWN", "error": err or out}
+        message = (err or out).strip()
+        lowered = message.lower()
+
+        if any(token in lowered for token in ["no such process", "not found", "no such file"]):
+            state = "NOT_FOUND"
+        elif "connection refused" in lowered or "refused connection" in lowered:
+            state = "SUPERVISOR_UNAVAILABLE"
+        elif "unix" in lowered and "permission" in lowered:
+            state = "PERMISSION_DENIED"
+        else:
+            state = "UNKNOWN"
+
+        # Provide a stable field for reconciliation logs
+        details = message or "supervisorctl status failed"
+        return {"state": state, "error": details}
 
     line = (out.splitlines() or [""])[0]
     parts = line.split(None, 2)

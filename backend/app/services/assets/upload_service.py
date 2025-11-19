@@ -19,7 +19,12 @@ from app.schemas.api import ALLOWED_ASSET_TYPES
 
 from .storage import apply_storage_delta
 from .thumbnails import generate_video_thumbnail
-from .utils import apply_stream_summary_fields, infer_asset_type, normalize_asset_type
+from .utils import (
+    apply_stream_summary_fields,
+    infer_asset_type,
+    normalize_asset_type,
+    verify_upload_token,
+)
 from .validation import validator
 
 logger = logging.getLogger(__name__)
@@ -92,33 +97,24 @@ class AssetUploadService:
             stream_info = validator.get_stream_info(meta)
 
         meta_payload = self._extract_meta_payload(upload_data, upload_meta, storage_payload)
+        asset_owner_id = self._resolve_asset_owner(meta_payload, upload_id)
+        self._ensure_user_directory(asset_owner_id, file_path)
 
         created_asset = None
-        user_id_raw = meta_payload.get("user_id")
-        asset_owner_id = None
-        if user_id_raw:
-            try:
-                asset_owner_id = UUID(user_id_raw)
-            except ValueError:
-                logger.warning("Invalid user_id provided in tusd metadata: %s", user_id_raw)
-        else:
-            logger.warning("Missing user_id in tusd metadata for upload %s", upload_id)
+        enforcer = QuotaEnforcer(self.db, asset_owner_id)
+        await enforcer.check_assets_limit()
+        await enforcer.check_storage_limit(size_bytes)
 
-        if asset_owner_id:
-            enforcer = QuotaEnforcer(self.db, asset_owner_id)
-            await enforcer.check_assets_limit()
-            await enforcer.check_storage_limit(size_bytes)
-
-            created_asset = await self._persist_asset(
-                asset_owner_id=asset_owner_id,
-                filename_override=meta_payload.get("filename"),
-                upload_id=upload_id,
-                file_path=file_path,
-                size_bytes=size_bytes,
-                validation_result=validation_result,
-                stream_info=stream_info,
-                meta_payload=meta_payload,
-            )
+        created_asset = await self._persist_asset(
+            asset_owner_id=asset_owner_id,
+            filename_override=meta_payload.get("filename"),
+            upload_id=upload_id,
+            file_path=file_path,
+            size_bytes=size_bytes,
+            validation_result=validation_result,
+            stream_info=stream_info,
+            meta_payload=meta_payload,
+        )
 
         response_payload: Dict[str, Any] = {
             "success": True,
@@ -323,3 +319,51 @@ class AssetUploadService:
         if project_id_raw:
             logger.info("Ignoring legacy project_id %s in tusd metadata", project_id_raw)
         return meta_payload
+
+    def _resolve_asset_owner(self, meta_payload: Dict[str, Any], upload_id: Optional[str]) -> UUID:
+        token = meta_payload.get("upload_token")
+        if not token:
+            logger.error("Missing upload token for tusd upload %s", upload_id)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Missing upload token",
+            )
+
+        try:
+            owner_id = verify_upload_token(token)
+        except HTTPException:
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Unexpected error verifying upload token for %s", upload_id)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid upload token",
+            ) from exc
+
+        user_id_raw = meta_payload.get("user_id")
+        if user_id_raw and user_id_raw != str(owner_id):
+            logger.warning(
+                "Upload %s provided mismatched user_id %s (token resolved %s)",
+                upload_id,
+                user_id_raw,
+                owner_id,
+            )
+        elif not user_id_raw:
+            logger.info("Upload %s omitted user_id metadata; token resolved %s", upload_id, owner_id)
+
+        return owner_id
+
+    def _ensure_user_directory(self, user_id: UUID, file_path: Path) -> None:
+        expected_root = (Path(settings.upload_dir) / str(user_id)).resolve()
+        resolved_path = file_path.resolve()
+        if expected_root not in resolved_path.parents:
+            logger.error(
+                "Upload file path %s not located under user %s directory (%s)",
+                resolved_path,
+                user_id,
+                expected_root,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Upload path does not match token owner",
+            )
