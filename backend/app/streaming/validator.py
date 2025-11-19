@@ -214,7 +214,11 @@ class VideoValidator:
             if keyframe_stats:
                 max_interval = keyframe_stats.get("max_interval_seconds")
                 if max_interval and max_interval > self.MAX_KEYFRAME_INTERVAL_SECONDS:
-                    return False, media_kind
+                    logger.debug(
+                        "Keyframe interval %.2fs exceeds recommended limit %.2fs",
+                        max_interval,
+                        self.MAX_KEYFRAME_INTERVAL_SECONDS,
+                    )
 
             profile = (video_stream.get("profile") or "").lower()
             if profile and profile not in ["high", "main"]:
@@ -270,9 +274,9 @@ class VideoValidator:
             if keyframe_stats:
                 max_interval = keyframe_stats.get("max_interval_seconds")
                 if max_interval and max_interval > self.MAX_KEYFRAME_INTERVAL_SECONDS:
-                    errors.append(
-                        "Keyframe interval exceeds YouTube guidance. "
-                        f"Detected up to {max_interval:.2f}s between keyframes (max {self.MAX_KEYFRAME_INTERVAL_SECONDS:.0f}s)."
+                    logger.debug(
+                        "Treating keyframe interval %.2fs as advisory warning only",
+                        max_interval,
                     )
 
         if not audio_stream:
@@ -307,6 +311,8 @@ class VideoValidator:
             "bitrate": int(format_info.get("bit_rate", 0)),
         }
 
+        has_primary_video = video_stream is not None
+
         if video_stream:
             info["video"] = {
                 "codec": video_stream.get("codec_name"),
@@ -333,45 +339,48 @@ class VideoValidator:
                 "bitrate": int(audio_stream.get("bit_rate", 0))
             }
 
-        recommendation, fps_bucket, fps_out_of_guideline = self._match_bitrate_guidance(
-            info.get("video", {}).get("height"),
-            info.get("video", {}).get("fps"),
-        )
-
         warnings: list[str] = []
 
-        if recommendation:
-            bitrate_source = info.get("video", {}).get("bitrate") or info.get("bitrate")
-            bitrate_status = "unknown"
-            if bitrate_source:
-                bitrate_mbps = bitrate_source / 1_000_000
-                if (
-                    recommendation["min_bitrate_mbps"]
-                    <= bitrate_mbps
-                    <= recommendation["max_bitrate_mbps"]
-                ):
-                    bitrate_status = "within"
-                else:
-                    bitrate_status = "outside"
-                    warnings.append(
-                        "Video bitrate is outside the recommended range "
-                        f"({recommendation['min_bitrate_mbps']}–{recommendation['max_bitrate_mbps']} Mbps, "
-                        f"target {recommendation['target_bitrate_mbps']} Mbps)."
-                    )
+        if has_primary_video:
+            recommendation, fps_bucket, fps_out_of_guideline = self._match_bitrate_guidance(
+                info.get("video", {}).get("height"),
+                info.get("video", {}).get("fps"),
+            )
 
-            info["recommendation"] = {
-                "label": recommendation["label"],
-                "fps": recommendation["fps"],
-                "min_bitrate_mbps": recommendation["min_bitrate_mbps"],
-                "max_bitrate_mbps": recommendation["max_bitrate_mbps"],
-                "target_bitrate_mbps": recommendation["target_bitrate_mbps"],
-                "normalized_fps": fps_bucket,
-                "fps_out_of_guideline": fps_out_of_guideline,
-                "bitrate_status": bitrate_status,
-            }
+            if recommendation:
+                bitrate_source = info.get("video", {}).get("bitrate") or info.get("bitrate")
+                bitrate_status = "unknown"
+                if bitrate_source:
+                    bitrate_mbps = bitrate_source / 1_000_000
+                    if (
+                        recommendation["min_bitrate_mbps"]
+                        <= bitrate_mbps
+                        <= recommendation["max_bitrate_mbps"]
+                    ):
+                        bitrate_status = "within"
+                    else:
+                        bitrate_status = "outside"
+                        warnings.append(
+                            "Video bitrate is outside the recommended range "
+                            f"({recommendation['min_bitrate_mbps']}–{recommendation['max_bitrate_mbps']} Mbps, "
+                            f"target {recommendation['target_bitrate_mbps']} Mbps)."
+                        )
 
-        if fps_out_of_guideline:
-            warnings.append("Frame rate differs from the recommended 30 or 60 fps for live streaming.")
+                info["recommendation"] = {
+                    "label": recommendation["label"],
+                    "fps": recommendation["fps"],
+                    "min_bitrate_mbps": recommendation["min_bitrate_mbps"],
+                    "max_bitrate_mbps": recommendation["max_bitrate_mbps"],
+                    "target_bitrate_mbps": recommendation["target_bitrate_mbps"],
+                    "normalized_fps": fps_bucket,
+                    "fps_out_of_guideline": fps_out_of_guideline,
+                    "bitrate_status": bitrate_status,
+                }
+
+            if recommendation and fps_out_of_guideline:
+                warnings.append("Frame rate differs from the recommended 30 or 60 fps for live streaming.")
+        else:
+            info["recommendation"] = None
 
         if warnings:
             info["warnings"] = warnings

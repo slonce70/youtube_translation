@@ -384,11 +384,12 @@ async def db_session():
     # Ensure schema exists (serialised to avoid concurrent DDL)
     async with _schema_reset_lock:
         async with async_engine.begin() as conn:
+            await conn.execute(text('CREATE SCHEMA IF NOT EXISTS auth'))
+            await conn.execute(text('CREATE SCHEMA IF NOT EXISTS public'))
+            await conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
             view_names = ['unresolved_critical_alerts', 'recent_admin_actions', 'recent_user_activity']
             for view in view_names:
                 await conn.execute(text(f'DROP VIEW IF EXISTS {view}'))
-            await conn.execute(text('DROP TABLE IF EXISTS subscription_tier_limits CASCADE'))
-            await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
             alter_statements = [
                 "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS price_cents INTEGER DEFAULT 0",

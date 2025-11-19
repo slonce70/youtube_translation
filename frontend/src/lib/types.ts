@@ -41,6 +41,11 @@ export interface Asset {
   thumbnail_url?: string | null
 }
 
+export interface UploadTokenResponse {
+  token: string
+  expires_at: string
+}
+
 export interface MediaFolder {
   id: string
   user_id: string
@@ -63,6 +68,7 @@ export interface CollectionItem {
   loop_mode: LoopMode
   created_at: string
   updated_at: string
+  asset?: Asset | null
 }
 
 export interface CollectionItemInput {
@@ -180,16 +186,34 @@ export interface DestinationUpdatePayload {
   enabled?: boolean
 }
 
+export interface StreamDestinationSummary {
+  id: string
+  name: string
+  rtmps_url: string
+  enabled: boolean
+}
+
 export type StreamStatusValue =
   | 'stopped'
   | 'starting'
   | 'running'
   | 'stopping'
   | 'error'
+  | 'scheduled'
 
 export interface StreamAssetLink {
   asset_id: string
   position: number
+}
+
+export interface StreamQueueAppendPayload {
+  target: 'video' | 'audio'
+  asset_id: string
+  loop_mode?: LoopMode
+}
+
+export interface StreamQueueResponse {
+  success: boolean
 }
 
 export interface Stream {
@@ -207,9 +231,13 @@ export interface Stream {
   audio_collection_id?: string | null
   mix_mode: 'video_only' | 'audio_only' | 'mixed'
   settings_json?: Record<string, unknown>
+  total_duration_seconds?: number | null
   created_at: string
   updated_at: string
   stream_assets?: StreamAssetLink[]
+  destinations?: StreamDestinationSummary[]
+  scheduled_start_enabled?: boolean
+  scheduled_start_time?: string | null
 }
 
 export interface StreamStatusResponse {
@@ -218,6 +246,11 @@ export interface StreamStatusResponse {
   uptime_seconds?: number | null
   is_running: boolean
   error_message?: string | null
+  live_duration_seconds?: number | null
+  total_duration_seconds?: number | null
+  daily_limit_seconds?: number | null
+  remaining_daily_seconds?: number | null
+  quota_limit_reached?: boolean | null
 }
 
 export interface StreamLogsResponse {
@@ -320,6 +353,8 @@ export interface CreateStreamPayload {
   video_collection_id?: string
   audio_collection_id?: string
   mix_mode?: 'video_only' | 'audio_only' | 'mixed'
+  schedule_mode?: 'now' | 'schedule'
+  schedule_start_at?: string
   settings_json?: Record<string, unknown>
 }
 
@@ -482,6 +517,7 @@ export interface AdminActionLog {
   action_type: string
   target_user_id: string | null
   target_user_email: string | null
+  reason: string | null
   details: Record<string, any>
   created_at: string
 }

@@ -99,6 +99,12 @@
       "unsuspendError": "Не вдалося розблокувати користувача",
       "tierChangeSuccess": "Тариф оновлено",
       "tierChangeError": "Не вдалося оновити тариф"
+    },
+    "pagination": {
+      "showing": "Показано {start}-{end}",
+      "previous": "Назад",
+      "next": "Далі",
+      "page": "Сторінка {page}"
     }
   },
   "alerts": {
@@ -155,6 +161,12 @@
     "toasts": {
       "resolveSuccess": "Сповіщення закрито",
       "resolveError": "Не вдалося закрити сповіщення"
+    },
+    "pagination": {
+      "showing": "Показано {start}-{end}",
+      "previous": "Назад",
+      "next": "Далі",
+      "page": "Сторінка {page}"
     }
   },
   "streams": {
@@ -207,6 +219,12 @@
     "toasts": {
       "forceStopSuccess": "Трансляцію зупинено",
       "forceStopError": "Не вдалося зупинити трансляцію"
+    },
+    "pagination": {
+      "showing": "Показано {start}-{end}",
+      "previous": "Назад",
+      "next": "Далі",
+      "page": "Сторінка {page}"
     }
   },
   "layout": {
@@ -294,44 +312,62 @@
   },
   "settings": {
     "header": {
-      "title": "Налаштування адмін-панелі",
-      "description": "Керуйте системними налаштуваннями та перевагами"
+      "title": "Налаштування адмінки",
+      "description": "Перевіряйте права адміністратора та відстежуйте всі дії."
     },
-    "notifications": {
-      "title": "Сповіщення",
-      "emailAlerts": {
-        "label": "Email-сповіщення",
-        "description": "Отримуйте листи про критичні сповіщення"
+    "profile": {
+      "title": "Профіль адміністратора",
+      "loading": "Завантаження профілю адміністратора...",
+      "empty": "Не вдалося завантажити профіль адміністратора.",
+      "badges": {
+        "admin": "Адмін"
       },
-      "userSignups": {
-        "label": "Реєстрації користувачів",
-        "description": "Повідомляти про нові реєстрації"
-      },
-      "save": "Зберегти налаштування"
+      "fields": {
+        "email": "Email",
+        "tier": "Тариф",
+        "status": "Статус підписки",
+        "suspension": "Блокування",
+        "suspended": "Заблоковано",
+        "active": "Активний",
+        "notSuspended": "Не заблоковано"
+      }
     },
-    "security": {
-      "title": "Безпека",
-      "twoFactor": {
-        "label": "Двофакторна автентифікація",
-        "description": "Увімкніть 2FA для адмін-акаунтів"
-      },
-      "loginAudit": {
-        "label": "Аудит входів",
-        "description": "Журналювати всі спроби входу адміністратора"
-      },
-      "save": "Зберегти налаштування"
+    "shortcuts": {
+      "title": "Швидкі дії",
+      "description": "Переходьте до робочих розділів без зайвих кліків.",
+      "users": "Керувати користувачами",
+      "streams": "Стежити за стрімами",
+      "alerts": "Закривати алерти"
     },
-    "database": {
-      "title": "База даних",
-      "description": "Обслуговування бази та резервні копії",
-      "cleanup": "Очистити",
-      "backup": "Створити резервну копію"
-    },
-    "email": {
-      "title": "Налаштування email",
-      "description": "Налаштуйте постачальника email та шаблони",
-      "configure": "Налаштувати SMTP",
-      "test": "Тестовий лист"
+    "actions": {
+      "title": "Журнал дій адміністратора",
+      "description": "Кожна привілейована дія записується для аудиту.",
+      "filters": {
+        "all": "Усі дії",
+        "suspend_user": "Блокування",
+        "unsuspend_user": "Розблокування",
+        "change_tier": "Зміни тарифів",
+        "force_stop_stream": "Примусові зупинки",
+        "resolve_alert": "Вирішення алертів"
+      },
+      "actionNames": {
+        "suspend_user": "Користувача заблоковано",
+        "unsuspend_user": "Користувача розблоковано",
+        "change_tier": "Тариф змінено",
+        "force_stop_stream": "Стрім зупинено",
+        "resolve_alert": "Алерт вирішено",
+        "default": "Адмін-дія"
+      },
+      "list": {
+        "loading": "Завантаження журналу...",
+        "empty": "Ще немає дій адміністратора.",
+        "by": "Ким: {admin}",
+        "target": "Ціль: {target}",
+        "targetUnknown": "Система",
+        "reason": "Причина: {reason}",
+        "details": "Деталі",
+        "noDetails": "Додаткових деталей немає"
+      }
     }
   }
 }

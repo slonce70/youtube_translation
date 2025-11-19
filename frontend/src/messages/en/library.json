@@ -52,6 +52,7 @@
         "audio": "Audio"
       },
       "upload": "Upload files",
+      "previewAlt": "Preview of {filename}",
       "badges": {
         "ready": "Ready for streaming",
         "needsEncoding": "Needs re-encoding",
@@ -286,7 +287,11 @@
       "videoCodec": "Video codec must be {expected} for stream copy. Detected {found}.",
       "audioCodec": "Audio codec must be {expected} for stream copy. Detected {found}.",
       "pixelFormat": "Pixel format must be {expected} for stream copy. Detected {found}.",
-      "unknownValue": "unknown"
+      "unknownValue": "unknown",
+      "section": {
+        "video": "Video warnings",
+        "audio": "Audio warnings"
+      }
     },
     "errors": {
       "metadataHelper": "Couldn't load the MediaInfo helper. We'll refresh metadata after the upload completes.",

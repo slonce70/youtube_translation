@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Radio, Search, Square } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -18,6 +18,8 @@ import { useTranslations, useLocale } from 'next-intl'
 export default function StreamsMonitoring() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 25
   const queryClient = useQueryClient()
   const t = useTranslations('admin.streams')
   const locale = useLocale()
@@ -31,12 +33,22 @@ export default function StreamsMonitoring() {
   const dateLocale = dateLocales[locale] ?? enUS
 
   const { data: streamsData, isLoading } = useQuery({
-    queryKey: ['admin-streams', filterStatus],
+    queryKey: ['admin-streams', filterStatus, page],
     queryFn: () => api.admin.streams.listAll({
       status: filterStatus !== 'all' ? filterStatus : undefined,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
     }),
     refetchInterval: 5000,
   })
+
+  useEffect(() => {
+    setPage(0)
+  }, [filterStatus])
+
+  useEffect(() => {
+    setPage(0)
+  }, [searchQuery])
 
   const forceStopMutation = useMutation({
     mutationFn: (streamId: string) => api.admin.streams.forceStop(streamId),
@@ -60,6 +72,10 @@ export default function StreamsMonitoring() {
                          stream.user_email.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesSearch
   })
+  const totalFetched = filteredStreams.length
+  const pageStart = totalFetched > 0 ? page * PAGE_SIZE + 1 : 0
+  const pageEnd = totalFetched > 0 ? pageStart + totalFetched - 1 : 0
+  const hasNextPage = (streamsData?.length ?? 0) === PAGE_SIZE
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -243,6 +259,32 @@ export default function StreamsMonitoring() {
               ))}
             </div>
           )}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-6 gap-3">
+            <div className="text-sm text-slate-500 dark:text-slate-400">
+              {t('pagination.showing', { start: pageStart, end: pageEnd })}
+            </div>
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
+                disabled={page === 0}
+              >
+                {t('pagination.previous')}
+              </Button>
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                {t('pagination.page', { page: page + 1 })}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPage((prev) => prev + 1)}
+                disabled={!hasNextPage}
+              >
+                {t('pagination.next')}
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

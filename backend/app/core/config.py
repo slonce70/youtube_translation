@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     download_token_secret: str = "change_this_download_secret"
     download_token_ttl_seconds: int = 300  # 5 minutes
+    upload_token_secret: str = "change_this_upload_secret"
+    upload_token_ttl_seconds: int = 900  # 15 minutes
     csrf_secret: Optional[str] = None
 
     # Storage
@@ -68,6 +70,7 @@ class Settings(BaseSettings):
     ffmpeg_video_maxrate_kbps: int = 7500
     ffmpeg_video_bufsize_kbps: int = 12000
     ffmpeg_audio_bitrate_kbps: int = 160
+    ffmpeg_keyframe_interval_seconds: float = 2.0  # YouTube/Twitch recommend 2s, max 4s
     ffmpeg_cleanup_interval_seconds: int = 60
 
     # Monitoring
@@ -90,6 +93,8 @@ class Settings(BaseSettings):
     supervisor_conf_path: str = "supervisord.conf"
     supervisor_config_dir: str = "supervisord/programs"
     supervisor_log_dir: str = "supervisord/logs"
+    stream_schedule_poll_interval_seconds: int = 15
+    stream_schedule_retry_interval_seconds: int = 60
 
     @property
     def cors_origins(self) -> List[str]:
@@ -204,6 +209,14 @@ class Settings(BaseSettings):
             raise ValueError("DOWNLOAD_TOKEN_SECRET must be configured")
         return value
 
+    @field_validator('upload_token_secret')
+    @classmethod
+    def validate_upload_token_secret(cls, value: str, info: FieldValidationInfo) -> str:
+        environment = (info.data or {}).get('environment', 'development')
+        if environment != 'development' and value == "change_this_upload_secret":
+            raise ValueError("UPLOAD_TOKEN_SECRET must be configured")
+        return value
+
     @field_validator('stream_runtime_mode')
     @classmethod
     def validate_stream_runtime_mode(cls, value: str) -> str:
@@ -224,6 +237,13 @@ class Settings(BaseSettings):
     def validate_supervisor_program_template(cls, value: str) -> str:
         if '{stream_id}' not in value:
             raise ValueError("SUPERVISOR_PROGRAM_TEMPLATE must include '{stream_id}' placeholder")
+        return value
+
+    @field_validator('ffmpeg_keyframe_interval_seconds')
+    @classmethod
+    def validate_keyframe_interval(cls, value: float) -> float:
+        if not 0.5 <= value <= 4.0:
+            raise ValueError("FFMPEG_KEYFRAME_INTERVAL_SECONDS must be between 0.5 and 4.0 seconds")
         return value
 
 

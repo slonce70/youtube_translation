@@ -5,8 +5,56 @@
 # This hook is called AFTER tusd completes the upload.
 # It moves the file from _temp to the user's directory and notifies the backend.
 #
-
 set -e
+
+resolve_user_from_token() {
+    local token="$1"
+
+    if [ -z "${UPLOAD_TOKEN_SECRET:-}" ]; then
+        echo "[post-finish] ERROR: UPLOAD_TOKEN_SECRET is not set" >&2
+        return 1
+    fi
+
+    local sanitized
+    sanitized=$(printf '%s' "$token" | tr -d '\r\n')
+    if [ -z "$sanitized" ]; then
+        echo "[post-finish] ERROR: Upload token missing" >&2
+        return 1
+    fi
+
+    local decoded
+    if ! decoded=$(printf '%s' "$sanitized" | base64 --decode 2>/dev/null); then
+        echo "[post-finish] ERROR: Failed to decode upload token" >&2
+        return 1
+    fi
+
+    local payload="${decoded%:*}"
+    local signature="${decoded##*:}"
+    local expected
+    expected=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$UPLOAD_TOKEN_SECRET" | awk '{print $NF}')
+    if [ "$signature" != "$expected" ]; then
+        echo "[post-finish] ERROR: Upload token signature mismatch" >&2
+        return 1
+    fi
+
+    local user_id
+    user_id=$(printf '%s' "$payload" | cut -d':' -f1)
+    local expires_at
+    expires_at=$(printf '%s' "$payload" | cut -d':' -f2)
+    if [ -z "$user_id" ] || [ -z "$expires_at" ]; then
+        echo "[post-finish] ERROR: Upload token missing fields" >&2
+        return 1
+    fi
+
+    local now
+    now=$(date +%s)
+    if [ "$expires_at" -le "$now" ]; then
+        echo "[post-finish] ERROR: Upload token expired" >&2
+        return 1
+    fi
+
+    printf '%s' "$user_id"
+}
 
 # Read webhook data from stdin (может быть многострочным)
 HOOK_DATA=$(cat)
@@ -17,20 +65,30 @@ if [ -z "$HOOK_DATA" ]; then
 fi
 
 # Extract metadata
-USER_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.user_id // .Upload.MetaData.user_id // empty')
+TOKEN_METADATA=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.upload_token // .Upload.MetaData.upload_token // empty')
+USER_ID_METADATA=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.user_id // .Upload.MetaData.user_id // empty')
 UPLOAD_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.ID // .Upload.ID // empty')
 FILENAME=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.filename // .Upload.MetaData.filename // .Upload.MetaData.name // empty')
 
 # Debug logging
 echo "[post-finish] Upload ID: $UPLOAD_ID" >&2
-echo "[post-finish] User ID: $USER_ID" >&2
+echo "[post-finish] User ID (metadata): $USER_ID_METADATA" >&2
 echo "[post-finish] Filename: $FILENAME" >&2
 
-# Validate user_id
-if [ -z "$USER_ID" ] || [ "$USER_ID" = "null" ]; then
-    echo "[post-finish] ERROR: Missing user_id in upload metadata" >&2
-    exit 0  # Don't fail - file is uploaded, just log error
+# Validate token
+if [ -z "$TOKEN_METADATA" ] || [ "$TOKEN_METADATA" = "null" ]; then
+    echo "[post-finish] ERROR: Missing upload token in metadata" >&2
+    exit 0
 fi
+
+RESOLVED_USER_ID=$(resolve_user_from_token "$TOKEN_METADATA") || exit 0
+
+if [ -n "$USER_ID_METADATA" ] && [ "$USER_ID_METADATA" != "$RESOLVED_USER_ID" ]; then
+    echo "[post-finish] WARNING: user_id metadata ($USER_ID_METADATA) mismatches token owner ($RESOLVED_USER_ID)" >&2
+fi
+
+USER_ID="$RESOLVED_USER_ID"
+echo "[post-finish] Resolved User ID: $USER_ID" >&2
 
 # Define paths (absolute to avoid cwd issues)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -84,14 +142,24 @@ fi
 
 # Notify backend via webhook
 BACKEND_URL="http://localhost:8000/api/assets/upload-complete"
+PAYLOAD="${UPDATED_DATA:-$HOOK_DATA}"
 
 echo "[post-finish] Notifying backend..." >&2
 
-WEBHOOK_RESPONSE=$(curl -s -X POST "$BACKEND_URL" \
-    -H "Content-Type: application/json" \
-    -d "${UPDATED_DATA:-$HOOK_DATA}" 2>&1)
+HOOK_HEADERS=(-H "Content-Type: application/json")
+if [ -n "${TUSD_HMAC_SECRET:-}" ]; then
+    HOOK_SIGNATURE=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$TUSD_HMAC_SECRET" | awk '{print $NF}')
+    HOOK_HEADERS+=(-H "X-Tusd-Signature: $HOOK_SIGNATURE")
+else
+    echo "[post-finish] WARNING: TUSD_HMAC_SECRET is not set; sending unsigned webhook" >&2
+fi
 
+set +e
+WEBHOOK_RESPONSE=$(curl -s -X POST "$BACKEND_URL" \
+    "${HOOK_HEADERS[@]}" \
+    -d "$PAYLOAD" 2>&1)
 CURL_EXIT_CODE=$?
+set -e
 
 if [ $CURL_EXIT_CODE -ne 0 ]; then
     echo "[post-finish] ERROR: Failed to notify backend" >&2

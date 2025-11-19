@@ -43,6 +43,12 @@ type UploadProgressPayload = {
 
 type UploadStatus = 'pending' | 'ready' | 'uploading' | 'processing' | 'complete' | 'error'
 
+interface UploadWarningsByKind {
+  video: string[]
+  audio: string[]
+  general: string[]
+}
+
 interface UploadAnalysis {
   containerFormat?: string
   durationSeconds?: number
@@ -61,7 +67,7 @@ interface UploadAnalysis {
     sampleRate?: number
     channels?: number
   }
-  warnings: string[]
+  warnings: UploadWarningsByKind
   bitrateStatus: 'within' | 'outside' | 'unknown'
   recommendationLabel?: string
   recommendationDetails?: string
@@ -436,7 +442,11 @@ function buildAnalysis(
   const normalizedAudioCodec = normalizeAudioCodec(rawAudioCodec)
   const normalizedPixelFormat = normalizePixelFormat(rawPixelFormat)
 
-  const warnings: string[] = []
+  const warnings: UploadWarningsByKind = {
+    video: [],
+    audio: [],
+    general: [],
+  }
   let bitrateStatus: UploadAnalysis['bitrateStatus'] = 'unknown'
   const bitrateForCheck = videoBitrate ?? overallBitrate
   let isLikelyCompatible: boolean | undefined =
@@ -451,7 +461,7 @@ function buildAnalysis(
       bitrateStatus = 'within'
     } else {
       bitrateStatus = 'outside'
-      warnings.push(
+      warnings.video.push(
         translate('warnings.bitrateRange', {
           resolution: recommendation.rule.resolutionLabel,
           fps: recommendation.rule.fps,
@@ -464,7 +474,7 @@ function buildAnalysis(
   }
 
   if (treatAsVideo && recommendation.fpsOutOfGuideline) {
-    warnings.push(translate('warnings.fpsOutOfGuideline'))
+    warnings.video.push(translate('warnings.fpsOutOfGuideline'))
   }
 
   const expectedVideoCodecLabel = 'H.264'
@@ -472,7 +482,7 @@ function buildAnalysis(
   const expectedPixelFormatLabel = 'yuv420p'
 
   if (treatAsVideo && normalizedVideoCodec && normalizedVideoCodec !== 'h264') {
-    warnings.push(
+    warnings.video.push(
       translate('warnings.videoCodec', {
         expected: expectedVideoCodecLabel,
         found: formatCodecDisplay(rawVideoCodec),
@@ -482,7 +492,7 @@ function buildAnalysis(
   }
 
   if (normalizedAudioCodec && normalizedAudioCodec !== 'aac') {
-    warnings.push(
+    warnings.audio.push(
       translate('warnings.audioCodec', {
         expected: expectedAudioCodecLabel,
         found: formatCodecDisplay(rawAudioCodec),
@@ -492,7 +502,7 @@ function buildAnalysis(
   }
 
   if (treatAsVideo && normalizedPixelFormat && normalizedPixelFormat !== 'yuv420p') {
-    warnings.push(
+    warnings.video.push(
       translate('warnings.pixelFormat', {
         expected: expectedPixelFormatLabel,
         found: rawPixelFormat ? rawPixelFormat : translate('warnings.unknownValue'),
@@ -556,6 +566,7 @@ const mediaInfoPromiseRef = useRef<Promise<MediaInfo<'JSON'>> | null>(null)
 const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const isMountedRef = useRef(true)
+  const analysisQueueRef = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(() => {
     isMountedRef.current = true
@@ -649,103 +660,116 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
   }, [t])
 
   const analyzeFile = useCallback(
-    async (file: DashboardFile, assetKindHint: 'video' | 'audio' = 'video') => {
-      try {
-        const promise = mediaInfoPromiseRef.current
-        const instance =
-          mediaInfoRef.current ?? (promise ? await promise.catch(() => null) : null)
-        if (!instance) {
-          return
-        }
-        if (!mediaInfoRef.current) {
-          mediaInfoRef.current = instance
-        }
-        const fileData = file.data
-        if (!(fileData instanceof File)) {
-          return
-        }
+    (file: DashboardFile, assetKindHint: 'video' | 'audio' = 'video') => {
+      const execute = async () => {
+        try {
+          const promise = mediaInfoPromiseRef.current
+          const instance =
+            mediaInfoRef.current ?? (promise ? await promise.catch(() => null) : null)
+          if (!instance) {
+            return
+          }
+          if (!mediaInfoRef.current) {
+            mediaInfoRef.current = instance
+          }
+          const fileData = file.data
+          if (!(fileData instanceof File)) {
+            return
+          }
 
-        const result = await instance.analyzeData(
-          () => fileData.size,
-          (size, offset) =>
-            new Promise<Uint8Array>((resolve, reject) => {
-              const slice = fileData.slice(offset, offset + size)
-              const reader = new FileReader()
-              reader.onload = () => {
-                if (!reader.result) {
-                  reject(new Error('Failed to read file chunk'))
-                  return
+          const result = await instance.analyzeData(
+            () => fileData.size,
+            (size, offset) =>
+              new Promise<Uint8Array>((resolve, reject) => {
+                const slice = fileData.slice(offset, offset + size)
+                const reader = new FileReader()
+                reader.onload = () => {
+                  if (!reader.result) {
+                    reject(new Error('Failed to read file chunk'))
+                    return
+                  }
+                  resolve(new Uint8Array(reader.result as ArrayBuffer))
                 }
-                resolve(new Uint8Array(reader.result as ArrayBuffer))
-              }
-              reader.onerror = () => reject(reader.error ?? new Error('File read error'))
-              reader.readAsArrayBuffer(slice)
-            })
-        )
+                reader.onerror = () => reject(reader.error ?? new Error('File read error'))
+                reader.readAsArrayBuffer(slice)
+              })
+          )
 
-        const parsed = JSON.parse(result) as MediaInfoJson
-        const analysis = buildAnalysis(parsed, t, { assetKind: assetKindHint })
+          const parsed = JSON.parse(result) as MediaInfoJson
+          const analysis = buildAnalysis(parsed, t, { assetKind: assetKindHint })
 
-        if (assetKindHint === 'audio' && analysis.video && !looksLikeCoverArt(analysis.video)) {
-          logger.warn('Rejecting analysed file: detected real video streams while in audio mode', {
-            fileName: file.name,
-            codec: analysis.video.codec,
-            fps: analysis.video.fps,
-            component: 'UploadModal',
-          })
-          toast.error(t('errors.videoInAudioMode'))
-          try {
-            uppy.removeFile(file.id)
-          } catch (removeError) {
-            logger.error('Failed to remove file after audio-mode rejection', removeError, {
+          if (assetKindHint === 'audio' && analysis.video && !looksLikeCoverArt(analysis.video)) {
+            logger.warn('Rejecting analysed file: detected real video streams while in audio mode', {
+              fileName: file.name,
+              codec: analysis.video.codec,
+              fps: analysis.video.fps,
               component: 'UploadModal',
-              fileId: file.id,
             })
+            toast.error(t('errors.videoInAudioMode'))
+            try {
+              uppy.removeFile(file.id)
+            } catch (removeError) {
+              logger.error('Failed to remove file after audio-mode rejection', removeError, {
+                component: 'UploadModal',
+                fileId: file.id,
+              })
+            }
+            if (isMountedRef.current) {
+              setUploadItems((items) => items.filter((item) => item.id !== file.id))
+            }
+            return
           }
-          if (isMountedRef.current) {
-            setUploadItems((items) => items.filter((item) => item.id !== file.id))
-          }
-          return
-        }
 
-        if (isMountedRef.current) {
-          setUploadItems((items) =>
-            items.map((current) =>
-              current.id === file.id
-                ? {
-                    ...current,
-                    status:
-                      current.status === 'pending'
-                        ? analysis.isLikelyCompatible === false
-                          ? 'pending'
-                          : 'ready'
-                        : current.status,
-                    analysis,
-                  }
-                : current
+          if (isMountedRef.current) {
+            setUploadItems((items) =>
+              items.map((current) =>
+                current.id === file.id
+                  ? {
+                      ...current,
+                      status:
+                        current.status === 'pending'
+                          ? analysis.isLikelyCompatible === false
+                            ? 'pending'
+                            : 'ready'
+                          : current.status,
+                      analysis,
+                    }
+                  : current
+              )
             )
-          )
-        }
-      } catch (error) {
-        logger.error('Failed to analyse media info', error, { component: 'UploadModal', fileId: file.id })
-        if (isMountedRef.current) {
-          setUploadItems((items) =>
-            items.map((current) =>
-              current.id === file.id
-                ? {
-                    ...current,
-                    status: current.status,
-                    analysis: {
-                      warnings: [t('warnings.metadataUnavailable')],
-                      bitrateStatus: 'unknown',
-                      isLikelyCompatible: undefined,
-                    },
-                  }
-                : current
+          }
+        } catch (error) {
+          logger.error('Failed to analyse media info', error, {
+            component: 'UploadModal',
+            fileId: file.id,
+          })
+          if (isMountedRef.current) {
+            setUploadItems((items) =>
+              items.map((current) =>
+                current.id === file.id
+                  ? {
+                      ...current,
+                      status: current.status,
+                      analysis: {
+                        warnings: {
+                          video: [],
+                          audio: [],
+                          general: [t('warnings.metadataUnavailable')],
+                        },
+                        bitrateStatus: 'unknown',
+                        isLikelyCompatible: undefined,
+                      },
+                    }
+                  : current
+              )
             )
-          )
+          }
         }
       }
+
+      const chain = analysisQueueRef.current?.catch(() => undefined) ?? Promise.resolve()
+      analysisQueueRef.current = chain.then(() => execute())
+      return analysisQueueRef.current
     },
     [t, uppy]
   )
@@ -1240,6 +1264,10 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                     item.analysis?.isLikelyCompatible === false
                       ? 'capitalize text-error-600 dark:text-error-400'
                       : 'capitalize text-slate-700 dark:text-slate-300'
+                  const warnings = item.analysis?.warnings
+                  const hasWarnings =
+                    !!warnings &&
+                    (warnings.video.length || warnings.audio.length || warnings.general.length)
 
                   return (
                     <div
@@ -1338,17 +1366,53 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                     </div>
                   ) : null}
 
-                    {item.analysis?.warnings?.length ? (
-                      <div className="space-y-2">
-                        {item.analysis.warnings.map((warning, index) => (
-                          <div
-                            key={index}
-                            className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
-                          >
-                            <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                            <span>{warning}</span>
+                    {hasWarnings ? (
+                      <div className="space-y-3">
+                        {warnings?.general.length ? (
+                          <div className="space-y-2">
+                            {warnings.general.map((warning, warningIndex) => (
+                              <div
+                                key={`general-warning-${warningIndex}`}
+                                className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
+                              >
+                                <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <span>{warning}</span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        ) : null}
+                        {warnings?.video.length ? (
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-error-500 dark:text-error-300">
+                              {t('warnings.section.video')}
+                            </p>
+                            {warnings.video.map((warning, warningIndex) => (
+                              <div
+                                key={`video-warning-${warningIndex}`}
+                                className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
+                              >
+                                <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <span>{warning}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {warnings?.audio.length ? (
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-error-500 dark:text-error-300">
+                              {t('warnings.section.audio')}
+                            </p>
+                            {warnings.audio.map((warning, warningIndex) => (
+                              <div
+                                key={`audio-warning-${warningIndex}`}
+                                className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
+                              >
+                                <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <span>{warning}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     ) : item.analysis && item.analysis.bitrateStatus === 'within' ? (
                       <div className="flex items-start gap-2 text-sm text-success-600 dark:text-success-400">

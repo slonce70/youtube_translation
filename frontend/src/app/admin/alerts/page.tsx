@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { AlertTriangle, Search, CheckCircle } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -19,6 +19,8 @@ export default function AlertsManagement() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterSeverity, setFilterSeverity] = useState<string>('all')
   const [filterResolved, setFilterResolved] = useState<string>('all')
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 25
   const queryClient = useQueryClient()
   const t = useTranslations('admin.alerts')
   const locale = useLocale()
@@ -32,13 +34,23 @@ export default function AlertsManagement() {
   const dateLocale = dateLocales[locale] ?? enUS
 
   const { data: alertsData, isLoading } = useQuery({
-    queryKey: ['admin-alerts', filterSeverity, filterResolved],
+    queryKey: ['admin-alerts', filterSeverity, filterResolved, page],
     queryFn: () => api.admin.alerts.list({
       severity: filterSeverity !== 'all' ? filterSeverity : undefined,
       resolved: filterResolved === 'resolved' ? true : filterResolved === 'unresolved' ? false : undefined,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
     }),
     refetchInterval: 10000,
   })
+
+  useEffect(() => {
+    setPage(0)
+  }, [filterSeverity, filterResolved])
+
+  useEffect(() => {
+    setPage(0)
+  }, [searchQuery])
 
   const resolveMutation = useMutation({
     mutationFn: ({ alertId, notes }: { alertId: string; notes?: string }) => 
@@ -64,6 +76,10 @@ export default function AlertsManagement() {
                          alert.user_email.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesSearch
   })
+  const totalFetched = filteredAlerts.length
+  const pageStart = totalFetched > 0 ? page * PAGE_SIZE + 1 : 0
+  const pageEnd = totalFetched > 0 ? pageStart + totalFetched - 1 : 0
+  const hasNextPage = (alertsData?.length ?? 0) === PAGE_SIZE
 
   const getSeverityColor = (severity: string) => {
     return severity === 'critical' ? 'error' : 'warning'
@@ -259,6 +275,32 @@ export default function AlertsManagement() {
               ))}
             </div>
           )}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-6 gap-3">
+            <div className="text-sm text-slate-500 dark:text-slate-400">
+              {t('pagination.showing', { start: pageStart, end: pageEnd })}
+            </div>
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
+                disabled={page === 0}
+              >
+                {t('pagination.previous')}
+              </Button>
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                {t('pagination.page', { page: page + 1 })}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPage((prev) => prev + 1)}
+                disabled={!hasNextPage}
+              >
+                {t('pagination.next')}
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

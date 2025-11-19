@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { supabase, waitForAuth } from '@/lib/supabase'
 import { NavBar } from '@/components/NavBar'
@@ -22,6 +22,7 @@ const DEV_USER_ID = process.env.NEXT_PUBLIC_DEV_USER_ID ?? 'dev-user-id'
 
 export default function DashboardLayout({ children }: Props) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [authReady, setAuthReady] = useState(false)
@@ -30,7 +31,7 @@ export default function DashboardLayout({ children }: Props) {
     data: quota,
     isLoading: quotaLoading,
   } = useQuery<QuotaUsageResponse>({
-    queryKey: ['quota'],
+    queryKey: ['quota', user?.id],
     queryFn: api.quota.get,
     enabled: !!user && authReady,
     staleTime: 60_000,
@@ -75,6 +76,7 @@ export default function DashboardLayout({ children }: Props) {
         return
       }
       if (!session?.user) {
+        queryClient.clear()
         router.replace('/login')
       } else {
         setUser(session.user)
@@ -86,10 +88,12 @@ export default function DashboardLayout({ children }: Props) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [router])
+  }, [queryClient, router])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
+    queryClient.clear()
+    setUser(null)
     router.replace('/login')
   }
 

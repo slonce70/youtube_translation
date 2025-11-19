@@ -45,7 +45,7 @@ export default function DashboardPage() {
   }, [])
 
   const { data: metrics, isLoading: metricsLoading } = useQuery<MetricsResponse>({
-    queryKey: ['metrics'],
+    queryKey: ['metrics', user?.id],
     queryFn: api.metrics.get,
     refetchInterval: computeRefetchInterval,
     refetchOnWindowFocus: true,
@@ -53,7 +53,7 @@ export default function DashboardPage() {
   })
 
   const { data: streams, isLoading: streamsLoading } = useQuery<Stream[]>({
-    queryKey: ['streams'],
+    queryKey: ['streams', user?.id],
     queryFn: api.streams.list,
     refetchInterval: computeRefetchInterval,
     refetchOnWindowFocus: true,
@@ -61,7 +61,7 @@ export default function DashboardPage() {
   })
 
   const { data: assets, isLoading: assetsLoading } = useQuery<Asset[]>({
-    queryKey: ['assets', 'dashboard'],
+    queryKey: ['assets', user?.id, 'dashboard'],
     queryFn: () => api.assets.list(),
     enabled: !!user,
     staleTime: 30_000,
