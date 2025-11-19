@@ -16,6 +16,7 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { Stream } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { useDashboardContext } from '@/app/dashboard/dashboard-context'
 
 interface StreamControlWidgetProps {
   streams?: Stream[]
@@ -38,18 +39,19 @@ const dateLocales: Record<string, DateFnsLocale> = {
 
 export function StreamControlWidget({ streams, loading }: StreamControlWidgetProps) {
   const queryClient = useQueryClient()
+  const { user } = useDashboardContext()
   const t = useTranslations('dashboard.streamControl')
   const locale = useLocale()
   const dateLocale = dateLocales[locale] ?? enUS
 
   const startMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.start(streamId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['streams'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['streams', user?.id] }),
   })
 
   const stopMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.stop(streamId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['streams'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['streams', user?.id] }),
   })
 
   const activeStreams = useMemo(

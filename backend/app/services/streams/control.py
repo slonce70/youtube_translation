@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -33,6 +33,7 @@ from app.core.systemd_control import (
 from app.models.database import Stream
 from app.schemas.api import StreamLogsResponse, StreamQualityResponse, StreamStatus
 from app.streaming.ffmpeg_manager import ffmpeg_manager as default_ffmpeg_manager
+from app.streaming.hot_swap import hot_swap_manager
 
 from .helpers import extract_stream_assets, load_stream_with_relations, prepare_stream_launch
 
@@ -97,8 +98,10 @@ class StreamControlService:
             stream.started_at = _utcnow()
             stream.stopped_at = None
             stream.error_message = None
+            self._clear_schedule(stream)
             await self.db.commit()
-            return self._status_payload(stream, True)
+            usage = await self._get_usage_snapshot(enforcer)
+            return self._status_payload(stream, True, usage=usage)
 
         if supervisor_enabled():
             info = await supervisor_program_status(stream_id)
@@ -112,8 +115,10 @@ class StreamControlService:
             stream.started_at = _utcnow()
             stream.stopped_at = None
             stream.error_message = None
+            self._clear_schedule(stream)
             await self.db.commit()
-            return self._status_payload(stream, True)
+            usage = await self._get_usage_snapshot(enforcer)
+            return self._status_payload(stream, True, usage=usage)
 
         playlists, destinations, log_file = await prepare_stream_launch(
             self.db,
@@ -148,14 +153,22 @@ class StreamControlService:
         info = self.manager.get_stream_info(str(stream_id)) or {}
         stream.pid = info.get("pid")
         stream.log_path = str(log_file)
+        self._clear_schedule(stream)
         await self.db.commit()
-        return self._status_payload(stream, True, info.get("uptime_seconds", 0))
+        usage = await self._get_usage_snapshot(enforcer)
+        return self._status_payload(
+            stream,
+            True,
+            info.get("uptime_seconds", 0),
+            usage=usage,
+        )
 
     async def stop_stream(self, stream_id: UUID) -> StreamStatus:
         stream = await self._get_stream_basic(stream_id)
         await self._stop_for_runtime(stream)
         await self.db.commit()
-        return self._status_payload(stream, False)
+        usage = await self._get_usage_snapshot()
+        return self._status_payload(stream, False, usage=usage)
 
     async def restart_stream(self, stream_id: UUID, live_target: Optional[str] = None) -> None:
         stream = await load_stream_with_relations(self.db, self.user_id, stream_id)
@@ -201,6 +214,56 @@ class StreamControlService:
                 detail="Failed to restart stream",
             )
 
+    async def enqueue_hot_swap(self, stream_id: UUID, target: str, asset_payload: Dict[str, Any]) -> None:
+        if systemd_enabled() or supervisor_enabled():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hot swapping is not supported for managed runtime streams",
+            )
+
+        stream = await self._get_stream_basic(stream_id)
+        if stream.status != "running" or not self.manager.is_running(str(stream_id)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Stream must be running to append new assets",
+            )
+
+        try:
+            await hot_swap_manager.enqueue_asset(str(stream_id), target, asset_payload)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+    async def apply_live_collection_update(
+        self,
+        stream: Stream,
+        target: str,
+        assets: List[Dict[str, Any]],
+        *,
+        loop_enabled: bool,
+        shuffle_enabled: bool,
+    ) -> None:
+        if systemd_enabled() or supervisor_enabled():
+            return
+
+        if stream.status != "running" or not self.manager.is_running(str(stream.id)):
+            return
+
+        try:
+            await hot_swap_manager.replace_queue(
+                str(stream.id),
+                target,
+                assets,
+                loop=loop_enabled,
+                shuffle=shuffle_enabled,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
     async def ensure_stopped(self, stream: Stream) -> None:
         if systemd_enabled():
             if await systemd_is_active(stream.id):
@@ -211,6 +274,7 @@ class StreamControlService:
             stream.status = "stopped"
             stream.pid = None
             stream.stopped_at = _utcnow()
+            self._clear_schedule(stream)
             return
 
         if supervisor_enabled():
@@ -230,6 +294,7 @@ class StreamControlService:
             stream.status = "stopped"
             stream.pid = None
             stream.stopped_at = _utcnow()
+            self._clear_schedule(stream)
             return
 
         if self.manager.is_running(str(stream.id)):
@@ -237,6 +302,8 @@ class StreamControlService:
         stream.status = "stopped"
         stream.pid = None
         stream.stopped_at = _utcnow()
+        self._clear_schedule(stream)
+        self._clear_schedule(stream)
 
     async def get_stream_status(self, stream_id: UUID) -> StreamStatus:
         stream = await self._get_stream_basic(stream_id)
@@ -246,37 +313,65 @@ class StreamControlService:
             info = await systemd_unit_status(stream_id)
             active_state = info.get("ActiveState", stream.status)
             uptime_seconds = _uptime_seconds(stream) if is_running else 0
-            return StreamStatus(
-                id=stream_id,
-                status=active_state,
-                uptime_seconds=uptime_seconds,
-                is_running=is_running,
-                error_message=stream.error_message,
+            usage = await self._get_usage_snapshot()
+            status_override = stream.status if (stream.status == "scheduled" and not is_running) else active_state
+            return self._status_payload(
+                stream,
+                is_running,
+                uptime_seconds,
+                status_override=status_override,
+                usage=usage,
             )
 
         if supervisor_enabled():
             info = await supervisor_program_status(stream_id)
             state = info.get("state", stream.status)
-            running = state == "RUNNING"
+
+            raw_state = (state or "").lower()
+            supervisor_status_map = {
+                "running": "running",
+                "backoff": "error",
+                "fatal": "error",
+                "error": "error",
+                "starting": "starting",
+                "stopping": "stopping",
+                "stopped": "stopped",
+                "exited": "stopped",
+                "unknown": stream.status,
+                "not_found": "stopped",
+            }
+            normalized_status = supervisor_status_map.get(
+                raw_state,
+                stream.status if stream.status in {"stopped", "starting", "running", "error", "stopping", "scheduled"} else "stopped",
+            )
+
+            running = normalized_status == "running"
             uptime_seconds = _uptime_seconds(stream) if running else 0
 
-            db_status = stream.status
-            supervisor_status = state.lower() if state else "unknown"
-            if db_status != supervisor_status and supervisor_status != "unknown":
-                stream.status = supervisor_status
-                if not running and stream.started_at:
-                    stream.stopped_at = _utcnow()
+            status_changed = normalized_status != stream.status
+            if status_changed:
+                stream.status = normalized_status
+                if not running:
                     stream.pid = None
+                    stream.stopped_at = _utcnow()
                 elif running and not stream.started_at:
                     stream.started_at = _utcnow()
+
+                error_payload = info.get("error") or info.get("details")
+                if normalized_status == "error" and error_payload:
+                    stream.error_message = str(error_payload)[:500]
+
                 await self.db.commit()
 
-            return StreamStatus(
-                id=stream_id,
-                status=stream.status,
-                uptime_seconds=uptime_seconds,
-                is_running=running,
-                error_message=info.get("error") or stream.error_message,
+            error_message = info.get("error") or stream.error_message
+            usage = await self._get_usage_snapshot()
+            return self._status_payload(
+                stream,
+                running,
+                uptime_seconds,
+                status_override=stream.status,
+                error_message=error_message,
+                usage=usage,
             )
 
         is_running = self.manager.is_running(str(stream_id))
@@ -284,13 +379,12 @@ class StreamControlService:
         uptime_seconds = 0
         if is_running and stream_info and "uptime_seconds" in stream_info:
             uptime_seconds = stream_info["uptime_seconds"]
-
-        return StreamStatus(
-            id=stream_id,
-            status=stream.status,
-            uptime_seconds=uptime_seconds,
-            is_running=is_running,
-            error_message=stream.error_message,
+        usage = await self._get_usage_snapshot()
+        return self._status_payload(
+            stream,
+            is_running,
+            uptime_seconds,
+            usage=usage,
         )
 
     async def get_stream_logs(self, stream_id: UUID, lines: int) -> StreamLogsResponse:
@@ -310,16 +404,69 @@ class StreamControlService:
         )
 
     def _status_payload(
-        self, stream: Stream, is_running: bool, uptime_seconds: Optional[int] = None
+        self,
+        stream: Stream,
+        is_running: bool,
+        uptime_seconds: Optional[int] = None,
+        *,
+        status_override: Optional[str] = None,
+        error_message: Optional[str] = None,
+        usage: Optional[Dict[str, Any]] = None,
     ) -> StreamStatus:
         uptime = uptime_seconds if uptime_seconds is not None else (_uptime_seconds(stream) if is_running else 0)
+
+        base_total = max(float(stream.total_duration_seconds or 0.0), 0.0)
+        started_at = _aware(stream.started_at) if is_running else None
+        live_duration = None
+        if started_at:
+            live_duration = max(0, int((_utcnow() - started_at).total_seconds()))
+
+        total_duration = int(base_total + (live_duration or 0)) if live_duration is not None else int(base_total)
+        if not is_running:
+            total_duration = int(base_total)
+
+        daily_limit_seconds: Optional[int] = None
+        remaining_daily_seconds: Optional[int] = None
+        quota_limit_reached: Optional[bool] = None
+        if usage:
+            limit_seconds = usage.get("limit_seconds")
+            if limit_seconds is not None:
+                daily_limit_seconds = max(int(limit_seconds), 0)
+                remaining_val = usage.get("remaining_seconds")
+                if remaining_val is not None:
+                    remaining_daily_seconds = max(int(remaining_val), 0)
+                if "limit_reached" in usage:
+                    quota_limit_reached = bool(usage["limit_reached"])
+                elif remaining_daily_seconds is not None:
+                    quota_limit_reached = remaining_daily_seconds <= 0
+
+        status_value = status_override or stream.status
+        error_value = stream.error_message if error_message is None else error_message
+
         return StreamStatus(
             id=stream.id,
-            status=stream.status,
+            status=status_value,
             uptime_seconds=uptime,
             is_running=is_running,
-            error_message=stream.error_message,
+            error_message=error_value,
+            live_duration_seconds=live_duration,
+            total_duration_seconds=total_duration,
+            daily_limit_seconds=daily_limit_seconds,
+            remaining_daily_seconds=remaining_daily_seconds,
+            quota_limit_reached=quota_limit_reached,
         )
+
+    async def _get_usage_snapshot(
+        self,
+        enforcer: Optional[DefaultQuotaEnforcer] = None,
+    ) -> Dict[str, Any]:
+        candidate = enforcer or self.quota_cls(self.db, self.user_id)
+        try:
+            return await candidate.get_daily_streaming_usage()
+        except HTTPException:
+            raise
+        except Exception:
+            return {}
 
     async def _stop_for_runtime(self, stream: Stream) -> None:
         if systemd_enabled():
@@ -334,6 +481,10 @@ class StreamControlService:
                     await supervisor_stop_program(stream.id)
                 except RuntimeError as err:
                     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err)) from err
+            try:
+                await supervisor_remove_program(stream.id)
+            except RuntimeError as err:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err)) from err
         else:
             if self.manager.is_running(str(stream.id)):
                 await self.manager.stop_stream(str(stream.id))
@@ -349,6 +500,12 @@ class StreamControlService:
         if not stream:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found")
         return stream
+
+    @staticmethod
+    def _clear_schedule(stream: Stream) -> None:
+        stream.scheduled_start_enabled = False
+        stream.scheduled_start_time = None
+        stream.scheduled_start_attempted_at = None
 
 
 def _utcnow() -> datetime:

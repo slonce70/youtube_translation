@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { DragEvent } from 'react'
+import type { TranslationValues } from 'next-intl'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -7,6 +9,7 @@ import type {
   Asset,
   CreateStreamPayload,
   Destination,
+  LoopMode,
   MediaCollection,
   QuotaUsageResponse,
   Stream,
@@ -19,8 +22,9 @@ import {
   type CollectionEditorState,
   type ScheduleState,
 } from '../builder-helpers'
+import { useDashboardContext } from '@/app/dashboard/dashboard-context'
 
-type Translator = (key: string, values?: Record<string, unknown>) => string
+type Translator = (key: string, values?: TranslationValues) => string
 
 export type BuilderTab = 'video' | 'audio' | 'destinations' | 'schedule'
 
@@ -55,6 +59,7 @@ export const useStreamBuilder = ({
   onCreated,
 }: UseStreamBuilderOptions) => {
   const queryClient = useQueryClient()
+  const { user } = useDashboardContext()
 
   const enabledDestinations = useMemo(
     () => (destinations ?? []).filter((destination) => destination.enabled),
@@ -176,21 +181,31 @@ export const useStreamBuilder = ({
     [updateEditor],
   )
 
-  const handleItemDragStart = useCallback((target: 'video' | 'audio', index: number) => {
-    setDragState({ collection: target, index })
-  }, [])
+  const handleItemDragStart = useCallback(
+    (target: 'video' | 'audio', index: number, event: DragEvent<HTMLElement>) => {
+      setDragState({ collection: target, index })
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('application/x-collection-index', String(index))
+      }
+    },
+    [],
+  )
 
   const handleItemDrop = useCallback(
-    (target: 'video' | 'audio', index: number) => {
-      setDragState((current) => {
-        if (!current || current.collection !== target) {
-          return null
-        }
-        reorderEditorItems(target, current.index, index)
-        return null
-      })
+    (target: 'video' | 'audio', index: number, event: DragEvent<HTMLElement>) => {
+      event.preventDefault()
+      const payload = event.dataTransfer?.getData('application/x-collection-index')
+      const fromIndex = payload !== undefined && payload !== '' ? Number(payload) : dragState?.index
+      if (Number.isNaN(fromIndex) || fromIndex === undefined) {
+        setDragState(null)
+        return
+      }
+
+      reorderEditorItems(target, fromIndex, index)
+      setDragState(null)
     },
-    [reorderEditorItems],
+    [dragState?.index, reorderEditorItems],
   )
 
   const handleSelectCollection = useCallback(
@@ -245,7 +260,7 @@ export const useStreamBuilder = ({
     [],
   )
 
-  const loopModeForEditor = useCallback((editor: CollectionEditorState) => {
+  const loopModeForEditor = useCallback((editor: CollectionEditorState): LoopMode => {
     if (editor.shuffle) return 'shuffle'
     if (editor.loop) return 'loop'
     return 'once'
@@ -298,7 +313,7 @@ export const useStreamBuilder = ({
     mutationFn: (payload: CreateStreamPayload) => api.streams.create(payload),
     onSuccess: () => {
       toast.success(streamingToasts('stream.created'))
-      queryClient.invalidateQueries({ queryKey: ['streams'] })
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
       resetBuilderState()
       onCreated?.()
     },
@@ -332,6 +347,11 @@ export const useStreamBuilder = ({
       return
     }
 
+    const startAtIso =
+      scheduleState.startMode === 'schedule' && scheduleState.startAt
+        ? new Date(scheduleState.startAt).toISOString()
+        : undefined
+
     setIsBuilderSubmitting(true)
     try {
       let videoCollectionId = videoEditor.selectedCollectionId
@@ -362,14 +382,14 @@ export const useStreamBuilder = ({
         audio_collection_id: audioEnabled ? audioCollectionId : undefined,
         mix_mode: audioEnabled ? 'mixed' : 'video_only',
         settings_json: {
-          start_mode: scheduleState.startMode,
-          start_at: scheduleState.startMode === 'schedule' ? scheduleState.startAt : undefined,
           loop_stream: scheduleState.loopStream,
           video_volume: scheduleState.videoVolume,
           audio_volume: scheduleState.audioVolume,
           shuffle_video: videoEditor.shuffle,
           shuffle_audio: audioEditor.shuffle,
         },
+        schedule_mode: scheduleState.startMode,
+        schedule_start_at: startAtIso,
       }
 
       await createStreamMutation.mutateAsync(payload)

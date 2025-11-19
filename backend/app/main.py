@@ -47,6 +47,7 @@ from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.api_metrics import APIMetricsMiddleware
 from app.core.logging_config import setup_logging, get_logger
 from app.streaming.ffmpeg_manager import ffmpeg_manager
+from app.services.streams.scheduler import scheduled_stream_launcher
 
 
 _background_tasks = set()
@@ -144,6 +145,7 @@ async def startup_event():
     # Start periodic cleanup task for rate limiter
     schedule_background_task(cleanup_rate_limiter())
     schedule_background_task(cleanup_ffmpeg_streams())
+    schedule_background_task(scheduled_stream_launcher())
     
     # Start periodic stream status sync (only in supervisor/systemd mode)
     if settings.stream_runtime_mode in ("supervisor", "systemd"):

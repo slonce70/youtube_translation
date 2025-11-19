@@ -99,6 +99,12 @@
       "unsuspendError": "Failed to unsuspend user",
       "tierChangeSuccess": "Plan updated",
       "tierChangeError": "Failed to update plan"
+    },
+    "pagination": {
+      "showing": "Showing {start}-{end}",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {page}"
     }
   },
   "alerts": {
@@ -155,6 +161,12 @@
     "toasts": {
       "resolveSuccess": "Alert resolved successfully",
       "resolveError": "Failed to resolve alert"
+    },
+    "pagination": {
+      "showing": "Showing {start}-{end}",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {page}"
     }
   },
   "streams": {
@@ -207,6 +219,12 @@
     "toasts": {
       "forceStopSuccess": "Stream stopped successfully",
       "forceStopError": "Failed to stop stream"
+    },
+    "pagination": {
+      "showing": "Showing {start}-{end}",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {page}"
     }
   },
   "layout": {
@@ -294,44 +312,62 @@
   },
   "settings": {
     "header": {
-      "title": "Admin Settings",
-      "description": "Configure system settings and preferences"
+      "title": "Admin settings",
+      "description": "Review your admin privileges and track every action taken in the dashboard."
     },
-    "notifications": {
-      "title": "Notifications",
-      "emailAlerts": {
-        "label": "Email Alerts",
-        "description": "Receive email for critical alerts"
+    "profile": {
+      "title": "Admin profile",
+      "loading": "Loading admin profile...",
+      "empty": "Unable to load admin profile.",
+      "badges": {
+        "admin": "Admin"
       },
-      "userSignups": {
-        "label": "User Signups",
-        "description": "Notify on new user registrations"
-      },
-      "save": "Save Settings"
+      "fields": {
+        "email": "Email",
+        "tier": "Plan",
+        "status": "Billing status",
+        "suspension": "Suspension",
+        "suspended": "Suspended",
+        "active": "Active",
+        "notSuspended": "Not suspended"
+      }
     },
-    "security": {
-      "title": "Security",
-      "twoFactor": {
-        "label": "Two-Factor Auth",
-        "description": "Enable 2FA for admin accounts"
-      },
-      "loginAudit": {
-        "label": "Login Audit",
-        "description": "Log all admin login attempts"
-      },
-      "save": "Save Settings"
+    "shortcuts": {
+      "title": "Quick actions",
+      "description": "Jump to real admin tools without leaving this page.",
+      "users": "Manage users",
+      "streams": "Monitor streams",
+      "alerts": "Resolve alerts"
     },
-    "database": {
-      "title": "Database",
-      "description": "Database maintenance and backup settings",
-      "cleanup": "Run Cleanup",
-      "backup": "Create Backup"
-    },
-    "email": {
-      "title": "Email Configuration",
-      "description": "Configure email service provider and templates",
-      "configure": "Configure SMTP",
-      "test": "Test Email"
+    "actions": {
+      "title": "Admin activity log",
+      "description": "Every privileged action is recorded for auditing and troubleshooting.",
+      "filters": {
+        "all": "All actions",
+        "suspend_user": "Suspensions",
+        "unsuspend_user": "Unsuspensions",
+        "change_tier": "Plan changes",
+        "force_stop_stream": "Stream overrides",
+        "resolve_alert": "Alert resolutions"
+      },
+      "actionNames": {
+        "suspend_user": "Suspended user",
+        "unsuspend_user": "Reactivated user",
+        "change_tier": "Changed plan",
+        "force_stop_stream": "Stopped stream",
+        "resolve_alert": "Resolved alert",
+        "default": "Admin action"
+      },
+      "list": {
+        "loading": "Loading audit log...",
+        "empty": "No admin actions recorded yet.",
+        "by": "By {admin}",
+        "target": "Target: {target}",
+        "targetUnknown": "System",
+        "reason": "Reason: {reason}",
+        "details": "Details",
+        "noDetails": "No additional details"
+      }
     }
   }
 }

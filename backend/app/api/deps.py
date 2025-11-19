@@ -6,8 +6,10 @@ from threading import RLock
 from typing import Optional, Tuple
 from uuid import UUID, uuid5, NAMESPACE_DNS
 
+import httpx
 import jwt
 from fastapi import Depends, HTTPException, Header, status
+from gotrue.errors import AuthRetryableError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +24,9 @@ logger = logging.getLogger(__name__)
 # Supabase client
 supabase_auth_key = settings.supabase_service_key or settings.supabase_key
 supabase: Client = create_client(settings.supabase_url, supabase_auth_key)
+
+_SUPABASE_AUTH_MAX_ATTEMPTS = 4
+_SUPABASE_AUTH_INITIAL_BACKOFF_SECONDS = 0.25
 
 # Token → (user_payload, cache_expiration)
 _UserCacheEntry = Tuple[dict, datetime]
@@ -113,8 +118,40 @@ def invalidate_cached_user(token: Optional[str]) -> None:
 
 
 async def _fetch_supabase_user(token: str):
-    """Fetch user details from Supabase auth in a thread to avoid blocking."""
-    return await asyncio.to_thread(supabase.auth.get_user, token)
+    """Fetch user details from Supabase auth with retry handling for transient errors."""
+
+    delay = _SUPABASE_AUTH_INITIAL_BACKOFF_SECONDS
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, _SUPABASE_AUTH_MAX_ATTEMPTS + 1):
+        try:
+            return await asyncio.to_thread(supabase.auth.get_user, token)
+        except AuthRetryableError as exc:  # Supabase transient error
+            last_error = exc
+            logger.warning(
+                "Supabase auth request attempt %s/%s failed with retryable error: %s",
+                attempt,
+                _SUPABASE_AUTH_MAX_ATTEMPTS,
+                exc,
+            )
+        except httpx.TransportError as exc:
+            last_error = exc
+            logger.warning(
+                "Supabase auth request attempt %s/%s failed due to transport error: %s",
+                attempt,
+                _SUPABASE_AUTH_MAX_ATTEMPTS,
+                exc,
+            )
+        except Exception as exc:  # pragma: no cover - unexpected errors bubble immediately
+            logger.error("Supabase auth request failed with unexpected error", exc_info=exc)
+            raise
+
+        if attempt < _SUPABASE_AUTH_MAX_ATTEMPTS:
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 2.0)
+
+    assert last_error is not None  # for mypy
+    raise last_error
 
 def _dev_user_payload() -> Optional[dict]:
     if not settings.enable_dev_auth:

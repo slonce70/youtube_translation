@@ -51,6 +51,7 @@ const statusVariantMap: Record<StreamStatusValue, 'success' | 'info' | 'warning'
   starting: 'warning',
   stopping: 'warning',
   error: 'error',
+  scheduled: 'info',
 }
 
 const dateLocales: Record<string, DateFnsLocale> = {
@@ -85,13 +86,13 @@ export default function StreamingPage() {
   const [showCreateStream, setShowCreateStream] = useState(false)
 
   const { data: destinations, isLoading: isLoadingDestinations } = useQuery<Destination[]>({
-    queryKey: ['destinations'],
+    queryKey: ['destinations', user?.id],
     queryFn: () => api.destinations.list(),
     enabled: !!user,
   })
 
   const { data: streams, isLoading: isLoadingStreams } = useQuery<Stream[]>({
-    queryKey: ['streams'],
+    queryKey: ['streams', user?.id],
     queryFn: () => api.streams.list(),
     enabled: !!user,
     refetchInterval: 3000,
@@ -99,7 +100,7 @@ export default function StreamingPage() {
 
   const streamStatusQueries = useQueries({
     queries: (streams ?? []).map((stream) => ({
-      queryKey: ['stream-status', stream.id],
+      queryKey: ['stream-status', user?.id, stream.id],
       queryFn: () => api.streams.status(stream.id),
       enabled: !!user && Boolean(stream?.id),
       refetchInterval: ['running', 'starting', 'error'].includes(stream.status) ? 5000 : 30000,
@@ -108,19 +109,19 @@ export default function StreamingPage() {
   }) as UseQueryResult<StreamStatusResponse>[]
 
   const { data: playlists } = useQuery<Playlist[]>({
-    queryKey: ['playlists'],
+    queryKey: ['playlists', user?.id],
     queryFn: () => api.playlists.list(),
     enabled: !!user,
   })
 
   const { data: assets, isLoading: isLoadingAssets } = useQuery<Asset[]>({
-    queryKey: ['assets'],
+    queryKey: ['assets', user?.id, 'streaming'],
     queryFn: () => api.assets.list(),
     enabled: !!user,
   })
 
   const { data: videoCollections, isLoading: isLoadingVideoCollections } = useQuery<MediaCollection[]>({
-    queryKey: ['media-collections', 'video'],
+    queryKey: ['media-collections', user?.id, 'video'],
     queryFn: () =>
       api.mediaCollections.list({
         collection_type: 'video_background',
@@ -130,7 +131,7 @@ export default function StreamingPage() {
   })
 
   const { data: audioCollections, isLoading: isLoadingAudioCollections } = useQuery<MediaCollection[]>({
-    queryKey: ['media-collections', 'audio'],
+    queryKey: ['media-collections', user?.id, 'audio'],
     queryFn: () =>
       api.mediaCollections.list({
         collection_type: 'audio_playlist',
@@ -172,7 +173,7 @@ export default function StreamingPage() {
   const createDestinationMutation = useMutation({
     mutationFn: (data: DestinationFormState) => api.destinations.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['destinations'] })
+      queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
       toast.success(streamingToasts('destination.created'))
       resetChannelForm()
     },
@@ -193,7 +194,7 @@ export default function StreamingPage() {
       return api.destinations.update(id, payload)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['destinations'] })
+      queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
       toast.success(streamingToasts('destination.updated'))
       resetChannelForm()
     },
@@ -204,7 +205,7 @@ export default function StreamingPage() {
   const deleteDestinationMutation = useMutation({
     mutationFn: (destinationId: string) => api.destinations.delete(destinationId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['destinations'] })
+      queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
       toast.success(streamingToasts('destination.deleted'))
     },
     onError: (error: Error) =>
@@ -229,7 +230,7 @@ export default function StreamingPage() {
     },
     onSuccess: () => {
       toast.success(streamingToasts('stream.started'))
-      queryClient.invalidateQueries({ queryKey: ['streams'] })
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
     },
     onError: (error: Error & { quality?: StreamQualityResponse }, variables) => {
       if (error.quality && !error.quality.ok) {
@@ -287,7 +288,7 @@ export default function StreamingPage() {
     mutationFn: (streamId: string) => api.streams.stop(streamId),
     onSuccess: () => {
       toast.info(streamingToasts('stream.stopped'))
-      queryClient.invalidateQueries({ queryKey: ['streams'] })
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
     },
     onError: (error: Error) =>
       toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
@@ -300,7 +301,7 @@ export default function StreamingPage() {
       if (viewingLogs === streamId) {
         setViewingLogs(null)
       }
-      queryClient.invalidateQueries({ queryKey: ['streams'] })
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
     },
     onError: (error: Error) =>
       toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
@@ -357,7 +358,7 @@ export default function StreamingPage() {
   const handleDeleteStream = (streamId: string) => deleteStreamMutation.mutate(streamId)
 
   const { data: logsResponse } = useQuery<StreamLogsResponse>({
-    queryKey: ['stream-logs', viewingLogs],
+    queryKey: ['stream-logs', user?.id, viewingLogs],
     queryFn: () => api.streams.logs(viewingLogs!, 200),
     enabled: !!viewingLogs,
     refetchInterval: 2000,
@@ -367,15 +368,16 @@ export default function StreamingPage() {
     liveEditingStream,
     liveEditorState,
     liveEditorLoading,
-    liveEditorSaving,
+    liveEditorQueueing,
+    liveEditorApplying,
+    canApplyLiveEditorChanges,
     openLiveEditor,
     closeLiveEditor,
     addAssetToLiveEditor,
     removeLiveEditorItem,
     moveLiveEditorItem,
     toggleLiveEditorOption,
-    liveEditorHasSelection,
-    saveLiveEditorChanges,
+    applyLiveEditorChanges,
     assetMap: liveEditorAssetMap,
     videoAssets: liveEditorVideoAssets,
     audioAssets: liveEditorAudioAssets,
@@ -613,18 +615,19 @@ export default function StreamingPage() {
       <LiveEditorModal
         stream={liveEditingStream}
         isLoading={liveEditorLoading}
-        saving={liveEditorSaving}
+        applying={liveEditorApplying}
+        queueing={liveEditorQueueing}
+        canApply={canApplyLiveEditorChanges}
         state={liveEditorState}
         assetMap={liveEditorAssetMap}
         videoAssets={liveEditorVideoAssets}
         audioAssets={liveEditorAudioAssets}
         onClose={closeLiveEditor}
-        onSave={saveLiveEditorChanges}
+        onApply={applyLiveEditorChanges}
         onAddAsset={addAssetToLiveEditor}
         onRemoveItem={removeLiveEditorItem}
         onMoveItem={moveLiveEditorItem}
         onToggleOption={toggleLiveEditorOption}
-        hasSelection={liveEditorHasSelection}
         t={tStreaming}
       />
 

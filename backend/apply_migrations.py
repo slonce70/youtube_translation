@@ -19,7 +19,7 @@ from app.core.config import settings
 
 
 # List of migrations to apply (in order)
-# Note: 001, 020, 021 are Supabase-specific and skipped for local PostgreSQL
+# Note: 001 (Supabase bootstrap) is skipped for local PostgreSQL
 # Note: 002, 006 are RLS/Supabase-specific policies, skipped for local
 # Note: 003 is SKIPPED - already created by 000_local_initial_schema.sql
 MIGRATIONS = [
@@ -40,6 +40,10 @@ MIGRATIONS = [
     'migrations/017_streams_collection_link.sql',
     'migrations/018_performance_indexes.sql',
     'migrations/019_fix_system_alerts.sql',         # Fixes FK to user_profiles
+    'migrations/020_admin_action_reason_column.sql',
+    'migrations/021_admin_action_request_metadata.sql',
+    'migrations/022_admin_action_type_constraint.sql',
+    'migrations/023_stream_schedule_columns.sql',
 ]
 
 
@@ -176,6 +180,151 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     result = await conn.execute(query)
     status['012'] = result.scalar()
+
+    # Check subscription tiers populated with pricing (migration 013)
+    query = text("""
+        SELECT COUNT(*) = 7
+        FROM subscription_tier_limits
+        WHERE tier IN ('free', 'fhd_start', 'fhd_flow', 'fhd_boost', 'uhd_start', 'uhd_flow', 'uhd_boost')
+    """)
+    result = await conn.execute(query)
+    tiers_seeded = result.scalar()
+    query = text("""
+        SELECT COUNT(*) = 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'subscription_tier_limits'
+          AND column_name = 'price_cents'
+    """)
+    price_column = (await conn.execute(query)).scalar()
+    status['013'] = bool(tiers_seeded and price_column)
+
+    # Check asset metadata enhancements (migration 014)
+    query = text("""
+        SELECT COUNT(*) = 2
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'assets'
+          AND column_name IN ('asset_type', 'codec_info')
+    """)
+    result = await conn.execute(query)
+    status['014'] = result.scalar()
+
+    # Check media folders tables (migration 015)
+    status['015'] = await check_table_exists(conn, 'media_folders') and await check_table_exists(conn, 'asset_folder_links')
+
+    # Check media collections tables (migration 016)
+    status['016'] = await check_table_exists(conn, 'media_collections') and await check_table_exists(conn, 'collection_items')
+
+    # Check streams link columns (migration 017)
+    query = text("""
+        SELECT COUNT(*) = 4
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'streams'
+          AND column_name IN ('video_collection_id', 'audio_collection_id', 'mix_mode', 'settings_json')
+    """)
+    result = await conn.execute(query)
+    status['017'] = result.scalar()
+
+    # Check performance indexes (migration 018)
+    query = text("""
+        SELECT COUNT(*) = 14
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+          AND indexname IN (
+              'idx_assets_validation_status',
+              'idx_streams_status_user',
+              'idx_streams_user_started',
+              'idx_user_activity_ip',
+              'idx_system_alerts_severity_resolved',
+              'idx_admin_actions_admin_user_time',
+              'idx_destinations_user_enabled',
+              'idx_playlist_items_position',
+              'idx_collection_items_position',
+              'idx_stream_events_stream_time',
+              'idx_media_folders_parent',
+              'idx_asset_folder_links_folder',
+              'idx_assets_user_type',
+              'idx_collections_user_type_active'
+          )
+    """)
+    result = await conn.execute(query)
+    status['018'] = result.scalar()
+
+    # Check system alert constraints (migration 019)
+    query = text("""
+        SELECT COUNT(*) = 2
+        FROM information_schema.table_constraints
+        WHERE table_schema = 'public'
+          AND table_name = 'system_alerts'
+          AND constraint_name IN ('system_alerts_alert_type_check', 'system_alerts_severity_check')
+    """)
+    constraints_ok = (await conn.execute(query)).scalar()
+    query = text("""
+        SELECT COUNT(*) = 2
+        FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        JOIN pg_class r ON c.confrelid = r.oid
+        WHERE c.conname IN ('system_alerts_user_id_fkey', 'user_activity_log_user_id_fkey')
+          AND r.relname = 'user_profiles'
+    """)
+    fks_ok = (await conn.execute(query)).scalar()
+    status['019'] = bool(constraints_ok and fks_ok)
+
+    # Check admin actions reason column (migration 020)
+    query = text("""
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'admin_actions'
+              AND column_name = 'reason'
+        )
+    """)
+    result = await conn.execute(query)
+    status['020'] = result.scalar()
+
+    # Check admin actions request metadata columns (migration 021)
+    query = text("""
+        SELECT COUNT(*) = 2
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'admin_actions'
+          AND column_name IN ('ip_address', 'user_agent')
+    """)
+    result = await conn.execute(query)
+    status['021'] = result.scalar()
+
+    # Check admin actions constraint updated (migration 022)
+    query = text("""
+        SELECT pg_get_constraintdef(oid)
+        FROM pg_constraint
+        WHERE conrelid = 'admin_actions'::regclass
+          AND conname = 'admin_actions_action_type_check'
+    """)
+    result = await conn.execute(query)
+    definition = result.scalar()
+    status['022'] = bool(
+        definition
+        and 'change_tier' in definition
+        and 'force_stop_stream' in definition
+        and 'resolve_alert' in definition
+    )
+
+    # Check stream schedule columns (migration 023)
+    query = text("""
+        SELECT COUNT(*) = 3
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'streams'
+          AND column_name IN (
+              'scheduled_start_enabled',
+              'scheduled_start_time',
+              'scheduled_start_attempted_at'
+          )
+    """)
+    result = await conn.execute(query)
+    status['023'] = result.scalar()
 
     return status
 
@@ -433,6 +582,137 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         result = await conn.execute(query)
         return result.scalar() == 1
+
+    elif migration_num == '014':
+        query = text("""
+            SELECT COUNT(*) = 2
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'assets'
+              AND column_name IN ('asset_type', 'codec_info')
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
+
+    elif migration_num == '015':
+        folders = await check_table_exists(conn, 'media_folders')
+        links = await check_table_exists(conn, 'asset_folder_links')
+        return folders and links
+
+    elif migration_num == '016':
+        collections = await check_table_exists(conn, 'media_collections')
+        items = await check_table_exists(conn, 'collection_items')
+        return collections and items
+
+    elif migration_num == '017':
+        query = text("""
+            SELECT COUNT(*) = 4
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name IN ('video_collection_id', 'audio_collection_id', 'mix_mode', 'settings_json')
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
+
+    elif migration_num == '018':
+        query = text("""
+            SELECT COUNT(*) = 14
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname IN (
+                  'idx_assets_validation_status',
+                  'idx_streams_status_user',
+                  'idx_streams_user_started',
+                  'idx_user_activity_ip',
+                  'idx_system_alerts_severity_resolved',
+                  'idx_admin_actions_admin_user_time',
+                  'idx_destinations_user_enabled',
+                  'idx_playlist_items_position',
+                  'idx_collection_items_position',
+                  'idx_stream_events_stream_time',
+                  'idx_media_folders_parent',
+                  'idx_asset_folder_links_folder',
+                  'idx_assets_user_type',
+                  'idx_collections_user_type_active'
+              )
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
+
+    elif migration_num == '019':
+        query = text("""
+            SELECT COUNT(*) = 2
+            FROM information_schema.table_constraints
+            WHERE table_schema = 'public'
+              AND table_name = 'system_alerts'
+              AND constraint_name IN ('system_alerts_alert_type_check', 'system_alerts_severity_check')
+        """)
+        constraints_ok = (await conn.execute(query)).scalar()
+        query = text("""
+            SELECT COUNT(*) = 2
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            JOIN pg_class r ON c.confrelid = r.oid
+            WHERE c.conname IN ('system_alerts_user_id_fkey', 'user_activity_log_user_id_fkey')
+              AND r.relname = 'user_profiles'
+        """)
+        fks_ok = (await conn.execute(query)).scalar()
+        return bool(constraints_ok and fks_ok)
+
+    elif migration_num == '020':
+        query = text("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'admin_actions'
+                  AND column_name = 'reason'
+            )
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
+
+    elif migration_num == '021':
+        query = text("""
+            SELECT COUNT(*) = 2
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'admin_actions'
+              AND column_name IN ('ip_address', 'user_agent')
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
+
+    elif migration_num == '022':
+        query = text("""
+            SELECT pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conrelid = 'admin_actions'::regclass
+              AND conname = 'admin_actions_action_type_check'
+        """)
+        result = await conn.execute(query)
+        definition = result.scalar()
+        return bool(
+            definition
+            and 'change_tier' in definition
+            and 'force_stop_stream' in definition
+            and 'resolve_alert' in definition
+        )
+
+    elif migration_num == '023':
+        query = text("""
+            SELECT COUNT(*) = 3
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name IN (
+                  'scheduled_start_enabled',
+                  'scheduled_start_time',
+                  'scheduled_start_attempted_at'
+              )
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
 
     return False
 

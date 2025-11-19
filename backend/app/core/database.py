@@ -12,6 +12,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+SCHEMA_PATCH_LOCK_ID = 872634  # Arbitrary advisory lock id to serialize schema patches
+
 # Convert PostgreSQL URL to async version
 DATABASE_URL = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
 
@@ -124,7 +126,32 @@ async def init_db():
     logger.info("Database initialized")
 
 
-async def _apply_schema_patches(conn):
+async def _missing_columns(conn, table: str, columns: list[str]) -> list[str]:
+    """Return which of the requested columns are missing for a given table."""
+    if not columns:
+        return []
+
+    placeholders = ", ".join(f":col_{idx}" for idx in range(len(columns)))
+    query = text(
+        f"""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = :table_name
+          AND column_name IN ({placeholders})
+        """
+    )
+
+    params = {"table_name": table}
+    for idx, column in enumerate(columns):
+        params[f"col_{idx}"] = column
+
+    result = await conn.execute(query, params)
+    existing = {row[0] for row in result}
+    return [column for column in columns if column not in existing]
+
+
+async def _apply_schema_changes(conn):
     """Apply idempotent schema updates for new columns."""
     # Ensure local auth schema exists for tests/local development
     await conn.execute(text('CREATE SCHEMA IF NOT EXISTS auth'))
@@ -193,19 +220,27 @@ async def _apply_schema_patches(conn):
         )
     )
 
-    # Add missing columns to streams table
-    await conn.execute(
-        text(
-            """
-            ALTER TABLE streams
-            ADD COLUMN IF NOT EXISTS video_collection_id UUID REFERENCES media_collections(id) ON DELETE SET NULL,
-            ADD COLUMN IF NOT EXISTS audio_collection_id UUID REFERENCES media_collections(id) ON DELETE SET NULL,
-            ADD COLUMN IF NOT EXISTS mix_mode TEXT NOT NULL DEFAULT 'video_only',
-            ADD COLUMN IF NOT EXISTS settings_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-            ADD COLUMN IF NOT EXISTS total_duration_seconds FLOAT DEFAULT 0
-            """
+    # Add missing columns to streams table only if needed
+    streams_columns = [
+        "video_collection_id",
+        "audio_collection_id",
+        "mix_mode",
+        "settings_json",
+        "total_duration_seconds",
+    ]
+    if await _missing_columns(conn, "streams", streams_columns):
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE streams
+                ADD COLUMN IF NOT EXISTS video_collection_id UUID REFERENCES media_collections(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS audio_collection_id UUID REFERENCES media_collections(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS mix_mode TEXT NOT NULL DEFAULT 'video_only',
+                ADD COLUMN IF NOT EXISTS settings_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS total_duration_seconds FLOAT DEFAULT 0
+                """
+            )
         )
-    )
     
     # Add check constraint for mix_mode if not exists
     await conn.execute(
@@ -225,16 +260,18 @@ async def _apply_schema_patches(conn):
     )
     
     # Add missing statistics columns to destinations table
-    await conn.execute(
-        text(
-            """
-            ALTER TABLE destinations
-            ADD COLUMN IF NOT EXISTS total_streams INTEGER DEFAULT 0,
-            ADD COLUMN IF NOT EXISTS total_stream_hours FLOAT DEFAULT 0,
-            ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP WITH TIME ZONE
-            """
+    destination_columns = ["total_streams", "total_stream_hours", "last_used_at"]
+    if await _missing_columns(conn, "destinations", destination_columns):
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE destinations
+                ADD COLUMN IF NOT EXISTS total_streams INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS total_stream_hours FLOAT DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP WITH TIME ZONE
+                """
+            )
         )
-    )
     
     await conn.execute(
         text(
@@ -245,21 +282,32 @@ async def _apply_schema_patches(conn):
     )
     
     # Add missing columns to assets table
-    await conn.execute(
-        text(
-            """
-            ALTER TABLE assets
-            ADD COLUMN IF NOT EXISTS asset_type TEXT NOT NULL DEFAULT 'video',
-            ADD COLUMN IF NOT EXISTS video_codec TEXT,
-            ADD COLUMN IF NOT EXISTS audio_codec TEXT,
-            ADD COLUMN IF NOT EXISTS resolution TEXT,
-            ADD COLUMN IF NOT EXISTS bitrate INTEGER,
-            ADD COLUMN IF NOT EXISTS fps INTEGER,
-            ADD COLUMN IF NOT EXISTS codec_info JSONB,
-            ADD COLUMN IF NOT EXISTS validation_status TEXT NOT NULL DEFAULT 'pending'
-            """
+    asset_columns = [
+        "asset_type",
+        "video_codec",
+        "audio_codec",
+        "resolution",
+        "bitrate",
+        "fps",
+        "codec_info",
+        "validation_status",
+    ]
+    if await _missing_columns(conn, "assets", asset_columns):
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE assets
+                ADD COLUMN IF NOT EXISTS asset_type TEXT NOT NULL DEFAULT 'video',
+                ADD COLUMN IF NOT EXISTS video_codec TEXT,
+                ADD COLUMN IF NOT EXISTS audio_codec TEXT,
+                ADD COLUMN IF NOT EXISTS resolution TEXT,
+                ADD COLUMN IF NOT EXISTS bitrate INTEGER,
+                ADD COLUMN IF NOT EXISTS fps INTEGER,
+                ADD COLUMN IF NOT EXISTS codec_info JSONB,
+                ADD COLUMN IF NOT EXISTS validation_status TEXT NOT NULL DEFAULT 'pending'
+                """
+            )
         )
-    )
     
     await conn.execute(
         text("CREATE INDEX IF NOT EXISTS idx_assets_asset_type ON assets(asset_type)")
@@ -286,6 +334,24 @@ async def _apply_schema_patches(conn):
     )
     
     # Note: media_folders root constraint removed - managed by application logic
+
+
+async def _apply_schema_patches(conn):
+    """Serialize schema updates with an advisory lock to avoid deadlocks."""
+    lock_acquired = False
+    try:
+        await conn.execute(
+            text("SELECT pg_advisory_lock(:lock_id)"),
+            {"lock_id": SCHEMA_PATCH_LOCK_ID},
+        )
+        lock_acquired = True
+        await _apply_schema_changes(conn)
+    finally:
+        if lock_acquired:
+            await conn.execute(
+                text("SELECT pg_advisory_unlock(:lock_id)"),
+                {"lock_id": SCHEMA_PATCH_LOCK_ID},
+            )
 
 
 async def apply_schema_patches():

@@ -17,8 +17,8 @@ async def generate_video_thumbnail(
     output_dir: Path,
     asset_id,
     timestamp: float = 1.0,
-    width: int = 320,
-    height: int = 180,
+    width: int = 1280,
+    height: int = 720,
 ) -> Optional[str]:
     """Generate a thumbnail for a video using FFmpeg."""
     try:

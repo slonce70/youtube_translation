@@ -89,8 +89,11 @@ class MediaCollectionService:
             await self.db.flush()
             await replace_collection_items_helper(self.db, collection, normalized_items)
             await self.db.commit()
-            await self.db.refresh(collection, attribute_names=["items"])
-            return self._to_response(collection)
+
+            refreshed_collection = await self._load_collection(
+                collection.id, include_items=True, populate_existing=True
+            )
+            return self._to_response(refreshed_collection)
         except IntegrityError as exc:
             await self.db.rollback()
             logger.warning("Collection creation conflict for user %s: %s", self.user_id, exc)
@@ -138,8 +141,11 @@ class MediaCollectionService:
 
         try:
             await self.db.commit()
-            await self.db.refresh(collection, attribute_names=["items"])
-            return self._to_response(collection)
+
+            refreshed_collection = await self._load_collection(
+                collection.id, include_items=True, populate_existing=True
+            )
+            return self._to_response(refreshed_collection)
         except IntegrityError as exc:
             await self.db.rollback()
             logger.warning("Collection update conflict for user %s: %s", self.user_id, exc)
@@ -171,8 +177,11 @@ class MediaCollectionService:
         try:
             await replace_collection_items_helper(self.db, collection, normalized_items)
             await self.db.commit()
-            await self.db.refresh(collection, attribute_names=["items"])
-            return self._to_response(collection)
+
+            refreshed_collection = await self._load_collection(
+                collection.id, include_items=True, populate_existing=True
+            )
+            return self._to_response(refreshed_collection)
         except Exception as exc:  # pragma: no cover
             await self.db.rollback()
             logger.exception("Error replacing collection items for %s: %s", collection_id, exc)
@@ -191,7 +200,7 @@ class MediaCollectionService:
         logger.info("Deleted media collection %s for user %s", collection_id, self.user_id)
 
     async def _load_collection(
-        self, collection_id: UUID, include_items: bool
+        self, collection_id: UUID, include_items: bool, populate_existing: bool = False
     ) -> Optional[MediaCollection]:
         query = select(MediaCollection).where(
             MediaCollection.id == collection_id,
@@ -203,8 +212,16 @@ class MediaCollectionService:
                 selectinload(MediaCollection.items).selectinload(CollectionItem.asset)
             )
 
+        if populate_existing:
+            query = query.execution_options(populate_existing=True)
+
         result = await self.db.execute(query)
-        return result.scalar_one_or_none()
+        collection = result.scalar_one_or_none()
+
+        if populate_existing and collection is not None and include_items:
+            await self.db.refresh(collection, attribute_names=["items"])
+
+        return collection
 
     def _assert_supported_type(self, collection_type: str) -> None:
         if collection_type not in ALLOWED_COLLECTION_TYPES:
@@ -218,9 +235,26 @@ class MediaCollectionService:
     ) -> MediaCollectionResponse:
         if include_items:
             items = sorted(list(collection.items or []), key=lambda item: item.position)
-            response_items = [
-                CollectionItemResponse.model_validate(item, from_attributes=True) for item in items
-            ]
+            response_items = []
+            for item in items:
+                # Manually construct response to avoid lazy loading issues
+                item_data = {
+                    "id": item.id,
+                    "collection_id": item.collection_id,
+                    "asset_id": item.asset_id,
+                    "position": item.position,
+                    "loop_mode": item.loop_mode,
+                    "created_at": item.created_at,
+                    "updated_at": item.updated_at,
+                }
+                
+                # Only include asset if it's already loaded (not lazy)
+                if hasattr(item, '__dict__') and 'asset' in item.__dict__:
+                    from app.schemas.api import AssetResponse
+                    if item.asset is not None:
+                        item_data["asset"] = AssetResponse.model_validate(item.asset, from_attributes=True)
+                
+                response_items.append(CollectionItemResponse(**item_data))
         else:
             response_items = []
 
