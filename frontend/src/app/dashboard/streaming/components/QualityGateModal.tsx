@@ -7,7 +7,7 @@ import type { QuotaUsageResponse } from '@/lib/types'
 
 import type { QualityGateState, QualityViolationGroup } from '../hooks/useQualityGate'
 
-type Translator = (key: string, values?: Record<string, unknown>) => string
+type Translator = (key: string, values?: any) => string
 
 type QualityGateModalProps = {
   state: QualityGateState

@@ -126,7 +126,7 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
       fpsOutOfGuideline: Boolean(backendRecommendation.fps_out_of_guideline),
     }
   } else if (isAudioAsset) {
-    recommendation = { rule: undefined, normalizedFps: null, fpsOutOfGuideline: false }
+    recommendation = { rule: null, normalizedFps: null, fpsOutOfGuideline: false }
   }
 
   const warnings: AssetWarning[] = []
