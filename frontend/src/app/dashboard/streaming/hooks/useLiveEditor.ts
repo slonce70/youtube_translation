@@ -10,11 +10,12 @@ import type {
   MediaCollection,
   Stream,
   StreamLiveUpdatePayload,
+  LoopMode,
 } from '@/lib/types'
 
 import { deriveEditorStateFromCollection, type CollectionEditorState } from '../builder-helpers'
 
-type Translator = (key: string, values?: Record<string, unknown>) => string
+type Translator = (key: string, values?: any) => string
 
 type UseLiveEditorOptions = {
   assets?: Asset[]
@@ -27,7 +28,7 @@ type LiveEditorState = {
   audio: CollectionEditorState | null
 }
 
-const getLoopModeForEditor = (editor: CollectionEditorState) => {
+const getLoopModeForEditor = (editor: CollectionEditorState): LoopMode => {
   if (editor.shuffle) return 'shuffle'
   if (editor.loop) return 'loop'
   return 'once'

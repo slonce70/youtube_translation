@@ -1267,6 +1267,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                         onClick={() => handleRemoveItem(item.id)}
                         disabled={item.status === 'uploading' || item.status === 'processing'}
                         title={t('actions.remove')}
+                        aria-label={t('actions.remove')}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

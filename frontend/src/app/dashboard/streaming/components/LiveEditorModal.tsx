@@ -16,7 +16,7 @@ import type { Asset, Stream } from '@/lib/types'
 
 import type { CollectionEditorState } from '../builder-helpers'
 
-type Translator = (key: string, values?: Record<string, unknown>) => string
+type Translator = (key: string, values?: any) => string
 
 type LiveEditorModalProps = {
   stream: Stream | null

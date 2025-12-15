@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   AlertTriangle,
   Clock3,
@@ -33,7 +34,7 @@ import type {
 
 import { useStreamBuilder } from '../hooks/useStreamBuilder'
 
-type Translator = (key: string, values?: Record<string, unknown>) => string
+type Translator = (key: string, values?: any) => string
 
 type StreamBuilderModalProps = {
   open: boolean
@@ -72,6 +73,7 @@ export function StreamBuilderModal({
   streamingToasts,
   formatLimitValue,
 }: StreamBuilderModalProps) {
+  const actionLabels = useTranslations('common.actions')
   const {
     streamForm,
     setStreamForm,
@@ -144,7 +146,7 @@ export function StreamBuilderModal({
               {t('streams.builder.subtitle')}
             </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleClose}>
+          <Button variant="ghost" size="icon" onClick={handleClose} aria-label={actionLabels('close')}>
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
@@ -291,7 +293,7 @@ export function StreamBuilderModal({
                               </p>
                             </div>
                             {draggable && (
-                              <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('video', item.asset_id)}>
+                              <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('video', item.asset_id)} aria-label={t('streams.liveEdit.actions.remove')}>
                                 <X className="h-4 w-4" />
                               </Button>
                             )}
@@ -442,7 +444,7 @@ export function StreamBuilderModal({
                                   </p>
                                 </div>
                                 {draggable && (
-                                  <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('audio', item.asset_id)}>
+                                  <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('audio', item.asset_id)} aria-label={t('streams.liveEdit.actions.remove')}>
                                     <X className="h-4 w-4" />
                                   </Button>
                                 )}
