@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { LoadingState } from '@/components/LoadingState'
 import type { Playlist, Stream, StreamStatusResponse, StreamStatusValue } from '@/lib/types'
 
-type Translator = (key: string, values?: Record<string, unknown>) => string
+type Translator = (key: string, values?: any) => string
 
 export type StreamsListProps = {
   streams?: Stream[]
