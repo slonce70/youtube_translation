@@ -48,10 +48,13 @@ class StreamService:
         self.settings = settings_provider
 
     async def list_streams(self) -> List[Stream]:
+        # Optimization: Use lighter query options for listing.
+        # We only need stream_assets (for ID/position) and not the full nested objects
+        # like playlists, collections, or asset details which are not returned in the list view.
         query = (
             select(Stream)
             .where(Stream.user_id == self.user_id)
-            .options(*load_stream_with_relations_options())
+            .options(*_load_stream_list_options())
         )
         result = await self.db.execute(query)
         return result.scalars().all()
@@ -342,6 +345,16 @@ def load_stream_with_relations_options():  # pragma: no cover - helper for reada
         selectinload(Stream.audio_collection)
         .selectinload(MediaCollection.items)
         .selectinload(CollectionItem.asset),
+    )
+
+
+def _load_stream_list_options():
+    from sqlalchemy.orm import selectinload
+
+    return (
+        # stream_assets are needed for StreamResponse.stream_assets (List[StreamAssetLink])
+        # which requires asset_id and position. These are on the StreamAsset table.
+        selectinload(Stream.stream_assets),
     )
 
 
