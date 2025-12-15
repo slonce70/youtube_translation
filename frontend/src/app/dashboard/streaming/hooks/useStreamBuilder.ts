@@ -10,6 +10,7 @@ import type {
   MediaCollection,
   QuotaUsageResponse,
   Stream,
+  LoopMode,
 } from '@/lib/types'
 
 import {
@@ -20,7 +21,7 @@ import {
   type ScheduleState,
 } from '../builder-helpers'
 
-type Translator = (key: string, values?: Record<string, unknown>) => string
+type Translator = (key: string, values?: any) => string
 
 export type BuilderTab = 'video' | 'audio' | 'destinations' | 'schedule'
 
@@ -245,7 +246,7 @@ export const useStreamBuilder = ({
     [],
   )
 
-  const loopModeForEditor = useCallback((editor: CollectionEditorState) => {
+  const loopModeForEditor = useCallback((editor: CollectionEditorState): LoopMode => {
     if (editor.shuffle) return 'shuffle'
     if (editor.loop) return 'loop'
     return 'once'

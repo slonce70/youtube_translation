@@ -1652,7 +1652,7 @@ export default function LibraryPage() {
                   {tLibrary('assets.selection.bulkMoveDescription')}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" onClick={closeMoveModal}>
+              <Button variant="ghost" size="icon" onClick={closeMoveModal} aria-label={actionLabels('close')}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -1731,7 +1731,7 @@ export default function LibraryPage() {
                   {tLibrary('assets.selection.deleteDescription')}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" onClick={closeDeleteModal}>
+              <Button variant="ghost" size="icon" onClick={closeDeleteModal} aria-label={actionLabels('close')}>
                 <X className="h-4 w-4" />
               </Button>
             </div>

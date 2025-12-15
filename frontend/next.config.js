@@ -1,6 +1,6 @@
 const path = require('path')
 const fs = require('fs')
-const withNextIntl = require('next-intl/plugin')('./i18n.ts')
+const withNextIntl = require('next-intl/plugin')('./src/i18n/request.ts')
 
 /** @type {import('next').NextConfig} */
 const DEV_API_PROXY_TARGET = process.env.DEV_API_PROXY_TARGET || 'http://localhost:8000'
@@ -12,6 +12,7 @@ const DEFAULT_DEV_ORIGINS = ['localhost', '127.0.0.1']
 const unique = (arr) => [...new Set(arr)]
 
 const nextConfig = {
+  transpilePackages: ['@supabase/supabase-js'],
   reactStrictMode: true,
   allowedDevOrigins: unique([...DEFAULT_DEV_ORIGINS, ...DEV_ORIGIN_TOKENS]),
   experimental: {
