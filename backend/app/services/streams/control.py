@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -98,7 +100,7 @@ class StreamControlService:
             stream.started_at = _utcnow()
             stream.stopped_at = None
             stream.error_message = None
-            self._clear_schedule(stream)
+            self._clear_start_schedule(stream)
             await self.db.commit()
             usage = await self._get_usage_snapshot(enforcer)
             return self._status_payload(stream, True, usage=usage)
@@ -115,7 +117,7 @@ class StreamControlService:
             stream.started_at = _utcnow()
             stream.stopped_at = None
             stream.error_message = None
-            self._clear_schedule(stream)
+            self._clear_start_schedule(stream)
             await self.db.commit()
             usage = await self._get_usage_snapshot(enforcer)
             return self._status_payload(stream, True, usage=usage)
@@ -153,7 +155,7 @@ class StreamControlService:
         info = self.manager.get_stream_info(str(stream_id)) or {}
         stream.pid = info.get("pid")
         stream.log_path = str(log_file)
-        self._clear_schedule(stream)
+        self._clear_start_schedule(stream)
         await self.db.commit()
         usage = await self._get_usage_snapshot(enforcer)
         return self._status_payload(
@@ -165,7 +167,11 @@ class StreamControlService:
 
     async def stop_stream(self, stream_id: UUID) -> StreamStatus:
         stream = await self._get_stream_basic(stream_id)
+        was_scheduled = stream.status == "scheduled"
         await self._stop_for_runtime(stream)
+        self._clear_stop_schedule(stream)
+        if was_scheduled:
+            self._clear_start_schedule(stream)
         await self.db.commit()
         usage = await self._get_usage_snapshot()
         return self._status_payload(stream, False, usage=usage)
@@ -303,7 +309,6 @@ class StreamControlService:
         stream.pid = None
         stream.stopped_at = _utcnow()
         self._clear_schedule(stream)
-        self._clear_schedule(stream)
 
     async def get_stream_status(self, stream_id: UUID) -> StreamStatus:
         stream = await self._get_stream_basic(stream_id)
@@ -393,14 +398,25 @@ class StreamControlService:
             return StreamLogsResponse(stream_id=stream_id, logs=[], total_lines=0)
 
         log_file = Path(stream.log_path)
-        with open(log_file, "r", encoding="utf-8") as handle:
-            all_lines = handle.readlines()
-            last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+        def _read_log_tail(path: Path, limit: int) -> tuple[list[str], int]:
+            total = 0
+            tail: deque[str] = deque(maxlen=limit)
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    total += 1
+                    tail.append(line.rstrip("\n"))
+            return list(tail), total
+
+        try:
+            last_lines, total_lines = await asyncio.to_thread(_read_log_tail, log_file, lines)
+        except FileNotFoundError:
+            return StreamLogsResponse(stream_id=stream_id, logs=[], total_lines=0)
 
         return StreamLogsResponse(
             stream_id=stream_id,
-            logs=[line.strip() for line in last_lines],
-            total_lines=len(all_lines),
+            logs=last_lines,
+            total_lines=total_lines,
         )
 
     def _status_payload(
@@ -502,10 +518,20 @@ class StreamControlService:
         return stream
 
     @staticmethod
-    def _clear_schedule(stream: Stream) -> None:
+    def _clear_start_schedule(stream: Stream) -> None:
         stream.scheduled_start_enabled = False
         stream.scheduled_start_time = None
         stream.scheduled_start_attempted_at = None
+
+    @staticmethod
+    def _clear_stop_schedule(stream: Stream) -> None:
+        stream.scheduled_stop_time = None
+        stream.scheduled_stop_attempted_at = None
+
+    @staticmethod
+    def _clear_schedule(stream: Stream) -> None:
+        StreamControlService._clear_start_schedule(stream)
+        StreamControlService._clear_stop_schedule(stream)
 
 
 def _utcnow() -> datetime:

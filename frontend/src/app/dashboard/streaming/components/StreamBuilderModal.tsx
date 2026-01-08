@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import { Input } from '@/components/ui/Input'
 import { LoadingState } from '@/components/LoadingState'
 import { cn } from '@/lib/utils'
+import { TimelineEditor } from './Timeline/TimelineEditor'
 import type {
   Asset,
   Destination,
@@ -106,6 +107,7 @@ export function StreamBuilderModal({
     errorStreams,
     concurrentStreamsLimit,
     updateEditor,
+    reorderEditorItems,
   } = useStreamBuilder({
     destinations,
     assets,
@@ -185,7 +187,7 @@ export function StreamBuilderModal({
           </div>
 
           <Tabs value={activeBuilderTab} onValueChange={(value) => setActiveBuilderTab(value as typeof activeBuilderTab)}>
-            <TabsList className="grid grid-cols-4">
+            <TabsList className="grid grid-cols-5">
               <TabsTrigger value="video" className="flex items-center gap-2">
                 <Layers className="h-4 w-4" />
                 {t('streams.builder.tabs.video')}
@@ -193,6 +195,11 @@ export function StreamBuilderModal({
               <TabsTrigger value="audio" className="flex items-center gap-2">
                 <Music3 className="h-4 w-4" />
                 {t('streams.builder.tabs.audio')}
+              </TabsTrigger>
+              <TabsTrigger value="timeline" className="flex items-center gap-2">
+                <Layers className="h-4 w-4" />
+                {/* eslint-disable-next-line i18next/no-literal-string */}
+                Timeline
               </TabsTrigger>
               <TabsTrigger value="destinations" className="flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
@@ -529,6 +536,35 @@ export function StreamBuilderModal({
               )}
             </TabsContent>
 
+            <TabsContent value="timeline" className="mt-4 space-y-4">
+              <div className="space-y-1">
+                {/* eslint-disable-next-line i18next/no-literal-string */}
+                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-200">Studio Timeline</h3>
+                {/* eslint-disable-next-line i18next/no-literal-string */}
+                <p className="text-xs text-slate-500 dark:text-slate-400">Visual overview of your stream content</p>
+              </div>
+              
+              <TimelineEditor
+                videoItems={videoEditor.items.map((item, idx) => ({
+                  id: `${item.asset_id}-${idx}`,
+                  asset: assetMap.get(item.asset_id)!
+                })).filter(x => x.asset)}
+                audioItems={audioEnabled ? audioEditor.items.map((item, idx) => ({
+                  id: `${item.asset_id}-${idx}`,
+                  asset: assetMap.get(item.asset_id)!
+                })).filter(x => x.asset) : []}
+                onReorder={reorderEditorItems}
+              />
+              
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
+                {/* eslint-disable-next-line i18next/no-literal-string */}
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  <Info className="inline-block w-4 h-4 mr-1.5 -mt-0.5" />
+                  Drag and drop assets from the Video/Audio tabs to populate this timeline.
+                </p>
+              </div>
+            </TabsContent>
+
             <TabsContent value="destinations" className="mt-4 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -645,6 +681,17 @@ export function StreamBuilderModal({
                     onChange={(event) => setScheduleState((prev) => ({ ...prev, startAt: event.target.value }))}
                   />
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  {t('streams.builder.schedule.stopLabel')}
+                </label>
+                <Input
+                  type="datetime-local"
+                  value={scheduleState.stopAt}
+                  onChange={(event) => setScheduleState((prev) => ({ ...prev, stopAt: event.target.value }))}
+                />
               </div>
 
               <div className="flex flex-wrap gap-2">
