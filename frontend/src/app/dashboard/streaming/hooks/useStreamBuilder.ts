@@ -351,6 +351,25 @@ export const useStreamBuilder = ({
       scheduleState.startMode === 'schedule' && scheduleState.startAt
         ? new Date(scheduleState.startAt).toISOString()
         : undefined
+    const stopAtIso = scheduleState.stopAt ? new Date(scheduleState.stopAt).toISOString() : undefined
+
+    if (scheduleState.stopAt) {
+      const stopAt = new Date(scheduleState.stopAt)
+      const now = new Date()
+      if (Number.isNaN(stopAt.getTime()) || stopAt <= now) {
+        toast.error(streamingToasts('errors.scheduleStopTime'))
+        setActiveBuilderTab('schedule')
+        return
+      }
+      if (scheduleState.startMode === 'schedule' && scheduleState.startAt) {
+        const startAt = new Date(scheduleState.startAt)
+        if (stopAt <= startAt) {
+          toast.error(streamingToasts('errors.scheduleStopAfterStart'))
+          setActiveBuilderTab('schedule')
+          return
+        }
+      }
+    }
 
     setIsBuilderSubmitting(true)
     try {
@@ -390,6 +409,7 @@ export const useStreamBuilder = ({
         },
         schedule_mode: scheduleState.startMode,
         schedule_start_at: startAtIso,
+        schedule_stop_at: stopAtIso,
       }
 
       await createStreamMutation.mutateAsync(payload)
@@ -449,5 +469,6 @@ export const useStreamBuilder = ({
     concurrentStreamsLimit,
     planQualityLimits,
     updateEditor,
+    reorderEditorItems,
   }
 }

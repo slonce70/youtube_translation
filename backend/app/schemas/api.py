@@ -217,6 +217,7 @@ class StreamCreate(StreamBase):
     settings_json: Optional[dict] = None
     schedule_mode: Literal["now", "schedule"] = "now"
     schedule_start_at: Optional[datetime] = None
+    schedule_stop_at: Optional[datetime] = None
 
     @model_validator(mode="after")
     def validate_source(cls, model):
@@ -252,6 +253,18 @@ class StreamCreate(StreamBase):
             model.schedule_start_at = start_at
         else:
             model.schedule_start_at = None
+
+        stop_at = model.schedule_stop_at
+        if stop_at:
+            if stop_at.tzinfo is None:
+                stop_at = stop_at.replace(tzinfo=timezone.utc)
+            else:
+                stop_at = stop_at.astimezone(timezone.utc)
+            if stop_at <= datetime.now(timezone.utc):
+                raise ValueError("schedule_stop_at must be in the future")
+            if model.schedule_start_at and stop_at <= model.schedule_start_at:
+                raise ValueError("schedule_stop_at must be after schedule_start_at")
+            model.schedule_stop_at = stop_at
 
         return model
 
@@ -304,6 +317,7 @@ class StreamResponse(StreamBase):
     stream_destinations: List['StreamDestinationLink'] = Field(default_factory=list, exclude=True)
     scheduled_start_enabled: bool = False
     scheduled_start_time: Optional[datetime] = None
+    scheduled_stop_time: Optional[datetime] = None
 
     @computed_field  # type: ignore[misc]
     @property
@@ -327,6 +341,11 @@ class StreamStatus(BaseModel):
     daily_limit_seconds: Optional[int] = None
     remaining_daily_seconds: Optional[int] = None
     quota_limit_reached: Optional[bool] = None
+
+
+class StreamWsTokenResponse(BaseModel):
+    token: str
+    expires_at: int
 
 
 class StreamAssetLink(BaseModel):

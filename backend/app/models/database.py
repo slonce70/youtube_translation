@@ -219,6 +219,8 @@ class Stream(Base):
     scheduled_start_enabled = Column(Boolean, nullable=False, server_default=text("false"))
     scheduled_start_time = Column(TIMESTAMP(timezone=True))
     scheduled_start_attempted_at = Column(TIMESTAMP(timezone=True))
+    scheduled_stop_time = Column(TIMESTAMP(timezone=True))
+    scheduled_stop_attempted_at = Column(TIMESTAMP(timezone=True))
 
     # Track total duration for billing
     total_duration_seconds = Column(Float, default=0)

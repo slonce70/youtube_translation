@@ -16,6 +16,7 @@ export type CollectionEditorState = {
 export type ScheduleState = {
   startMode: 'now' | 'schedule'
   startAt: string
+  stopAt: string
   loopStream: boolean
   videoVolume: number
   audioVolume: number
@@ -33,6 +34,7 @@ export const createDefaultEditorState = (options?: { shuffle?: boolean }): Colle
 export const DEFAULT_SCHEDULE_STATE: ScheduleState = {
   startMode: 'now',
   startAt: '',
+  stopAt: '',
   loopStream: true,
   videoVolume: 85,
   audioVolume: 70,

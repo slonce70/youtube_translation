@@ -139,6 +139,7 @@ class StreamService:
         source_type = "playlist" if playlist else "assets"
         scheduled_start_enabled = stream_data.schedule_mode == "schedule"
         scheduled_start_time = stream_data.schedule_start_at if scheduled_start_enabled else None
+        scheduled_stop_time = stream_data.schedule_stop_at
         initial_status = "scheduled" if scheduled_start_enabled else "stopped"
 
         stream = Stream(
@@ -153,6 +154,7 @@ class StreamService:
             status=initial_status,
             scheduled_start_enabled=scheduled_start_enabled,
             scheduled_start_time=scheduled_start_time,
+            scheduled_stop_time=scheduled_stop_time,
         )
 
         self.db.add(stream)
