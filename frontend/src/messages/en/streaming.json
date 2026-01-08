@@ -29,6 +29,8 @@
       "selectBackground": "Add at least one background video",
       "selectAudio": "Add at least one audio track",
       "scheduleTime": "Choose the scheduled start time",
+      "scheduleStopTime": "Choose a future stop time",
+      "scheduleStopAfterStart": "Stop time must be after the start time",
       "concurrentLimit": "Concurrent stream limit reached ({current}/{limit}). Stop an active stream or upgrade your plan."
     },
     "generic": {
@@ -252,6 +254,7 @@
           "title": "Start time",
           "startNow": "Start now",
           "startLater": "Schedule",
+          "stopLabel": "Stop time (optional)",
           "loop": "Loop stream",
           "videoVolume": "Video volume",
           "audioVolume": "Audio volume",

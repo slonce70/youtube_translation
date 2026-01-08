@@ -216,6 +216,11 @@ export interface StreamQueueResponse {
   success: boolean
 }
 
+export interface StreamWsTokenResponse {
+  token: string
+  expires_at: number
+}
+
 export interface Stream {
   id: string
   playlist_id: string | null
@@ -238,6 +243,8 @@ export interface Stream {
   destinations?: StreamDestinationSummary[]
   scheduled_start_enabled?: boolean
   scheduled_start_time?: string | null
+  scheduled_stop_time?: string | null
+  uptime_seconds?: number | null
 }
 
 export interface StreamStatusResponse {
@@ -355,6 +362,7 @@ export interface CreateStreamPayload {
   mix_mode?: 'video_only' | 'audio_only' | 'mixed'
   schedule_mode?: 'now' | 'schedule'
   schedule_start_at?: string
+  schedule_stop_at?: string
   settings_json?: Record<string, unknown>
 }
 

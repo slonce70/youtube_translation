@@ -44,6 +44,7 @@ MIGRATIONS = [
     'migrations/021_admin_action_request_metadata.sql',
     'migrations/022_admin_action_type_constraint.sql',
     'migrations/023_stream_schedule_columns.sql',
+    'migrations/024_stream_schedule_stop_columns.sql',
 ]
 
 
@@ -325,6 +326,20 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     result = await conn.execute(query)
     status['023'] = result.scalar()
+
+    # Check stream scheduled stop columns (migration 024)
+    query = text("""
+        SELECT COUNT(*) = 2
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'streams'
+          AND column_name IN (
+              'scheduled_stop_time',
+              'scheduled_stop_attempted_at'
+          )
+    """)
+    result = await conn.execute(query)
+    status['024'] = result.scalar()
 
     return status
 
@@ -709,6 +724,20 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
                   'scheduled_start_enabled',
                   'scheduled_start_time',
                   'scheduled_start_attempted_at'
+              )
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
+
+    elif migration_num == '024':
+        query = text("""
+            SELECT COUNT(*) = 2
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name IN (
+                  'scheduled_stop_time',
+                  'scheduled_stop_attempted_at'
               )
         """)
         result = await conn.execute(query)
