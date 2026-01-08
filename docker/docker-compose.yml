@@ -1,6 +1,42 @@
 version: '3.8'
 
 services:
+  # PostgreSQL
+  postgres:
+    image: postgres:16
+    container_name: youtube-streaming-postgres
+    environment:
+      - POSTGRES_USER=youtube_user
+      - POSTGRES_PASSWORD=dev_password_local_only
+      - POSTGRES_DB=youtube_streaming
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U youtube_user -d youtube_streaming"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (optional, used for rate limiting)
+  redis:
+    image: redis:7-alpine
+    container_name: youtube-streaming-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Backend API
   backend:
     build:
@@ -13,14 +49,25 @@ services:
       - ../backend/uploads:/app/uploads
       - ../backend/streams:/app/streams
       - ../backend/logs:/app/logs
+      - ../backend/supervisord:/app/supervisord
+      - ../backend/supervisord.conf:/app/supervisord.conf
     env_file:
       - ../backend/.env
+    environment:
+      - DATABASE_URL=postgresql://youtube_user:dev_password_local_only@postgres:5432/youtube_streaming
+      - REDIS_URL=redis://redis:6379/0
     restart: unless-stopped
     networks:
       - app-network
     depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       tusd:
         condition: service_healthy
+      runner:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -30,13 +77,19 @@ services:
 
   # tusd (Resumable uploads)
   tusd:
-    image: tusproject/tusd:latest
+    build:
+      context: ..
+      dockerfile: docker/tusd.Dockerfile
     container_name: youtube-streaming-tusd
-    command: -dir /app/uploads -hooks-http http://backend:8000/api/assets/upload-complete -port 1080
+    command: -dir /app/uploads -hooks-dir /tusd-hooks -port 1080
     ports:
       - "1080:1080"
     volumes:
       - ../backend/uploads:/app/uploads
+    env_file:
+      - ../backend/.env
+    environment:
+      - TUSD_BACKEND_URL=http://backend:8000
     restart: unless-stopped
     networks:
       - app-network
@@ -89,9 +142,37 @@ services:
       retries: 3
       start_period: 60s
 
+  # Runner (Supervisor for FFmpeg processes)
+  runner:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: youtube-streaming-runner
+    entrypoint: ["supervisord", "-c", "/app/supervisord.conf", "-n"]
+    volumes:
+      - ../backend/uploads:/app/uploads
+      - ../backend/streams:/app/streams
+      - ../backend/logs:/app/logs
+      - ../backend/supervisord:/app/supervisord
+      - ../backend/supervisord.conf:/app/supervisord.conf
+    env_file:
+      - ../backend/.env
+    environment:
+      - DATABASE_URL=postgresql://youtube_user:dev_password_local_only@postgres:5432/youtube_streaming
+      - REDIS_URL=redis://redis:6379/0
+    restart: unless-stopped
+    networks:
+      - app-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   caddy-data:
   caddy-config:
+  postgres-data:
 
 networks:
   app-network:
