@@ -25,25 +25,35 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 │ Next.js │ │        FastAPI Backend               │
 │Frontend │ │  • REST API                          │
 │   :3000 │ │  • WebSocket/SSE для live статусів   │
-└─────────┘ │  • FFmpeg Process Manager            │
+└─────────┘ │  • Scheduler + FFmpeg control        │
             │  • File Validator (ffprobe)          │
-            └────────┬─────────────────────────────┘
-                     │
-         ┌───────────┼───────────┐
-         ▼           ▼           ▼
-    ┌────────┐  ┌────────┐  ┌─────────────┐
-    │Supabase│  │  tusd  │  │FFmpeg Workers│
-    │ Auth + │  │Resumable│ │(tee muxer)  │
-    │  DB +  │  │ Upload  │ │             │
-    │Storage │  └────────┘  └──────┬──────┘
-    └────────┘                     │
-                                   ▼
-                    ┌──────────────────────────┐
-                    │  RTMPS → YouTube Channels│
-                    │  • Channel 1             │
-                    │  • Channel 2             │
-                    │  • Channel N             │
-                    └──────────────────────────┘
+            └───────┬──────────────┬──────────────┘
+                    │              │
+                    ▼              ▼
+               ┌────────┐     ┌────────┐
+               │Supabase│     │  tusd  │
+               │ Auth + │     │Resumable│
+               │  DB +  │     │ Upload  │
+               │Storage │     └────────┘
+               └────────┘
+                    │ supervisorctl (unix socket)
+                    ▼
+            ┌──────────────────────────┐
+            │   Runner (supervisord)   │
+            │  • python -m app.cli...  │
+            └──────────┬───────────────┘
+                       ▼
+               ┌─────────────┐
+               │FFmpeg Workers│
+               │(tee muxer)  │
+               └──────┬──────┘
+                      ▼
+       ┌──────────────────────────┐
+       │  RTMPS → YouTube Channels│
+       │  • Channel 1             │
+       │  • Channel 2             │
+       │  • Channel N             │
+       └──────────────────────────┘
 ```
 
 ## Core Components
@@ -105,7 +115,14 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 - Моніторинг ресурсів / reconciliation (`app/core/stream_reconciler.py`)
 - Graceful shutdown + auto-restart (supervisor/systemd режими)
 
-### 3. FFmpeg Streaming Engine
+### 3. Runner (Supervisor)
+
+In Docker Compose the FFmpeg processes are hosted in a dedicated **runner** container.
+The backend controls them via `supervisorctl` over a shared UNIX socket:
+`/app/supervisord/supervisor.sock`. The socket, programs, and logs are kept in
+the shared `/app/supervisord` volume.
+
+### 4. FFmpeg Streaming Engine
 
 **Core Strategy:**
 ```bash
@@ -128,7 +145,7 @@ ffmpeg -re -f concat -safe 0 -i playlist.txt \
 - Automatic reconnection on network issues
 - Scalable to multiple channels
 
-### 4. Database (Supabase PostgreSQL)
+### 5. Database (Supabase PostgreSQL)
 
 **Schema:**
 
@@ -149,7 +166,7 @@ users (managed by Supabase Auth)
 - Encrypted stream keys
 - Secure token-based authentication
 
-### 5. File Upload (tusd)
+### 6. File Upload (tusd)
 
 **Technology:**
 - tus resumable upload protocol
@@ -163,7 +180,7 @@ users (managed by Supabase Auth)
 4. FFprobe analyzes compatibility
 5. Metadata stored in database
 
-### 6. Observability & Monitoring
+### 7. Observability & Monitoring
 
 - **Structured logging** — все сервисы используют `app.core.logging_config` (JSON + masking). Дополнительный middleware `APIMetricsMiddleware` снимает длительность/статус каждого HTTP-запроса и пишет их в кореллируемые логи.
 - **Metrics Registry** — `app.core.metrics` агрегирует счётчики/гистограммы (streams, API, quotas, uploads). Экспорт доступен в двух форматах:
