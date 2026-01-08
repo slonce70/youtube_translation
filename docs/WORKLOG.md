@@ -4,6 +4,7 @@
 - Виніс supervisord у окремий Docker-сервіс `runner` і підключив shared socket/volumes.
 - Оновив `supervisord.conf` під shared UNIX socket (`/app/supervisord/supervisor.sock`).
 - Описав runner в `docs/ARCHITECTURE.md` і оновив схему.
+- Додав stop‑scheduler (one‑shot) з новими полями `scheduled_stop_*` та UI для stop time.
 
 ## 2025-12-30
 - Посилив безпеку: Supabase SSR сесії, токени WS, CSP заголовки, tusd hooks з fail-open контролем.

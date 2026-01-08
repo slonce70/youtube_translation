@@ -57,6 +57,7 @@ describe('stream builder helpers', () => {
 
   it('exposes schedule defaults for live streams', () => {
     expect(DEFAULT_SCHEDULE_STATE.startMode).toBe('now')
+    expect(DEFAULT_SCHEDULE_STATE.stopAt).toBe('')
     expect(DEFAULT_SCHEDULE_STATE.loopStream).toBe(true)
     expect(DEFAULT_SCHEDULE_STATE.videoVolume).toBeGreaterThan(DEFAULT_SCHEDULE_STATE.audioVolume)
   })
