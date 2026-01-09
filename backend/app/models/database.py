@@ -19,6 +19,7 @@ class UserProfile(Base):
     email = Column(Text, nullable=False, unique=True, index=True)
     full_name = Column(Text)
     company_name = Column(Text)
+    timezone = Column(Text)
     
     # Subscription info
     subscription_tier = Column(Text, nullable=False, default='free', index=True)
