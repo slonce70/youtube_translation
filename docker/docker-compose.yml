@@ -56,6 +56,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://youtube_user:dev_password_local_only@postgres:5432/youtube_streaming
       - REDIS_URL=redis://redis:6379/0
+      - FFMPEG_BIN=/usr/bin/ffmpeg
+      - FFPROBE_BIN=/usr/bin/ffprobe
     restart: unless-stopped
     networks:
       - app-network
@@ -166,6 +168,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://youtube_user:dev_password_local_only@postgres:5432/youtube_streaming
       - REDIS_URL=redis://redis:6379/0
+      - FFMPEG_BIN=/usr/bin/ffmpeg
+      - FFPROBE_BIN=/usr/bin/ffprobe
     restart: unless-stopped
     networks:
       - app-network
