@@ -7,6 +7,31 @@
 #
 set -e
 
+base64_decode() {
+    base64 --decode 2>/dev/null || base64 -d 2>/dev/null || base64 -D 2>/dev/null
+}
+
+resolve_backend_base() {
+    local base="${TUSD_BACKEND_URL:-http://localhost:8000}"
+    printf '%s' "${base%/}"
+}
+
+resolve_upload_root() {
+    if [ -n "${TUSD_UPLOAD_ROOT:-}" ]; then
+        printf '%s' "${TUSD_UPLOAD_ROOT%/}"
+        return 0
+    fi
+
+    if [ -d "/app/uploads" ]; then
+        printf '%s' "/app/uploads"
+        return 0
+    fi
+
+    local script_dir
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    printf '%s' "$(cd "$script_dir/.." && pwd)/uploads"
+}
+
 resolve_user_from_token() {
     local token="$1"
 
@@ -23,7 +48,7 @@ resolve_user_from_token() {
     fi
 
     local decoded
-    if ! decoded=$(printf '%s' "$sanitized" | base64 --decode 2>/dev/null); then
+    if ! decoded=$(printf '%s' "$sanitized" | base64_decode); then
         echo "[post-finish] ERROR: Failed to decode upload token" >&2
         return 1
     fi
@@ -56,7 +81,7 @@ resolve_user_from_token() {
     printf '%s' "$user_id"
 }
 
-# Read webhook data from stdin (может быть многострочным)
+# Read webhook data from stdin (може бути багаторядковим)
 HOOK_DATA=$(cat)
 
 if [ -z "$HOOK_DATA" ]; then
@@ -91,13 +116,28 @@ USER_ID="$RESOLVED_USER_ID"
 echo "[post-finish] Resolved User ID: $USER_ID" >&2
 
 # Define paths (absolute to avoid cwd issues)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-UPLOAD_ROOT="${TUSD_UPLOAD_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)/uploads}"
+UPLOAD_ROOT="$(resolve_upload_root)"
 TEMP_DIR="$UPLOAD_ROOT/_temp"
 USER_DIR="$UPLOAD_ROOT/$USER_ID"
 
-TEMP_FILE="$TEMP_DIR/$UPLOAD_ID"
-TEMP_INFO="$TEMP_DIR/$UPLOAD_ID.info"
+STORAGE_PATH=$(echo "$HOOK_DATA" | jq -r '.Storage.Path // .Event.Upload.Storage.Path // .Upload.Storage.Path // empty')
+STORAGE_INFO_PATH=$(echo "$HOOK_DATA" | jq -r '.Storage.InfoPath // .Event.Upload.Storage.InfoPath // .Upload.Storage.InfoPath // empty')
+
+if [ -n "$STORAGE_PATH" ] && [ "$STORAGE_PATH" != "null" ]; then
+    TEMP_FILE="$STORAGE_PATH"
+else
+    TEMP_FILE="$TEMP_DIR/$UPLOAD_ID"
+    if [ ! -f "$TEMP_FILE" ]; then
+        TEMP_FILE="$UPLOAD_ROOT/$UPLOAD_ID"
+    fi
+fi
+
+if [ -n "$STORAGE_INFO_PATH" ] && [ "$STORAGE_INFO_PATH" != "null" ]; then
+    TEMP_INFO="$STORAGE_INFO_PATH"
+else
+    TEMP_INFO="${TEMP_FILE}.info"
+fi
+
 FINAL_FILE="$USER_DIR/$UPLOAD_ID"
 FINAL_INFO="$USER_DIR/$UPLOAD_ID.info"
 
@@ -141,7 +181,7 @@ else
 fi
 
 # Notify backend via webhook
-BACKEND_URL="http://localhost:8000/api/assets/upload-complete"
+BACKEND_URL="$(resolve_backend_base)/api/assets/upload-complete"
 PAYLOAD="${UPDATED_DATA:-$HOOK_DATA}"
 
 echo "[post-finish] Notifying backend..." >&2

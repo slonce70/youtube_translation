@@ -8,6 +8,31 @@
 
 # Exit on error for critical failures
 set -e
+base64_decode() {
+    base64 --decode 2>/dev/null || base64 -d 2>/dev/null || base64 -D 2>/dev/null
+}
+
+resolve_backend_base() {
+    local base="${TUSD_BACKEND_URL:-http://localhost:8000}"
+    printf '%s' "${base%/}"
+}
+
+resolve_upload_root() {
+    if [ -n "${TUSD_UPLOAD_ROOT:-}" ]; then
+        printf '%s' "${TUSD_UPLOAD_ROOT%/}"
+        return 0
+    fi
+
+    if [ -d "/app/uploads" ]; then
+        printf '%s' "/app/uploads"
+        return 0
+    fi
+
+    local script_dir
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    printf '%s' "$(cd "$script_dir/.." && pwd)/uploads"
+}
+
 resolve_user_from_token() {
     local token="$1"
 
@@ -24,7 +49,7 @@ resolve_user_from_token() {
     fi
 
     local decoded
-    if ! decoded=$(printf '%s' "$sanitized" | base64 --decode 2>/dev/null); then
+    if ! decoded=$(printf '%s' "$sanitized" | base64_decode); then
         echo "[pre-create] ERROR: Failed to decode upload token" >&2
         return 1
     fi
@@ -101,7 +126,7 @@ USER_ID="$RESOLVED_USER_ID"
 echo "[pre-create] Resolved User ID: $USER_ID" >&2
 
 # Check quota via backend API
-BACKEND_URL="http://localhost:8000/api/internal/check-quota"
+BACKEND_URL="$(resolve_backend_base)/api/internal/check-quota"
 REQUEST_PAYLOAD=$(jq -n --arg user "$USER_ID" --argjson size "$FILE_SIZE" '{user_id: $user, file_size: ($size | tonumber)}')
 
 if [ -z "$TUSD_HMAC_SECRET" ]; then
@@ -161,8 +186,7 @@ if [ "$CAN_UPLOAD" != "true" ]; then
 fi
 
 # Create user directory if it doesn't exist (absolute path)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-UPLOAD_ROOT="${TUSD_UPLOAD_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)/uploads}"
+UPLOAD_ROOT="$(resolve_upload_root)"
 USER_DIR="$UPLOAD_ROOT/$USER_ID"
 
 if [ ! -d "$USER_DIR" ]; then
