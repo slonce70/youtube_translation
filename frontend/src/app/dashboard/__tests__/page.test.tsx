@@ -18,6 +18,7 @@ jest.mock('@/lib/api', () => ({
     },
     streams: {
       list: jest.fn(),
+      createWsToken: jest.fn(),
     },
     assets: {
       list: jest.fn(),
@@ -76,6 +77,10 @@ describe('DashboardPage', () => {
     jest.clearAllMocks()
     api.quota.get.mockResolvedValue(quotaData)
     api.streams.list.mockResolvedValue([])
+    api.streams.createWsToken.mockResolvedValue({
+      token: 'test-ws-token',
+      expires_at: Math.floor(Date.now() / 1000) + 60,
+    })
     api.assets.list.mockResolvedValue([])
   })
 

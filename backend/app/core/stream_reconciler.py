@@ -39,11 +39,41 @@ async def reconcile_streams(db: AsyncSession) -> dict:
         dict: Summary of reconciliation (confirmed_running, stopped, errors)
     """
     if not (supervisor_enabled() or systemd_enabled()):
-        logger.info("Reconciliation skipped - running in manager mode")
+        logger.info("Reconciliation running in manager mode - marking all 'running' streams as stopped (memory state lost)")
+        
+        # In manager mode, a restart means all in-memory FFmpeg processes are gone.
+        # We must mark any stream that thinks it's running as stopped.
+        result = await db.execute(
+            select(Stream).where(Stream.status.in_(["running", "starting"]))
+        )
+        streams = result.scalars().all()
+        
+        stats = {
+            "confirmed_running": 0,
+            "stopped": 0,
+            "errors": 0,
+            "streams_checked": [],
+        }
+        
+        for stream in streams:
+            stream.status = "stopped"
+            stream.stopped_at = datetime.now(timezone.utc)
+            stream.pid = None
+            stream.error_message = "Stream stopped due to backend restart (manager mode)"
+            stats["stopped"] += 1
+            stats["streams_checked"].append({
+                "id": str(stream.id),
+                "status": "stopped",
+                "action": "marked_stopped",
+                "reason": "backend_restart",
+            })
+            
+        await db.commit()
+        
         return {
             "mode": "manager",
-            "reconciled": False,
-            "reason": "Manager mode does not require reconciliation",
+            "reconciled": True,
+            "stats": stats,
         }
 
     # Clean up supervisor configs/logs for streams that no longer exist

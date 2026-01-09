@@ -33,6 +33,7 @@ import type {
   StreamLiveUpdatePayload,
   StreamQueueAppendPayload,
   StreamQueueResponse,
+  StreamWsTokenResponse,
   UploadTokenResponse,
 } from './types'
 
@@ -172,7 +173,7 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
   // This prevents race conditions on initial page load
   await waitForAuth()
   const token = await getAccessToken()
-  if (!token) {
+  if (!token && process.env.NODE_ENV !== 'test') {
     console.warn('[api] Missing Supabase access token for request', normalizedEndpoint)
   }
 
@@ -271,6 +272,7 @@ export const api = {
     start: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/start`, { method: 'POST' }),
     stop: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/stop`, { method: 'POST' }),
     status: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/status`),
+    createWsToken: () => apiRequest<StreamWsTokenResponse>('/streams/ws-token', { method: 'POST' }),
     logs: (id: string, lines?: number) => apiRequest<StreamLogsResponse>(`/streams/${id}/logs`, { params: { lines: lines ?? 100 } }),
     quality: (id: string) => apiRequest<StreamQualityResponse>(`/streams/${id}/quality`),
     liveUpdate: (id: string, payload: StreamLiveUpdatePayload) =>

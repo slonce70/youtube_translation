@@ -66,6 +66,14 @@ if [ -z "$HOOK_DATA" ]; then
     exit 1
 fi
 
+FAIL_OPEN="${TUSD_FAIL_OPEN:-}"
+if [ -z "$FAIL_OPEN" ]; then
+    case "${ENVIRONMENT:-development}" in
+        production|staging) FAIL_OPEN=0 ;;
+        *) FAIL_OPEN=1 ;;
+    esac
+fi
+
 # Debug: Print raw hook data
 echo "[pre-create] RAW HOOK DATA: $HOOK_DATA" >&2
 
@@ -101,7 +109,8 @@ USER_ID="$RESOLVED_USER_ID"
 echo "[pre-create] Resolved User ID: $USER_ID" >&2
 
 # Check quota via backend API
-BACKEND_URL="http://localhost:8000/api/internal/check-quota"
+BASE_BACKEND_URL="${TUSD_BACKEND_URL:-http://localhost:8000}"
+BACKEND_URL="${BASE_BACKEND_URL}/api/internal/check-quota"
 REQUEST_PAYLOAD=$(jq -n --arg user "$USER_ID" --argjson size "$FILE_SIZE" '{user_id: $user, file_size: ($size | tonumber)}')
 
 if [ -z "$TUSD_HMAC_SECRET" ]; then
@@ -122,16 +131,26 @@ CURL_EXIT_CODE=$?
 set -e
 
 if [ $CURL_EXIT_CODE -ne 0 ]; then
-    echo "[pre-create] WARNING: Failed to connect to backend API (code $CURL_EXIT_CODE). Allowing upload." >&2
-    exit 0
+    if [ "$FAIL_OPEN" = "1" ]; then
+        echo "[pre-create] WARNING: Failed to connect to backend API (code $CURL_EXIT_CODE). Allowing upload." >&2
+        exit 0
+    fi
+    echo "[pre-create] ERROR: Backend unreachable (code $CURL_EXIT_CODE). Rejecting upload." >&2
+    echo '{"HTTPResponse":{"StatusCode":503,"Body":"Upload rejected: backend unavailable","Headers":{"Content-Type":"text/plain"}}}' >&1
+    exit 1
 fi
 
 RESPONSE_BODY=${HTTP_RESPONSE%HTTPSTATUS:*}
 HTTP_STATUS=${HTTP_RESPONSE##*HTTPSTATUS:}
 
 if [ "$HTTP_STATUS" -ge 500 ]; then
-    echo "[pre-create] WARNING: Backend quota endpoint returned $HTTP_STATUS. Allowing upload." >&2
-    exit 0
+    if [ "$FAIL_OPEN" = "1" ]; then
+        echo "[pre-create] WARNING: Backend quota endpoint returned $HTTP_STATUS. Allowing upload." >&2
+        exit 0
+    fi
+    echo "[pre-create] ERROR: Backend quota endpoint returned $HTTP_STATUS. Rejecting upload." >&2
+    echo "{\"HTTPResponse\":{\"StatusCode\":503,\"Body\":\"Upload rejected: backend unavailable\",\"Headers\":{\"Content-Type\":\"text/plain\"}}}" >&1
+    exit 1
 fi
 
 if [ "$HTTP_STATUS" -ne 200 ]; then

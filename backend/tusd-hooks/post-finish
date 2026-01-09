@@ -141,7 +141,8 @@ else
 fi
 
 # Notify backend via webhook
-BACKEND_URL="http://localhost:8000/api/assets/upload-complete"
+BASE_BACKEND_URL="${TUSD_BACKEND_URL:-http://localhost:8000}"
+BACKEND_URL="${BASE_BACKEND_URL}/api/assets/upload-complete"
 PAYLOAD="${UPDATED_DATA:-$HOOK_DATA}"
 
 echo "[post-finish] Notifying backend..." >&2

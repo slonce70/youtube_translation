@@ -16,6 +16,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.metrics import track_quota_denied
+from app.core.observability import capture_alert
 from app.models.database import (
     Asset,
     Destination,
@@ -47,15 +49,28 @@ class QuotaService:
         secret = settings.tusd_hmac_secret
         if secret:
             if not signature:
+                capture_alert(
+                    "tusd_hmac_missing",
+                    tags={"component": "tusd", "event": "hmac_missing"},
+                )
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing tusd signature")
 
             expected_signature = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
             if not hmac.compare_digest(expected_signature, signature):
+                capture_alert(
+                    "tusd_hmac_invalid",
+                    tags={"component": "tusd", "event": "hmac_invalid"},
+                )
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid tusd signature")
         else:
             environment = settings.environment.lower()
             if environment in {"production", "staging"}:
                 logger.error("TUSD_HMAC_SECRET must be configured for environment '%s'", settings.environment)
+                capture_alert(
+                    "tusd_hmac_secret_missing",
+                    level="error",
+                    tags={"component": "tusd", "event": "hmac_secret_missing"},
+                )
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="Quota service misconfigured",
@@ -85,6 +100,15 @@ class QuotaService:
 
         if current_storage + payload.file_size > max_storage_bytes:
             used_gb = current_storage / (1024**3)
+            track_quota_denied()
+            capture_alert(
+                "quota_denied_storage",
+                tags={"component": "quota", "event": "storage_limit"},
+                extra={
+                    "tier": profile.subscription_tier,
+                    "limit_gb": limits.storage_gb,
+                },
+            )
             return QuotaCheckResponse(
                 can_upload=False,
                 reason=(
@@ -101,6 +125,15 @@ class QuotaService:
         if limits.max_assets:
             assets_count = await self._count_records(Asset, payload.user_id)
             if assets_count >= limits.max_assets:
+                track_quota_denied()
+                capture_alert(
+                    "quota_denied_assets",
+                    tags={"component": "quota", "event": "asset_limit"},
+                    extra={
+                        "tier": profile.subscription_tier,
+                        "limit": limits.max_assets,
+                    },
+                )
                 return QuotaCheckResponse(
                     can_upload=False,
                     reason=(
@@ -280,4 +313,3 @@ class QuotaService:
             total_seconds += (effective_end - effective_start).total_seconds()
 
         return round(total_seconds / 3600.0, 2)
-

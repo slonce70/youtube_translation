@@ -7,13 +7,22 @@ Uses in-memory storage for simplicity (consider Redis for production).
 
 import time
 import logging
+import inspect
 from collections import deque
-from typing import Dict, Tuple
+from ipaddress import ip_address, ip_network
+from typing import Dict, Tuple, Iterable, List
 from threading import RLock
 from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
+
+try:  # Optional dependency for Redis-backed rate limiting
+    import redis.asyncio as redis  # type: ignore
+except Exception:  # pragma: no cover - handled at runtime
+    redis = None
 
 
 class RateLimitEntry:
@@ -62,13 +71,37 @@ class RateLimitEntry:
         return max(0, int(reset_time - now))
 
 
+class RateLimitStatus:
+    """Lightweight rate limit state for external backends."""
+
+    def __init__(self, max_requests: int, window_seconds: int, remaining: int, reset_time: int):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._remaining = remaining
+        self._reset_time = reset_time
+
+    def get_remaining(self) -> int:
+        return max(0, int(self._remaining))
+
+    def get_reset_time(self) -> int:
+        return max(0, int(self._reset_time))
+
+
 class RateLimiter:
     """Rate limiter with configurable limits per route pattern"""
     
-    def __init__(self):
+    def __init__(self, trusted_proxies: Iterable[str] | None = None):
         self.clients: Dict[str, RateLimitEntry] = {}
         self.lock = RLock()
         self.max_clients = 10000
+        self._trusted_proxy_networks: List = []
+
+        if trusted_proxies:
+            for entry in trusted_proxies:
+                try:
+                    self._trusted_proxy_networks.append(ip_network(entry))
+                except ValueError:
+                    logger.warning("Invalid trusted proxy entry ignored: %s", entry)
         
         # Default limits (requests per minute)
         self.default_limit = 60
@@ -91,14 +124,25 @@ class RateLimiter:
     
     def _get_client_key(self, request: Request) -> str:
         """Generate unique key for client (IP + endpoint)"""
-        # Use forwarded IP if behind proxy
+        client_ip = request.client.host or "unknown"
         forwarded = request.headers.get("X-Forwarded-For")
-        client_ip = forwarded.split(",")[0] if forwarded else request.client.host
+
+        if forwarded and self._is_trusted_proxy(client_ip):
+            client_ip = forwarded.split(",")[0].strip()
         
         # Include endpoint pattern for different limits per route
         endpoint = request.url.path
         
         return f"{client_ip}:{endpoint}"
+
+    def _is_trusted_proxy(self, client_ip: str) -> bool:
+        if not self._trusted_proxy_networks:
+            return False
+        try:
+            ip = ip_address(client_ip)
+        except ValueError:
+            return False
+        return any(ip in network for network in self._trusted_proxy_networks)
     
     def _get_limits_for_endpoint(self, path: str) -> Tuple[int, int]:
         """Get rate limits for specific endpoint"""
@@ -164,6 +208,40 @@ class RateLimiter:
                 logger.debug(f"Cleaned up {len(to_remove)} old rate limit entries")
 
 
+class RedisRateLimiter(RateLimiter):
+    """Redis-backed rate limiter for multi-instance deployments."""
+
+    def __init__(self, redis_url: str, trusted_proxies: Iterable[str] | None = None, prefix: str = "rate-limit"):
+        super().__init__(trusted_proxies=trusted_proxies)
+        if redis is None:
+            raise RuntimeError("redis library is not available")
+        self.redis = redis.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        self.prefix = prefix
+
+    async def check_rate_limit(self, request: Request) -> Tuple[bool, RateLimitStatus]:
+        client_key = self._get_client_key(request)
+        max_requests, window = self._get_limits_for_endpoint(request.url.path)
+        key = f"{self.prefix}:{client_key}:{window}"
+
+        try:
+            async with self.redis.pipeline() as pipe:
+                pipe.incr(key)
+                pipe.ttl(key)
+                count, ttl = await pipe.execute()
+
+            if ttl is None or ttl < 0:
+                await self.redis.expire(key, window)
+                ttl = window
+
+            remaining = max_requests - int(count)
+            status = RateLimitStatus(max_requests, window, remaining, ttl)
+            return remaining >= 0, status
+        except Exception as exc:  # pragma: no cover - runtime fallback
+            logger.warning("Redis rate limiter failed; falling back to in-memory: %s", exc)
+            allowed, entry = super().check_rate_limit(request)
+            return allowed, RateLimitStatus(entry.max_requests, entry.window_seconds, entry.get_remaining(), entry.get_reset_time())
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """FastAPI middleware for rate limiting"""
     
@@ -187,8 +265,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.exclude_paths:
             return await call_next(request)
         
-        # Check rate limit
-        allowed, entry = self.rate_limiter.check_rate_limit(request)
+        # Check rate limit (supports async backends like Redis)
+        result = self.rate_limiter.check_rate_limit(request)
+        if inspect.isawaitable(result):
+            allowed, entry = await result
+        else:
+            allowed, entry = result
         
         if not allowed:
             # Rate limit exceeded
@@ -223,5 +305,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _build_rate_limiter() -> RateLimiter:
+    if settings.redis_url:
+        try:
+            return RedisRateLimiter(
+                settings.redis_url,
+                trusted_proxies=settings.trusted_proxies,
+                prefix=settings.redis_rate_limit_prefix,
+            )
+        except Exception as exc:  # pragma: no cover - fallback on runtime errors
+            logger.warning("Failed to initialize Redis rate limiter: %s", exc)
+    return RateLimiter(trusted_proxies=settings.trusted_proxies)
+
+
 # Global rate limiter instance
-global_rate_limiter = RateLimiter()
+global_rate_limiter = _build_rate_limiter()

@@ -7,7 +7,8 @@ import psutil
 import os
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.core.config import settings
+from app.api.deps import get_current_user, require_metrics_access
 from app.models.database import Stream
 from uuid import UUID
 from app.core.metrics import metrics_registry
@@ -27,14 +28,26 @@ def get_system_metrics() -> Dict[str, Any]:
     memory = psutil.virtual_memory()
     
     # Disk metrics for upload directory
-    upload_dir = os.environ.get("UPLOAD_DIR", "/app/uploads")
+    upload_dir = settings.upload_dir or os.environ.get("UPLOAD_DIR", "/app/uploads")
     try:
         disk = psutil.disk_usage(upload_dir)
+        warning_threshold = max(0, min(100, settings.disk_warning_percent))
+        critical_threshold = max(0, min(100, settings.disk_critical_percent))
+        if critical_threshold < warning_threshold:
+            critical_threshold = warning_threshold
+        status = "ok"
+        if disk.percent >= critical_threshold:
+            status = "critical"
+        elif disk.percent >= warning_threshold:
+            status = "warning"
         disk_metrics = {
             "total_gb": round(disk.total / (1024**3), 2),
             "used_gb": round(disk.used / (1024**3), 2),
             "free_gb": round(disk.free / (1024**3), 2),
-            "percent": disk.percent
+            "percent": disk.percent,
+            "status": status,
+            "warning_threshold": warning_threshold,
+            "critical_threshold": critical_threshold,
         }
     except Exception:
         disk_metrics = None
@@ -182,7 +195,9 @@ async def get_metrics(
 
 
 @router.get("/prometheus", response_class=PlainTextResponse)
-async def export_prometheus_metrics() -> PlainTextResponse:
+async def export_prometheus_metrics(
+    _: dict = Depends(require_metrics_access),
+) -> PlainTextResponse:
     """Expose metrics in Prometheus exposition format."""
     payload = metrics_registry.export_prometheus()
     return PlainTextResponse(payload, media_type="text/plain; version=0.0.4")

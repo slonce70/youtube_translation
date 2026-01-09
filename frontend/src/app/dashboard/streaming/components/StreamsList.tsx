@@ -247,7 +247,12 @@ export function StreamsList({
                       <Button size="sm" variant="outline" onClick={() => onViewLogs(stream.id)}>
                         {t('streams.buttons.logs')}
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => onOpenLiveEditor(stream)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid={`stream-live-edit-${stream.id}`}
+                        onClick={() => onOpenLiveEditor(stream)}
+                      >
                         {t('streams.liveEdit.button')}
                       </Button>
                       {stream.status === 'running' ? (

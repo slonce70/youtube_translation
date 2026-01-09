@@ -11,9 +11,31 @@ Provides:
 import logging
 import sys
 import re
+from uuid import UUID
 from datetime import datetime
 from typing import Any, Dict
 from pythonjsonlogger import jsonlogger
+
+UUID_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{12}\b"
+)
+IDENTITY_HINT_RE = re.compile(r"\b(user|tenant)(?:[_\s-]?id)?\b", re.IGNORECASE)
+
+
+def mask_identifier(value: str) -> str:
+    if not value:
+        return value
+    if len(value) <= 8:
+        return "***"
+    return f"{value[:4]}...{value[-4:]}"
+
+
+def mask_uuids(text: str) -> str:
+    return UUID_RE.sub(lambda match: mask_identifier(match.group(0)), text)
 
 
 class SensitiveDataFilter(logging.Filter):
@@ -30,17 +52,25 @@ class SensitiveDataFilter(logging.Filter):
     
     def filter(self, record: logging.LogRecord) -> bool:
         """Mask sensitive data in log messages"""
+        message_has_identity_hint = False
         if hasattr(record, 'msg') and isinstance(record.msg, str):
+            message_has_identity_hint = bool(IDENTITY_HINT_RE.search(record.msg))
             for pattern, replacement in self.SENSITIVE_PATTERNS:
                 record.msg = pattern.sub(replacement, record.msg)
+            if message_has_identity_hint:
+                record.msg = mask_uuids(record.msg)
         
         # Also check args
         if hasattr(record, 'args') and record.args:
             masked_args = []
             for arg in record.args:
+                if isinstance(arg, UUID):
+                    arg = str(arg)
                 if isinstance(arg, str):
                     for pattern, replacement in self.SENSITIVE_PATTERNS:
                         arg = pattern.sub(replacement, arg)
+                    if message_has_identity_hint:
+                        arg = mask_uuids(arg)
                 masked_args.append(arg)
             record.args = tuple(masked_args)
         
@@ -74,9 +104,13 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
         if hasattr(record, 'correlation_id'):
             log_record['correlation_id'] = record.correlation_id
         
-        # Add user ID if present
+        # Add user ID if present (masked)
         if hasattr(record, 'user_id'):
-            log_record['user_id'] = record.user_id
+            log_record['user_id'] = mask_identifier(str(record.user_id))
+
+        # Add tenant ID if present (masked)
+        if hasattr(record, 'tenant_id'):
+            log_record['tenant_id'] = mask_identifier(str(record.tenant_id))
         
         # Add request ID if present
         if hasattr(record, 'request_id'):

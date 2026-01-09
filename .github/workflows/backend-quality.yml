@@ -13,6 +13,18 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     defaults:
       run:
@@ -38,15 +50,34 @@ jobs:
           SUPABASE_URL=https://example.supabase.co
           SUPABASE_KEY=dummy-key
           SUPABASE_JWT_SECRET=dummy-jwt-secret
-          DATABASE_URL=postgresql://postgres:password@localhost:5432/postgres
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
           ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
           ENCRYPTION_SALT=test_salt_value
           DOWNLOAD_TOKEN_SECRET=test_download_secret
+          UPLOAD_TOKEN_SECRET=test_upload_secret
+          TUSD_HMAC_SECRET=test_tusd_secret
+          METRICS_ACCESS_TOKEN=test_metrics_token
           ENV
 
-      - name: Run security unit tests
+      - name: Run migrations
         env:
           ENV_FILE: .env.ci
         run: |
           export $(grep -v '^#' "$ENV_FILE" | xargs)
-          pytest tests/test_security.py
+          python apply_migrations.py
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (black)
+        run: black --check .
+
+      - name: Type check (mypy)
+        run: mypy app --ignore-missing-imports
+
+      - name: Run test suite
+        env:
+          ENV_FILE: .env.ci
+        run: |
+          export $(grep -v '^#' "$ENV_FILE" | xargs)
+          pytest -v

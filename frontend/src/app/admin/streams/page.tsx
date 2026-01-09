@@ -39,7 +39,7 @@ export default function StreamsMonitoring() {
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
     }),
-    refetchInterval: 5000,
+    refetchInterval: 3000,
   })
 
   useEffect(() => {

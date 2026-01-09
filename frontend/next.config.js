@@ -30,8 +30,49 @@ const unique = (arr) => [...new Set(arr)]
 
 const allowedOrigins = unique([...DEFAULT_DEV_ORIGINS, ...DEV_ORIGIN_TOKENS, ...LOCAL_NETWORK_ORIGINS])
 
+const resolveOrigin = (value) => {
+  if (!value) return null
+  try {
+    return new URL(value).origin
+  } catch (error) {
+    return null
+  }
+}
+
+const buildContentSecurityPolicy = () => {
+  const isDev = process.env.NODE_ENV !== 'production'
+  const connectSrc = new Set(["'self'", 'https://api.supabase.co', 'wss:', 'ws:'])
+
+  const apiOrigin = resolveOrigin(process.env.NEXT_PUBLIC_API_URL)
+  const supabaseOrigin = resolveOrigin(process.env.NEXT_PUBLIC_SUPABASE_URL)
+  const tusdOrigin = resolveOrigin(process.env.NEXT_PUBLIC_TUSD_URL)
+
+  ;[apiOrigin, supabaseOrigin, tusdOrigin].filter(Boolean).forEach((origin) => connectSrc.add(origin))
+
+  if (isDev) {
+    connectSrc.add('http:')
+    connectSrc.add('https:')
+  }
+
+  const directives = [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    `connect-src ${Array.from(connectSrc).join(' ')}`,
+    "media-src 'self' blob:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ]
+
+  return directives.join('; ')
+}
+
 const nextConfig = {
   reactStrictMode: true,
+  outputFileTracingRoot: path.join(__dirname, '..'),
   allowedDevOrigins: allowedOrigins,
   experimental: {
     serverActions: {
@@ -76,6 +117,21 @@ const nextConfig = {
       {
         source: '/thumbnails/:path*',
         destination: `${DEV_API_PROXY_TARGET}/thumbnails/:path*`,
+      },
+    ]
+  },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'Content-Security-Policy', value: buildContentSecurityPolicy() },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-XSS-Protection', value: '1; mode=block' },
+          { key: 'Permissions-Policy', value: 'geolocation=(), microphone=(), camera=(), payment=()' },
+        ],
       },
     ]
   },

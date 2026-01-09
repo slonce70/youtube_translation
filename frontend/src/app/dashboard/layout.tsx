@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { supabase, waitForAuth } from '@/lib/supabase'
 import { NavBar } from '@/components/NavBar'
 import { LoadingState } from '@/components/LoadingState'
@@ -71,7 +72,7 @@ export default function DashboardLayout({ children }: Props) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
       if (DEV_BYPASS) {
         return
       }
