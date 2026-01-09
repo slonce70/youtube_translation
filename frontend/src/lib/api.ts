@@ -150,9 +150,8 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
   const { base: normalizedBase } = resolveApiBase()
 
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
-  const endpointWithSlash = normalizedEndpoint.endsWith('/') ? normalizedEndpoint : `${normalizedEndpoint}/`
 
-  let urlString = `${normalizedBase}${endpointWithSlash}`
+  let urlString = `${normalizedBase}${normalizedEndpoint}`
 
   if (params) {
     const searchParams = new URLSearchParams()
@@ -223,9 +222,9 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
 export const api = {
   assets: {
     list: (params?: { asset_type?: 'video' | 'audio'; folder_id?: string }) =>
-      apiRequest<Asset[]>('/assets', { params }),
+      apiRequest<Asset[]>('/assets/', { params }),
     get: (id: string) => apiRequest<Asset>(`/assets/${id}`),
-    create: (data: CreateAssetPayload) => apiRequest<Asset>('/assets', { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: CreateAssetPayload) => apiRequest<Asset>('/assets/', { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: string, options?: { force?: boolean }) =>
       apiRequest<void>(`/assets/${id}`, {
         method: 'DELETE',
@@ -241,10 +240,10 @@ export const api = {
   },
 
   playlists: {
-    list: () => apiRequest<Playlist[]>('/playlists'),
+    list: () => apiRequest<Playlist[]>('/playlists/'),
     get: (id: string) => apiRequest<Playlist>(`/playlists/${id}`),
     create: (data: PlaylistCreatePayload) =>
-      apiRequest<Playlist>('/playlists', { method: 'POST', body: JSON.stringify(data) }),
+      apiRequest<Playlist>('/playlists/', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: PlaylistUpdatePayload) =>
       apiRequest<Playlist>(`/playlists/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiRequest<void>(`/playlists/${id}`, { method: 'DELETE' }),
@@ -252,18 +251,18 @@ export const api = {
   },
 
   destinations: {
-    list: () => apiRequest<Destination[]>('/destinations'),
+    list: () => apiRequest<Destination[]>('/destinations/'),
     get: (id: string) => apiRequest<Destination>(`/destinations/${id}`),
     create: (data: DestinationCreatePayload) =>
-      apiRequest<Destination>('/destinations', { method: 'POST', body: JSON.stringify(data) }),
+      apiRequest<Destination>('/destinations/', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: DestinationUpdatePayload) =>
       apiRequest<Destination>(`/destinations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiRequest<void>(`/destinations/${id}`, { method: 'DELETE' }),
   },
 
   streams: {
-    list: () => apiRequest<Stream[]>('/streams'),
-    create: (data: CreateStreamPayload) => apiRequest<Stream>('/streams', {
+    list: () => apiRequest<Stream[]>('/streams/'),
+    create: (data: CreateStreamPayload) => apiRequest<Stream>('/streams/', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -295,9 +294,9 @@ export const api = {
 
   mediaFolders: {
     list: (params?: { parent_id?: string; is_root?: boolean; search?: string }) =>
-      apiRequest<MediaFolder[]>('/media-folders', { params }),
+      apiRequest<MediaFolder[]>('/media-folders/', { params }),
     create: (data: { name: string; parent_id?: string | null }) =>
-      apiRequest<MediaFolder>('/media-folders', { method: 'POST', body: JSON.stringify(data) }),
+      apiRequest<MediaFolder>('/media-folders/', { method: 'POST', body: JSON.stringify(data) }),
     update: (folderId: string, data: { name?: string; parent_id?: string | null }) =>
       apiRequest<MediaFolder>(`/media-folders/${folderId}`, {
         method: 'PATCH',
@@ -324,7 +323,7 @@ export const api = {
       is_active?: boolean
       include_items?: boolean
     }) =>
-      apiRequest<MediaCollection[]>('/media-collections', {
+      apiRequest<MediaCollection[]>('/media-collections/', {
         params: params
           ? {
               collection_type: params.collection_type,
@@ -338,7 +337,7 @@ export const api = {
         params: { include_items: includeItems },
       }),
     create: (payload: MediaCollectionCreatePayload) =>
-      apiRequest<MediaCollection>('/media-collections', {
+      apiRequest<MediaCollection>('/media-collections/', {
         method: 'POST',
         body: JSON.stringify(payload),
       }),
