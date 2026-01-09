@@ -280,6 +280,19 @@ async def _apply_schema_changes(conn):
             """
         )
     )
+
+    # Add missing statistics columns to playlists table
+    playlist_columns = ["total_duration_seconds", "total_assets"]
+    if await _missing_columns(conn, "playlists", playlist_columns):
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE playlists
+                ADD COLUMN IF NOT EXISTS total_duration_seconds FLOAT DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS total_assets INTEGER DEFAULT 0
+                """
+            )
+        )
     
     # Add missing columns to assets table
     asset_columns = [

@@ -5,6 +5,7 @@ import { defaultLocale, locales } from '@/i18n/config'
 
 const PUBLIC_PATHS = new Set(['/', '/login'])
 const COOKIE_NAME = 'NEXT_LOCALE'
+const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -28,8 +29,8 @@ export function middleware(request: NextRequest) {
     maxAge: 31536000, // 1 year
   })
 
-  // Skip auth check for public paths
-  if (PUBLIC_PATHS.has(pathname)) {
+  // Skip auth check for public paths or dev bypass
+  if (DEV_BYPASS || PUBLIC_PATHS.has(pathname)) {
     return response
   }
 

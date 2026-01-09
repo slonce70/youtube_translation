@@ -1,34 +1,58 @@
-import { createClient, type Session } from '@supabase/supabase-js'
+import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!isSupabaseConfigured && !DEV_BYPASS) {
   throw new Error('Missing Supabase environment variables')
 }
 
-const projectRef = new URL(supabaseUrl).host.split('.')[0]
+const projectRef = isSupabaseConfigured
+  ? new URL(supabaseUrl as string).host.split('.')[0]
+  : 'dev-auth'
 const SUPABASE_STORAGE_KEY = `sb-${projectRef}-auth-token`
 
 const SESSION_COOKIE_NAME = 'sb-session'
 let cachedSession: Session | null = null
 
 // Auth ready state management to prevent race conditions
-let isAuthReady = false
+let isAuthReady = DEV_BYPASS
 let authReadyResolve: (() => void) | null = null
 const authReadyPromise = new Promise<void>((resolve) => {
   authReadyResolve = resolve
+  if (DEV_BYPASS) {
+    resolve()
+  }
 })
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-})
+const createBypassClient = (): SupabaseClient => {
+  const noop = () => {}
+  return {
+    auth: {
+      getSession: async () => ({ data: { session: null }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: noop } } }),
+      signUp: async () => ({ data: { user: null, session: null }, error: null }),
+      signInWithPassword: async () => ({ data: { user: null, session: null }, error: null }),
+      signOut: async () => ({ error: null }),
+      getUser: async () => ({ data: { user: null }, error: null }),
+    },
+  } as unknown as SupabaseClient
+}
+
+export const supabase = isSupabaseConfigured
+  ? createClient(supabaseUrl as string, supabaseAnonKey as string, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
+  : createBypassClient()
 
 function setAuthCookies(session: Session | null) {
+  if (DEV_BYPASS) return
   if (typeof document === 'undefined') return
 
   // Позначаємо наявність активної сесії без збереження чутливих токенів у cookies
@@ -47,28 +71,30 @@ function setAuthCookies(session: Session | null) {
   document.cookie = `sb-refresh-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`
 }
 
-// Initialize auth and mark as ready
-supabase.auth.getSession().then(({ data }) => {
-  setAuthCookies(data.session ?? null)
-  cachedSession = data.session ?? null
-  
-  // Mark auth as ready after initial session load
-  if (!isAuthReady) {
-    isAuthReady = true
-    authReadyResolve?.()
-  }
-})
+if (isSupabaseConfigured) {
+  // Initialize auth and mark as ready
+  supabase.auth.getSession().then(({ data }) => {
+    setAuthCookies(data.session ?? null)
+    cachedSession = data.session ?? null
 
-supabase.auth.onAuthStateChange((_event, session) => {
-  setAuthCookies(session)
-  cachedSession = session ?? null
-  
-  // Ensure auth is marked ready on any state change
-  if (!isAuthReady) {
-    isAuthReady = true
-    authReadyResolve?.()
-  }
-})
+    // Mark auth as ready after initial session load
+    if (!isAuthReady) {
+      isAuthReady = true
+      authReadyResolve?.()
+    }
+  })
+
+  supabase.auth.onAuthStateChange((_event, session) => {
+    setAuthCookies(session)
+    cachedSession = session ?? null
+
+    // Ensure auth is marked ready on any state change
+    if (!isAuthReady) {
+      isAuthReady = true
+      authReadyResolve?.()
+    }
+  })
+}
 
 /**
  * Wait for Supabase auth to be fully initialized.
@@ -112,6 +138,9 @@ async function readTokenFromStorage(): Promise<string | null> {
 }
 
 export async function getAccessToken(maxRetries = 3): Promise<string | null> {
+  if (DEV_BYPASS) {
+    return null
+  }
   await waitForAuth()
 
   const attempt = async (): Promise<string | null> => {
@@ -144,6 +173,9 @@ export async function getAccessToken(maxRetries = 3): Promise<string | null> {
 }
 
 export async function isAuthenticated(): Promise<boolean> {
+  if (DEV_BYPASS) {
+    return true
+  }
   await waitForAuth()
   const { data: { session } } = await supabase.auth.getSession()
   return !!session

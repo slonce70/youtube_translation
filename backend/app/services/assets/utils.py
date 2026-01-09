@@ -264,13 +264,13 @@ def generate_upload_token(user_id: UUID) -> tuple[str, int]:
     nonce = uuid4().hex
     payload = f"{user_id}:{expires_at}:{nonce}"
     signature = _sign_upload_payload(payload)
-    token = base64.urlsafe_b64encode(f"{payload}:{signature}".encode("utf-8")).decode("utf-8")
+    token = base64.b64encode(f"{payload}:{signature}".encode("utf-8")).decode("utf-8")
     return token, expires_at
 
 
 def verify_upload_token(token: str) -> UUID:
     try:
-        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        decoded = base64.b64decode(token.encode("utf-8")).decode("utf-8")
         try:
             payload, signature = decoded.rsplit(":", 1)
         except ValueError as exc:
