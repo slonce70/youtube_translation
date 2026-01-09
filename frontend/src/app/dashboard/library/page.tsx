@@ -331,7 +331,8 @@ export default function LibraryPage() {
         toast.success(libraryToasts('upload.processed'), { id: toastId })
         setIsUploadOpen(false)
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
+        const message =
+          error instanceof Error ? error.message : libraryToasts('generic.unknownError')
         toast.error(libraryToasts('upload.refreshFailed', { message }), { id: toastId })
       } finally {
         uppy.cancelAll()
@@ -379,7 +380,7 @@ export default function LibraryPage() {
       const message =
         error instanceof ApiError
           ? error.message
-          : (error as Error)?.message ?? 'Unable to refresh upload token'
+          : (error as Error)?.message ?? libraryToasts('upload.tokenRefreshFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
     }
   }, [libraryToasts, uppy, user?.id])
@@ -897,7 +898,7 @@ export default function LibraryPage() {
       await updateAssetMutation.mutateAsync({ id: assetBeingRenamed.id, data: { filename: trimmed } })
       closeRenameModal()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update asset'
+      const message = error instanceof Error ? error.message : libraryToasts('asset.updateFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
     }
   }
@@ -915,7 +916,7 @@ export default function LibraryPage() {
         toast.success(libraryToasts('asset.validationRefreshed'))
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to validate asset'
+      const message = error instanceof Error ? error.message : libraryToasts('asset.validateFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
       setCheckModalAsset(null)
       setCheckModalInfo(null)
@@ -938,7 +939,8 @@ export default function LibraryPage() {
       window.open(link.download_url, '_blank', 'noopener,noreferrer')
       toast.info(libraryToasts('asset.download', { name: asset.filename }))
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to generate download link'
+      const message =
+        error instanceof Error ? error.message : libraryToasts('asset.downloadLinkFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
     } finally {
       setDownloadAssetId(null)
@@ -995,7 +997,7 @@ export default function LibraryPage() {
       })
       closeDeleteModal()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to delete assets'
+      const message = error instanceof Error ? error.message : libraryToasts('asset.deleteFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
       closeDeleteModal()
     } finally {
@@ -1110,7 +1112,7 @@ export default function LibraryPage() {
   }
 
   const handleDeletePlaylist = (playlistId: string) => {
-    if (confirm('Are you sure you want to delete this playlist?')) {
+    if (confirm(tLibrary('playlists.messages.confirmDelete'))) {
       deletePlaylistMutation.mutate(playlistId)
     }
   }

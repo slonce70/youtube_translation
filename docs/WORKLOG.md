@@ -11,6 +11,7 @@
 - Library: виправив запис `thumbnail_url` (JSONB mutation tracking) + додав fallback прев’ю `/thumbnails/{asset_id}.jpg`, щоб відео не показувало “порожній квадрат”.
 - Оновив рекомендації bitrate/quality (включно з 720p та підтримкою дробних значень на кшталт `4.5 Mbps`).
 - i18n: додав ключі та переклади (uk/en/ru) для timeline/logs у streaming builder, прибрав частину hardcoded рядків.
+- i18n: прибрав залишки англомовних confirm/toast fallback у Library/Streaming та локалізував згадку “Go Live” в dashboard checklist (uk/ru).
 - Підтвердив тестами: `cd backend && python -m pytest` (115 passed, 8 skipped).
 
 ## 2026-01-08
