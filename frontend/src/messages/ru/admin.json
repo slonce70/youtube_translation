@@ -99,6 +99,12 @@
       "unsuspendError": "Не удалось разблокировать пользователя",
       "tierChangeSuccess": "Тариф обновлен",
       "tierChangeError": "Не удалось обновить тариф"
+    },
+    "pagination": {
+      "showing": "Показано {start}-{end}",
+      "previous": "Назад",
+      "next": "Вперёд",
+      "page": "Страница {page}"
     }
   },
   "alerts": {
