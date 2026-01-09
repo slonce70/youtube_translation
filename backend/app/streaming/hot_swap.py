@@ -117,8 +117,24 @@ class SlotQueue:
                 async with self.lock:
                     current_asset = self.assigned.get(self.playhead_index)
                     duration = _safe_duration(current_asset)
-                await asyncio.sleep(duration)
-                await asyncio.sleep(0.2)
+                
+                # Use monotonic time for drift correction
+                start_time = asyncio.get_running_loop().time()
+                target_end_time = start_time + duration
+                
+                # Sleep in small chunks to remain responsive to cancellation
+                while True:
+                    now = asyncio.get_running_loop().time()
+                    remaining = target_end_time - now
+                    if remaining <= 0:
+                        break
+                    await asyncio.sleep(min(remaining, 0.5))
+                    if not self.active:
+                        return
+
+                # Small buffer to ensure we don't cut off too early
+                await asyncio.sleep(0.1)
+                
                 async with self.lock:
                     last_index = self.playhead_index
                     self.playhead_index = (self.playhead_index + 1) % len(self.slot_paths)

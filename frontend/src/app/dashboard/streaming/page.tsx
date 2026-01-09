@@ -6,16 +6,14 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { Locale as DateFnsLocale } from 'date-fns'
 import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
-import { Play, Loader2, X } from 'lucide-react'
+import { Play, Loader2 } from 'lucide-react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from 'next/navigation'
 
 import { api, ApiError } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Input } from '@/components/ui/Input'
 import type {
   Destination,
   DestinationUpdatePayload,
@@ -32,18 +30,15 @@ import type {
 import { useDashboardContext } from '../dashboard-context'
 import { ChannelsSidebar } from './components/ChannelsSidebar'
 import { StreamsList } from './components/StreamsList'
+import { ChannelFormModal } from './components/ChannelFormModal'
+import { StreamLogsModal } from './components/StreamLogsModal'
+import { StreamStatsCards } from './components/StreamStatsCards'
 import { StreamBuilderModal } from './components/StreamBuilderModal'
 import { LiveEditorModal } from './components/LiveEditorModal'
 import { QualityGateModal } from './components/QualityGateModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
-
-type DestinationFormState = {
-  name: string
-  rtmps_url: string
-  stream_key: string
-  enabled: boolean
-}
+import type { DestinationFormState } from './types'
 
 const statusVariantMap: Record<StreamStatusValue, 'success' | 'info' | 'warning' | 'error'> = {
   running: 'success',
@@ -442,132 +437,26 @@ export default function StreamingPage() {
             isDeletePending={deleteStreamMutation.isPending}
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-success-600">
-                    {streams?.filter((s) => s.status === 'running').length || 0}
-                  </p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    {tStreaming('streams.stats.active')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-3xl font-bold gradient-text">{streams?.length || 0}</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    {tStreaming('streams.stats.total')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-3xl font-bold gradient-text">
-                    {quotaLoading ? (
-                      <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                    ) : (
-                      `${streams?.filter((s) => s.status === 'running').length || 0}/${formatLimitValue(concurrentStreamsLimit)}`
-                    )}
-                  </p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    {tStreaming('streams.stats.concurrent')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <StreamStatsCards
+            streams={streams}
+            quotaLoading={quotaLoading}
+            concurrentStreamsLimit={concurrentStreamsLimit}
+            formatLimitValue={formatLimitValue}
+            t={tStreaming}
+          />
         </div>
       </div>
 
-      {showChannelForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-lg animate-scale-in">
-            <CardHeader>
-              <CardTitle>
-                {editingChannelId
-                  ? tStreaming('channels.form.editTitle')
-                  : tStreaming('channels.form.newTitle')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmitChannel} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    {tStreaming('channels.form.nameLabel')}
-                  </label>
-                  <Input
-                    type="text"
-                    required
-                    value={channelForm.name}
-                    onChange={(event) => setChannelForm({ ...channelForm, name: event.target.value })}
-                    placeholder={tStreaming('channels.form.namePlaceholder')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    {tStreaming('channels.form.urlLabel')}
-                  </label>
-                  <Input
-                    type="text"
-                    required
-                    value={channelForm.rtmps_url}
-                    onChange={(event) => setChannelForm({ ...channelForm, rtmps_url: event.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    {tStreaming('channels.form.keyLabel')} {editingChannelId ? tStreaming('channels.form.keepExisting') : ''}
-                  </label>
-                  <Input
-                    type="password"
-                    required={!editingChannelId}
-                    value={channelForm.stream_key}
-                    onChange={(event) => setChannelForm({ ...channelForm, stream_key: event.target.value })}
-                    placeholder="xxxx-xxxx-xxxx-xxxx"
-                  />
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    {tStreaming('channels.form.keyHint')}
-                  </p>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={channelForm.enabled}
-                    onChange={(event) => setChannelForm({ ...channelForm, enabled: event.target.checked })}
-                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
-                  />
-                  <label className="ml-2 block text-sm text-slate-700 dark:text-slate-300">
-                    {tStreaming('channels.form.enabled')}
-                  </label>
-                </div>
-                <div className="flex justify-end gap-3">
-                  <Button type="button" onClick={resetChannelForm} variant="secondary">
-                    {tStreaming('channels.form.cancel')}
-                  </Button>
-                  <Button
-                    type="submit"
-                    isLoading={
-                      createDestinationMutation.isPending || updateDestinationMutation.isPending
-                    }
-                  >
-                    {editingChannelId
-                      ? tStreaming('channels.form.update')
-                      : tStreaming('channels.form.create')}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <ChannelFormModal
+        open={showChannelForm}
+        editingChannelId={editingChannelId}
+        channelForm={channelForm}
+        onChange={setChannelForm}
+        onSubmit={handleSubmitChannel}
+        onCancel={resetChannelForm}
+        isSaving={createDestinationMutation.isPending || updateDestinationMutation.isPending}
+        t={tStreaming}
+      />
 
       <StreamBuilderModal
         open={showCreateStream}
@@ -588,29 +477,12 @@ export default function StreamingPage() {
         formatLimitValue={formatLimitValue}
       />
 
-      {viewingLogs && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-4xl animate-scale-in">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>{tStreaming('streams.logs.title')}</CardTitle>
-                <Button variant="ghost" size="icon" onClick={() => setViewingLogs(null)}>
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs max-h-96 overflow-y-auto">
-                {logsResponse?.logs?.length ? (
-                  logsResponse.logs.map((line, index) => <p key={index}>{line}</p>)
-                ) : (
-                  <p>{tStreaming('streams.logs.empty')}</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <StreamLogsModal
+        open={Boolean(viewingLogs)}
+        logs={logsResponse?.logs}
+        onClose={() => setViewingLogs(null)}
+        t={tStreaming}
+      />
 
       <LiveEditorModal
         stream={liveEditingStream}

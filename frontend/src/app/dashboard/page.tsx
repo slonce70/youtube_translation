@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { HardDrive, Clock3, Radio, Video, Lightbulb } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -13,13 +13,17 @@ import { SubscriptionBanner } from '@/components/SubscriptionBanner'
 import { QuickActions } from '@/components/QuickActions'
 import { StreamControlWidget } from '@/components/StreamControlWidget'
 import { PlanLimitsCard } from '@/components/PlanLimitsCard'
+import { BroadcasterLevel } from '@/components/Gamification/BroadcasterLevel'
 import { Progress } from '@/components/ui/Progress'
 import { useDashboardContext } from './dashboard-context'
+import { useStreamSocket } from './streaming/hooks/useStreamSocket'
 import type { MetricsResponse, Stream, Asset, SubscriptionTierKey } from '@/lib/types'
 
 export default function DashboardPage() {
+  const queryClient = useQueryClient()
   const { user, quota, quotaLoading, currentTier, planDetail } = useDashboardContext()
   const dashboard = useTranslations('dashboard')
+  const isSocketConnected = useStreamSocket(user?.id)
 
   const formatHoursLabel = useCallback((hours: number) => {
     if (!Number.isFinite(hours)) {
@@ -32,7 +36,7 @@ export default function DashboardPage() {
       return dashboard('timeFormat.minutes', { minutes })
     }
 
-    return minutes > 0 
+    return minutes > 0
       ? dashboard('timeFormat.hoursAndMinutes', { hours: wholeHours, minutes })
       : dashboard('timeFormat.hours', { hours: wholeHours })
   }, [dashboard])
@@ -41,8 +45,12 @@ export default function DashboardPage() {
     if (typeof document === 'undefined') {
       return false
     }
-    return document.visibilityState === 'visible' ? 15000 : false
-  }, [])
+    // If socket is connected, we don't need aggressive polling
+    if (isSocketConnected) {
+      return false
+    }
+    return document.visibilityState === 'visible' ? 5000 : false
+  }, [isSocketConnected])
 
   const { data: metrics, isLoading: metricsLoading } = useQuery<MetricsResponse>({
     queryKey: ['metrics', user?.id],
@@ -102,10 +110,15 @@ export default function DashboardPage() {
       (activeStreams.length / planStreamLimit) * 100
     )
 
+    const totalLifetimeHours = (streams ?? []).reduce((total, stream) => {
+      return total + ((stream.total_duration_seconds ?? 0) / 3600)
+    }, 0)
+
     return {
       activeStreams,
       assetsCount: assets?.length ?? 0,
       hoursUsed,
+      totalLifetimeHours,
       hoursRemaining: Number.isFinite(planDailyLimitHours)
         ? Math.max(0, (planDailyLimitHours as number) - hoursUsed)
         : Infinity,
@@ -237,10 +250,22 @@ export default function DashboardPage() {
 
           <QuickActions />
 
-          <StreamControlWidget streams={streams} loading={streamsLoading} />
+          <StreamControlWidget
+            streams={streams}
+            loading={streamsLoading}
+            onRefresh={() => {
+              queryClient.invalidateQueries({ queryKey: ['streams'] })
+              queryClient.invalidateQueries({ queryKey: ['metrics'] })
+            }}
+          />
         </div>
 
         <div className="space-y-6">
+          <BroadcasterLevel 
+            totalStreamHours={usage.totalLifetimeHours + usage.hoursUsed} 
+            totalAssets={usage.assetsCount} 
+          />
+
           <PlanLimitsCard
             planKey={planKey}
             plan={plan}

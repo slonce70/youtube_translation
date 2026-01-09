@@ -64,7 +64,7 @@ cp frontend/.env.example frontend/.env.local
 
 # Відредагувати backend/.env:
 # - DATABASE_URL (вже налаштовано для локальної БД)
-# - SUPABASE_URL, SUPABASE_KEY, SUPABASE_JWT_SECRET (тільки для Auth!)
+# - SUPABASE_URL, SUPABASE_KEY, SUPABASE_JWT_SECRET (тільки для Auth, backend)
 # - ENCRYPTION_KEY, ENCRYPTION_SALT (згенерувати: openssl rand -hex 32)
 # - TUSD_HMAC_SECRET (згенерувати: openssl rand -base64 32)
 # - FFMPEG_BIN=/opt/homebrew/bin/ffmpeg (для Apple Silicon)
@@ -124,7 +124,13 @@ curl http://localhost:8000/health
 |--------|-------------|-----------|
 | `ENCRYPTION_KEY` | Шифрування stream keys | `openssl rand -hex 32` |
 | `ENCRYPTION_SALT` | Сіль для шифрування | `openssl rand -hex 16` |
+| `UPLOAD_TOKEN_SECRET` | Підпис токенів для tusd pre-create hook | `openssl rand -hex 32` |
 | `TUSD_HMAC_SECRET` | Підпис запитів tusd → FastAPI | `openssl rand -base64 32` |
+| `WS_TOKEN_SECRET` | Секрет для короткоживучих WS-токенів (fallback: `UPLOAD_TOKEN_SECRET`) | `openssl rand -hex 32` |
+| `WS_TOKEN_TTL_SECONDS` | TTL для WS-токенів у секундах | `60` |
+| `METRICS_ACCESS_TOKEN` | Спільний токен для доступу до `/api/metrics/prometheus` | `openssl rand -hex 16` |
+| `TRUSTED_PROXY_IPS` | Довірені проксі IP/CIDR (для X-Forwarded-For) | `10.0.0.0/8,127.0.0.1` |
+| `TUSD_FAIL_OPEN` | Дозволити upload при помилках backend (1=так, 0=ні) | `0` |
 
 ### FFmpeg
 | Змінна | macOS (Homebrew) | Linux |
@@ -132,10 +138,24 @@ curl http://localhost:8000/health
 | `FFMPEG_BIN` | `/opt/homebrew/bin/ffmpeg` | `/usr/bin/ffmpeg` |
 | `FFPROBE_BIN` | `/opt/homebrew/bin/ffprobe` | `/usr/bin/ffprobe` |
 
+### Logging
+| Змінна | Призначення | Приклад |
+|--------|-------------|---------|
+| `STREAM_LOG_MAX_BYTES` | Максимальний розмір stream.log перед ротацією | `52428800` |
+| `STREAM_LOG_MAX_BACKUPS` | Кількість резервних логів | `5` |
+
 ### Stream Runtime
 | Змінна | Опції | Рекомендація |
 |--------|-------|--------------|
 | `STREAM_RUNTIME_MODE` | `manager` \| `supervisor` \| `systemd` | `supervisor` для macOS/Docker, `systemd` для Linux |
+| `FFMPEG_RESTART_BACKOFF_MAX_SECONDS` | Максимальна пауза між авто-реcтарти (сек) | `60` |
+| `PLAYLIST_SHUFFLE_SEED_MODE` | `deterministic` \| `random` | `deterministic` |
+
+### Rate limiting (optional)
+| Змінна | Призначення | Приклад |
+|--------|-------------|---------|
+| `REDIS_URL` | Redis URL для distributed rate limiting | `redis://localhost:6379/0` |
+| `REDIS_RATE_LIMIT_PREFIX` | Prefix для ключів лімітера | `rate-limit` |
 
 Всі значення зберігаються в `backend/.env` та не повинні потрапляти в git.
 

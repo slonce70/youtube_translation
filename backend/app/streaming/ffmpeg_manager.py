@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.quota import QuotaEnforcer
 from app.core.metrics import track_stream_error, track_stream_start, track_stream_stop
 from app.core.database import get_db_context
+from app.core.observability import capture_alert
 from app.models.database import Stream, SystemAlert
 from app.streaming.playlist_builder import PlaylistFileSet
 from app.streaming.hot_swap import hot_swap_manager
@@ -953,7 +954,11 @@ class FFmpegStreamManager:
             log_file = info.get("log_file")
 
             try:
-                await asyncio.sleep(max(settings.ffmpeg_restart_backoff_seconds, 0))
+                base_backoff = max(settings.ffmpeg_restart_backoff_seconds, 0)
+                max_backoff = max(settings.ffmpeg_restart_backoff_max_seconds, base_backoff)
+                backoff = min(base_backoff * (2 ** attempts), max_backoff)
+                if backoff:
+                    await asyncio.sleep(backoff)
             except Exception:
                 pass
 
@@ -1132,6 +1137,18 @@ class FFmpegStreamManager:
         """Persist a system alert when FFmpeg exits unexpectedly."""
         severity = "warning" if will_restart else "critical"
 
+        if severity == "critical":
+            capture_alert(
+                "ffmpeg_stream_crash_loop",
+                level="error",
+                tags={"component": "ffmpeg", "event": "stream_failure"},
+                extra={
+                    "restart_attempts": restart_attempts,
+                    "returncode": returncode,
+                    "will_restart": will_restart,
+                },
+            )
+
         user_uuid: Optional[UUID] = None
         raw_user_id = metadata.get("user_id")
         if raw_user_id:
@@ -1246,13 +1263,31 @@ class FFmpegStreamManager:
         """Write process output to log file safely using async file operations"""
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            async with aiofiles.open(log_file, "wb") as f:
+
+            max_bytes = max(int(getattr(settings, "stream_log_max_bytes", 0) or 0), 0)
+            max_backups = max(int(getattr(settings, "stream_log_max_backups", 0) or 0), 0)
+            bytes_written = log_file.stat().st_size if log_file.exists() else 0
+
+            async def _open_log():
+                return await aiofiles.open(log_file, "ab")
+
+            f = await _open_log()
+            try:
                 while True:
                     line = await process.stderr.readline()
                     if not line:
                         break
+
+                    if max_bytes and bytes_written + len(line) > max_bytes:
+                        await f.flush()
+                        await f.close()
+                        self._rotate_log_file(log_file, max_backups)
+                        bytes_written = 0
+                        f = await _open_log()
+
                     await f.write(line)
+                    bytes_written += len(line)
+
                     try:
                         decoded = line.decode(errors="ignore").strip()
                     except Exception:
@@ -1264,9 +1299,29 @@ class FFmpegStreamManager:
                             if isinstance(recent_errors, deque):
                                 recent_errors.append(decoded)
                                 info["last_error_at"] = datetime.utcnow()
-                    
+            finally:
+                await f.flush()
+                await f.close()
         except Exception as e:
             logger.exception(f"Error writing logs for stream {stream_id}: {e}")
+
+    @staticmethod
+    def _rotate_log_file(log_file: Path, max_backups: int) -> None:
+        if max_backups <= 0:
+            try:
+                log_file.unlink(missing_ok=True)
+            except Exception:
+                return
+            return
+
+        for idx in range(max_backups, 0, -1):
+            src = log_file.with_suffix(log_file.suffix + f".{idx}")
+            dst = log_file.with_suffix(log_file.suffix + f".{idx + 1}")
+            if src.exists():
+                src.replace(dst)
+
+        if log_file.exists():
+            log_file.replace(log_file.with_suffix(log_file.suffix + ".1"))
 
     async def cleanup_dead_streams(self):
         """Periodically cleanup dead stream info to prevent memory leaks"""

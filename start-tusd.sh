@@ -70,7 +70,6 @@ tusd \
      -port=1080 \
      -upload-dir="${TEMP_DIR}" \
      -hooks-dir="${HOOKS_DIR}" \
-     -hooks-http=http://localhost:8000/api/assets/upload-complete \
      -hooks-enabled-events=pre-create,post-finish \
      -behind-proxy \
      -base-path=/files/ \

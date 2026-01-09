@@ -37,7 +37,7 @@ const dateLocales: Record<string, DateFnsLocale> = {
   uk: ukLocale,
 }
 
-export function StreamControlWidget({ streams, loading }: StreamControlWidgetProps) {
+export function StreamControlWidget({ streams, loading, onRefresh }: StreamControlWidgetProps & { onRefresh?: () => void }) {
   const queryClient = useQueryClient()
   const { user } = useDashboardContext()
   const t = useTranslations('dashboard.streamControl')
@@ -65,13 +65,20 @@ export function StreamControlWidget({ streams, loading }: StreamControlWidgetPro
         <CardTitle>{t('title')}</CardTitle>
         <p className="text-sm text-slate-500 dark:text-slate-400">{t('subtitle')}</p>
       </div>
-      <Link
-        href="/dashboard/streaming"
-        className="inline-flex items-center text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
-      >
-        {t('manageAll')}
-        <ArrowUpRight className="ml-1 h-4 w-4" />
-      </Link>
+      <div className="flex items-center space-x-2">
+        {onRefresh && (
+          <Button variant="ghost" size="sm" onClick={onRefresh} title="Refresh status">
+            <Loader2 className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+        )}
+        <Link
+          href="/dashboard/streaming"
+          className="inline-flex items-center text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          {t('manageAll')}
+          <ArrowUpRight className="ml-1 h-4 w-4" />
+        </Link>
+      </div>
     </CardHeader>
   )
 

@@ -1,30 +1,45 @@
+FROM python:3.12-slim AS builder
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
 FROM python:3.12-slim
 
-# Install FFmpeg and system dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
 COPY app ./app
+COPY migrations ./migrations
+COPY apply_migrations.py ./apply_migrations.py
+COPY entrypoint.sh /app/entrypoint.sh
 
-# Create directories for uploads and streams
-RUN mkdir -p /app/uploads /app/streams /app/logs
+RUN mkdir -p /app/uploads /app/streams /app/logs \
+    && adduser --disabled-password --gecos "" appuser \
+    && chown -R appuser:appuser /app \
+    && chmod +x /app/entrypoint.sh
 
-# Expose port
+USER appuser
+
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]
