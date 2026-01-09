@@ -151,8 +151,8 @@ export function StreamBuilderModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-      <Card className="w-full max-w-5xl animate-scale-in">
-        <CardHeader className="flex items-start justify-between space-y-0">
+      <Card className="w-full max-w-5xl max-h-[90vh] overflow-hidden animate-scale-in flex flex-col">
+        <CardHeader className="flex items-start justify-between space-y-0 shrink-0">
           <div>
             <CardTitle>{t('streams.form.title')}</CardTitle>
             <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -163,7 +163,7 @@ export function StreamBuilderModal({
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
               <div className="flex items-center gap-3">

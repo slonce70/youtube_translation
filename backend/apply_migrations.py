@@ -46,6 +46,7 @@ MIGRATIONS = [
     'migrations/023_stream_schedule_columns.sql',
     'migrations/024_stream_schedule_stop_columns.sql',
     'migrations/025_user_profile_timezone.sql',
+    'migrations/026_collection_items_updated_at.sql',
 ]
 
 
@@ -353,6 +354,18 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     result = await conn.execute(query)
     status['025'] = result.scalar()
+
+    # Check collection_items updated_at column (migration 026)
+    query = text("""
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'collection_items'
+              AND column_name = 'updated_at'
+        )
+    """)
+    result = await conn.execute(query)
+    status['026'] = result.scalar()
 
     return status
 
@@ -763,6 +776,18 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
                 WHERE table_schema = 'public'
                   AND table_name = 'user_profiles'
                   AND column_name = 'timezone'
+            )
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
+
+    elif migration_num == '026':
+        query = text("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'collection_items'
+                  AND column_name = 'updated_at'
             )
         """)
         result = await conn.execute(query)
