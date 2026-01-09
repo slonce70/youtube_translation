@@ -68,7 +68,7 @@ This document summarizes the current FastAPI routing surface for the YouTube Mul
 - `GET /{stream_id}` → fetch stream details
 - `DELETE /{stream_id}` → delete stream + links
 - `GET /{stream_id}/status` → статус
-- `GET /{stream_id}/logs` → tail з файлової системи
+- `GET /{stream_id}/logs` → tail з файлової системи (`lines=...`, `mode=important|raw`)
 
 ### Admin (`/api/admin`)
 

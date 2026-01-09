@@ -14,6 +14,7 @@ type TimelineEditorProps = {
   videoItems: TimelineItem[]
   audioItems: TimelineItem[]
   onReorder: (target: 'video' | 'audio', fromIndex: number, toIndex: number) => void
+  t: (key: string) => string
 }
 
 type TimelineLaneProps = {
@@ -21,15 +22,14 @@ type TimelineLaneProps = {
   items: TimelineItem[]
   target: 'video' | 'audio'
   onReorder: TimelineEditorProps['onReorder']
+  emptyLabel: string
 }
 
-const TimelineLane = ({ label, items, target, onReorder }: TimelineLaneProps) => (
+const TimelineLane = ({ label, items, target, onReorder, emptyLabel }: TimelineLaneProps) => (
   <div className="rounded-lg border border-slate-200 bg-white/70 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-    {/* eslint-disable-next-line i18next/no-literal-string */}
     <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{label}</h4>
     {items.length === 0 ? (
-      // eslint-disable-next-line i18next/no-literal-string
-      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">No items yet</p>
+      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{emptyLabel}</p>
     ) : (
       <ul className="mt-3 space-y-2">
         {items.map((item, index) => (
@@ -63,9 +63,25 @@ const TimelineLane = ({ label, items, target, onReorder }: TimelineLaneProps) =>
   </div>
 )
 
-export const TimelineEditor = ({ videoItems, audioItems, onReorder }: TimelineEditorProps) => (
-  <div className="grid gap-4 md:grid-cols-2">
-    <TimelineLane label="Video timeline" items={videoItems} target="video" onReorder={onReorder} />
-    <TimelineLane label="Audio timeline" items={audioItems} target="audio" onReorder={onReorder} />
-  </div>
-)
+export const TimelineEditor = ({ videoItems, audioItems, onReorder, t }: TimelineEditorProps) => {
+  const emptyLabel = t('streams.builder.timeline.emptyLane')
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <TimelineLane
+        label={t('streams.builder.timeline.videoLane')}
+        items={videoItems}
+        target="video"
+        onReorder={onReorder}
+        emptyLabel={emptyLabel}
+      />
+      <TimelineLane
+        label={t('streams.builder.timeline.audioLane')}
+        items={audioItems}
+        target="audio"
+        onReorder={onReorder}
+        emptyLabel={emptyLabel}
+      />
+    </div>
+  )
+}

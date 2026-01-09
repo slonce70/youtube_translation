@@ -210,8 +210,7 @@ export function StreamBuilderModal({
               </TabsTrigger>
               <TabsTrigger value="timeline" className="flex items-center gap-2">
                 <Layers className="h-4 w-4" />
-                {/* eslint-disable-next-line i18next/no-literal-string */}
-                Timeline
+                {t('streams.builder.tabs.timeline')}
               </TabsTrigger>
               <TabsTrigger value="destinations" className="flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
@@ -550,10 +549,12 @@ export function StreamBuilderModal({
 
             <TabsContent value="timeline" className="mt-4 space-y-4">
               <div className="space-y-1">
-                {/* eslint-disable-next-line i18next/no-literal-string */}
-                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-200">Studio Timeline</h3>
-                {/* eslint-disable-next-line i18next/no-literal-string */}
-                <p className="text-xs text-slate-500 dark:text-slate-400">Visual overview of your stream content</p>
+                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  {t('streams.builder.timeline.title')}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t('streams.builder.timeline.subtitle')}
+                </p>
               </div>
               
               <TimelineEditor
@@ -566,13 +567,13 @@ export function StreamBuilderModal({
                   asset: assetMap.get(item.asset_id)!
                 })).filter(x => x.asset) : []}
                 onReorder={reorderEditorItems}
+                t={t}
               />
               
               <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
-                {/* eslint-disable-next-line i18next/no-literal-string */}
                 <p className="text-sm text-blue-800 dark:text-blue-200">
                   <Info className="inline-block w-4 h-4 mr-1.5 -mt-0.5" />
-                  Drag and drop assets from the Video/Audio tabs to populate this timeline.
+                  {t('streams.builder.timeline.hint')}
                 </p>
               </div>
             </TabsContent>

@@ -21,6 +21,11 @@
 - ✅ Додано міграцію `026_collection_items_updated_at.sql` для сумісності старих локальних БД.
 - ✅ Streaming builder: останній крок у модалці тепер коректно скролиться (кнопка “Створити” доступна без зуму).
 - ✅ Library: після upload файли з’являються в списку без ручного refresh (довший refetch/backoff).
+- ✅ Streaming: статус “Зупиняється” більше не зависає — reconciler синхронізує `stopping`, supervisor parse розпізнає `NOT_FOUND`.
+- ✅ Streaming logs: “важливе” за замовчуванням + перемикач raw; зменшено FFmpeg spam (`-hide_banner -nostats`).
+- ✅ Library: відео прев’ю/thumbnail (`thumbnail_url` + fallback `/thumbnails/{asset_id}.jpg`).
+- ✅ Оновлено рекомендації bitrate/quality (включно з 720p і дробними значеннями).
+- ✅ DB: автопатч для старих локальних БД (`collection_items.updated_at` + trigger), щоб уникнути 500 на колекціях.
 
 ## Ключові прогалини (що дає найбільший приріст цінності)
 1) **Repeats scheduler + windows + DST** (stop/timezone для one‑shot вже є, але repeats ще немає).
@@ -39,6 +44,7 @@
 - Production runner: default для деплою через Docker Compose (окремий runner service) + інструкції.
 - Asset lifecycle: “safe delete” як default (не можна видалити використаний asset; `force` — тільки для адмінів/не в UI).
 - UX/Docs: “як взяти stream key”, попередження про 12h VOD, “first stream checklist”.
+- Streaming UX/stability: коректні статуси (без “stopping” hang) + логи “important” за замовчуванням + базова i18n‑консистентність (uk/en/ru).
 - Regression tests для scheduler stop та runner/reconcile сценаріїв.
 
 **Exit criteria**

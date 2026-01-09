@@ -281,6 +281,52 @@ async def _apply_schema_changes(conn):
         )
     )
 
+    # Ensure a generic updated_at trigger function exists (used by optional DB triggers).
+    await conn.execute(
+        text(
+            """
+            CREATE OR REPLACE FUNCTION update_updated_at_column()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = timezone('utc', now());
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            """
+        )
+    )
+
+    # Ensure collection_items.updated_at exists for older local DBs (pre-2026-01-09).
+    await conn.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_name = 'collection_items'
+                ) THEN
+                    ALTER TABLE collection_items
+                        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc', now());
+
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM information_schema.triggers
+                        WHERE event_object_table = 'collection_items'
+                          AND trigger_name = 'update_collection_items_updated_at'
+                    ) THEN
+                        CREATE TRIGGER update_collection_items_updated_at
+                            BEFORE UPDATE ON collection_items
+                            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+                    END IF;
+                END IF;
+            END $$;
+            """
+        )
+    )
+
     # Add missing statistics columns to playlists table
     playlist_columns = ["total_duration_seconds", "total_assets"]
     if await _missing_columns(conn, "playlists", playlist_columns):

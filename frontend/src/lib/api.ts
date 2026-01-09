@@ -36,7 +36,7 @@ import type {
   UploadTokenResponse,
 } from './types'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api'
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
@@ -171,7 +171,7 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
   // This prevents race conditions on initial page load
   await waitForAuth()
   const token = await getAccessToken()
-  if (!token) {
+  if (!token && process.env.NODE_ENV === 'development') {
     console.warn('[api] Missing Supabase access token for request', normalizedEndpoint)
   }
 
@@ -302,7 +302,13 @@ export const api = {
     start: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/start`, { method: 'POST' }),
     stop: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/stop`, { method: 'POST' }),
     status: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/status`),
-    logs: (id: string, lines?: number) => apiRequest<StreamLogsResponse>(`/streams/${id}/logs`, { params: { lines: lines ?? 100 } }),
+    logs: (id: string, options?: { lines?: number; mode?: 'important' | 'raw' }) =>
+      apiRequest<StreamLogsResponse>(`/streams/${id}/logs`, {
+        params: {
+          lines: options?.lines ?? 100,
+          ...(options?.mode ? { mode: options.mode } : undefined),
+        },
+      }),
     quality: (id: string) => apiRequest<StreamQualityResponse>(`/streams/${id}/quality`),
     liveUpdate: (id: string, payload: StreamLiveUpdatePayload) =>
       apiRequest<Stream>(`/streams/${id}/live-config`, {

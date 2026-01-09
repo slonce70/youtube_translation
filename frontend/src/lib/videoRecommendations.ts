@@ -35,45 +35,45 @@ export const BITRATE_GUIDANCE: BitrateRecommendation[] = [
     minHeight: 2000,
     maxHeight: 2400,
     fps: 60,
-    minBitrateMbps: 10,
-    maxBitrateMbps: 40,
-    targetBitrateMbps: 35,
+    minBitrateMbps: 20,
+    maxBitrateMbps: 51,
+    targetBitrateMbps: 40,
   },
   {
     resolutionLabel: '4K / 2160p',
     minHeight: 2000,
     maxHeight: 2400,
     fps: 30,
-    minBitrateMbps: 8,
-    maxBitrateMbps: 35,
-    targetBitrateMbps: 30,
+    minBitrateMbps: 13,
+    maxBitrateMbps: 34,
+    targetBitrateMbps: 25,
   },
   {
     resolutionLabel: '1440p',
     minHeight: 1300,
     maxHeight: 1999,
     fps: 60,
-    minBitrateMbps: 6,
-    maxBitrateMbps: 30,
-    targetBitrateMbps: 24,
+    minBitrateMbps: 9,
+    maxBitrateMbps: 18,
+    targetBitrateMbps: 15,
   },
   {
     resolutionLabel: '1440p',
     minHeight: 1300,
     maxHeight: 1999,
     fps: 30,
-    minBitrateMbps: 5,
-    maxBitrateMbps: 25,
-    targetBitrateMbps: 15,
+    minBitrateMbps: 6,
+    maxBitrateMbps: 13,
+    targetBitrateMbps: 10,
   },
   {
     resolutionLabel: '1080p',
     minHeight: 1000,
     maxHeight: 1299,
     fps: 60,
-    minBitrateMbps: 4,
-    maxBitrateMbps: 12,
-    targetBitrateMbps: 12,
+    minBitrateMbps: 4.5,
+    maxBitrateMbps: 9,
+    targetBitrateMbps: 7.5,
   },
   {
     resolutionLabel: '1080p',
@@ -81,8 +81,26 @@ export const BITRATE_GUIDANCE: BitrateRecommendation[] = [
     maxHeight: 1299,
     fps: 30,
     minBitrateMbps: 3,
-    maxBitrateMbps: 10,
-    targetBitrateMbps: 10,
+    maxBitrateMbps: 6,
+    targetBitrateMbps: 4.5,
+  },
+  {
+    resolutionLabel: '720p',
+    minHeight: 600,
+    maxHeight: 999,
+    fps: 60,
+    minBitrateMbps: 2.25,
+    maxBitrateMbps: 6,
+    targetBitrateMbps: 4.5,
+  },
+  {
+    resolutionLabel: '720p',
+    minHeight: 600,
+    maxHeight: 999,
+    fps: 30,
+    minBitrateMbps: 1.5,
+    maxBitrateMbps: 4,
+    targetBitrateMbps: 3,
   },
 ]
 
@@ -155,7 +173,8 @@ export function mbpsToKbps(value: number): number {
 }
 
 export function formatMbps(value: number): string {
-  return `${value.toFixed(0)} Mbps`
+  const rounded = value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
+  return `${rounded} Mbps`
 }
 
 export function formatKbps(value: number): string {

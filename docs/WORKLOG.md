@@ -6,6 +6,12 @@
 - Полагодив UX останнього кроку створення трансляції: модалка `StreamBuilder` тепер скролиться і кнопка підтвердження не “ховається” під екран.
 - Поліпшив UX після завантаження файлів: Library робить довший refetch (backoff) і показує щойно завантажений файл без ручного refresh сторінки.
 - Вирівняв Docker runner: прибрав застарілий `version` з compose, додав окремий healthcheck для `runner` (бо образ успадковував backend healthcheck на `:8000`), підтвердив роботу з `supervisord.docker.conf` через `runner:9001` (Docker Desktop/macOS-friendly).
+- Усунув зависання статусу `stopping`: reconciler тепер обробляє `stopping` (startup + periodic sync), а supervisor parse коректно розпізнає `NOT_FOUND`, щоб не лишати DB у `UNKNOWN`.
+- Поліпшив логи стрімів: `mode=important` за замовчуванням + перемикач “показати всі” у UI; лише `error` підсвічується червоним, решта — сірим. Також зменшив FFmpeg spam (`-hide_banner -nostats`) і відфільтрував прогрес‑рядки.
+- Library: виправив запис `thumbnail_url` (JSONB mutation tracking) + додав fallback прев’ю `/thumbnails/{asset_id}.jpg`, щоб відео не показувало “порожній квадрат”.
+- Оновив рекомендації bitrate/quality (включно з 720p та підтримкою дробних значень на кшталт `4.5 Mbps`).
+- i18n: додав ключі та переклади (uk/en/ru) для timeline/logs у streaming builder, прибрав частину hardcoded рядків.
+- Підтвердив тестами: `cd backend && python -m pytest` (115 passed, 8 skipped).
 
 ## 2026-01-08
 - Виніс supervisord у окремий Docker-сервіс `runner` і підключив shared socket/volumes.

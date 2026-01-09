@@ -45,13 +45,13 @@ type DestinationFormState = {
   enabled: boolean
 }
 
-const statusVariantMap: Record<StreamStatusValue, 'success' | 'info' | 'warning' | 'error'> = {
-  running: 'success',
-  stopped: 'info',
-  starting: 'warning',
-  stopping: 'warning',
+const statusVariantMap: Record<StreamStatusValue, 'secondary' | 'error'> = {
+  running: 'secondary',
+  stopped: 'secondary',
+  starting: 'secondary',
+  stopping: 'secondary',
   error: 'error',
-  scheduled: 'info',
+  scheduled: 'secondary',
 }
 
 const dateLocales: Record<string, DateFnsLocale> = {
@@ -83,6 +83,7 @@ export default function StreamingPage() {
     enabled: true,
   })
   const [viewingLogs, setViewingLogs] = useState<string | null>(null)
+  const [logsMode, setLogsMode] = useState<'important' | 'raw'>('important')
   const [showCreateStream, setShowCreateStream] = useState(false)
 
   const { data: destinations, isLoading: isLoadingDestinations } = useQuery<Destination[]>({
@@ -103,7 +104,7 @@ export default function StreamingPage() {
       queryKey: ['stream-status', user?.id, stream.id],
       queryFn: () => api.streams.status(stream.id),
       enabled: !!user && Boolean(stream?.id),
-      refetchInterval: ['running', 'starting', 'error'].includes(stream.status) ? 5000 : 30000,
+      refetchInterval: ['running', 'starting', 'stopping', 'error'].includes(stream.status) ? 5000 : 30000,
       retry: false,
     })),
   }) as UseQueryResult<StreamStatusResponse>[]
@@ -358,8 +359,8 @@ export default function StreamingPage() {
   const handleDeleteStream = (streamId: string) => deleteStreamMutation.mutate(streamId)
 
   const { data: logsResponse } = useQuery<StreamLogsResponse>({
-    queryKey: ['stream-logs', user?.id, viewingLogs],
-    queryFn: () => api.streams.logs(viewingLogs!, 200),
+    queryKey: ['stream-logs', user?.id, viewingLogs, logsMode],
+    queryFn: () => api.streams.logs(viewingLogs!, { lines: 200, mode: logsMode }),
     enabled: !!viewingLogs,
     refetchInterval: 2000,
   })
@@ -427,7 +428,10 @@ export default function StreamingPage() {
             isLoading={isLoadingStreams}
             liveStatusMap={liveStatusMap}
             onCreateStream={() => setShowCreateStream(true)}
-            onViewLogs={(streamId) => setViewingLogs(streamId)}
+            onViewLogs={(streamId) => {
+              setLogsMode('important')
+              setViewingLogs(streamId)
+            }}
             onOpenLiveEditor={openLiveEditor}
             onStartStream={handleStartStream}
             onStopStream={handleStopStream}
@@ -594,17 +598,50 @@ export default function StreamingPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>{tStreaming('streams.logs.title')}</CardTitle>
-                <Button variant="ghost" size="icon" onClick={() => setViewingLogs(null)}>
-                  <X className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setLogsMode(logsMode === 'important' ? 'raw' : 'important')}
+                  >
+                    {logsMode === 'important'
+                      ? tStreaming('streams.logs.showAll')
+                      : tStreaming('streams.logs.showImportant')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setViewingLogs(null)
+                      setLogsMode('important')
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs max-h-96 overflow-y-auto">
                 {logsResponse?.logs?.length ? (
-                  logsResponse.logs.map((line, index) => <p key={index}>{line}</p>)
+                  logsResponse.logs.map((line, index) => (
+                    <p
+                      key={index}
+                      className={
+                        /error|failed|forbidden|invalid|denied|fatal/i.test(line)
+                          ? 'text-error-300'
+                          : 'text-slate-300'
+                      }
+                    >
+                      {line}
+                    </p>
+                  ))
                 ) : (
-                  <p>{tStreaming('streams.logs.empty')}</p>
+                  <p className="text-slate-300">
+                    {logsMode === 'important'
+                      ? tStreaming('streams.logs.emptyImportant')
+                      : tStreaming('streams.logs.empty')}
+                  </p>
                 )}
               </div>
             </CardContent>

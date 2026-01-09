@@ -107,11 +107,15 @@ async def get_stream_status(stream_id: UUID, user_deps: tuple = Depends(require_
 async def get_stream_logs(
     stream_id: UUID,
     lines: int = Query(default=100, ge=1, le=10_000, description="Number of log lines (1-10000)"),
+    mode: str = Query(
+        default="important",
+        description="Log mode: important (filtered) or raw (all lines)",
+    ),
     user_deps: tuple = Depends(require_user),
 ):
     db, user_id = user_deps
     _, control = _build_services(db, user_id)
-    return await control.get_stream_logs(stream_id, lines)
+    return await control.get_stream_logs(stream_id, lines, mode=mode)
 
 
 @router.delete("/{stream_id}", status_code=204)
