@@ -100,8 +100,19 @@ export function AssetCard({
   }, [asset.filename])
 
   useEffect(() => {
-    setThumbnailSrc(resolveAssetUrl(asset.thumbnail_url))
-  }, [asset.thumbnail_url])
+    const resolved = resolveAssetUrl(asset.thumbnail_url)
+    if (resolved) {
+      setThumbnailSrc(resolved)
+      return
+    }
+
+    if (asset.asset_type === 'video') {
+      setThumbnailSrc(resolveAssetUrl(`/thumbnails/${asset.id}.jpg`))
+      return
+    }
+
+    setThumbnailSrc(null)
+  }, [asset.id, asset.asset_type, asset.thumbnail_url])
 
   const usageBadges = [
     formatUsageLabel('streams', asset.usage?.streams?.length ?? 0),
@@ -139,6 +150,7 @@ export function AssetCard({
                 alt={t.previewAlt({ filename: asset.filename })}
                 className="h-full w-full object-cover"
                 loading="lazy"
+                onError={() => setThumbnailSrc(null)}
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-slate-400">

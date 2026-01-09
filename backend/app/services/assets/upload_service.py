@@ -211,7 +211,8 @@ class AssetUploadService:
         )
 
         if thumbnail_url:
-            asset_meta = asset.meta if isinstance(asset.meta, dict) else {}
+            existing_meta = asset.meta if isinstance(asset.meta, dict) else {}
+            asset_meta = dict(existing_meta)
             asset_meta["thumbnail_url"] = thumbnail_url
             asset.meta = asset_meta
             await self.db.commit()

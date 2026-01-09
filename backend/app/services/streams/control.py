@@ -356,11 +356,17 @@ class StreamControlService:
             status_changed = normalized_status != stream.status
             if status_changed:
                 stream.status = normalized_status
-                if not running:
+                if running:
+                    if not stream.started_at:
+                        stream.started_at = _utcnow()
+                    stream.stopped_at = None
+                elif normalized_status in {"stopped", "error"}:
                     stream.pid = None
                     stream.stopped_at = _utcnow()
-                elif running and not stream.started_at:
-                    stream.started_at = _utcnow()
+                elif normalized_status == "stopping":
+                    # Transitional state: do not mark stopped_at yet. The periodic reconciler
+                    # will finalize once supervisor reports STOPPED/EXITED/NOT_FOUND.
+                    stream.pid = None
 
                 error_payload = info.get("error") or info.get("details")
                 if normalized_status == "error" and error_payload:
@@ -392,7 +398,7 @@ class StreamControlService:
             usage=usage,
         )
 
-    async def get_stream_logs(self, stream_id: UUID, lines: int) -> StreamLogsResponse:
+    async def get_stream_logs(self, stream_id: UUID, lines: int, *, mode: str = "important") -> StreamLogsResponse:
         stream = await self._get_stream_basic(stream_id)
         if not stream.log_path or not Path(stream.log_path).exists():
             return StreamLogsResponse(stream_id=stream_id, logs=[], total_lines=0)
@@ -405,13 +411,20 @@ class StreamControlService:
             with open(path, "r", encoding="utf-8", errors="replace") as handle:
                 for line in handle:
                     total += 1
-                    tail.append(line.rstrip("\n"))
+                    tail.append(line.rstrip("\n\r"))
             return list(tail), total
 
         try:
             last_lines, total_lines = await asyncio.to_thread(_read_log_tail, log_file, lines)
         except FileNotFoundError:
             return StreamLogsResponse(stream_id=stream_id, logs=[], total_lines=0)
+
+        normalized_mode = (mode or "important").strip().lower()
+        if normalized_mode not in {"important", "raw"}:
+            normalized_mode = "important"
+
+        if normalized_mode == "important":
+            last_lines = _filter_important_ffmpeg_logs(last_lines)
 
         return StreamLogsResponse(
             stream_id=stream_id,
@@ -536,6 +549,55 @@ class StreamControlService:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _filter_important_ffmpeg_logs(lines: list[str]) -> list[str]:
+    """Keep only the most important FFmpeg log lines for UI display.
+
+    We intentionally hide frame progress spam so users see actionable warnings/errors.
+    """
+    keywords = (
+        "error",
+        "failed",
+        "forbidden",
+        "invalid",
+        "denied",
+        "fatal",
+        "unable",
+        "timeout",
+        "timed out",
+        "exiting",
+        "signal",
+        "connection",
+        "disconnect",
+        "broken pipe",
+        "reset",
+    )
+
+    filtered: list[str] = []
+
+    for raw in lines:
+        line = (raw or "").strip()
+        if not line:
+            continue
+
+        # Known noisy warnings on graceful shutdown that do not affect live stability.
+        if "Failed to update header with correct duration" in line:
+            continue
+        if "Failed to update header with correct filesize" in line:
+            continue
+
+        # FFmpeg progress stats (very noisy)
+        if line.startswith("frame=") or line.startswith("size=") or line.startswith("fps="):
+            continue
+        if line.startswith("Press [q]"):
+            continue
+
+        lowered = line.lower()
+        if any(token in lowered for token in keywords):
+            filtered.append(line)
+
+    return filtered
 
 
 def _aware(dt: Optional[datetime]) -> Optional[datetime]:

@@ -145,7 +145,10 @@
       },
       "logs": {
         "title": "Stream Logs",
-        "empty": "No logs available"
+        "empty": "No logs available",
+        "emptyImportant": "No important messages. Enable \"Show all\" to view the full log.",
+        "showAll": "Show all",
+        "showImportant": "Important only"
       },
       "quota": {
         "limitReached": "Daily streaming limit reached"
@@ -199,8 +202,17 @@
         "tabs": {
           "video": "Background video",
           "audio": "Audio playlist",
+          "timeline": "Timeline",
           "destinations": "Destinations",
           "schedule": "Schedule & loop"
+        },
+        "timeline": {
+          "title": "Studio timeline",
+          "subtitle": "Visual overview of your stream content",
+          "hint": "Drag and drop assets from the Video/Audio tabs to populate this timeline.",
+          "videoLane": "Video timeline",
+          "audioLane": "Audio timeline",
+          "emptyLane": "No items yet"
         },
         "info": {
           "capacity": "Current capacity",

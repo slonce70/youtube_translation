@@ -6,6 +6,7 @@ of processes managed by supervisor/systemd after backend restarts or crashes.
 
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -26,6 +27,47 @@ from app.core.systemd_control import (
 from app.models.database import Stream
 
 logger = logging.getLogger(__name__)
+
+
+_SUPERVISOR_STATE_TO_STATUS: dict[str, Optional[str]] = {
+    "running": "running",
+    "starting": "starting",
+    "stopping": "stopping",
+    "stopped": "stopped",
+    "exited": "stopped",
+    "not_found": "stopped",
+    "backoff": "error",
+    "fatal": "error",
+    "error": "error",
+    # When supervisor is unavailable, do not mutate DB statuses based on that signal alone.
+    "supervisor_unavailable": None,
+    "permission_denied": None,
+    "unknown": None,
+}
+
+_SYSTEMD_STATE_TO_STATUS: dict[str, Optional[str]] = {
+    "active": "running",
+    "activating": "starting",
+    "deactivating": "stopping",
+    "inactive": "stopped",
+    "dead": "stopped",
+    "failed": "error",
+    "unknown": None,
+}
+
+
+def _normalize_runtime_state(state: str | None) -> Optional[str]:
+    raw = (state or "").strip().lower()
+    if not raw:
+        return None
+
+    if supervisor_enabled():
+        return _SUPERVISOR_STATE_TO_STATUS.get(raw)
+
+    if systemd_enabled():
+        return _SYSTEMD_STATE_TO_STATUS.get(raw)
+
+    return None
 
 
 async def reconcile_streams(db: AsyncSession) -> dict:
@@ -49,9 +91,9 @@ async def reconcile_streams(db: AsyncSession) -> dict:
     # Clean up supervisor configs/logs for streams that no longer exist
     await _cleanup_supervisor_artifacts(db)
 
-    # Get all streams marked as running or starting in DB
+    # Get all streams marked as running/starting/stopping in DB
     result = await db.execute(
-        select(Stream).where(Stream.status.in_(["running", "starting"]))
+        select(Stream).where(Stream.status.in_(["running", "starting", "stopping"]))
     )
     streams = result.scalars().all()
 
@@ -70,56 +112,100 @@ async def reconcile_streams(db: AsyncSession) -> dict:
     for stream in streams:
         try:
             stream_id = stream.id
-            stream_status = await _check_stream_status(stream_id)
-            state = stream_status.get("state", "UNKNOWN")
+            runtime = await _check_stream_status(stream_id)
+            state = runtime.get("state", "UNKNOWN")
+            normalized = _normalize_runtime_state(state)
 
-            if state == "STARTING":
-                logger.info("Stream %s still starting; leaving status=%s", stream_id, stream.status)
-                stats["streams_checked"].append({
-                    "id": str(stream_id),
-                    "status": stream.status,
-                    "action": "pending",
-                    "reason": state,
-                })
+            if normalized is None:
+                logger.info(
+                    "Stream %s reconciliation skipped; runtime state=%s",
+                    stream_id,
+                    state,
+                )
+                stats["streams_checked"].append(
+                    {
+                        "id": str(stream_id),
+                        "status": stream.status,
+                        "action": "skipped",
+                        "reason": state,
+                    }
+                )
                 continue
 
-            if stream_status["is_running"]:
-                # Stream is actually running - confirm status
-                logger.info(f"✓ Stream {stream_id} confirmed running")
-                stream.status = "running"
-                stats["confirmed_running"] += 1
-                stats["streams_checked"].append({
-                    "id": str(stream_id),
-                    "status": "running",
-                    "action": "confirmed",
-                })
-            else:
-                # Stream is not running - mark as stopped
-                logger.warning(
-                    f"✗ Stream {stream_id} not running "
-                    f"(state={state})"
+            if normalized == "starting":
+                logger.info("Stream %s still starting; leaving status=%s", stream_id, stream.status)
+                stats["streams_checked"].append(
+                    {
+                        "id": str(stream_id),
+                        "status": stream.status,
+                        "action": "pending",
+                        "reason": state,
+                    }
                 )
-                reason_detail = stream_status.get("error") or stream_status.get("details")
-                if reason_detail and not isinstance(reason_detail, str):
-                    reason_detail = str(reason_detail)
-                if isinstance(reason_detail, str):
-                    reason_detail = " ".join(reason_detail.split())
-                reason = state if not reason_detail else f"{state}:{reason_detail}"
-                stream.status = "stopped"
-                stream.stopped_at = datetime.now(timezone.utc)
+                continue
+
+            if normalized == "running":
+                logger.info("✓ Stream %s confirmed running", stream_id)
+                stream.status = "running"
+                stream.stopped_at = None
+                stats["confirmed_running"] += 1
+                stats["streams_checked"].append(
+                    {
+                        "id": str(stream_id),
+                        "status": "running",
+                        "action": "confirmed",
+                    }
+                )
+                continue
+
+            reason_detail = runtime.get("error") or runtime.get("details")
+            if reason_detail and not isinstance(reason_detail, str):
+                reason_detail = str(reason_detail)
+            if isinstance(reason_detail, str):
+                reason_detail = " ".join(reason_detail.split())
+            reason = state if not reason_detail else f"{state}:{reason_detail}"
+
+            if normalized == "stopping":
+                logger.info("Stream %s is stopping (state=%s)", stream_id, state)
+                stream.status = "stopping"
                 stream.pid = None
-                if not stream.error_message:
-                    stream.error_message = (
-                        f"Stream stopped unexpectedly (detected on reconciliation). "
-                        f"State: {reason}"
-                    )
+                stats["streams_checked"].append(
+                    {
+                        "id": str(stream_id),
+                        "status": "stopping",
+                        "action": "pending",
+                        "reason": reason,
+                    }
+                )
+                continue
+
+            # stopped/error
+            logger.warning("✗ Stream %s not running (state=%s)", stream_id, state)
+            stream.status = normalized
+            stream.pid = None
+            if stream.stopped_at is None:
+                stream.stopped_at = datetime.now(timezone.utc)
+            if normalized == "error" and reason_detail:
+                stream.error_message = str(reason_detail)[:500]
+            elif not stream.error_message:
+                stream.error_message = (
+                    "Stream stopped unexpectedly (detected on reconciliation). "
+                    f"State: {reason}"
+                )
+
+            if normalized == "stopped":
                 stats["stopped"] += 1
-                stats["streams_checked"].append({
+            else:
+                stats["errors"] += 1
+
+            stats["streams_checked"].append(
+                {
                     "id": str(stream_id),
-                    "status": "stopped",
-                    "action": "marked_stopped",
+                    "status": normalized,
+                    "action": f"marked_{normalized}",
                     "reason": reason,
-                })
+                }
+            )
 
         except Exception as e:
             logger.exception(f"Error reconciling stream {stream.id}: {e}")
@@ -204,24 +290,45 @@ async def periodic_reconciliation(db: AsyncSession) -> None:
     if not (supervisor_enabled() or systemd_enabled()):
         return
 
-    result = await db.execute(
-        select(Stream).where(Stream.status == "running")
-    )
+    result = await db.execute(select(Stream).where(Stream.status.in_(["running", "starting", "stopping"])))
     streams = result.scalars().all()
 
     for stream in streams:
         try:
-            stream_status = await _check_stream_status(stream.id)
-            state = stream_status.get("state", "UNKNOWN")
-            if state == "STARTING":
+            runtime = await _check_stream_status(stream.id)
+            state = runtime.get("state", "UNKNOWN")
+            normalized = _normalize_runtime_state(state)
+
+            if normalized is None or normalized == "starting":
                 continue
-            if not stream_status["is_running"]:
-                logger.warning(
-                    f"Periodic check: Stream {stream.id} marked running but not active"
-                )
-                stream.status = "stopped"
+
+            if normalized == stream.status:
+                continue
+
+            logger.warning(
+                "Periodic check: Stream %s status drifted: db=%s runtime=%s → %s",
+                stream.id,
+                stream.status,
+                state,
+                normalized,
+            )
+
+            stream.status = normalized
+
+            if normalized == "running":
+                if not stream.started_at:
+                    stream.started_at = datetime.now(timezone.utc)
+                stream.stopped_at = None
+                continue
+
+            stream.pid = None
+            if normalized in {"stopped", "error"} and stream.stopped_at is None:
                 stream.stopped_at = datetime.now(timezone.utc)
-                stream.pid = None
+
+            if normalized == "error":
+                error_payload = runtime.get("error") or runtime.get("details")
+                if error_payload:
+                    stream.error_message = str(error_payload)[:500]
 
         except Exception as e:
             logger.error(f"Error in periodic reconciliation for {stream.id}: {e}")

@@ -332,7 +332,20 @@ class FFmpegStreamManager:
                         logger.warning(f"Stream {stream_id} timeout, forcing kill")
                         try:
                             process.kill()
-                            await self._await_process_exit(stream_id, process)
+                            # Even after SIGKILL the process might not exit cleanly (or might be a mocked
+                            # process in tests). Never hang forever on forced shutdown.
+                            force_timeout = max(0.5, min(float(timeout), 5.0))
+                            try:
+                                await asyncio.wait_for(
+                                    self._await_process_exit(stream_id, process),
+                                    timeout=force_timeout,
+                                )
+                            except asyncio.TimeoutError:
+                                logger.error(
+                                    "Stream %s did not exit after SIGKILL within %.1fs; cleaning up anyway",
+                                    stream_id,
+                                    force_timeout,
+                                )
                         except ProcessLookupError:
                             pass
 
@@ -470,7 +483,8 @@ class FFmpegStreamManager:
             and not multi_destination
         )
 
-        cmd: List[str] = [self.ffmpeg_bin]
+        # Keep logs user-friendly by default (no frame progress spam).
+        cmd: List[str] = [self.ffmpeg_bin, "-hide_banner", "-nostats"]
         input_sections: List[Dict[str, Any]] = []
 
         def add_input(args: List[str], *, provides_video: bool, provides_audio: bool) -> int:
