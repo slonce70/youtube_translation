@@ -203,7 +203,6 @@ export default function LibraryPage() {
     open: boolean
     assetIds: string[]
     forceRequired: boolean
-    forceConfirmed: boolean
     forceTarget?: {
       assetId: string
       name?: string
@@ -213,7 +212,6 @@ export default function LibraryPage() {
     open: false,
     assetIds: [],
     forceRequired: false,
-    forceConfirmed: false,
   })
   const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>('')
   const [draggedAssetIds, setDraggedAssetIds] = useState<string[] | null>(null)
@@ -690,7 +688,6 @@ export default function LibraryPage() {
       open: true,
       assetIds,
       forceRequired: false,
-      forceConfirmed: false,
       forceTarget: undefined,
     })
   }
@@ -700,7 +697,6 @@ export default function LibraryPage() {
       open: false,
       assetIds: [],
       forceRequired: false,
-      forceConfirmed: false,
       forceTarget: undefined,
     })
   }
@@ -944,12 +940,32 @@ export default function LibraryPage() {
     })
   }
 
-  const deleteAssets = async (assetIds: string[], options?: { force?: boolean }) => {
+  const deleteAssets = async (assetIds: string[]) => {
     if (!assetIds.length) return
     markAssetsAsDeleting(assetIds, true)
     try {
       for (const assetId of assetIds) {
-        await api.assets.delete(assetId, { force: options?.force })
+        try {
+          await api.assets.delete(assetId)
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 409) {
+            const conflictAsset = resolveAssetsByIds([assetId])[0]
+            const detail = (error.detail as { usage?: Asset['usage'] }) ?? {}
+            setDeleteModalState((prev) => ({
+              ...prev,
+              open: true,
+              forceRequired: true,
+              forceTarget: {
+                assetId,
+                name: conflictAsset?.filename ?? assetId,
+                usage: detail.usage ?? conflictAsset?.usage,
+              },
+            }))
+            toast.warning(libraryToasts('asset.forceToast'))
+            return
+          }
+          throw error
+        }
       }
       await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
       toast.success(libraryToasts('asset.deleted'))
@@ -960,24 +976,6 @@ export default function LibraryPage() {
       })
       closeDeleteModal()
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
-        const conflictAssetId = assetIds[0]
-        const conflictAsset = resolveAssetsByIds([conflictAssetId])[0]
-        const detail = (error.detail as { usage?: Asset['usage'] }) ?? {}
-        setDeleteModalState((prev) => ({
-          ...prev,
-          open: true,
-          forceRequired: true,
-          forceConfirmed: false,
-          forceTarget: {
-            assetId: conflictAssetId,
-            name: conflictAsset?.filename ?? conflictAssetId,
-            usage: detail.usage ?? conflictAsset?.usage,
-          },
-        }))
-        toast.warning(libraryToasts('asset.forceToast'))
-        return
-      }
       const message = error instanceof Error ? error.message : 'Failed to delete assets'
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
       closeDeleteModal()
@@ -992,11 +990,11 @@ export default function LibraryPage() {
       closeDeleteModal()
       return
     }
-    if (deleteModalState.forceRequired && !deleteModalState.forceConfirmed) {
-      toast.error(libraryToasts('asset.forceCheckboxRequired'))
+    if (deleteModalState.forceRequired) {
+      toast.error(libraryToasts('asset.forceToast'))
       return
     }
-    await deleteAssets(ids, { force: deleteModalState.forceRequired })
+    await deleteAssets(ids)
     // Modal is closed in deleteAssets on success or error (except 409)
   }
 
@@ -1817,17 +1815,6 @@ export default function LibraryPage() {
                   {renderForceUsageList('collections', forceTargetUsage?.collections)}
                   {renderForceUsageList('playlists', forceTargetUsage?.playlists)}
                 </div>
-                <label className="mt-1 flex items-start gap-2 text-slate-700 dark:text-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={deleteModalState.forceConfirmed}
-                    onChange={(event) =>
-                      setDeleteModalState((prev) => ({ ...prev, forceConfirmed: event.target.checked }))
-                    }
-                    className="mt-1 h-4 w-4"
-                  />
-                  <span>{tLibrary('assets.selection.forceCheckbox')}</span>
-                </label>
               </div>
             )}
 
@@ -1892,6 +1879,7 @@ export default function LibraryPage() {
                 variant="danger"
                 onClick={handleConfirmDelete}
                 isLoading={isDeletingSelection}
+                disabled={deleteModalState.forceRequired}
               >
                 {tLibrary('assets.selection.deleteConfirm')}
               </Button>
