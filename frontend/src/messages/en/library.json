@@ -13,8 +13,8 @@
       "validationRefreshed": "Validation refreshed",
       "download": "Starting download for {name}",
       "moved": "Assets moved",
-      "forceToast": "Asset is still used. Confirm force deletion to continue.",
-      "forceCheckboxRequired": "Confirm force deletion before continuing.",
+      "forceToast": "This file is still used and cannot be deleted. Remove the references first.",
+      "forceCheckboxRequired": "This file is still used and cannot be deleted.",
       "invalidSelection": "Select at least one uploaded asset before moving."
     },
     "folder": {
@@ -114,9 +114,9 @@
         "moveConfirm": "Move assets",
         "deleteTitle": "Delete assets",
         "deleteDescription": "This permanently removes the selected assets. This action cannot be undone.",
-        "deleteUsageWarning": "Some assets are used by playlists or streams. Removing them may break active stream configurations.",
-        "forceTitle": "Force deletion required",
-        "forceDescription": "“{name}” is still used by the resources below. Remove the references or force the deletion to continue.",
+        "deleteUsageWarning": "Some files are used by playlists or streams. Remove the references to delete them.",
+        "forceTitle": "File is in use",
+        "forceDescription": "“{name}” is still used by the resources below. Remove the references to delete it.",
         "forceCheckbox": "I understand this will remove the asset from all references.",
         "forceUsage": {
           "streams": "Streams",

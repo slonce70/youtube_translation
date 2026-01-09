@@ -97,7 +97,7 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 
 #### Service Layer (`app/services/`)
 - `admin/` — `AdminService`, audit логіка, робота з алертами, моніторинг стрімів.
-- `assets/` — `AssetService`, `AssetUploadService`, токени завантажень та інтеграція з валідатором, quota-хелпери.
+- `assets/` — `AssetService`, `AssetUploadService`, токени завантажень та інтеграція з валідатором, quota-хелпери; delete повертає 409+usage якщо asset використовується, UI не показує force delete (MVP).
 - `destinations/` — `DestinationService`. Шифрування ключів, quota-перевірки, маскування.
 - `media_folders/` та `media_collections/` — інкапсульований CRUD для бібліотеки, включно з bulk-операціями та валідацією активів.
 - `playlists/` — `PlaylistService`, що поєднує квоти, валідацію активів і `PlaylistBuilder`.
