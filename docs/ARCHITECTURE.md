@@ -103,6 +103,7 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 - `playlists/` — `PlaylistService`, що поєднує квоти, валідацію активів і `PlaylistBuilder`.
 - `streams/` — `StreamService` + `StreamControlService`, які розділяють створення конфігурацій та керування FFmpeg/quotas.
 - `quota/` — `QuotaService` для tusd-хуків і клієнтських запитів.
+- `api/deps.py` — `require_user` гарантує наявність `user_profiles` і підхоплює timezone з `X-User-Timezone` (IANA).
 
 #### Streaming Engine (`app/streaming/`)
 - `validator.py` - FFprobe-based video validation
