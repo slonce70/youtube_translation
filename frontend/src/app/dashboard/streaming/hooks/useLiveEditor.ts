@@ -136,7 +136,8 @@ export const useLiveEditor = ({ assets, tStreaming, streamingToasts }: UseLiveEd
       })
       setLiveEditorQueueing({ video: null, audio: null })
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load collections'
+      const message =
+        error instanceof Error ? error.message : streamingToasts('errors.loadCollectionsFailed')
       toast.error(streamingToasts('generic.errorWithMessage', { message }))
       resetLiveEditor()
     } finally {
@@ -184,7 +185,8 @@ export const useLiveEditor = ({ assets, tStreaming, streamingToasts }: UseLiveEd
           }
           queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'Failed to enqueue asset'
+          const message =
+            error instanceof Error ? error.message : streamingToasts('errors.enqueueAssetFailed')
           toast.error(streamingToasts('generic.errorWithMessage', { message }))
         } finally {
           setLiveEditorQueueing((prev) => ({ ...prev, [target]: null }))
@@ -274,7 +276,8 @@ export const useLiveEditor = ({ assets, tStreaming, streamingToasts }: UseLiveEd
       toast.success(streamingToasts('stream.liveEdited'))
       queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update stream'
+      const message =
+        error instanceof Error ? error.message : streamingToasts('errors.updateStreamFailed')
       toast.error(streamingToasts('generic.errorWithMessage', { message }))
     } finally {
       setLiveEditorApplying(false)

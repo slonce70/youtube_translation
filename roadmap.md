@@ -26,6 +26,7 @@
 - ✅ Library: відео прев’ю/thumbnail (`thumbnail_url` + fallback `/thumbnails/{asset_id}.jpg`).
 - ✅ Оновлено рекомендації bitrate/quality (включно з 720p і дробними значеннями).
 - ✅ DB: автопатч для старих локальних БД (`collection_items.updated_at` + trigger), щоб уникнути 500 на колекціях.
+- ✅ i18n: прибрано залишки англомовних confirm/toast fallback у Library/Streaming та локалізовано згадку “Go Live” в dashboard checklist (uk/ru).
 
 ## Ключові прогалини (що дає найбільший приріст цінності)
 1) **Repeats scheduler + windows + DST** (stop/timezone для one‑shot вже є, але repeats ще немає).

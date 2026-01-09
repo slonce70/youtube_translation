@@ -414,7 +414,8 @@ export const useStreamBuilder = ({
 
       await createStreamMutation.mutateAsync(payload)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create collection'
+      const message =
+        error instanceof Error ? error.message : streamingToasts('errors.createStreamFailed')
       toast.error(streamingToasts('generic.errorWithMessage', { message }))
     } finally {
       setIsBuilderSubmitting(false)
