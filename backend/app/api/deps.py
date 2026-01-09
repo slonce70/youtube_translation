@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from threading import RLock
@@ -302,7 +303,11 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-async def _ensure_user_profile(db: AsyncSession, user_payload: dict) -> UUID:
+async def _ensure_user_profile(
+    db: AsyncSession,
+    user_payload: dict,
+    client_timezone: Optional[str] = None,
+) -> UUID:
     """Создаёт профиль пользователя в БД, если его ещё нет."""
 
     raw_id = user_payload.get("sub")
@@ -328,6 +333,11 @@ async def _ensure_user_profile(db: AsyncSession, user_payload: dict) -> UUID:
     email = user_payload.get("email")
     metadata = user_payload.get("user_metadata") or {}
     full_name = metadata.get("full_name") or metadata.get("name")
+    # Optional timezone passed from client (IANA format, e.g. Europe/Kyiv)
+    user_timezone = client_timezone.strip() if isinstance(client_timezone, str) else None
+    if user_timezone:
+        if len(user_timezone) > 64 or not re.fullmatch(r"[A-Za-z0-9_+\\-/]+", user_timezone):
+            user_timezone = None
 
     if profile is None and email:
         existing_by_email = await db.execute(
@@ -343,8 +353,14 @@ async def _ensure_user_profile(db: AsyncSession, user_payload: dict) -> UUID:
                 user_id,
                 email,
             )
+            updated = False
             if full_name and existing_profile.full_name != full_name:
                 existing_profile.full_name = full_name
+                updated = True
+            if user_timezone and getattr(existing_profile, "timezone", None) != user_timezone:
+                existing_profile.timezone = user_timezone
+                updated = True
+            if updated:
                 await db.commit()
             return existing_profile.user_id
 
@@ -355,6 +371,9 @@ async def _ensure_user_profile(db: AsyncSession, user_payload: dict) -> UUID:
             updated = True
         if full_name and profile.full_name != full_name:
             profile.full_name = full_name
+            updated = True
+        if user_timezone and getattr(profile, "timezone", None) != user_timezone:
+            profile.timezone = user_timezone
             updated = True
 
         if updated:
@@ -370,6 +389,7 @@ async def _ensure_user_profile(db: AsyncSession, user_payload: dict) -> UUID:
         user_id=user_id,
         email=email,
         full_name=full_name,
+        timezone=user_timezone,
         subscription_tier="free",
         subscription_status="active",
     )
@@ -440,7 +460,8 @@ class UserDependency:
     async def __call__(
         self,
         db: AsyncSession = Depends(get_db),
-        authorization: Optional[str] = Header(None)
+        authorization: Optional[str] = Header(None),
+        user_timezone: Optional[str] = Header(default=None, alias="X-User-Timezone"),
     ) -> tuple[AsyncSession, Optional[str]]:
         """
         Get database session and current user ID.
@@ -460,7 +481,7 @@ class UserDependency:
 
         user_id: Optional[str] = None
         if user_payload:
-            ensured_id = await _ensure_user_profile(db, user_payload)
+            ensured_id = await _ensure_user_profile(db, user_payload, user_timezone)
             user_id = str(ensured_id)
 
         return db, user_id

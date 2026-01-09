@@ -252,6 +252,7 @@
         },
         "schedule": {
           "title": "Start time",
+          "timezoneHint": "Times are shown in {timezone}",
           "startNow": "Start now",
           "startLater": "Schedule",
           "stopLabel": "Stop time (optional)",

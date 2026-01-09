@@ -41,6 +41,22 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/a
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
 
+function resolveUserTimezone(): string | undefined {
+  if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
+    return undefined
+  }
+
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (!tz || typeof tz !== 'string') return undefined
+    const trimmed = tz.trim()
+    if (!trimmed || trimmed.length > 64) return undefined
+    return trimmed
+  } catch {
+    return undefined
+  }
+}
+
 function getCsrfToken(): string | undefined {
   if (typeof document === 'undefined') {
     return undefined
@@ -163,6 +179,11 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(fetchOptions.headers as Record<string, string> | undefined),
+  }
+
+  const userTimezone = resolveUserTimezone()
+  if (userTimezone) {
+    headers['X-User-Timezone'] = userTimezone
   }
 
   if (token) {

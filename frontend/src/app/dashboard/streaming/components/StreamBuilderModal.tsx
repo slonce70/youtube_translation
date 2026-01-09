@@ -76,6 +76,16 @@ export function StreamBuilderModal({
   formatLimitValue,
 }: StreamBuilderModalProps) {
   const actionLabels = useTranslations('common.actions')
+  const localTimezone =
+    typeof Intl === 'undefined'
+      ? null
+      : (() => {
+          try {
+            return Intl.DateTimeFormat().resolvedOptions().timeZone || null
+          } catch {
+            return null
+          }
+        })()
   const {
     streamForm,
     setStreamForm,
@@ -660,6 +670,11 @@ export function StreamBuilderModal({
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
                   {t('streams.builder.schedule.title')}
                 </label>
+                {localTimezone && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('streams.builder.schedule.timezoneHint', { timezone: localTimezone })}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
