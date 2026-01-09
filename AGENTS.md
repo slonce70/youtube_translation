@@ -5,6 +5,10 @@
 - `frontend/` contains the Next.js dashboard, shared components, and React Query hooks; `public/` holds static assets.
 - `docker/`, `Makefile`, and root scripts (`start-backend.sh`, `start-frontend.sh`, `start-tusd.sh`) orchestrate local services and integrations.
 
+## Language Policy
+- Supported languages: Ukrainian, English, Russian.
+- Default language for UI, docs, and developer notes: Ukrainian.
+
 ## Build, Test & Development Commands
 - **Backend**: `cd backend && python3 -m pytest` runs the async test suite; ensure dependencies from `requirements.txt` are installed. `uvicorn app.main:app --reload` launches the API locally.
 - **Frontend**: `cd frontend && npm install && npm run dev` starts the Next.js app; `npm run lint` enforces ESLint/TypeScript rules.
