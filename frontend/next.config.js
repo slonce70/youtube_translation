@@ -34,6 +34,7 @@ const nextConfig = {
   transpilePackages: ['@supabase/supabase-js'],
   output: 'standalone',
   reactStrictMode: true,
+  skipTrailingSlashRedirect: true,
   allowedDevOrigins: allowedOrigins,
   experimental: {
     serverActions: {
