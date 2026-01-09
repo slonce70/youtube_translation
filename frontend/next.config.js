@@ -36,6 +36,7 @@ const TRAILING_SLASH_API_ROUTES = [
   'streams',
   'media-folders',
   'media-collections',
+  'metrics',
 ]
 
 const nextConfig = {
