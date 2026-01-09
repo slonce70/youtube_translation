@@ -29,6 +29,14 @@ const LOCAL_NETWORK_ORIGINS = resolveLocalNetworkHosts()
 const unique = (arr) => [...new Set(arr)]
 
 const allowedOrigins = unique([...DEFAULT_DEV_ORIGINS, ...DEV_ORIGIN_TOKENS, ...LOCAL_NETWORK_ORIGINS])
+const TRAILING_SLASH_API_ROUTES = [
+  'assets',
+  'playlists',
+  'destinations',
+  'streams',
+  'media-folders',
+  'media-collections',
+]
 
 const nextConfig = {
   transpilePackages: ['@supabase/supabase-js'],
@@ -72,9 +80,19 @@ const nextConfig = {
     }
 
     return [
+      ...TRAILING_SLASH_API_ROUTES.flatMap((route) => ([
+        {
+          source: `/api/${route}`,
+          destination: `${DEV_API_PROXY_TARGET}/api/${route}/`,
+        },
+        {
+          source: `/api/${route}/`,
+          destination: `${DEV_API_PROXY_TARGET}/api/${route}/`,
+        },
+      ])),
       {
         source: '/api/:path*',
-        destination: `${DEV_API_PROXY_TARGET}/api/:path*/`,
+        destination: `${DEV_API_PROXY_TARGET}/api/:path*`,
       },
       {
         source: '/thumbnails/:path*',
