@@ -1,5 +1,12 @@
 # Журнал робіт
 
+## 2026-01-09
+- Виправив падіння `GET /api/streams/` (lazy-load у async) — додано eager-load `stream_destinations → destination`, через що список трансляцій стабільно відображається без “перезавантажень” сторінки.
+- Додав міграцію `026_collection_items_updated_at.sql` для сумісності старих локальних БД (колонка `collection_items.updated_at` + trigger). Оновив `backend/apply_migrations.py`.
+- Полагодив UX останнього кроку створення трансляції: модалка `StreamBuilder` тепер скролиться і кнопка підтвердження не “ховається” під екран.
+- Поліпшив UX після завантаження файлів: Library робить довший refetch (backoff) і показує щойно завантажений файл без ручного refresh сторінки.
+- Вирівняв Docker runner: прибрав застарілий `version` з compose, додав окремий healthcheck для `runner` (бо образ успадковував backend healthcheck на `:8000`), підтвердив роботу з `supervisord.docker.conf` через `runner:9001` (Docker Desktop/macOS-friendly).
+
 ## 2026-01-08
 - Виніс supervisord у окремий Docker-сервіс `runner` і підключив shared socket/volumes.
 - Оновив `supervisord.conf` під shared UNIX socket (`/app/supervisord/supervisor.sock`).

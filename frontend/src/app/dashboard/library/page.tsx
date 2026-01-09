@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Uppy from '@uppy/core'
@@ -199,6 +199,7 @@ export default function LibraryPage() {
     assetIds: [],
   })
   const [uploadTokenState, setUploadTokenState] = useState<{ token: string; expiresAt: number } | null>(null)
+  const assetsRefreshTimeoutRef = useRef<number | null>(null)
   const [deleteModalState, setDeleteModalState] = useState<{
     open: boolean
     assetIds: string[]
@@ -265,6 +266,9 @@ export default function LibraryPage() {
       if (!result.successful || !result.successful.length) {
         return
       }
+      if (!user?.id) {
+        return
+      }
 
       setIsProcessingUpload(true)
       const toastId = toast.loading(libraryToasts('upload.finalizing'))
@@ -283,17 +287,17 @@ export default function LibraryPage() {
           selectedFolderId,
         ]
 
-        const refreshUntilVisible = async () => {
-          const pollSchedule = [0, 350, 900, 1600]
+        const refreshUntilVisible = async (): Promise<boolean> => {
+          const pollSchedule = [0, 800, 1600, 3200, 6400, 12000, 20000]
           for (const delayMs of pollSchedule) {
             if (delayMs) {
               await sleep(delayMs)
             }
-            await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
-            await queryClient.refetchQueries({ queryKey: ['assets', user?.id], type: 'active' })
+            await queryClient.invalidateQueries({ queryKey: activeAssetsKey, exact: true })
+            await queryClient.refetchQueries({ queryKey: activeAssetsKey, type: 'active', exact: true })
 
             if (!shouldVerifyPresence || !uploadedFiles.length) {
-              continue
+              return true
             }
 
             const currentAssets = queryClient.getQueryData<Asset[]>(activeAssetsKey)
@@ -307,12 +311,23 @@ export default function LibraryPage() {
                 })
               )
             ) {
-              return
+              return true
             }
           }
+          return !shouldVerifyPresence
         }
 
-        await refreshUntilVisible()
+        const found = await refreshUntilVisible()
+        if (!found && shouldVerifyPresence) {
+          if (assetsRefreshTimeoutRef.current) {
+            window.clearTimeout(assetsRefreshTimeoutRef.current)
+          }
+          assetsRefreshTimeoutRef.current = window.setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: activeAssetsKey, exact: true })
+            queryClient.refetchQueries({ queryKey: activeAssetsKey, type: 'active', exact: true })
+            assetsRefreshTimeoutRef.current = null
+          }, 5000)
+        }
         toast.success(libraryToasts('upload.processed'), { id: toastId })
         setIsUploadOpen(false)
       } catch (error) {
@@ -338,6 +353,10 @@ export default function LibraryPage() {
     return () => {
       uppy.off('complete', handleComplete)
       uppy.off('error', handleError)
+      if (assetsRefreshTimeoutRef.current) {
+        window.clearTimeout(assetsRefreshTimeoutRef.current)
+        assetsRefreshTimeoutRef.current = null
+      }
       const plugin = uppy.getPlugin('Tus')
       if (plugin) {
         uppy.removePlugin(plugin)

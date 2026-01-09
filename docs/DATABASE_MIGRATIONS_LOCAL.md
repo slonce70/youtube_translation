@@ -1,6 +1,6 @@
 # Database Migrations - Local PostgreSQL Setup
 
-**Date:** 2025-11-11  
+**Date:** 2025-11-11 (оновлено 2026-01-09)  
 **Purpose:** Document migration changes for local PostgreSQL with Supabase Auth
 
 ## Architecture
@@ -172,6 +172,15 @@ echo "yes" | python apply_migrations.py
 15. 017 - Streams collection link
 16. 018 - Performance indexes
 17. 019 - Fix system alerts
+18. 020 - Admin actions `reason` column
+19. 021 - Admin actions request metadata columns
+20. 022 - Admin action type constraint update
+21. 023 - Stream schedule columns
+22. 024 - Stream schedule stop columns
+23. 025 - User profile timezone
+24. 026 - `collection_items.updated_at` (колонка + trigger)
+
+> Примітка: міграція **026** потрібна для локальних БД, створених зі старішого `000_local_initial_schema.sql`, де `collection_items.updated_at` могла бути відсутня. Це ламало створення/запис медіа-колекцій у деяких сценаріях.
 
 ## Backend Integration
 
