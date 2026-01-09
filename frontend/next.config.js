@@ -74,7 +74,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${DEV_API_PROXY_TARGET}/api/:path*`,
+        destination: `${DEV_API_PROXY_TARGET}/api/:path*/`,
       },
       {
         source: '/thumbnails/:path*',
