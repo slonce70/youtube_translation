@@ -1,4 +1,4 @@
-import { getAccessToken, waitForAuth } from './supabase'
+import { clearAuthSession, getAccessToken, refreshAccessToken, waitForAuth } from './supabase'
 import type {
   Asset,
   Playlist,
@@ -204,7 +204,39 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
 
   requestInit.headers = headers
 
-  const response = await fetch(urlString, requestInit)
+  const executeRequest = async (overrideToken?: string | null) => {
+    const requestHeaders = { ...headers }
+    if (overrideToken) {
+      requestHeaders['Authorization'] = `Bearer ${overrideToken}`
+    }
+
+    const response = await fetch(urlString, { ...requestInit, headers: requestHeaders })
+    return response
+  }
+
+  let response = await executeRequest()
+
+  const isAuthFailure =
+    (response.status === 401 || response.status === 403) &&
+    Boolean(response.headers.get('www-authenticate'))
+
+  if (!response.ok && isAuthFailure) {
+    const refreshedToken = await refreshAccessToken()
+    if (refreshedToken && refreshedToken !== token) {
+      response = await executeRequest(refreshedToken)
+    }
+
+    const retryAuthFailure =
+      (response.status === 401 || response.status === 403) &&
+      Boolean(response.headers.get('www-authenticate'))
+
+    if (!response.ok && retryAuthFailure) {
+      await clearAuthSession()
+      if (typeof window !== 'undefined') {
+        window.location.assign('/login')
+      }
+    }
+  }
 
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => ({ detail: 'Unknown error' }))
