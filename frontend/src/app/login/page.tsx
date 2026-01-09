@@ -24,11 +24,19 @@ export default function LoginPage() {
   const [isCheckingSession, setIsCheckingSession] = useState(true)
   const t = useTranslations('auth')
   const errorT = useTranslations('errors.supabase')
+  const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
 
   useEffect(() => {
     let active = true
 
     const verifySession = async () => {
+      if (DEV_BYPASS) {
+        router.replace('/dashboard')
+        if (active) {
+          setIsCheckingSession(false)
+        }
+        return
+      }
       try {
         const authenticated = await isAuthenticated()
         if (!active) return
@@ -49,7 +57,7 @@ export default function LoginPage() {
     return () => {
       active = false
     }
-  }, [router])
+  }, [DEV_BYPASS, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

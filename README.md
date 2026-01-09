@@ -68,6 +68,10 @@ cp frontend/.env.example frontend/.env.local
 # - ENCRYPTION_KEY, ENCRYPTION_SALT (згенерувати: openssl rand -hex 32)
 # - TUSD_HMAC_SECRET (згенерувати: openssl rand -base64 32)
 # - FFMPEG_BIN=/opt/homebrew/bin/ffmpeg (для Apple Silicon)
+# Для локальної розробки без Supabase:
+# - ENABLE_DEV_AUTH=true
+# - DEV_USER_EMAIL=dev@example.com
+# - DEV_USER_ID=00000000-0000-0000-0000-000000000001
 ```
 
 ### Крок 4: Застосувати міграції БД
@@ -118,6 +122,10 @@ curl http://localhost:8000/health
 | `SUPABASE_JWT_SECRET` | JWT secret для валідації токенів |
 
 **Важливо:** Supabase використовується **тільки для автентифікації** (OAuth, JWT). База даних локальна!
+
+Для локальної розробки без Supabase:
+- backend/.env: `ENABLE_DEV_AUTH=true`
+- frontend/.env.local: `NEXT_PUBLIC_DEV_BYPASS_AUTH=1`
 
 ### Безпека
 | Змінна | Призначення | Генерація |

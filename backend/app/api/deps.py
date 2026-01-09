@@ -24,7 +24,23 @@ logger = logging.getLogger(__name__)
 
 # Supabase client
 supabase_auth_key = settings.supabase_service_key or settings.supabase_key
-supabase: Client = create_client(settings.supabase_url, supabase_auth_key)
+supabase: Optional[Client] = None
+
+if settings.supabase_url and supabase_auth_key:
+    try:
+        supabase = create_client(settings.supabase_url, supabase_auth_key)
+    except Exception as exc:
+        if settings.enable_dev_auth:
+            logger.warning(
+                "Supabase init failed, continuing with dev auth enabled",
+                exc_info=exc,
+            )
+        else:
+            raise
+elif settings.enable_dev_auth:
+    logger.warning("Supabase credentials missing; dev auth enabled")
+else:
+    raise RuntimeError("Supabase credentials are not configured")
 
 _SUPABASE_AUTH_MAX_ATTEMPTS = 4
 _SUPABASE_AUTH_INITIAL_BACKOFF_SECONDS = 0.25
@@ -120,6 +136,11 @@ def invalidate_cached_user(token: Optional[str]) -> None:
 
 async def _fetch_supabase_user(token: str):
     """Fetch user details from Supabase auth with retry handling for transient errors."""
+    if supabase is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase auth is not configured",
+        )
 
     delay = _SUPABASE_AUTH_INITIAL_BACKOFF_SECONDS
     last_error: Optional[Exception] = None
@@ -190,6 +211,12 @@ async def get_current_user(
     Raises:
         HTTPException: If token is invalid or missing
     """
+    if settings.enable_dev_auth and supabase is None:
+        dev_payload = _dev_user_payload()
+        if dev_payload:
+            logger.info("Using dev auth fallback for %s", dev_payload["email"])
+            return dev_payload
+
     if not authorization:
         dev_payload = _dev_user_payload()
         if dev_payload:
@@ -336,7 +363,8 @@ async def _ensure_user_profile(
     # Optional timezone passed from client (IANA format, e.g. Europe/Kyiv)
     user_timezone = client_timezone.strip() if isinstance(client_timezone, str) else None
     if user_timezone:
-        if len(user_timezone) > 64 or not re.fullmatch(r"[A-Za-z0-9_+\\-/]+", user_timezone):
+        timezone_pattern = r"[A-Za-z0-9_+\\/\\-]+"
+        if len(user_timezone) > 64 or not re.fullmatch(timezone_pattern, user_timezone):
             user_timezone = None
 
     if profile is None and email:

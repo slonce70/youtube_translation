@@ -50,7 +50,7 @@ services:
       - ../backend/streams:/app/streams
       - ../backend/logs:/app/logs
       - ../backend/supervisord:/app/supervisord
-      - ../backend/supervisord.conf:/app/supervisord.conf
+      - ../backend/supervisord.docker.conf:/app/supervisord.conf
     env_file:
       - ../backend/.env
     environment:
@@ -81,7 +81,7 @@ services:
       context: ..
       dockerfile: docker/tusd.Dockerfile
     container_name: youtube-streaming-tusd
-    command: -dir /app/uploads -hooks-dir /tusd-hooks -port 1080
+    command: -upload-dir /app/uploads -hooks-dir /tusd-hooks -port 1080
     ports:
       - "1080:1080"
     volumes:
@@ -136,7 +136,13 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -154,7 +160,7 @@ services:
       - ../backend/streams:/app/streams
       - ../backend/logs:/app/logs
       - ../backend/supervisord:/app/supervisord
-      - ../backend/supervisord.conf:/app/supervisord.conf
+      - ../backend/supervisord.docker.conf:/app/supervisord.conf
     env_file:
       - ../backend/.env
     environment:

@@ -32,6 +32,7 @@ const allowedOrigins = unique([...DEFAULT_DEV_ORIGINS, ...DEV_ORIGIN_TOKENS, ...
 
 const nextConfig = {
   transpilePackages: ['@supabase/supabase-js'],
+  output: 'standalone',
   reactStrictMode: true,
   allowedDevOrigins: allowedOrigins,
   experimental: {
