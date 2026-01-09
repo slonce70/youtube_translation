@@ -28,17 +28,5 @@
 - Follow imperative, concise commit messages (`Secure tus upload webhook`, `Add admin pagination`). Group related backend/frontend changes into logical commits.
 - Pull requests should describe the change, list testing done, and mention any secrets/config updates. Include screenshots or GIFs for UI tweaks, and reference Jira/GitHub issues when applicable.
 
-## Skills & Auto-Activation (Claude/Droid)
-
-This repo also ships with Claude/Droid skills adapted to this codebase. They live in `.claude/skills/` and are auto-activated via a Droid `UserPromptSubmit` hook (`.factory/hooks/check_skill_activation.py` using `skill-rules.json`).
-
-- `backend-dev-guidelines` – FastAPI backend patterns for `backend/app/**` and `backend/tests/**` (services, streaming, quota, Sentry, async SQLAlchemy).
-- `frontend-dev-guidelines` – Next.js 15 + React 19 + Tailwind guidelines for `frontend/src/**` (App Router, UI components, i18n, tests).
-- `route-tester` – patterns for testing `/api/*` endpoints (pytest + httpx, curl) in youtube_translation.
-- `error-tracking` – how to use/extend Sentry integration in `backend/app/main.py` and related core/middleware code.
-- `skill-developer` – meta-skill for adding new skills and editing `skill-rules.json` in a way compatible with the Droid hook.
-
-When working in this repo with Droid:
-
-- The `UserPromptSubmit` hook will automatically inject relevant skill context when you ask about backend/frontend patterns, route testing, or error handling.
-- You can also explicitly request a skill (e.g., “use backend-dev-guidelines for this change”) if you want a focused deep dive.
+## Skills
+- Repo-specific “Droid/Claude skills” were removed from this repository (no `.factory/` or `.claude/skills/`).
