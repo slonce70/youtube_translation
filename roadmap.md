@@ -14,11 +14,17 @@
 - **Streaming ядро:** start/stop, статуси, лог‑файли, auto‑restart/backoff, multi‑destination через `tee`, placeholders, hot‑swap/live edit механіка (slot/queue).
 - **Runtime режими:** `manager` / `supervisor` / `systemd`, CLI `python -m app.cli.run_stream <stream_id>`, reconciler для supervisor/systemd.
 - **Observability:** JSON‑логи, метрики (`/api/metrics`, `/api/metrics/prometheus`), базові UI‑екрани (dashboard/streaming).
-- **Тестування:** backend pytest, frontend unit (jest), e2e (playwright) — описано в `docs/TESTING.md`.
+- **Тестування:** backend pytest, frontend unit (jest), e2e (playwright) — описано в `README.md` / `Makefile`.
+
+## Оновлення (2026-01-09)
+- ✅ Виправлено список трансляцій: `GET /api/streams/` більше не падає через async lazy-load (`stream_destinations` тепер eager-load).
+- ✅ Додано міграцію `026_collection_items_updated_at.sql` для сумісності старих локальних БД.
+- ✅ Streaming builder: останній крок у модалці тепер коректно скролиться (кнопка “Створити” доступна без зуму).
+- ✅ Library: після upload файли з’являються в списку без ручного refresh (довший refetch/backoff).
 
 ## Ключові прогалини (що дає найбільший приріст цінності)
-1) **Scheduler stop + повтори + timezone** (зараз є лише scheduled start).
-2) **Production‑готовий runner** для Docker/self‑host: щоб рестарт API не “вбивав” стріми (supervisord runner/service).
+1) **Repeats scheduler + windows + DST** (stop/timezone для one‑shot вже є, але repeats ще немає).
+2) **Production‑готовий runner** для Docker/self‑host: довести до “не плутає” dev/prod (healthcheck, unix socket як default, docs).
 3) **Optimize once → copy‑mode** (smart encoder pipeline) для бюджету і стабільності.
 4) **YouTube Connect (OAuth) + Live Streaming API** для “one‑click connect” та автоматизації lifecycle.
 5) **VOD segmentation** (auto‑restart під <12h архівування) + **live controls** (skip/jump/emergency).

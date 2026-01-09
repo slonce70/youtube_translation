@@ -27,6 +27,12 @@
 ✅ Observability: метрики + структуровані логи + базовий UI  
 ✅ Runtime режими: `manager` / `supervisor` / `systemd`, CLI runner + reconciler  
 
+## Оновлення станом на 2026-01-09 (що виправлено/додано)
+✅ Виправлено падіння `GET /api/streams/` (eager-load `stream_destinations → destination`), через що список трансляцій стабільно відображається без “рефреш-лупа”.  
+✅ Додано міграцію `026_collection_items_updated_at.sql` (локальна БД сумісність: `collection_items.updated_at` + trigger).  
+✅ Streaming UI: останній крок створення трансляції в модалці більше не “ховає” кнопку (правильний scroll).  
+✅ Library UI: після upload файли з’являються без ручного refresh (довший refetch/backoff).  
+
 ---
 
 # Phase 0 — Узгодження “production default” і baseline (P0)
@@ -45,7 +51,7 @@
 - Є 1 сторінка “Production deployment” (мінімум), без суперечностей з фактичними файлами (`docs/systemd/*`, `backend/supervisord.conf`, `docker/docker-compose.yml`).
 
 ## 0.2. Baseline tests + smoke (P0)
-- Прогнати і зафіксувати команди (див. `docs/TESTING.md`):
+- Прогнати і зафіксувати команди (див. `README.md` / `Makefile`):
   - backend pytest
   - frontend unit
   - e2e playwright
@@ -73,30 +79,11 @@
 **Ціль:** сервіс надійно стартує/стопає стріми по таймеру і **не втрачає ефір** при рестартах API.
 
 ## A1. Scheduler: `stop_at` (one‑shot) + stop job (P0)
-**Що є:** `scheduled_start_time` + launcher (`backend/app/services/streams/scheduler.py`).  
-**Що треба:** stop‑частина + чіткий state machine.
+**Статус:** ✅ виконано (2026-01-08) — stop‑scheduler додано.
 
-**Задачі**
-1) **DB/model**
-   - Додати поля в streams:
-     - `scheduled_stop_time` (TIMESTAMPTZ, nullable)
-     - (опц.) `scheduled_stop_enabled` / `scheduled_stop_attempted_at` (для retry)
-   - Міграція + оновлення `backend/app/models/database.py`.
-2) **Backend scheduler**
-   - Додати `stop_due_streams()` і викликати в циклі поруч зі `launch_due_streams()`.
-   - Idempotency:
-     - lock через `SELECT … FOR UPDATE SKIP LOCKED`,
-     - перевірка статусу (stop лише якщо stream “running/starting”).
-   - Поведінка при помилках: retry interval, логування, не блокувати інші стріми.
-3) **API + schemas**
-   - Розширити Stream create/update schema (де зараз `scheduled_start_*`) на stop поля.
-4) **Frontend**
-   - Додати в Stream builder/редактор:
-     - `start_at` і `stop_at`,
-     - зрозуміле відображення timezone (див. A2).
-5) **Тести**
-   - Backend: unit/integration для stop job (мок часу або “due” записи).
-   - E2E: сценарій “schedule start через 1 хв, stop через 2 хв” (з прискоренням через mock часу або прямим встановленням `scheduled_*_time` у минуле).
+**Зроблено**
+- Додані stop‑поля для streams + логіка планового stop у scheduler.
+- Додано UI для `stop_at` у builder/редакторі.
 
 **AC**
 - Якщо `stop_at` в минулому і стрім running → зупиняється.
@@ -106,13 +93,7 @@
 **Мінімально:** зберігаємо часи в UTC, у UI показуємо локально.  
 **Опційно:** timezone per stream (потрібно для repeats у v1).
 
-**Задачі**
-- Додати `user_profiles.timezone` (наприклад `Europe/Kyiv`) і використовувати його як default для UI.
-- Frontend:
-  - детерміновано показувати “Local time (Europe/Kyiv)” і “UTC”.
-  - валідатор: `stop_at > start_at`.
-- Backend:
-  - валідація payload (tz‑aware datetime).
+**Статус:** ✅ виконано (2026-01-08) — timezone профіль користувача додано.
 
 **AC**
 - Один і той самий стрім має однаковий час у різних браузерах (через збережений timezone або явний UTC‑показ).
@@ -120,16 +101,18 @@
 ## A3. Production runner для Docker/self‑host (P0)
 **Ціль:** при рестарті FastAPI стріми не падають (у production‑режимі).
 
-**Задачі**
-- Додати в `docker/docker-compose.yml` окремий сервіс `runner/supervisord`, який:
-  - монтує `../backend/supervisord` (programs + logs) спільно з `backend`,
-  - має доступ до `../backend/uploads`, `../backend/streams`, `../backend/logs`,
-  - запускає `supervisord` з `backend/supervisord.conf`.
-- Забезпечити доступ `backend` до supervisor control:
-  - або через **shared unix socket volume** (безпечніше, без відкриття TCP),
-  - або через внутрішній TCP (лише в docker network + auth).
-- Перевірити end‑to‑end:
-  - start stream → рестарт backend → stream продовжує йти → UI синхронізується (reconciler).
+**Статус:** ✅ зроблено (2026-01-08 → 2026-01-09).
+
+**Зроблено**
+- У `docker/docker-compose.yml` є окремий сервіс `runner` (supervisord) + shared volumes для програм/логів.
+- Додано коректний healthcheck для `runner` (не плутає “unhealthy” у Docker).
+
+**Примітка (важливо для macOS/Docker Desktop)**
+- У Docker керування `supervisorctl` іде через внутрішній HTTP endpoint (`runner:9001`) з `backend/supervisord.docker.conf`.
+- Варіант з **unix socket** можливий на Linux (особливо якщо `/app/supervisord` — named volume), але на macOS bind-mount для unix sockets може працювати нестабільно.
+
+**Ще треба (P0, найближче)**
+- Для VPS/prod: або додати базову auth на supervisor HTTP API, або перейти на unix socket (Linux) — щоб не тримати “open control plane” навіть у внутрішній мережі.
 
 **AC**
 - Рестарт API не зупиняє стрім (в обраному production‑mode).
@@ -138,11 +121,7 @@
 **Що є:** delete блокується якщо asset використовується (409), `force=true` дозволяє “знести”.  
 **Рішення для MVP:** safe delete як default (без soft delete), щоб не видаляти файли, які FFmpeg може ще відтворити.
 
-**Задачі**
-- Прибрати `force` з UI для звичайних користувачів (або показувати тільки адмінам).
-- Залишити safe delete (409 + usage details) як основний сценарій.
-- UI:
-  - показувати “Asset in use” з переліком залежностей (вже повертається в 409).
+**Статус:** ✅ виконано (2026-01-08) — safe delete в UI як default.
 
 **AC**
 - Неможливо випадково зламати активний стрім через видалення файлу.

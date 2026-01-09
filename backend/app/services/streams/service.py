@@ -510,6 +510,8 @@ def _load_stream_list_options():
         # stream_assets are needed for StreamResponse.stream_assets (List[StreamAssetLink])
         # which requires asset_id and position. These are on the StreamAsset table.
         selectinload(Stream.stream_assets),
+        # stream_destinations are accessed to build StreamResponse.destinations
+        selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
     )
 
 
