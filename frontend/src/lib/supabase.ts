@@ -172,6 +172,45 @@ export async function getAccessToken(maxRetries = 3): Promise<string | null> {
   return null
 }
 
+export async function refreshAccessToken(): Promise<string | null> {
+  if (DEV_BYPASS) {
+    return null
+  }
+
+  try {
+    const { data, error } = await supabase.auth.refreshSession()
+    if (error) {
+      console.warn('[supabase] Failed to refresh session', error)
+      return null
+    }
+
+    cachedSession = data.session ?? null
+    setAuthCookies(data.session ?? null)
+    return data.session?.access_token ?? null
+  } catch (error) {
+    console.warn('[supabase] Failed to refresh session', error)
+    return null
+  }
+}
+
+export async function clearAuthSession(): Promise<void> {
+  if (DEV_BYPASS) {
+    return
+  }
+
+  try {
+    await supabase.auth.signOut()
+  } catch (error) {
+    console.warn('[supabase] Failed to sign out', error)
+  } finally {
+    cachedSession = null
+    setAuthCookies(null)
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(SUPABASE_STORAGE_KEY)
+    }
+  }
+}
+
 export async function isAuthenticated(): Promise<boolean> {
   if (DEV_BYPASS) {
     return true
