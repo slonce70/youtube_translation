@@ -32,6 +32,7 @@ import {
 interface AssetCardProps {
   asset: Asset
   isSelected: boolean
+  density?: 'comfortable' | 'compact'
   onSelect: (checked: boolean) => void
   onRename: () => void
   onDelete: () => void
@@ -72,6 +73,7 @@ interface AssetCardProps {
 export function AssetCard({
   asset,
   isSelected,
+  density = 'comfortable',
   onSelect,
   onRename,
   onDelete,
@@ -94,6 +96,8 @@ export function AssetCard({
   const info = deriveAssetDisplayInfo(asset)
   const uploadedAt = format(new Date(asset.created_at), 'MMM d, yyyy • HH:mm')
   const isAudioAsset = asset.asset_type === 'audio'
+  const isCompact = density === 'compact'
+  const previewSizeClass = isCompact ? 'h-12 w-12' : 'h-14 w-14'
   const fileExtension = useMemo(() => {
     if (!asset.filename.includes('.')) return ''
     return asset.filename.split('.').pop()?.toLowerCase() ?? ''
@@ -131,7 +135,7 @@ export function AssetCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
-      <CardContent className="p-3">
+      <CardContent className={isCompact ? 'p-2' : 'p-3'}>
         <div className="flex items-start gap-3">
           <input
             type="checkbox"
@@ -142,7 +146,7 @@ export function AssetCard({
             className="mt-2 h-4 w-4 flex-shrink-0 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
           />
 
-          <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60">
+          <div className={`relative ${previewSizeClass} flex-shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60`}>
             {thumbnailSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -194,10 +198,12 @@ export function AssetCard({
                       </>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <CalendarClock className="h-3 w-3" />
-                    <span>{uploadedAt}</span>
-                  </div>
+                  {!isCompact && (
+                    <div className="flex items-center gap-1.5">
+                      <CalendarClock className="h-3 w-3" />
+                      <span>{uploadedAt}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -232,7 +238,7 @@ export function AssetCard({
                   </span>
                 )}
               </Badge>
-              {info.bitrateStatus === 'within' ? (
+              {!isCompact && (info.bitrateStatus === 'within' ? (
                 <Badge variant="success" className="px-2 py-0.5 text-[10px]">
                   {t.badges.bitrateOk}
                 </Badge>
@@ -240,7 +246,7 @@ export function AssetCard({
                 <Badge variant="warning" className="px-2 py-0.5 text-[10px]">
                   {t.badges.bitrateCheck}
                 </Badge>
-              ) : null}
+              ) : null)}
               {usageBadges.map((label, index) => (
                 <Badge key={`usage-${index}`} variant="secondary" className="px-2 py-0.5 text-[10px]">
                   {label}

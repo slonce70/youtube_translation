@@ -33,6 +33,13 @@
       "updated": "Плейлист обновлен",
       "deleted": "Плейлист удален"
     },
+    "references": {
+      "streamDeleted": "Стрим удалён",
+      "streamDeleteFailed": "Не удалось удалить стрим: {message}",
+      "collectionDeleted": "Коллекция удалена",
+      "collectionDeleteFailed": "Не удалось удалить коллекцию: {message}",
+      "collectionDeleteBlocked": "Коллекция используется в стримах. Сначала удалите или обновите стрим."
+    },
     "generic": {
       "comingSoon": "{feature} скоро будет доступно",
       "unknownError": "Неизвестная ошибка",
@@ -56,6 +63,28 @@
         "all": "Все",
         "video": "Видео",
         "audio": "Аудио"
+      },
+      "search": {
+        "placeholder": "Поиск по имени файла…",
+        "clear": "Очистить поиск",
+        "noResultsTitle": "Ничего не найдено",
+        "noResultsDescription": "Нет файлов, соответствующих запросу “{query}”."
+      },
+      "sort": {
+        "ariaLabel": "Сортировка файлов",
+        "options": {
+          "newest": "Сначала новые",
+          "oldest": "Сначала старые",
+          "nameAsc": "Название (А → Я)",
+          "nameDesc": "Название (Я → А)",
+          "sizeDesc": "Размер (убывание)",
+          "sizeAsc": "Размер (возрастание)"
+        }
+      },
+      "view": {
+        "ariaLabel": "Режим отображения",
+        "compact": "Компактно",
+        "comfortable": "Подробно"
       },
       "upload": "Загрузить файлы",
       "previewAlt": "Предпросмотр {filename}",
@@ -123,6 +152,17 @@
         "deleteUsageWarning": "Некоторые файлы используются в плейлистах или стримах. Удалите ссылки, чтобы удалить их.",
         "forceTitle": "Файл используется",
         "forceDescription": "«{name}» всё ещё используется ресурсами ниже. Удалите ссылки, чтобы удалить его.",
+        "collectionsHint": "Коллекции — это сохранённые видеоряды/аудиоплейлисты для стримов (см. Трансляции → Новый стрим).",
+        "confirmDeleteStream": "Удалить стрим «{name}»? Это может повлиять на зависимости этого файла.",
+        "confirmDeleteCollection": "Удалить коллекцию «{name}»? Это может повлиять на зависимости этого файла.",
+        "collectionContext": {
+          "video_background": "Видеоряд",
+          "audio_playlist": "Аудиоплейлист"
+        },
+        "actions": {
+          "deleteStream": "Удалить стрим",
+          "deleteCollection": "Удалить коллекцию"
+        },
         "forceCheckbox": "Я понимаю, что файл будет удалён из всех зависимостей.",
         "forceUsage": {
           "streams": "Стримы",

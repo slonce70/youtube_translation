@@ -26,7 +26,7 @@
       "selectPlaylist": "Select a playlist",
       "selectDestination": "Select at least one destination",
       "selectAssets": "Select at least one asset",
-      "selectBackground": "Add at least one background video",
+      "selectBackground": "Add at least one video",
       "selectAudio": "Add at least one audio track",
       "createStreamFailed": "Failed to create stream",
       "loadCollectionsFailed": "Failed to load collections",
@@ -202,9 +202,9 @@
         }
       },
       "builder": {
-        "subtitle": "Craft your background, audio bed, and destinations before going live.",
+        "subtitle": "Set up your video playlist, audio bed, and destinations before going live.",
         "tabs": {
-          "video": "Background video",
+          "video": "Video playlist",
           "audio": "Audio playlist",
           "timeline": "Timeline",
           "destinations": "Destinations",
@@ -225,9 +225,9 @@
           "alertDescription": "{count, plural, one {# stream has errors} other {# streams have errors}}"
         },
         "video": {
-          "title": "Background video",
-          "collectionLabel": "Saved video collections",
-          "collectionPlaceholder": "Build new collection",
+          "title": "Video playlist",
+          "collectionLabel": "Saved video playlists",
+          "collectionPlaceholder": "Create video playlist",
           "customize": "Customize",
           "loop": "Loop",
           "shuffle": "Shuffle",
