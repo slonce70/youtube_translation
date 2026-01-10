@@ -12,6 +12,31 @@ CREATE TABLE IF NOT EXISTS media_collections (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Backfill missing columns/constraints when media_collections pre-exists (e.g. created by 000_local_initial_schema.sql)
+ALTER TABLE media_collections
+    ADD COLUMN IF NOT EXISTS collection_type TEXT NOT NULL DEFAULT 'video_background',
+    ADD COLUMN IF NOT EXISTS description TEXT,
+    ADD COLUMN IF NOT EXISTS origin_playlist_id UUID,
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_media_collections_origin_playlist_id
+    ON media_collections(origin_playlist_id)
+    WHERE origin_playlist_id IS NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints
+        WHERE table_name = 'media_collections'
+          AND constraint_name = 'fk_media_collections_origin_playlist_id'
+    ) THEN
+        ALTER TABLE media_collections
+            ADD CONSTRAINT fk_media_collections_origin_playlist_id
+            FOREIGN KEY (origin_playlist_id) REFERENCES playlists(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
 -- Supported collection types
 DO $$
 BEGIN
@@ -57,6 +82,11 @@ CREATE TABLE IF NOT EXISTS collection_items (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Backfill missing columns when collection_items pre-exists (e.g. created by 000_local_initial_schema.sql)
+ALTER TABLE collection_items
+    ADD COLUMN IF NOT EXISTS loop_mode TEXT NOT NULL DEFAULT 'loop',
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 DO $$
 BEGIN

@@ -33,11 +33,11 @@ CREATE TABLE IF NOT EXISTS admin_actions (
 );
 
 -- Indexes for admin_actions
-CREATE INDEX idx_admin_actions_admin_user ON admin_actions(admin_user_id, created_at DESC);
-CREATE INDEX idx_admin_actions_target_user ON admin_actions(target_user_id, created_at DESC) 
+CREATE INDEX IF NOT EXISTS idx_admin_actions_admin_user ON admin_actions(admin_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_actions_target_user ON admin_actions(target_user_id, created_at DESC) 
     WHERE target_user_id IS NOT NULL;
-CREATE INDEX idx_admin_actions_type ON admin_actions(action_type, created_at DESC);
-CREATE INDEX idx_admin_actions_created ON admin_actions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_actions_type ON admin_actions(action_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions(created_at DESC);
 
 -- System alerts table
 CREATE TABLE IF NOT EXISTS system_alerts (
@@ -73,14 +73,49 @@ CREATE TABLE IF NOT EXISTS system_alerts (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Backfill missing columns when system_alerts pre-exists (e.g. created by 000_local_initial_schema.sql)
+ALTER TABLE system_alerts
+    ADD COLUMN IF NOT EXISTS stream_id UUID,
+    ADD COLUMN IF NOT EXISTS asset_id UUID,
+    ADD COLUMN IF NOT EXISTS resolution_notes TEXT;
+
+-- Ensure foreign keys exist for optional links
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints
+        WHERE table_name = 'system_alerts'
+          AND constraint_name = 'system_alerts_stream_id_fkey'
+    ) THEN
+        ALTER TABLE system_alerts
+            ADD CONSTRAINT system_alerts_stream_id_fkey
+            FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints
+        WHERE table_name = 'system_alerts'
+          AND constraint_name = 'system_alerts_asset_id_fkey'
+    ) THEN
+        ALTER TABLE system_alerts
+            ADD CONSTRAINT system_alerts_asset_id_fkey
+            FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
 -- Indexes for system_alerts
-CREATE INDEX idx_system_alerts_unresolved ON system_alerts(created_at DESC) 
+CREATE INDEX IF NOT EXISTS idx_system_alerts_unresolved ON system_alerts(created_at DESC) 
     WHERE resolved = FALSE;
-CREATE INDEX idx_system_alerts_user ON system_alerts(user_id, created_at DESC) 
+CREATE INDEX IF NOT EXISTS idx_system_alerts_user ON system_alerts(user_id, created_at DESC) 
     WHERE user_id IS NOT NULL;
-CREATE INDEX idx_system_alerts_type ON system_alerts(alert_type, created_at DESC);
-CREATE INDEX idx_system_alerts_severity ON system_alerts(severity, created_at DESC);
-CREATE INDEX idx_system_alerts_stream ON system_alerts(stream_id, created_at DESC)
+CREATE INDEX IF NOT EXISTS idx_system_alerts_type ON system_alerts(alert_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_alerts_severity ON system_alerts(severity, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_alerts_stream ON system_alerts(stream_id, created_at DESC)
     WHERE stream_id IS NOT NULL;
 
 -- User activity log table (for monitoring suspicious activity)
@@ -110,10 +145,10 @@ CREATE TABLE IF NOT EXISTS user_activity_log (
 );
 
 -- Indexes for user_activity_log
-CREATE INDEX idx_user_activity_user ON user_activity_log(user_id, created_at DESC);
-CREATE INDEX idx_user_activity_type ON user_activity_log(activity_type, created_at DESC);
-CREATE INDEX idx_user_activity_ip ON user_activity_log(ip_address, created_at DESC);
-CREATE INDEX idx_user_activity_created ON user_activity_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_user ON user_activity_log(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_type ON user_activity_log(activity_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_ip ON user_activity_log(ip_address, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_created ON user_activity_log(created_at DESC);
 
 -- Partitioning for user_activity_log (optional, for performance with large datasets)
 -- This will be useful when the table grows large
