@@ -6,7 +6,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { Locale as DateFnsLocale } from 'date-fns'
 import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
-import { Play, Loader2, X, Info } from 'lucide-react'
+import { Play, Loader2, X, Info, ChevronDown } from 'lucide-react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from 'next/navigation'
 
@@ -28,6 +28,7 @@ import type {
   StreamQualityResponse,
   SubscriptionTierKey,
   MediaCollection,
+  StreamSchedulePayload,
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
 import { ChannelsSidebar } from './components/ChannelsSidebar'
@@ -35,6 +36,7 @@ import { StreamsList } from './components/StreamsList'
 import { StreamBuilderModal } from './components/StreamBuilderModal'
 import { LiveEditorModal } from './components/LiveEditorModal'
 import { QualityGateModal } from './components/QualityGateModal'
+import { StreamScheduleModal } from './components/StreamScheduleModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 
@@ -85,6 +87,7 @@ export default function StreamingPage() {
   const [viewingLogs, setViewingLogs] = useState<string | null>(null)
   const [logsMode, setLogsMode] = useState<'important' | 'raw'>('important')
   const [showCreateStream, setShowCreateStream] = useState(false)
+  const [scheduleModalStream, setScheduleModalStream] = useState<Stream | null>(null)
 
   const { data: destinations, isLoading: isLoadingDestinations } = useQuery<Destination[]>({
     queryKey: ['destinations', user?.id],
@@ -208,6 +211,18 @@ export default function StreamingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
       toast.success(streamingToasts('destination.deleted'))
+    },
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
+  })
+
+  const updateScheduleMutation = useMutation({
+    mutationFn: ({ streamId, payload }: { streamId: string; payload: StreamSchedulePayload }) =>
+      api.streams.update(streamId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
+      toast.success(streamingToasts('stream.scheduleUpdated'))
+      setScheduleModalStream(null)
     },
     onError: (error: Error) =>
       toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
@@ -339,6 +354,48 @@ export default function StreamingPage() {
     setShowChannelForm(true)
   }
 
+  const handleOpenSchedule = (stream: Stream) => {
+    setScheduleModalStream(stream)
+  }
+
+  const handleSaveSchedule = (draft: { startMode: 'now' | 'schedule'; startAt: string; stopAt: string }) => {
+    if (!scheduleModalStream) return
+
+    if (draft.startMode === 'schedule' && !draft.startAt) {
+      toast.error(streamingToasts('errors.scheduleTime'))
+      return
+    }
+
+    const now = new Date()
+    const startAtIso =
+      draft.startMode === 'schedule' && draft.startAt ? new Date(draft.startAt).toISOString() : null
+    const stopAtIso = draft.stopAt ? new Date(draft.stopAt).toISOString() : null
+
+    if (draft.stopAt) {
+      const stopAt = new Date(draft.stopAt)
+      if (Number.isNaN(stopAt.getTime()) || stopAt <= now) {
+        toast.error(streamingToasts('errors.scheduleStopTime'))
+        return
+      }
+      if (draft.startMode === 'schedule' && draft.startAt) {
+        const startAt = new Date(draft.startAt)
+        if (stopAt <= startAt) {
+          toast.error(streamingToasts('errors.scheduleStopAfterStart'))
+          return
+        }
+      }
+    }
+
+    updateScheduleMutation.mutate({
+      streamId: scheduleModalStream.id,
+      payload: {
+        schedule_mode: draft.startMode,
+        schedule_start_at: startAtIso,
+        schedule_stop_at: stopAtIso,
+      },
+    })
+  }
+
   const handleDeleteChannel = (destinationId: string) => {
     if (confirm(tStreaming('channels.form.confirmDelete'))) {
       deleteDestinationMutation.mutate(destinationId)
@@ -407,6 +464,25 @@ export default function StreamingPage() {
         </Button>
       </div>
 
+      <Card>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
+            <span className="text-base font-semibold text-slate-900 dark:text-white">
+              {tStreaming('checklist.title')}
+            </span>
+            <ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
+          </summary>
+          <div className="px-6 pb-6 text-sm text-slate-600 dark:text-slate-300">
+            <ul className="list-disc space-y-2 pl-5">
+              <li>{tStreaming('checklist.items.destination')}</li>
+              <li>{tStreaming('checklist.items.assets')}</li>
+              <li>{tStreaming('checklist.items.schedule')}</li>
+              <li>{tStreaming('checklist.items.test')}</li>
+            </ul>
+          </div>
+        </details>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <ChannelsSidebar
           destinations={destinations}
@@ -436,6 +512,7 @@ export default function StreamingPage() {
             onStartStream={handleStartStream}
             onStopStream={handleStopStream}
             onDeleteStream={handleDeleteStream}
+            onEditSchedule={handleOpenSchedule}
             renderStatusBadge={renderStatusBadge}
             playlistMap={playlistMap}
             t={tStreaming}
@@ -609,6 +686,15 @@ export default function StreamingPage() {
         t={tStreaming}
         streamingToasts={streamingToasts}
         formatLimitValue={formatLimitValue}
+      />
+
+      <StreamScheduleModal
+        open={Boolean(scheduleModalStream)}
+        stream={scheduleModalStream}
+        t={tStreaming}
+        onClose={() => setScheduleModalStream(null)}
+        onSave={handleSaveSchedule}
+        isSaving={updateScheduleMutation.isPending}
       />
 
       {viewingLogs && (

@@ -6,7 +6,10 @@
 - Dashboard (A10): checklist зроблено collapsible, щоб не перевантажувати головний екран.
 - Backend: вирівняно локальний bootstrap БД (fresh schema + міграції без конфліктів) та узгоджено ORM (FK/relationships для `user_id`).
 - Streaming (A5): додано help-блок у формі каналу (де знайти YouTube stream key).
+- Streaming (A5): VOD <12h warning, рекомендовані налаштування енкодера та “First stream checklist” у продукті/доках.
+- Streaming schedule: швидкі кнопки тривалості (12/24/48 год) + редагування розкладу для існуючих стрімів (PATCH `/streams/{id}`).
 - Admin: оновлено `backend/create_admin.py` (можна зробити адміном за email).
+- Перевірив: `make i18n-check`, `make test-backend` (120 passed, 8 skipped), `make test-frontend` (35 passed).
 - Перевірив: `make i18n-check && make lint && make test` (backend: 117 passed, 8 skipped; frontend: 29 passed).
 
 ## 2026-01-09

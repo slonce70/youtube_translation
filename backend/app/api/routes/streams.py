@@ -18,6 +18,7 @@ from app.schemas.api import (
     StreamStatus,
     StreamQueueAppend,
     StreamQueueResponse,
+    StreamScheduleUpdate,
 )
 from app.services.streams import StreamControlService, StreamService
 from app.streaming.ffmpeg_manager import ffmpeg_manager  # noqa: F401 - compatibility for tests
@@ -50,6 +51,17 @@ async def create_stream(stream_data: StreamCreate, user_deps: tuple = Depends(re
     db, user_id = user_deps
     service, _ = _build_services(db, user_id)
     return await service.create_stream(stream_data)
+
+
+@router.patch("/{stream_id}", response_model=StreamResponse)
+async def update_stream_schedule(
+    stream_id: UUID,
+    payload: StreamScheduleUpdate,
+    user_deps: tuple = Depends(require_user),
+):
+    db, user_id = user_deps
+    service, _ = _build_services(db, user_id)
+    return await service.update_stream_schedule(stream_id, payload)
 
 
 @router.get("/{stream_id}/quality", response_model=StreamQualityResponse)

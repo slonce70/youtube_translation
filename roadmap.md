@@ -34,6 +34,8 @@
 - ✅ Dashboard (A10): checklist зроблено collapsible для менш перевантаженого UI.
 - ✅ Streaming (A5): help-блок у формі каналу (як знайти YouTube stream key + RTMPS підказка).
 - ✅ Admin: скрипт `create_admin.py` підтримує підняття адміна за email.
+- ✅ Streaming (A5): VOD <12h warning, recommended encoder settings (GOP 2s, H.264/AAC) + “First stream checklist” у продукті/доках.
+- ✅ Streaming schedule: швидкі кнопки тривалості (12/24/48 год) + редагування розкладу існуючих стрімів.
 
 ## Ключові прогалини (що дає найбільший приріст цінності)
 1) **Repeats scheduler + windows + DST** (stop/timezone для one‑shot вже є, але repeats ще немає).

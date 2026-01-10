@@ -269,6 +269,47 @@ class StreamCreate(StreamBase):
         return model
 
 
+class StreamScheduleUpdate(BaseModel):
+    schedule_mode: Literal["now", "schedule"] = "now"
+    schedule_start_at: Optional[datetime] = None
+    schedule_stop_at: Optional[datetime] = None
+
+    @model_validator(mode="after")
+    def validate_schedule(cls, model):
+        mode = (model.schedule_mode or "now").lower()
+        if mode not in {"now", "schedule"}:
+            raise ValueError("schedule_mode must be 'now' or 'schedule'")
+        model.schedule_mode = mode
+
+        if model.schedule_mode == "schedule":
+            if not model.schedule_start_at:
+                raise ValueError("schedule_start_at is required when schedule_mode is 'schedule'")
+            start_at = model.schedule_start_at
+            if start_at.tzinfo is None:
+                start_at = start_at.replace(tzinfo=timezone.utc)
+            else:
+                start_at = start_at.astimezone(timezone.utc)
+            if start_at <= datetime.now(timezone.utc):
+                raise ValueError("schedule_start_at must be in the future")
+            model.schedule_start_at = start_at
+        else:
+            model.schedule_start_at = None
+
+        stop_at = model.schedule_stop_at
+        if stop_at:
+            if stop_at.tzinfo is None:
+                stop_at = stop_at.replace(tzinfo=timezone.utc)
+            else:
+                stop_at = stop_at.astimezone(timezone.utc)
+            if stop_at <= datetime.now(timezone.utc):
+                raise ValueError("schedule_stop_at must be in the future")
+            if model.schedule_start_at and stop_at <= model.schedule_start_at:
+                raise ValueError("schedule_stop_at must be after schedule_start_at")
+            model.schedule_stop_at = stop_at
+
+        return model
+
+
 class StreamUpdate(BaseModel):
     name: Optional[str] = None
     status: Optional[str] = None

@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS streams (
     playlist_id UUID REFERENCES playlists(id) ON DELETE RESTRICT,
     source_type TEXT DEFAULT 'playlist' NOT NULL CHECK (source_type IN ('playlist', 'assets')),
     name TEXT,
-    status TEXT DEFAULT 'stopped' CHECK (status IN ('stopped', 'starting', 'running', 'error', 'stopping')),
+    status TEXT DEFAULT 'stopped' CHECK (status IN ('stopped', 'starting', 'running', 'error', 'stopping', 'scheduled')),
     pid INT,
     log_path TEXT,
     error_message TEXT,

@@ -35,6 +35,7 @@ import type {
 } from '@/lib/types'
 
 import { useStreamBuilder } from '../hooks/useStreamBuilder'
+import { applyDurationPreset, DURATION_PRESETS } from '../schedule-utils'
 
 type Translator = (key: string, values?: TranslationValues) => string
 
@@ -148,6 +149,7 @@ export function StreamBuilderModal({
   }
 
   const destinationsList = destinationsState ?? []
+  const durationOptions = DURATION_PRESETS
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
@@ -710,6 +712,29 @@ export function StreamBuilderModal({
                   value={scheduleState.stopAt}
                   onChange={(event) => setScheduleState((prev) => ({ ...prev, stopAt: event.target.value }))}
                 />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t('streams.builder.schedule.stopHint')}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {t('streams.builder.schedule.durationLabel')}
+                  </span>
+                  {durationOptions.map((hours) => (
+                    <Button
+                      key={`duration-${hours}`}
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setScheduleState((prev) => ({
+                          ...prev,
+                          ...applyDurationPreset(prev, hours),
+                        }))
+                      }
+                    >
+                      {t(`streams.builder.schedule.durationOptions.${hours}h`)}
+                    </Button>
+                  ))}
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -721,6 +746,29 @@ export function StreamBuilderModal({
                   <Repeat className="mr-1 h-4 w-4" />
                   {t('streams.builder.schedule.loop')}
                 </Button>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>{t('streams.builder.schedule.vodWarning.title')}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-200/80">
+                    {t('streams.builder.schedule.vodWarning.description')}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-200">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <Info className="h-4 w-4 text-primary-500" />
+                    <span>{t('streams.builder.schedule.encoder.title')}</span>
+                  </div>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
+                    <li>{t('streams.builder.schedule.encoder.gop')}</li>
+                    <li>{t('streams.builder.schedule.encoder.video')}</li>
+                    <li>{t('streams.builder.schedule.encoder.audio')}</li>
+                  </ul>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
