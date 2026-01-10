@@ -45,6 +45,35 @@ class UserProfile(Base):
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
     last_login_at = Column(TIMESTAMP(timezone=True))
 
+    assets = relationship("Asset", back_populates="user", cascade="all, delete-orphan")
+    playlists = relationship("Playlist", back_populates="user", cascade="all, delete-orphan")
+    destinations = relationship("Destination", back_populates="user", cascade="all, delete-orphan")
+    streams = relationship("Stream", back_populates="user", cascade="all, delete-orphan")
+    media_folders = relationship("MediaFolder", back_populates="user", cascade="all, delete-orphan")
+    media_collections = relationship("MediaCollection", back_populates="user", cascade="all, delete-orphan")
+    activity_logs = relationship("UserActivityLog", back_populates="user", cascade="all, delete-orphan")
+    admin_actions = relationship(
+        "AdminAction",
+        foreign_keys="AdminAction.admin_user_id",
+        back_populates="admin_user",
+        cascade="all, delete-orphan",
+    )
+    target_admin_actions = relationship(
+        "AdminAction",
+        foreign_keys="AdminAction.target_user_id",
+        back_populates="target_user",
+    )
+    alerts = relationship(
+        "SystemAlert",
+        foreign_keys="SystemAlert.user_id",
+        back_populates="user",
+    )
+    resolved_alerts = relationship(
+        "SystemAlert",
+        foreign_keys="SystemAlert.resolved_by",
+        back_populates="resolved_by_user",
+    )
+
 
 class SubscriptionTierLimits(Base):
     __tablename__ = "subscription_tier_limits"
@@ -86,7 +115,12 @@ class Asset(Base):
     __tablename__ = "assets"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     
     # File info
     filename = Column(Text, nullable=False)
@@ -114,12 +148,13 @@ class Asset(Base):
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
+    user = relationship("UserProfile", back_populates="assets")
     playlist_items = relationship("PlaylistItem", back_populates="asset", cascade="all, delete-orphan")
     folder_links = relationship("AssetFolderLink", back_populates="asset", cascade="all, delete-orphan")
     collection_items = relationship("CollectionItem", back_populates="asset", cascade="all, delete-orphan")
 
     __table_args__ = (
-        CheckConstraint("asset_type IN ('video', 'audio')", name='check_asset_type'),
+        CheckConstraint("asset_type IN ('video', 'audio', 'image')", name='check_asset_type'),
     )
 
 
@@ -131,7 +166,12 @@ class Playlist(Base):
     __tablename__ = "playlists"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     
     name = Column(Text, nullable=False)
     description = Column(Text)
@@ -145,6 +185,7 @@ class Playlist(Base):
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
+    user = relationship("UserProfile", back_populates="playlists")
     items = relationship("PlaylistItem", back_populates="playlist", cascade="all, delete-orphan", order_by="PlaylistItem.position")
     streams = relationship("Stream", back_populates="playlist")
 
@@ -175,7 +216,12 @@ class Destination(Base):
     __tablename__ = "destinations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     
     name = Column(Text, nullable=False)
     rtmps_url = Column(Text, nullable=False, default="rtmps://a.rtmp.youtube.com/live2")
@@ -191,6 +237,7 @@ class Destination(Base):
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
+    user = relationship("UserProfile", back_populates="destinations")
     stream_destinations = relationship("StreamDestination", back_populates="destination", cascade="all, delete-orphan")
 
 
@@ -202,7 +249,12 @@ class Stream(Base):
     __tablename__ = "streams"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     playlist_id = Column(UUID(as_uuid=True), ForeignKey("playlists.id", ondelete="RESTRICT"), nullable=True)
     source_type = Column(Text, nullable=False, default="playlist")
@@ -230,6 +282,7 @@ class Stream(Base):
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
+    user = relationship("UserProfile", back_populates="streams")
     playlist = relationship("Playlist", back_populates="streams")
     stream_destinations = relationship("StreamDestination", back_populates="stream", cascade="all, delete-orphan")
     stream_assets = relationship("StreamAsset", back_populates="stream", cascade="all, delete-orphan", order_by="StreamAsset.position")
@@ -301,13 +354,19 @@ class MediaFolder(Base):
     __tablename__ = "media_folders"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     parent_id = Column(UUID(as_uuid=True), ForeignKey("media_folders.id", ondelete="CASCADE"))
     name = Column(Text, nullable=False)
     is_root = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    user = relationship("UserProfile", back_populates="media_folders")
     parent = relationship("MediaFolder", remote_side=[id], back_populates="children")
     children = relationship("MediaFolder", back_populates="parent", cascade="all, delete-orphan")
     asset_links = relationship("AssetFolderLink", back_populates="folder", cascade="all, delete-orphan")
@@ -341,7 +400,12 @@ class MediaCollection(Base):
     __tablename__ = "media_collections"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     name = Column(Text, nullable=False)
     collection_type = Column(Text, nullable=False, default='video_background', index=True)
     description = Column(Text)
@@ -350,6 +414,7 @@ class MediaCollection(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    user = relationship("UserProfile", back_populates="media_collections")
     items = relationship("CollectionItem", back_populates="collection", cascade="all, delete-orphan", order_by="CollectionItem.position")
     origin_playlist = relationship("Playlist")
 
@@ -386,8 +451,17 @@ class AdminAction(Base):
     __tablename__ = "admin_actions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    admin_user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    target_user_id = Column(UUID(as_uuid=True), index=True)
+    admin_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    target_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="SET NULL"),
+        index=True,
+    )
     
     action_type = Column(Text, nullable=False, index=True)
     details = Column(JSONB)
@@ -399,6 +473,9 @@ class AdminAction(Base):
     
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), index=True)
 
+    admin_user = relationship("UserProfile", foreign_keys=[admin_user_id], back_populates="admin_actions")
+    target_user = relationship("UserProfile", foreign_keys=[target_user_id], back_populates="target_admin_actions")
+
 
 class SystemAlert(Base):
     __tablename__ = "system_alerts"
@@ -409,7 +486,11 @@ class SystemAlert(Base):
     severity = Column(Text, nullable=False, index=True)
     
     # Related entities
-    user_id = Column(UUID(as_uuid=True), index=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        index=True,
+    )
     stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id", ondelete="CASCADE"), index=True)
     asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), index=True)
     
@@ -419,17 +500,28 @@ class SystemAlert(Base):
     # Resolution tracking
     resolved = Column(Boolean, default=False, index=True)
     resolved_at = Column(TIMESTAMP(timezone=True))
-    resolved_by = Column(UUID(as_uuid=True))
+    resolved_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="SET NULL"),
+    )
     resolution_notes = Column(Text)
     
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), index=True)
+
+    user = relationship("UserProfile", foreign_keys=[user_id], back_populates="alerts")
+    resolved_by_user = relationship("UserProfile", foreign_keys=[resolved_by], back_populates="resolved_alerts")
 
 
 class UserActivityLog(Base):
     __tablename__ = "user_activity_log"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     
     activity_type = Column(Text, nullable=False, index=True)
     
@@ -439,3 +531,5 @@ class UserActivityLog(Base):
     details = Column(JSONB)
     
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), index=True)
+
+    user = relationship("UserProfile", back_populates="activity_logs")
