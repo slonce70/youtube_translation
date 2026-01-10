@@ -2,8 +2,11 @@
 
 ## 2026-01-10
 - Library (A10): додано пошук за назвою, сортування та перемикач “Компактно/Детально” (збереження вибору в localStorage).
+- Library (A10): додано швидкі фільтри “Використовується/Попередження”.
 - Dashboard (A10): checklist зроблено collapsible, щоб не перевантажувати головний екран.
 - Backend: вирівняно локальний bootstrap БД (fresh schema + міграції без конфліктів) та узгоджено ORM (FK/relationships для `user_id`).
+- Streaming (A5): додано help-блок у формі каналу (де знайти YouTube stream key).
+- Admin: оновлено `backend/create_admin.py` (можна зробити адміном за email).
 - Перевірив: `make i18n-check && make lint && make test` (backend: 117 passed, 8 skipped; frontend: 29 passed).
 
 ## 2026-01-09

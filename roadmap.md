@@ -32,6 +32,8 @@
 - ✅ Backend: зроблено міграції більш ідемпотентними для “fresh” локальної БД + узгоджено ORM (FK/relationships для `user_id`), щоб уникнути 500 після перевстановлення/скидання середовища.
 - ✅ Library (A10): пошук за назвою, сортування та перемикач “Компактно/Детально”.
 - ✅ Dashboard (A10): checklist зроблено collapsible для менш перевантаженого UI.
+- ✅ Streaming (A5): help-блок у формі каналу (як знайти YouTube stream key + RTMPS підказка).
+- ✅ Admin: скрипт `create_admin.py` підтримує підняття адміна за email.
 
 ## Ключові прогалини (що дає найбільший приріст цінності)
 1) **Repeats scheduler + windows + DST** (stop/timezone для one‑shot вже є, але repeats ще немає).
