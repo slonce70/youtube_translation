@@ -1,32 +1,39 @@
-# Repository Guidelines
+# AGENTS (корінь репозиторію)
 
-## Project Structure & Module Organization
-- `backend/` hosts the FastAPI service, async SQLAlchemy models, and tusd hooks. Key subfolders: `app/` (domain logic), `tests/`, `tusd-hooks/`, and deployment scripts.
-- `frontend/` contains the Next.js dashboard, shared components, and React Query hooks; `public/` holds static assets.
-- `docker/`, `Makefile`, and root scripts (`start-backend.sh`, `start-frontend.sh`, `start-tusd.sh`) orchestrate local services and integrations.
+## Знімок проєкту
+- Монорепо: `backend/` (FastAPI + async SQLAlchemy + streaming/tusd) та `frontend/` (Next.js 15 + React 19).
+- Оркестрація локально: `Makefile` + `start-*.sh`.
+- Детальні правила для конкретних зон: див. підпапкові `AGENTS.md` (найближчий файл “перемагає”).
 
-## Language Policy
-- Supported languages: Ukrainian, English, Russian.
-- Default language for UI, docs, and developer notes: Ukrainian.
+## Швидкі команди (root)
+- Встановити залежності: `make install`
+- Запуск (backend + frontend + tusd): `make dev`
+- Тести: `make test`
+- Лінт: `make lint`
+- Міграції БД: `make migrate`
 
-## Build, Test & Development Commands
-- **Backend**: `cd backend && python3 -m pytest` runs the async test suite; ensure dependencies from `requirements.txt` are installed. `uvicorn app.main:app --reload` launches the API locally.
-- **Frontend**: `cd frontend && npm install && npm run dev` starts the Next.js app; `npm run lint` enforces ESLint/TypeScript rules.
-- **Infra**: `./start-tusd.sh` boots the tusd uploader with quota hooks; export `TUSD_HMAC_SECRET` and `UPLOAD_TOKEN_SECRET` before running.
+## Мовна політика
+- Підтримувані мови: українська, англійська, російська.
+- За замовчуванням для UI/доків/нотаток розробника: **українська**.
 
-## Coding Style & Naming Conventions
-- Python files follow Black-compatible 4-space indentation, descriptive snake_case names, and FastAPI/SQLAlchemy best practices. Use type hints and async/await for DB or IO operations.
-- TypeScript/React uses ESLint + Prettier defaults: 2-space indent, camelCase for vars, PascalCase for components. Prefer hooks and React Query for data fetching.
-- Keep modules small: service-layer classes belong in `backend/app/services/*`, UI atoms in `frontend/src/components/*`.
+## Безпека та секрети
+- Не комітити ключі/токени/паролі та локальні `.env` файли.
+- Джерела конфігів: `.env.example`, `backend/.env.example`, `frontend/.env.example`.
+- Для tusd інтеграцій потрібні `TUSD_HMAC_SECRET` і `UPLOAD_TOKEN_SECRET` (локально — через env).
 
-## Testing Guidelines
-- Backend tests use `pytest` with async fixtures; name files `test_*.py` and mirror module paths (e.g., `test_stream_live_edit.py` for `services/streams`). Target meaningful coverage for quota, uploads, and streaming flows.
-- Frontend relies on `@testing-library/react` (see `frontend/src/components/library/__tests__/`). Use descriptive `it('renders …')` blocks and mock API calls.
-- Run `npm run lint` and `python3 -m pytest` before committing; add new tests when touching service logic or React hooks.
+## JIT-індекс (що відкривати, а не копіювати)
+- Backend: `backend/AGENTS.md`
+- Backend app-код: `backend/app/AGENTS.md`
+- Frontend: `frontend/AGENTS.md`
+- Frontend source: `frontend/src/AGENTS.md`
+- Локальний запуск/архітектура: `README.md`
+- Docker: `docker/docker-compose.yml`
 
-## Commit & Pull Request Guidelines
-- Follow imperative, concise commit messages (`Secure tus upload webhook`, `Add admin pagination`). Group related backend/frontend changes into logical commits.
-- Pull requests should describe the change, list testing done, and mention any secrets/config updates. Include screenshots or GIFs for UI tweaks, and reference Jira/GitHub issues when applicable.
+## Швидкий пошук
+- Загальний пошук: `rg -n "Pattern" backend/app frontend/src`
+- API роутери: `rg -n "include_router|APIRouter" backend/app`
+- React компоненти: `rg -n "export (default )?function|export const [A-Z]" frontend/src/components`
 
-## Skills
-- Repo-specific “Droid/Claude skills” were removed from this repository (no `.factory/` or `.claude/skills/`).
+## Definition of Done (мінімум перед PR)
+- Проходять `make lint` та `make test`.
+- Немає секретів у diff; за потреби оновлено відповідний `*.env.example`.

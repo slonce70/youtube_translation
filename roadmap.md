@@ -28,6 +28,11 @@
 - ✅ DB: автопатч для старих локальних БД (`collection_items.updated_at` + trigger), щоб уникнути 500 на колекціях.
 - ✅ i18n: прибрано залишки англомовних confirm/toast fallback у Library/Streaming та локалізовано згадку “Go Live” в dashboard checklist (uk/ru).
 
+## Оновлення (2026-01-10)
+- ✅ Backend: зроблено міграції більш ідемпотентними для “fresh” локальної БД + узгоджено ORM (FK/relationships для `user_id`), щоб уникнути 500 після перевстановлення/скидання середовища.
+- ✅ Library (A10): пошук за назвою, сортування та перемикач “Компактно/Детально”.
+- ✅ Dashboard (A10): checklist зроблено collapsible для менш перевантаженого UI.
+
 ## Ключові прогалини (що дає найбільший приріст цінності)
 1) **Repeats scheduler + windows + DST** (stop/timezone для one‑shot вже є, але repeats ще немає).
 2) **Production‑готовий runner** для Docker/self‑host: довести до “не плутає” dev/prod (healthcheck, unix socket як default, docs).

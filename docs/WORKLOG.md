@@ -1,5 +1,11 @@
 # Журнал робіт
 
+## 2026-01-10
+- Library (A10): додано пошук за назвою, сортування та перемикач “Компактно/Детально” (збереження вибору в localStorage).
+- Dashboard (A10): checklist зроблено collapsible, щоб не перевантажувати головний екран.
+- Backend: вирівняно локальний bootstrap БД (fresh schema + міграції без конфліктів) та узгоджено ORM (FK/relationships для `user_id`).
+- Перевірив: `make i18n-check && make lint && make test` (backend: 117 passed, 8 skipped; frontend: 29 passed).
+
 ## 2026-01-09
 - Виправив падіння `GET /api/streams/` (lazy-load у async) — додано eager-load `stream_destinations → destination`, через що список трансляцій стабільно відображається без “перезавантажень” сторінки.
 - Додав міграцію `026_collection_items_updated_at.sql` для сумісності старих локальних БД (колонка `collection_items.updated_at` + trigger). Оновив `backend/apply_migrations.py`.
@@ -12,7 +18,7 @@
 - Оновив рекомендації bitrate/quality (включно з 720p та підтримкою дробних значень на кшталт `4.5 Mbps`).
 - i18n: додав ключі та переклади (uk/en/ru) для timeline/logs у streaming builder, прибрав частину hardcoded рядків.
 - i18n: прибрав залишки англомовних confirm/toast fallback у Library/Streaming та локалізував згадку “Go Live” в dashboard checklist (uk/ru).
-- Підтвердив тестами: `cd backend && python -m pytest` (115 passed, 8 skipped).
+- Підтвердив тестами: `cd backend && python -m pytest` (117 passed, 8 skipped).
 
 ## 2026-01-08
 - Виніс supervisord у окремий Docker-сервіс `runner` і підключив shared socket/volumes.
