@@ -80,6 +80,16 @@
         "keyLabel": "Stream Key",
         "keepExisting": "(leave empty to keep existing)",
         "keyHint": "Your stream key is encrypted and stored securely",
+        "help": {
+          "title": "Where to find your YouTube stream key",
+          "rtmpsHint": "For YouTube, the default RTMPS URL usually works. If you're using a different platform, paste its ingest URL here.",
+          "steps": {
+            "openStudio": "Open YouTube Studio → “Go live”.",
+            "goLive": "Create a stream or select a scheduled one.",
+            "copyKey": "Copy the “Stream key” and paste it here."
+          },
+          "note": "Tip: don't share your stream key — it grants access to your live stream."
+        },
         "enabled": "Enabled",
         "cancel": "Cancel",
         "create": "Create",

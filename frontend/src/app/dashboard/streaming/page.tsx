@@ -6,7 +6,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { Locale as DateFnsLocale } from 'date-fns'
 import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
-import { Play, Loader2, X } from 'lucide-react'
+import { Play, Loader2, X, Info } from 'lucide-react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from 'next/navigation'
 
@@ -525,6 +525,9 @@ export default function StreamingPage() {
                     value={channelForm.rtmps_url}
                     onChange={(event) => setChannelForm({ ...channelForm, rtmps_url: event.target.value })}
                   />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {tStreaming('channels.form.help.rtmpsHint')}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -541,6 +544,22 @@ export default function StreamingPage() {
                     {tStreaming('channels.form.keyHint')}
                   </p>
                 </div>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-200">
+                  <div className="mb-2 flex items-center gap-2 font-semibold">
+                    <Info className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                    <span>{tStreaming('channels.form.help.title')}</span>
+                  </div>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                    <li>{tStreaming('channels.form.help.steps.openStudio')}</li>
+                    <li>{tStreaming('channels.form.help.steps.goLive')}</li>
+                    <li>{tStreaming('channels.form.help.steps.copyKey')}</li>
+                  </ul>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    {tStreaming('channels.form.help.note')}
+                  </p>
+                </div>
+
                 <div className="flex items-center">
                   <input
                     type="checkbox"
