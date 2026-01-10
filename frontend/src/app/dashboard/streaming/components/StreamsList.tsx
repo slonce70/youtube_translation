@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
+  Clock3,
   Loader2,
   Play,
   Plus,
@@ -30,6 +31,7 @@ export type StreamsListProps = {
   onCreateStream: () => void
   onViewLogs: (streamId: string) => void
   onOpenLiveEditor: (stream: Stream) => void
+  onEditSchedule: (stream: Stream) => void
   onStartStream: (stream: Stream) => void
   onStopStream: (streamId: string) => void
   onDeleteStream: (streamId: string) => void
@@ -64,6 +66,7 @@ export function StreamsList({
   onCreateStream,
   onViewLogs,
   onOpenLiveEditor,
+  onEditSchedule,
   onStartStream,
   onStopStream,
   onDeleteStream,
@@ -249,6 +252,10 @@ export function StreamsList({
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => onOpenLiveEditor(stream)}>
                         {t('streams.liveEdit.button')}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => onEditSchedule(stream)}>
+                        <Clock3 className="w-4 h-4 mr-2" />
+                        {t('streams.buttons.schedule')}
                       </Button>
                       {stream.status === 'running' ? (
                         <Button

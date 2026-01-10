@@ -10,6 +10,7 @@ import type {
   StreamLogsResponse,
   MetricsResponse,
   CreateStreamPayload,
+  StreamSchedulePayload,
   CreateAssetPayload,
   DestinationCreatePayload,
   DestinationUpdatePayload,
@@ -298,6 +299,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+    update: (id: string, payload: StreamSchedulePayload) =>
+      apiRequest<Stream>(`/streams/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
     delete: (id: string) => apiRequest<void>(`/streams/${id}`, { method: 'DELETE' }),
     start: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/start`, { method: 'POST' }),
     stop: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/stop`, { method: 'POST' }),

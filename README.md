@@ -166,6 +166,7 @@ Makefile               Команды для разработки и CI
 - `docs/TROUBLESHOOTING.md` — часті проблеми та рішення
 - `docs/backend_api_contract.md` та `docs/backend_api_map.md` — контракти REST API  
 - `docs/postman/` — готові колекції та оточення Postman
+- `docs/operations/first_stream_checklist.md` — чекліст першого ефіру
 - `docs/operations/supervisor.md` — налаштування Supervisor для автономних стрімів (macOS/Docker)
 - `docs/systemd/` — налаштування systemd для Linux production
 - `LOCAL_DB_SETUP.md` — інструкції по локальній PostgreSQL БД

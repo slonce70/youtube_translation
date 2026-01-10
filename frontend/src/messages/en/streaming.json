@@ -20,7 +20,8 @@
       "deleted": "Stream deleted",
       "liveEdited": "Live configuration updated",
       "enqueued": "Asset added to live queue",
-      "enqueuedNamed": "\"{name}\" added to live queue"
+      "enqueuedNamed": "\"{name}\" added to live queue",
+      "scheduleUpdated": "Stream schedule updated"
     },
     "errors": {
       "selectPlaylist": "Select a playlist",
@@ -115,14 +116,15 @@
         "none": "No destinations configured"
       },
       "statusCheck": {
-        "unreachable": "Live status unavailable \u2014 backend unreachable"
+        "unreachable": "Live status unavailable — backend unreachable"
       },
       "unknownPlaylist": "Unknown playlist",
       "buttons": {
         "logs": "Logs",
         "stop": "Stop",
         "start": "Start",
-        "cancelSchedule": "Cancel schedule"
+        "cancelSchedule": "Cancel schedule",
+        "schedule": "Schedule"
       },
       "empty": {
         "title": "No active streams",
@@ -179,7 +181,7 @@
         },
         "recommended": {
           "title": "Recommended settings",
-          "description": "Encode at {resolution} \u00b7 {fps} FPS using {videoCodec} video and {audioCodec} audio. Keep bitrate {bitrateRange}{targetClause}.",
+          "description": "Encode at {resolution} · {fps} FPS using {videoCodec} video and {audioCodec} audio. Keep bitrate {bitrateRange}{targetClause}.",
           "targetClause": " (target {target} Mbps)"
         },
         "detailsHeading": "What needs attention",
@@ -291,7 +293,24 @@
           "summaryAudioCount": "Audio assets: {count}",
           "summaryAudioSaved": "Audio: saved playlist",
           "summaryAudioDisabled": "Audio disabled",
-          "summaryDestinations": "Destinations selected: {count}"
+          "summaryDestinations": "Destinations selected: {count}",
+          "stopHint": "Set a stop time or pick a duration.",
+          "durationLabel": "Quick duration",
+          "durationOptions": {
+            "12h": "12h",
+            "24h": "24h",
+            "48h": "48h"
+          },
+          "vodWarning": {
+            "title": "VOD limit",
+            "description": "YouTube archives up to 12 hours per live stream. For longer sessions, plan a restart or split the stream."
+          },
+          "encoder": {
+            "title": "Recommended encoder settings",
+            "gop": "GOP / keyframe: 2 seconds",
+            "video": "Video: H.264 (yuv420p)",
+            "audio": "Audio: AAC"
+          }
         },
         "actions": {
           "cancel": "Cancel",
@@ -304,13 +323,13 @@
         "button": "Edit stream",
         "title": "Live editing: {name}",
         "subtitle": "Reorder playlists while streaming.",
-        "loading": "Loading collections\u2026",
+        "loading": "Loading collections…",
         "restartNotice": "Changes are queued instantly without interrupting your live broadcast.",
         "videoTitle": "Background queue",
         "audioTitle": "Audio queue",
         "missing": "No collection attached to this stream.",
         "empty": "Nothing selected yet.",
-        "disabledAudio": "Audio playlist isn\u2019t configured for this stream.",
+        "disabledAudio": "Audio playlist isn’t configured for this stream.",
         "queueHeading": "Playback order",
         "availableHeading": "Available assets",
         "availableEmpty": "No assets available. Upload media in Files.",
@@ -336,6 +355,64 @@
         "errors": {
           "videoEmpty": "Add at least one video before applying changes.",
           "audioEmpty": "Add at least one audio track before applying changes."
+        }
+      },
+      "scheduleModal": {
+        "title": "Stream schedule",
+        "description": "Set a start time and duration for this stream.",
+        "cancel": "Cancel",
+        "save": "Save",
+        "close": "Close",
+        "runningHint": "The stream is running — you can schedule the next start after stopping it."
+      }
+    },
+    "checklist": {
+      "title": "First stream checklist",
+      "items": {
+        "destination": "Add a channel (RTMPS URL + stream key).",
+        "assets": "Upload video/audio in Library.",
+        "schedule": "Set start time and stream duration.",
+        "test": "Run a test stream and check logs."
+      }
+    },
+    "checklistPanel": {
+      "title": "First stream checklist",
+      "intro": "Quick steps to make your first stream smooth.",
+      "sections": {
+        "auth": {
+          "title": "1. Access & security",
+          "items": [
+            "Enable Supabase Auth or DEV auth for local testing.",
+            "Make sure prod keys are not committed to the repo."
+          ]
+        },
+        "storage": {
+          "title": "2. Library",
+          "items": [
+            "Upload video/audio assets in Library.",
+            "Confirm video uses H.264 + AAC, GOP 2s."
+          ]
+        },
+        "destinations": {
+          "title": "3. Destinations",
+          "items": [
+            "Add RTMPS URL and stream key for YouTube.",
+            "Ensure the channel is enabled."
+          ]
+        },
+        "schedule": {
+          "title": "4. Schedule",
+          "items": [
+            "Pick start now or schedule later.",
+            "Set duration (12/24/48h) or a stop time manually."
+          ]
+        },
+        "ops": {
+          "title": "5. Ops",
+          "items": [
+            "Verify FFmpeg and tusd are running.",
+            "Run a test stream and check logs."
+          ]
         }
       }
     }

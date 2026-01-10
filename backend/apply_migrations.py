@@ -47,6 +47,7 @@ MIGRATIONS = [
     'migrations/024_stream_schedule_stop_columns.sql',
     'migrations/025_user_profile_timezone.sql',
     'migrations/026_collection_items_updated_at.sql',
+    'migrations/027_stream_status_constraint.sql',
 ]
 
 
@@ -491,6 +492,19 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     result = await conn.execute(query)
     status['026'] = result.scalar()
+
+    # Check stream status constraint includes 'scheduled' (migration 027)
+    query = text("""
+        SELECT pg_get_constraintdef(c.oid)
+        FROM pg_constraint c
+        WHERE c.conrelid = 'public.streams'::regclass
+          AND c.conname IN ('check_status', 'streams_status_check')
+        ORDER BY c.conname
+        LIMIT 1
+    """)
+    result = await conn.execute(query)
+    definition = result.scalar()
+    status['027'] = bool(definition and 'scheduled' in definition)
 
     return status
 
@@ -1020,6 +1034,19 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         result = await conn.execute(query)
         return result.scalar()
+
+    elif migration_num == '027':
+        query = text("""
+            SELECT pg_get_constraintdef(c.oid)
+            FROM pg_constraint c
+            WHERE c.conrelid = 'public.streams'::regclass
+              AND c.conname IN ('check_status', 'streams_status_check')
+            ORDER BY c.conname
+            LIMIT 1
+        """)
+        result = await conn.execute(query)
+        definition = result.scalar()
+        return bool(definition and 'scheduled' in definition)
 
     return False
 

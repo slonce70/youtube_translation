@@ -42,7 +42,9 @@
 ## Оновлення станом на 2026-01-10
 ✅ Backend: вирівняно “fresh” локальний bootstrap БД (schema + міграції без конфліктів) і узгоджено ORM (FK/relationships по `user_id`).  
 ✅ Library (A10): додано пошук за назвою, сортування та перемикач “Компактно/Детально”.  
-✅ Dashboard (A10): checklist зроблено collapsible для менш перевантаженого екрану.
+✅ Dashboard (A10): checklist зроблено collapsible для менш перевантаженого екрану.  
+✅ Streaming (A5): додано попередження про VOD < 12h, рекомендовані налаштування енкодера (GOP 2s, H.264/AAC) та “First stream checklist” у продукті/доках.  
+✅ Streaming schedule: швидкі кнопки тривалості (12/24/48 год) + модал редагування розкладу для існуючих стрімів (PATCH `/streams/{id}`).  
 
 ## Польові спостереження з тестування (записуємо окремо)
 > Цей блок — “журнал проблем”, які помічаємо під час ручного тесту, щоб не загубити. Кожен пункт має короткий статус.
@@ -162,7 +164,12 @@
 - Repo docs:
   - короткий “First Stream Checklist” для self‑host (env vars, ffmpeg path, storage, quotas).
 
-**Статус:** 🚧 частково виконано (2026-01-10) — додано help по YouTube stream key у формі каналу.
+**Статус:** ✅ виконано (2026-01-10).
+
+**Зроблено**
+- UI: VOD <12h warning + recommended encoder settings (GOP 2s, H.264/AAC).
+- Product: короткий “First stream checklist”.
+- Docs: `docs/operations/first_stream_checklist.md`.
 
 **AC**
 - Користувач може налаштувати destination без пошуку по документації.

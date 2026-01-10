@@ -366,6 +366,13 @@ export interface CreateStreamPayload {
   settings_json?: Record<string, unknown>
 }
 
+export interface StreamSchedulePayload {
+  schedule_mode?: 'now' | 'schedule'
+  schedule_start_at?: string | null
+  schedule_stop_at?: string | null
+  name?: string | null
+}
+
 export interface StreamLiveUpdatePayload {
   target: 'video' | 'audio'
   items: CollectionItemInput[]
