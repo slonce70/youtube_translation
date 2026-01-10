@@ -64,11 +64,19 @@
         "video": "Видео",
         "audio": "Аудио"
       },
+      "quickFilters": {
+        "inUse": "Используется",
+        "warnings": "Предупреждения"
+      },
       "search": {
         "placeholder": "Поиск по имени файла…",
         "clear": "Очистить поиск",
         "noResultsTitle": "Ничего не найдено",
         "noResultsDescription": "Нет файлов, соответствующих запросу “{query}”."
+      },
+      "filteredEmpty": {
+        "title": "Ничего не найдено",
+        "description": "Попробуйте выключить фильтры или изменить тип медиа."
       },
       "sort": {
         "ariaLabel": "Сортировка файлов",
