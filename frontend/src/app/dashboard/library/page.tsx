@@ -42,6 +42,7 @@ import {
   type AssetDisplayInfo,
   type AssetWarning,
 } from './asset-utils'
+import { applyAssetView, type AssetSortValue } from './asset-view'
 import { useDashboardContext } from '../dashboard-context'
 import { Breadcrumbs } from '@/components/library/Breadcrumbs'
 import { FolderCard } from '@/components/library/FolderCard'
@@ -49,7 +50,6 @@ import { AssetCard } from '@/components/library/AssetCard'
 
 type AssetFilterValue = 'all' | 'video' | 'audio'
 type PlaylistFormState = PlaylistCreatePayload & { description: string }
-type AssetSortValue = 'newest' | 'oldest' | 'nameAsc' | 'nameDesc' | 'sizeDesc' | 'sizeAsc'
 
 export default function LibraryPage() {
   const searchParams = useSearchParams()
@@ -198,6 +198,8 @@ export default function LibraryPage() {
   const [assetSearchQuery, setAssetSearchQuery] = useState('')
   const [assetSort, setAssetSort] = useState<AssetSortValue>('newest')
   const [assetDensity, setAssetDensity] = useState<'compact' | 'comfortable'>('compact')
+  const [inUseOnly, setInUseOnly] = useState(false)
+  const [warningsOnly, setWarningsOnly] = useState(false)
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(new Set())
   const [pendingUsageActionKeys, setPendingUsageActionKeys] = useState<Set<string>>(new Set())
   const [moveModalState, setMoveModalState] = useState<{ open: boolean; assetIds: string[] }>({
@@ -509,31 +511,13 @@ export default function LibraryPage() {
   }, [assets, rootFolderId, selectedFolderId])
 
   const displayedAssets = useMemo(() => {
-    const query = assetSearchQuery.trim().toLowerCase()
-    const filtered = query
-      ? visibleAssets.filter((asset) => asset.filename.toLowerCase().includes(query))
-      : visibleAssets
-
-    const sorted = [...filtered].sort((a, b) => {
-      switch (assetSort) {
-        case 'oldest':
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        case 'nameAsc':
-          return a.filename.localeCompare(b.filename)
-        case 'nameDesc':
-          return b.filename.localeCompare(a.filename)
-        case 'sizeAsc':
-          return (a.size_bytes ?? 0) - (b.size_bytes ?? 0)
-        case 'sizeDesc':
-          return (b.size_bytes ?? 0) - (a.size_bytes ?? 0)
-        case 'newest':
-        default:
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      }
+    return applyAssetView(visibleAssets, {
+      query: assetSearchQuery,
+      sort: assetSort,
+      inUseOnly,
+      warningsOnly,
     })
-
-    return sorted
-  }, [assetSearchQuery, assetSort, visibleAssets])
+  }, [assetSearchQuery, assetSort, inUseOnly, warningsOnly, visibleAssets])
 
   const assetMap = useMemo(() => {
     if (!assets) {
@@ -563,8 +547,10 @@ export default function LibraryPage() {
     })
   }, [assets, visibleAssets])
 
+  const hasViewFilters = Boolean(assetSearchQuery.trim() || inUseOnly || warningsOnly)
+
   useEffect(() => {
-    if (!assetSearchQuery.trim()) return
+    if (!hasViewFilters) return
     setSelectedAssets((prev) => {
       if (prev.size === 0) return prev
       const allowedIds = new Set(displayedAssets.map((asset) => asset.id))
@@ -582,7 +568,7 @@ export default function LibraryPage() {
       }
       return prev
     })
-  }, [assetSearchQuery, displayedAssets])
+  }, [displayedAssets, hasViewFilters])
 
   // Mutations
   const revalidateAssetMutation = useMutation({
@@ -1607,6 +1593,20 @@ export default function LibraryPage() {
                   ))}
                   <Button
                     size="sm"
+                    variant={inUseOnly ? 'primary' : 'outline'}
+                    onClick={() => setInUseOnly((prev) => !prev)}
+                  >
+                    {tLibrary('assets.quickFilters.inUse')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={warningsOnly ? 'primary' : 'outline'}
+                    onClick={() => setWarningsOnly((prev) => !prev)}
+                  >
+                    {tLibrary('assets.quickFilters.warnings')}
+                  </Button>
+                  <Button
+                    size="sm"
                     variant="outline"
                     onClick={openCreateFolderModal}
                     className="gap-2"
@@ -1773,15 +1773,19 @@ export default function LibraryPage() {
                   </div>
                 ) : null}
 
-                {assetSearchQuery.trim() && visibleAssets.length > 0 && displayedAssets.length === 0 && (
+                {hasViewFilters && visibleAssets.length > 0 && displayedAssets.length === 0 && (
                   <Card className="py-12">
                     <CardContent className="text-center">
                       <Search className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-600 mb-3" />
                       <p className="text-lg font-medium text-slate-900 dark:text-white mb-2">
-                        {tLibrary('assets.search.noResultsTitle')}
+                        {assetSearchQuery.trim()
+                          ? tLibrary('assets.search.noResultsTitle')
+                          : tLibrary('assets.filteredEmpty.title')}
                       </p>
                       <p className="text-sm text-slate-600 dark:text-slate-400">
-                        {tLibrary('assets.search.noResultsDescription', { query: assetSearchQuery.trim() })}
+                        {assetSearchQuery.trim()
+                          ? tLibrary('assets.search.noResultsDescription', { query: assetSearchQuery.trim() })
+                          : tLibrary('assets.filteredEmpty.description')}
                       </p>
                     </CardContent>
                   </Card>

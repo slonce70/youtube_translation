@@ -64,11 +64,19 @@
         "video": "Video",
         "audio": "Audio"
       },
+      "quickFilters": {
+        "inUse": "In use",
+        "warnings": "Warnings"
+      },
       "search": {
         "placeholder": "Search by filename…",
         "clear": "Clear search",
         "noResultsTitle": "No results",
         "noResultsDescription": "No files match “{query}”."
+      },
+      "filteredEmpty": {
+        "title": "No results",
+        "description": "Try disabling filters or changing the media type."
       },
       "sort": {
         "ariaLabel": "Sort files",
