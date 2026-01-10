@@ -33,6 +33,13 @@
       "updated": "Плейлист оновлено",
       "deleted": "Плейлист видалено"
     },
+    "references": {
+      "streamDeleted": "Стрім видалено",
+      "streamDeleteFailed": "Не вдалося видалити стрім: {message}",
+      "collectionDeleted": "Колекцію видалено",
+      "collectionDeleteFailed": "Не вдалося видалити колекцію: {message}",
+      "collectionDeleteBlocked": "Колекція використовується у стрімах. Спочатку видаліть або оновіть стрім."
+    },
     "generic": {
       "comingSoon": "{feature} невдовзі буде доступна",
       "unknownError": "Невідома помилка",
@@ -56,6 +63,28 @@
         "all": "Усі",
         "video": "Відео",
         "audio": "Аудіо"
+      },
+      "search": {
+        "placeholder": "Пошук за назвою файлу…",
+        "clear": "Очистити пошук",
+        "noResultsTitle": "Нічого не знайдено",
+        "noResultsDescription": "Немає файлів, що відповідають запиту “{query}”."
+      },
+      "sort": {
+        "ariaLabel": "Сортування файлів",
+        "options": {
+          "newest": "Спочатку нові",
+          "oldest": "Спочатку старі",
+          "nameAsc": "Назва (А → Я)",
+          "nameDesc": "Назва (Я → А)",
+          "sizeDesc": "Розмір (спадання)",
+          "sizeAsc": "Розмір (зростання)"
+        }
+      },
+      "view": {
+        "ariaLabel": "Режим відображення",
+        "compact": "Компактно",
+        "comfortable": "Детально"
       },
       "upload": "Завантажити файли",
       "previewAlt": "Попередній перегляд {filename}",
@@ -123,6 +152,17 @@
         "deleteUsageWarning": "Деякі файли використовуються у плейлистах або стрімах. Приберіть посилання, щоб видалити їх.",
         "forceTitle": "Файл використовується",
         "forceDescription": "«{name}» усе ще використовується ресурсами нижче. Приберіть посилання, щоб видалити його.",
+        "collectionsHint": "Колекції — це збережені відеоряди/аудіоплейлисти для трансляцій (див. Трансляції → Нова трансляція).",
+        "confirmDeleteStream": "Видалити стрім «{name}»? Це може вплинути на залежності цього файлу.",
+        "confirmDeleteCollection": "Видалити колекцію «{name}»? Це може вплинути на залежності цього файлу.",
+        "collectionContext": {
+          "video_background": "Відеоряд",
+          "audio_playlist": "Аудіоплейлист"
+        },
+        "actions": {
+          "deleteStream": "Видалити стрім",
+          "deleteCollection": "Видалити колекцію"
+        },
         "forceCheckbox": "Я розумію, що файл буде прибрано з усіх посилань.",
         "forceUsage": {
           "streams": "Стріми",

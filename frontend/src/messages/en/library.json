@@ -33,6 +33,13 @@
       "updated": "Playlist updated",
       "deleted": "Playlist deleted"
     },
+    "references": {
+      "streamDeleted": "Stream deleted",
+      "streamDeleteFailed": "Failed to delete stream: {message}",
+      "collectionDeleted": "Collection deleted",
+      "collectionDeleteFailed": "Failed to delete collection: {message}",
+      "collectionDeleteBlocked": "This collection is used by streams. Delete or update the stream first."
+    },
     "generic": {
       "comingSoon": "{feature} is coming soon.",
       "unknownError": "Unknown error",
@@ -56,6 +63,28 @@
         "all": "All",
         "video": "Video",
         "audio": "Audio"
+      },
+      "search": {
+        "placeholder": "Search by filename…",
+        "clear": "Clear search",
+        "noResultsTitle": "No results",
+        "noResultsDescription": "No files match “{query}”."
+      },
+      "sort": {
+        "ariaLabel": "Sort files",
+        "options": {
+          "newest": "Newest first",
+          "oldest": "Oldest first",
+          "nameAsc": "Name (A → Z)",
+          "nameDesc": "Name (Z → A)",
+          "sizeDesc": "Size (desc)",
+          "sizeAsc": "Size (asc)"
+        }
+      },
+      "view": {
+        "ariaLabel": "View mode",
+        "compact": "Compact",
+        "comfortable": "Detailed"
       },
       "upload": "Upload files",
       "previewAlt": "Preview of {filename}",
@@ -123,6 +152,17 @@
         "deleteUsageWarning": "Some files are used by playlists or streams. Remove the references to delete them.",
         "forceTitle": "File is in use",
         "forceDescription": "“{name}” is still used by the resources below. Remove the references to delete it.",
+        "collectionsHint": "Collections are saved video/audio sets used by streams (see Streaming → New Stream).",
+        "confirmDeleteStream": "Delete stream “{name}”? This may affect this file's dependencies.",
+        "confirmDeleteCollection": "Delete collection “{name}”? This may affect this file's dependencies.",
+        "collectionContext": {
+          "video_background": "Video playlist",
+          "audio_playlist": "Audio playlist"
+        },
+        "actions": {
+          "deleteStream": "Delete stream",
+          "deleteCollection": "Delete collection"
+        },
         "forceCheckbox": "I understand this will remove the asset from all references.",
         "forceUsage": {
           "streams": "Streams",

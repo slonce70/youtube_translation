@@ -32,6 +32,10 @@ export function Breadcrumbs({ currentFolderId, folders, onNavigate, onDrop }: Br
       const folder = folders.find((f) => f.id === currentId)
       if (!folder) break
 
+      if (folder.is_root) {
+        break
+      }
+
       path.unshift({
         id: folder.id,
         name: folder.name,

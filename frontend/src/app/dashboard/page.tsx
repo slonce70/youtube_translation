@@ -3,7 +3,7 @@
 import { useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { HardDrive, Clock3, Radio, Video, Lightbulb } from 'lucide-react'
+import { HardDrive, Clock3, Radio, Video, Lightbulb, ChevronDown } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatBytes } from '@/lib/utils'
 import { StatCard } from '@/components/StatCard'
@@ -252,32 +252,43 @@ export default function DashboardPage() {
           />
 
           <Card>
-            <CardHeader>
-              <CardTitle>{dashboard('checklist.heading')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
-              <div className="flex items-start space-x-3">
-                <Lightbulb className="h-4 w-4 text-primary-500 mt-0.5" />
-                <div>
-                  <p className="font-medium text-slate-700 dark:text-slate-200">{dashboard('checklist.items.warmup.title')}</p>
-                  <p>{dashboard('checklist.items.warmup.description')}</p>
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
+                <span className="text-base font-semibold text-slate-900 dark:text-white">
+                  {dashboard('checklist.heading')}
+                </span>
+                <ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
+              </summary>
+              <div className="space-y-4 px-6 pb-6 text-sm text-slate-600 dark:text-slate-400">
+                <div className="flex items-start space-x-3">
+                  <Lightbulb className="mt-0.5 h-4 w-4 text-primary-500" />
+                  <div>
+                    <p className="font-medium text-slate-700 dark:text-slate-200">
+                      {dashboard('checklist.items.warmup.title')}
+                    </p>
+                    <p>{dashboard('checklist.items.warmup.description')}</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <Lightbulb className="mt-0.5 h-4 w-4 text-primary-500" />
+                  <div>
+                    <p className="font-medium text-slate-700 dark:text-slate-200">
+                      {dashboard('checklist.items.rotate.title')}
+                    </p>
+                    <p>{dashboard('checklist.items.rotate.description')}</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <Lightbulb className="mt-0.5 h-4 w-4 text-primary-500" />
+                  <div>
+                    <p className="font-medium text-slate-700 dark:text-slate-200">
+                      {dashboard('checklist.items.upgrade.title')}
+                    </p>
+                    <p>{dashboard('checklist.items.upgrade.description')}</p>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-start space-x-3">
-                <Lightbulb className="h-4 w-4 text-primary-500 mt-0.5" />
-                <div>
-                  <p className="font-medium text-slate-700 dark:text-slate-200">{dashboard('checklist.items.rotate.title')}</p>
-                  <p>{dashboard('checklist.items.rotate.description')}</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <Lightbulb className="h-4 w-4 text-primary-500 mt-0.5" />
-                <div>
-                  <p className="font-medium text-slate-700 dark:text-slate-200">{dashboard('checklist.items.upgrade.title')}</p>
-                  <p>{dashboard('checklist.items.upgrade.description')}</p>
-                </div>
-              </div>
-            </CardContent>
+            </details>
           </Card>
         </div>
       </div>
