@@ -162,6 +162,8 @@
 - Repo docs:
   - короткий “First Stream Checklist” для self‑host (env vars, ffmpeg path, storage, quotas).
 
+**Статус:** 🚧 частково виконано (2026-01-10) — додано help по YouTube stream key у формі каналу.
+
 **AC**
 - Користувач може налаштувати destination без пошуку по документації.
 
@@ -190,17 +192,19 @@
 - Логи не засмічені прогрес‑рядками, але показують помилки/причину падіння.
 
 ## A8. i18n: 3 мови всюди (uk/en/ru), default — українська (P1)
-**Статус:** ⏳ (в роботі, частково виконано 2026-01-09).
+**Статус:** ✅ виконано (2026-01-10).
 
 **Задачі**
 - Пройтись по ключових екранах: `dashboard`, `library`, `streaming`, `login`, `plans`.
 - Прибрати literal strings, замінити на `useTranslations()`.
 - Прогнати `npm run i18n:check` і виправити missing keys.
 
-**Зроблено (2026-01-09)**
+**Зроблено (2026-01-09 → 2026-01-10)**
 - Library: локалізовано confirm видалення плейлиста + fallback error/toast повідомлення.
 - Streaming: локалізовано fallback error/toast повідомлення (builder + live editor).
 - Dashboard: локалізовано згадку “Go Live” у checklist (uk/ru).
+- Library (A10): додано пошук/сортування/filtered-empty тексти (uk/en/ru).
+- Streaming (A5): додано help тексти для налаштування каналу (uk/en/ru).
 
 **AC**
 - UI не “стрибає” між мовами і не показує англомовні/російськомовні шматки в українському режимі.
@@ -217,7 +221,7 @@
 
 **Зроблено (2026-01-10)**
 - Dashboard: checklist зроблено collapsible.
-- Library: додано пошук за назвою, сортування і перемикач “Компактно/Детально” (persist у localStorage).
+- Library: додано пошук за назвою, сортування, перемикач “Компактно/Детально” (persist у localStorage) та швидкі фільтри “Використовується/Попередження”.
 
 **Задачі**
 - Dashboard:
