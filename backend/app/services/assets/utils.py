@@ -231,7 +231,9 @@ def generate_download_token(asset_id: UUID, user_id: UUID) -> tuple[str, int]:
 
 def parse_download_token(token: str) -> tuple[UUID, UUID, int]:
     try:
-        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        decoded = base64.urlsafe_b64decode(token.strip().encode("utf-8")).decode(
+            "utf-8"
+        )
         parts = decoded.split(":")
         if len(parts) != 4:
             raise ValueError("invalid token format")
@@ -270,7 +272,9 @@ def generate_upload_token(user_id: UUID) -> tuple[str, int]:
 
 def verify_upload_token(token: str) -> UUID:
     try:
-        decoded = base64.b64decode(token.encode("utf-8")).decode("utf-8")
+        decoded = base64.b64decode(token.strip().encode("utf-8"), validate=True).decode(
+            "utf-8"
+        )
         try:
             payload, signature = decoded.rsplit(":", 1)
         except ValueError as exc:

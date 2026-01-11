@@ -7,7 +7,43 @@
 #
 
 # Exit on error for critical failures
-set -e
+set -euo pipefail
+
+json_escape() {
+    local value="${1:-}"
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\t'/\\t}
+    printf '%s' "$value"
+}
+
+fail_hook() {
+    local status="${1:?}"
+    local body="${2:-}"
+    local escaped
+    escaped=$(json_escape "$body")
+    printf '{"HTTPResponse":{"StatusCode":%s,"Body":"%s","Headers":{"Content-Type":"text/plain"}}}\n' "$status" "$escaped"
+    exit 1
+}
+
+is_uuid() {
+    local value="${1:-}"
+    [[ "$value" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+}
+
+is_truthy() {
+    case "${1:-}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+resolve_environment() {
+    local env="${ENVIRONMENT:-development}"
+    printf '%s' "$env" | tr '[:upper:]' '[:lower:]'
+}
 base64_decode() {
     base64 --decode 2>/dev/null || base64 -d 2>/dev/null || base64 -D 2>/dev/null
 }
@@ -57,18 +93,37 @@ resolve_user_from_token() {
     local payload="${decoded%:*}"
     local signature="${decoded##*:}"
     local expected
-    expected=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$UPLOAD_TOKEN_SECRET" | awk '{print $NF}')
+    if ! expected=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$UPLOAD_TOKEN_SECRET" | awk '{print $NF}'); then
+        echo "[pre-create] ERROR: Failed to calculate upload token signature" >&2
+        return 1
+    fi
     if [ "$signature" != "$expected" ]; then
         echo "[pre-create] ERROR: Upload token signature mismatch" >&2
         return 1
     fi
 
     local user_id
-    user_id=$(printf '%s' "$payload" | cut -d':' -f1)
     local expires_at
-    expires_at=$(printf '%s' "$payload" | cut -d':' -f2)
-    if [ -z "$user_id" ] || [ -z "$expires_at" ]; then
-        echo "[pre-create] ERROR: Upload token missing fields" >&2
+    local nonce
+    local extra
+    IFS=':' read -r user_id expires_at nonce extra <<< "$payload"
+    if [ -z "${user_id:-}" ] || [ -z "${expires_at:-}" ] || [ -z "${nonce:-}" ] || [ -n "${extra:-}" ]; then
+        echo "[pre-create] ERROR: Upload token payload invalid" >&2
+        return 1
+    fi
+
+    if ! is_uuid "$user_id"; then
+        echo "[pre-create] ERROR: Upload token user_id is not a UUID" >&2
+        return 1
+    fi
+
+    if ! [[ "$expires_at" =~ ^[0-9]+$ ]]; then
+        echo "[pre-create] ERROR: Upload token expires_at is not numeric" >&2
+        return 1
+    fi
+
+    if ! [[ "$nonce" =~ ^[0-9a-fA-F]+$ ]]; then
+        echo "[pre-create] ERROR: Upload token nonce is invalid" >&2
         return 1
     fi
 
@@ -85,104 +140,203 @@ resolve_user_from_token() {
 # Read webhook data from stdin (tusd may send multi-line JSON)
 HOOK_DATA=$(cat)
 
-if [ -z "$HOOK_DATA" ]; then
+if [ -z "${HOOK_DATA:-}" ]; then
     echo "[pre-create] ERROR: empty payload from tusd" >&2
-    echo '{"HTTPResponse":{"StatusCode":400,"Body":"Missing hook payload","Headers":{"Content-Type":"text/plain"}}}' >&1
-    exit 1
+    fail_hook 400 "Missing hook payload"
 fi
 
-# Debug: Print raw hook data
-echo "[pre-create] RAW HOOK DATA: $HOOK_DATA" >&2
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[pre-create] ERROR: jq is not available" >&2
+    fail_hook 500 "Upload rejected: internal security configuration error"
+fi
+
+if ! command -v openssl >/dev/null 2>&1; then
+    echo "[pre-create] ERROR: openssl is not available" >&2
+    fail_hook 500 "Upload rejected: internal security configuration error"
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+    echo "[pre-create] ERROR: curl is not available" >&2
+    fail_hook 500 "Upload rejected: internal security configuration error"
+fi
+
+if ! echo "$HOOK_DATA" | jq -e . >/dev/null 2>&1; then
+    echo "[pre-create] ERROR: invalid JSON payload from tusd" >&2
+    fail_hook 400 "Invalid hook payload"
+fi
+
+DEBUG=0
+if is_truthy "${TUSD_DEBUG:-}"; then
+    DEBUG=1
+    echo "[pre-create] Debug mode enabled (payload logging suppressed)" >&2
+fi
 
 # Extract metadata
 TOKEN_METADATA=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.upload_token // .Upload.MetaData.upload_token // empty')
 USER_ID_METADATA=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.user_id // .Upload.MetaData.user_id // empty')
-FILE_SIZE=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.Size // .Upload.Size // 0')
+FILE_SIZE_RAW=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.Size // .Upload.Size // 0')
 UPLOAD_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.ID // .Upload.ID // empty')
+
+FILE_SIZE_RAW="${FILE_SIZE_RAW:-0}"
+if ! [[ "$FILE_SIZE_RAW" =~ ^[0-9]+$ ]]; then
+    echo "[pre-create] ERROR: Invalid upload size '$FILE_SIZE_RAW'" >&2
+    fail_hook 400 "Invalid upload size"
+fi
+FILE_SIZE="$FILE_SIZE_RAW"
 
 # Debug logging
 echo "[pre-create] Upload ID: $UPLOAD_ID" >&2
-echo "[pre-create] User ID (metadata): $USER_ID_METADATA" >&2
 echo "[pre-create] Upload token present: $([ -n "$TOKEN_METADATA" ] && echo "yes" || echo "no")" >&2
 echo "[pre-create] File Size: $FILE_SIZE bytes" >&2
+
+if [ "$DEBUG" -eq 1 ]; then
+    echo "[pre-create] User ID (metadata): $USER_ID_METADATA" >&2
+fi
 
 # Validate token
 if [ -z "$TOKEN_METADATA" ] || [ "$TOKEN_METADATA" = "null" ]; then
     echo "[pre-create] ERROR: Missing upload token in metadata" >&2
-    echo '{"HTTPResponse":{"StatusCode":400,"Body":"Missing upload token","Headers":{"Content-Type":"text/plain"}}}' >&1
-    exit 1
+    fail_hook 400 "Missing upload token"
 fi
 
 RESOLVED_USER_ID=$(resolve_user_from_token "$TOKEN_METADATA") || {
-    echo '{"HTTPResponse":{"StatusCode":403,"Body":"Invalid upload token","Headers":{"Content-Type":"text/plain"}}}' >&1
-    exit 1
+    fail_hook 403 "Invalid upload token"
 }
 
 if [ -n "$USER_ID_METADATA" ] && [ "$USER_ID_METADATA" != "$RESOLVED_USER_ID" ]; then
-    echo "[pre-create] WARNING: user_id metadata ($USER_ID_METADATA) mismatches token owner ($RESOLVED_USER_ID)" >&2
+    if [ "$DEBUG" -eq 1 ]; then
+        echo "[pre-create] WARNING: user_id metadata ($USER_ID_METADATA) mismatches token owner ($RESOLVED_USER_ID)" >&2
+    else
+        echo "[pre-create] WARNING: user_id metadata mismatches token owner" >&2
+    fi
 fi
 
 USER_ID="$RESOLVED_USER_ID"
-echo "[pre-create] Resolved User ID: $USER_ID" >&2
+if [ "$DEBUG" -eq 1 ]; then
+    echo "[pre-create] Resolved User ID: $USER_ID" >&2
+else
+    echo "[pre-create] Resolved User ID: [redacted]" >&2
+fi
 
 # Check quota via backend API
 BACKEND_URL="$(resolve_backend_base)/api/internal/check-quota"
 REQUEST_PAYLOAD=$(jq -n --arg user "$USER_ID" --argjson size "$FILE_SIZE" '{user_id: $user, file_size: ($size | tonumber)}')
 
-if [ -z "$TUSD_HMAC_SECRET" ]; then
+if [ -z "${TUSD_HMAC_SECRET:-}" ]; then
     echo "[pre-create] ERROR: TUSD_HMAC_SECRET is not set" >&2
-    BODY="Upload rejected: internal security configuration error"
-    echo "{\"HTTPResponse\":{\"StatusCode\":500,\"Body\":\"$BODY\",\"Headers\":{\"Content-Type\":\"text/plain\"}}}" >&1
-    exit 1
+    fail_hook 500 "Upload rejected: internal security configuration error"
 fi
 
-SIGNATURE=$(printf '%s' "$REQUEST_PAYLOAD" | openssl dgst -sha256 -hmac "$TUSD_HMAC_SECRET" | awk '{print $NF}')
+if ! SIGNATURE=$(printf '%s' "$REQUEST_PAYLOAD" | openssl dgst -sha256 -hmac "$TUSD_HMAC_SECRET" | awk '{print $NF}'); then
+    echo "[pre-create] ERROR: Failed to calculate quota request signature" >&2
+    fail_hook 500 "Upload rejected: internal security configuration error"
+fi
 
-set +e
-HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST "$BACKEND_URL" \
-    -H "Content-Type: application/json" \
-    -H "X-Tusd-Signature: $SIGNATURE" \
-    -d "$REQUEST_PAYLOAD")
-CURL_EXIT_CODE=$?
-set -e
+ENVIRONMENT_NAME=$(resolve_environment)
+STRICT_ENV=0
+case "$ENVIRONMENT_NAME" in
+    production|staging) STRICT_ENV=1 ;;
+esac
+
+FAIL_OPEN=0
+if [ "$STRICT_ENV" -eq 0 ] && is_truthy "${TUSD_FAIL_OPEN:-}"; then
+    FAIL_OPEN=1
+fi
+
+MAX_ATTEMPTS="${TUSD_QUOTA_MAX_ATTEMPTS:-3}"
+CONNECT_TIMEOUT_SECONDS="${TUSD_QUOTA_CONNECT_TIMEOUT_SECONDS:-2}"
+TOTAL_TIMEOUT_SECONDS="${TUSD_QUOTA_TIMEOUT_SECONDS:-5}"
+BACKOFF_SECONDS="${TUSD_QUOTA_BACKOFF_SECONDS:-1}"
+
+attempt=1
+HTTP_RESPONSE=""
+CURL_EXIT_CODE=0
+while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
+    set +e
+    HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST "$BACKEND_URL" \
+        --connect-timeout "$CONNECT_TIMEOUT_SECONDS" \
+        --max-time "$TOTAL_TIMEOUT_SECONDS" \
+        -H "Content-Type: application/json" \
+        -H "X-Tusd-Signature: $SIGNATURE" \
+        -d "$REQUEST_PAYLOAD")
+    CURL_EXIT_CODE=$?
+    set -e
+
+    if [ $CURL_EXIT_CODE -eq 0 ]; then
+        break
+    fi
+
+    if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+        sleep "$BACKOFF_SECONDS"
+    fi
+
+    attempt=$((attempt + 1))
+done
 
 if [ $CURL_EXIT_CODE -ne 0 ]; then
-    echo "[pre-create] WARNING: Failed to connect to backend API (code $CURL_EXIT_CODE). Allowing upload." >&2
-    exit 0
+    echo "[pre-create] ERROR: Failed to connect to quota endpoint after $MAX_ATTEMPTS attempts (exit $CURL_EXIT_CODE)" >&2
+
+    if [ "$FAIL_OPEN" -eq 1 ]; then
+        echo "[pre-create] WARNING: TUSD_FAIL_OPEN enabled; allowing upload without quota check" >&2
+        exit 0
+    fi
+
+    fail_hook 503 "Upload rejected: quota service unavailable"
 fi
 
 RESPONSE_BODY=${HTTP_RESPONSE%HTTPSTATUS:*}
 HTTP_STATUS=${HTTP_RESPONSE##*HTTPSTATUS:}
 
+case "$HTTP_STATUS" in
+    ''|000|*[!0-9]*)
+        echo "[pre-create] ERROR: Invalid quota endpoint status '$HTTP_STATUS'" >&2
+        if [ "$FAIL_OPEN" -eq 1 ]; then
+            echo "[pre-create] WARNING: TUSD_FAIL_OPEN enabled; allowing upload without quota check" >&2
+            exit 0
+        fi
+        fail_hook 503 "Upload rejected: quota service unavailable"
+        ;;
+esac
+
 if [ "$HTTP_STATUS" -ge 500 ]; then
-    echo "[pre-create] WARNING: Backend quota endpoint returned $HTTP_STATUS. Allowing upload." >&2
-    exit 0
+    echo "[pre-create] ERROR: Quota endpoint returned $HTTP_STATUS" >&2
+    if [ "$FAIL_OPEN" -eq 1 ]; then
+        echo "[pre-create] WARNING: TUSD_FAIL_OPEN enabled; allowing upload without quota check" >&2
+        exit 0
+    fi
+    fail_hook 503 "Upload rejected: quota service unavailable"
 fi
 
 if [ "$HTTP_STATUS" -ne 200 ]; then
-    REASON=$(echo "$RESPONSE_BODY" | jq -r '.detail // .reason // "Quota check failed"' 2>/dev/null)
-    [ -z "$REASON" ] && REASON="Quota check failed"
+    REASON=$(echo "$RESPONSE_BODY" | jq -r '.detail // .reason // empty' 2>/dev/null || true)
+    if [ -z "$REASON" ] || [ "$REASON" = "null" ]; then
+        REASON="Quota check failed"
+    fi
     echo "[pre-create] REJECT: $REASON (HTTP $HTTP_STATUS)" >&2
     STATUS_CODE=$HTTP_STATUS
     if [ "$STATUS_CODE" -lt 400 ] || [ "$STATUS_CODE" -ge 600 ]; then
         STATUS_CODE=403
     fi
-    BODY="Upload rejected: $REASON"
-    echo "{\"HTTPResponse\":{\"StatusCode\":$STATUS_CODE,\"Body\":\"$BODY\",\"Headers\":{\"Content-Type\":\"text/plain\"}}}" >&1
-    exit 1
+    fail_hook "$STATUS_CODE" "Upload rejected: $REASON"
 fi
 
-CAN_UPLOAD=$(echo "$RESPONSE_BODY" | jq -r '.can_upload // false')
-REASON=$(echo "$RESPONSE_BODY" | jq -r '.reason // "Unknown error"')
+CAN_UPLOAD=$(echo "$RESPONSE_BODY" | jq -r '.can_upload // empty' 2>/dev/null || true)
+REASON=$(echo "$RESPONSE_BODY" | jq -r '.reason // empty' 2>/dev/null || true)
+
+if [ -z "$CAN_UPLOAD" ] || [ "$CAN_UPLOAD" = "null" ]; then
+    CAN_UPLOAD="false"
+fi
+
+if [ -z "$REASON" ] || [ "$REASON" = "null" ]; then
+    REASON="Unknown error"
+fi
 
 echo "[pre-create] Quota check result: can_upload=$CAN_UPLOAD" >&2
 
 if [ "$CAN_UPLOAD" != "true" ]; then
     echo "[pre-create] REJECT: $REASON" >&2
     # Return HTTP 413 Payload Too Large for quota exceeded
-    BODY="Upload rejected: $REASON"
-    echo "{\"HTTPResponse\":{\"StatusCode\":413,\"Body\":\"$BODY\",\"Headers\":{\"Content-Type\":\"text/plain\"}}}" >&1
-    exit 1
+    fail_hook 413 "Upload rejected: $REASON"
 fi
 
 # Create user directory if it doesn't exist (absolute path)
