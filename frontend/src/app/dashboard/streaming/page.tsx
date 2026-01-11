@@ -47,13 +47,13 @@ type DestinationFormState = {
   enabled: boolean
 }
 
-const statusVariantMap: Record<StreamStatusValue, 'secondary' | 'error'> = {
-  running: 'secondary',
+const statusVariantMap: Record<StreamStatusValue, 'secondary' | 'error' | 'success' | 'info'> = {
+  running: 'success',
   stopped: 'secondary',
-  starting: 'secondary',
-  stopping: 'secondary',
+  starting: 'info',
+  stopping: 'info',
   error: 'error',
-  scheduled: 'secondary',
+  scheduled: 'info',
 }
 
 const dateLocales: Record<string, DateFnsLocale> = {
@@ -403,7 +403,10 @@ export default function StreamingPage() {
   }
 
   const renderStatusBadge = (status: StreamStatusValue) => (
-    <Badge variant={statusVariantMap[status]}>{streamingStatus(status)}</Badge>
+    <Badge variant={statusVariantMap[status]} className={status === 'running' ? 'gap-1' : undefined}>
+      {status === 'running' ? <span className="h-2 w-2 rounded-full bg-success-600" /> : null}
+      {streamingStatus(status)}
+    </Badge>
   )
 
   const handleStartStream = (stream: Stream) =>

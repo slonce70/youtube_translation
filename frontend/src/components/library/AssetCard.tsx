@@ -118,6 +118,12 @@ export function AssetCard({
     setThumbnailSrc(null)
   }, [asset.id, asset.asset_type, asset.thumbnail_url])
 
+  useEffect(() => {
+    if (density === 'compact') {
+      setIsExpanded(false)
+    }
+  }, [density])
+
   const usageBadges = [
     formatUsageLabel('streams', asset.usage?.streams?.length ?? 0),
     formatUsageLabel('collections', asset.usage?.collections?.length ?? 0),
@@ -126,7 +132,7 @@ export function AssetCard({
 
   return (
     <Card
-      className={`animate-slide-up transition-all ${
+      className={`animate-slide-up transition-all ${isCompact ? 'h-full' : ''} ${
         isSelected
           ? 'ring-2 ring-primary-300 dark:ring-primary-600'
           : 'ring-1 ring-transparent'
@@ -260,97 +266,101 @@ export function AssetCard({
               </div>
             )}
 
-            <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-[11px] dark:border-slate-700">
-              <button
-                type="button"
-                onClick={() => setIsExpanded((prev) => !prev)}
-                className="flex items-center gap-1 text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400"
-              >
-                {isExpanded ? (
-                  <ChevronUp className="h-3 w-3" />
-                ) : (
-                  <ChevronDown className="h-3 w-3" />
-                )}
-                {isExpanded ? t.details.hide : t.details.show}
-              </button>
-            </div>
-
-            {isExpanded && (
-              <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-[11px] dark:border-slate-700 dark:bg-slate-800/50">
-                <div className={`grid gap-2 grid-cols-1 ${isAudioAsset ? '' : 'md:grid-cols-2'}`}>
-                  {!isAudioAsset && (
-                    <div>
-                      <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {t.metadata.video}
-                      </span>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                          {info.videoCodec?.toUpperCase() ?? '—'}
-                        </Badge>
-                        <span>{formatBitrateDisplay(info.videoBitrate)}</span>
-                        <span>·</span>
-                        <span>
-                          {info.videoWidth && info.videoHeight
-                            ? `${info.videoWidth}×${info.videoHeight}`
-                            : '—'}
-                        </span>
-                        <span>·</span>
-                        <span>{formatFpsDisplay(info.videoFps)}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t.metadata.audio}
-                    </span>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                        {info.audioCodec?.toUpperCase() ?? '—'}
-                      </Badge>
-                      <span>{formatBitrateDisplay(info.audioBitrate)}</span>
-                      <span>·</span>
-                      <span>{formatSampleRateDisplay(info.audioSampleRate)}</span>
-                      {info.audioChannels && (
-                        <>
-                          <span>·</span>
-                          <span>{t.metadata.channels(info.audioChannels)}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
+            {!isCompact ? (
+              <>
+                <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-[11px] dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setIsExpanded((prev) => !prev)}
+                    className="flex items-center gap-1 text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400"
+                  >
+                    {isExpanded ? (
+                      <ChevronUp className="h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3" />
+                    )}
+                    {isExpanded ? t.details.hide : t.details.show}
+                  </button>
                 </div>
 
-                {info.recommendationLabel && (
-                  <div className="flex items-start gap-1.5 text-slate-500 dark:text-slate-400">
-                    <CheckCircle className="h-3 w-3 text-primary-500" />
-                    <span>
-                      {t.recommendations({
-                        label: info.recommendationLabel,
-                        details: info.recommendationDetails ?? '',
-                      })}
-                    </span>
-                  </div>
-                )}
+                {isExpanded && (
+                  <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-[11px] dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className={`grid gap-2 grid-cols-1 ${isAudioAsset ? '' : 'md:grid-cols-2'}`}>
+                      {!isAudioAsset && (
+                        <div>
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            {t.metadata.video}
+                          </span>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                              {info.videoCodec?.toUpperCase() ?? '—'}
+                            </Badge>
+                            <span>{formatBitrateDisplay(info.videoBitrate)}</span>
+                            <span>·</span>
+                            <span>
+                              {info.videoWidth && info.videoHeight
+                                ? `${info.videoWidth}×${info.videoHeight}`
+                                : '—'}
+                            </span>
+                            <span>·</span>
+                            <span>{formatFpsDisplay(info.videoFps)}</span>
+                          </div>
+                        </div>
+                      )}
 
-                {(info.issues.length > 0 || info.warnings.length > 0) && (
-                  <div className="space-y-1.5">
-                    {info.issues.map((issue, index) => (
-                      <div key={`issue-${index}`} className="flex items-start text-error-600 dark:text-error-400">
-                        <XCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
-                        <span>{issue}</span>
+                      <div>
+                        <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          {t.metadata.audio}
+                        </span>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                            {info.audioCodec?.toUpperCase() ?? '—'}
+                          </Badge>
+                          <span>{formatBitrateDisplay(info.audioBitrate)}</span>
+                          <span>·</span>
+                          <span>{formatSampleRateDisplay(info.audioSampleRate)}</span>
+                          {info.audioChannels && (
+                            <>
+                              <span>·</span>
+                              <span>{t.metadata.channels(info.audioChannels)}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                    {info.warnings.map((warning, index) => (
-                      <div key={`warning-${index}`} className="flex items-start text-amber-600 dark:text-amber-400">
-                        <AlertCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
-                        <span>{formatWarningMessage(warning)}</span>
+                    </div>
+
+                    {info.recommendationLabel && (
+                      <div className="flex items-start gap-1.5 text-slate-500 dark:text-slate-400">
+                        <CheckCircle className="h-3 w-3 text-primary-500" />
+                        <span>
+                          {t.recommendations({
+                            label: info.recommendationLabel,
+                            details: info.recommendationDetails ?? '',
+                          })}
+                        </span>
                       </div>
-                    ))}
+                    )}
+
+                    {(info.issues.length > 0 || info.warnings.length > 0) && (
+                      <div className="space-y-1.5">
+                        {info.issues.map((issue, index) => (
+                          <div key={`issue-${index}`} className="flex items-start text-error-600 dark:text-error-400">
+                            <XCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
+                            <span>{issue}</span>
+                          </div>
+                        ))}
+                        {info.warnings.map((warning, index) => (
+                          <div key={`warning-${index}`} className="flex items-start text-amber-600 dark:text-amber-400">
+                            <AlertCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
+                            <span>{formatWarningMessage(warning)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
+              </>
+            ) : null}
           </div>
         </div>
       </CardContent>

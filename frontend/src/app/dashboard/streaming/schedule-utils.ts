@@ -18,8 +18,41 @@ export const formatDateTimeLocal = (date: Date): string => {
 
 export const parseDateTimeLocal = (value: string): Date | null => {
   if (!value) return null
-  const parsed = new Date(value)
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value)
+  if (!match) return null
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hours = Number(match[4])
+  const minutes = Number(match[5])
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes)
+  ) {
+    return null
+  }
+
+  if (month < 1 || month > 12) return null
+  if (day < 1 || day > 31) return null
+  if (hours < 0 || hours > 23) return null
+  if (minutes < 0 || minutes > 59) return null
+
+  const parsed = new Date(year, month - 1, day, hours, minutes, 0, 0)
   if (Number.isNaN(parsed.getTime())) return null
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day ||
+    parsed.getHours() !== hours ||
+    parsed.getMinutes() !== minutes
+  ) {
+    return null
+  }
   return parsed
 }
 

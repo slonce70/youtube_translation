@@ -6,11 +6,12 @@ let idCounter = 0
 const baseAsset = (overrides: Partial<Asset>): Asset =>
   ({
     id: overrides.id ?? `00000000-0000-0000-0000-00000000000${++idCounter}`,
-    user_id: overrides.user_id ?? '00000000-0000-0000-0000-000000000001',
     filename: overrides.filename ?? 'video.mp4',
+    storage_path: overrides.storage_path ?? `/uploads/${overrides.id ?? `asset-${idCounter}`}`,
     asset_type: overrides.asset_type ?? 'video',
     size_bytes: overrides.size_bytes ?? 100,
     created_at: overrides.created_at ?? '2026-01-01T00:00:00Z',
+    updated_at: overrides.updated_at ?? overrides.created_at ?? '2026-01-01T00:00:00Z',
     compatible_for_copy: overrides.compatible_for_copy ?? true,
     duration_seconds: overrides.duration_seconds ?? 10,
     meta:
@@ -35,7 +36,7 @@ const baseAsset = (overrides: Partial<Asset>): Asset =>
     primary_folder_id: overrides.primary_folder_id ?? null,
     folders: overrides.folders ?? [],
     usage: overrides.usage ?? { streams: [], collections: [], playlists: [] },
-  }) as Asset
+  })
 
 describe('asset view helpers', () => {
   it('detects in-use assets', () => {
