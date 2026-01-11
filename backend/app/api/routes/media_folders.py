@@ -74,7 +74,7 @@ async def delete_media_folder(
 
 
 @router.post(
-    "/{folder_id}/assets/{asset_id}",
+    "/{folder_id}/assets/{asset_id:uuid}",
     response_model=AssetFolderLinkResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -89,7 +89,7 @@ async def add_asset_to_folder(
     return await service.add_asset_to_folder(folder_id, asset_id)
 
 
-@router.delete("/{folder_id}/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{folder_id}/assets/{asset_id:uuid}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_asset_from_folder(
     folder_id: UUID,
     asset_id: UUID,
@@ -115,4 +115,3 @@ async def bulk_move_assets_to_folder(
 
     service = _get_service(user_deps)
     return await service.bulk_move_assets(folder_id, payload)
-

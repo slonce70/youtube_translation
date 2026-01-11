@@ -30,14 +30,18 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
             └───────┬──────────────┬──────────────┘
                     │              │
                     ▼              ▼
-               ┌────────┐     ┌────────┐
-               │Supabase│     │  tusd  │
-               │ Auth + │     │Resumable│
-               │  DB +  │     │ Upload  │
-               │Storage │     └────────┘
-               └────────┘
-                    │ supervisorctl (unix socket)
-                    ▼
+               ┌──────────────┐     ┌────────┐
+               │ Supabase Auth │     │  tusd  │
+               │ (JWT verify)  │     │Resumable│
+               └──────┬───────┘     │ Upload  │
+                      │             └────────┘
+                      ▼
+               ┌──────────────┐
+               │ PostgreSQL    │
+               │ (app data)    │
+               └──────┬───────┘
+                      │ supervisorctl (unix socket)
+                      ▼
             ┌──────────────────────────┐
             │   Runner (supervisord)   │
             │  • python -m app.cli...  │
@@ -119,9 +123,13 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 ### 3. Runner (Supervisor)
 
 In Docker Compose the FFmpeg processes are hosted in a dedicated **runner** container.
-The backend controls them via `supervisorctl` over a shared UNIX socket:
-`/app/supervisord/supervisor.sock`. The socket, programs, and logs are kept in
-the shared `/app/supervisord` volume.
+У поточному Docker Compose керування йде через `supervisorctl` по внутрішній
+мережі Docker (`runner:9001`) з конфігом `backend/supervisord.docker.conf`.
+Файли програм та логи (`/app/supervisord/programs/*.ini`, `/app/supervisord/logs`)
+зберігаються у спільному томі/маунті `/app/supervisord`.
+
+> Для Linux/VPS можна перейти на unix socket (окремий конфіг), але для macOS/Docker
+> Desktop bind-mount unix sockets може працювати нестабільно.
 
 ### 4. FFmpeg Streaming Engine
 
@@ -146,24 +154,28 @@ ffmpeg -re -f concat -safe 0 -i playlist.txt \
 - Automatic reconnection on network issues
 - Scalable to multiple channels
 
-### 5. Database (Supabase PostgreSQL)
+### 5. Database (PostgreSQL: self-host / local)
 
-**Schema:**
+> У поточному стеку Supabase використовується для **автентифікації** (JWT), а
+> основні дані застосунку живуть у PostgreSQL (локально або на VPS).
 
 ```sql
-users (managed by Supabase Auth)
-  ├─ projects (user workspaces)
-      ├─ assets (video files)
-      ├─ playlists
-      │   └─ playlist_items
-      ├─ destinations (YouTube channels)
-      └─ streams
-          └─ stream_destinations
+user_profiles (synced on first login)
+  ├─ assets
+  ├─ playlists
+  │   └─ playlist_items
+  ├─ media_folders
+  ├─ media_collections
+  │   └─ collection_items
+  ├─ destinations
+  └─ streams
+      ├─ stream_destinations
+      ├─ stream_assets
+      └─ stream_events
 ```
 
 **Security:**
-- Row Level Security (RLS) policies
-- User isolation
+- User isolation (backend checks `user_id` from Supabase JWT)
 - Encrypted stream keys
 - Secure token-based authentication
 

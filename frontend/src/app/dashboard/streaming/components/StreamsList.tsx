@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
+  Clock3,
   Loader2,
   Play,
   Plus,
@@ -30,6 +31,7 @@ export type StreamsListProps = {
   onCreateStream: () => void
   onViewLogs: (streamId: string) => void
   onOpenLiveEditor: (stream: Stream) => void
+  onEditSchedule: (stream: Stream) => void
   onStartStream: (stream: Stream) => void
   onStopStream: (streamId: string) => void
   onDeleteStream: (streamId: string) => void
@@ -64,6 +66,7 @@ export function StreamsList({
   onCreateStream,
   onViewLogs,
   onOpenLiveEditor,
+  onEditSchedule,
   onStartStream,
   onStopStream,
   onDeleteStream,
@@ -105,10 +108,17 @@ export function StreamsList({
               const statusData = statusQuery?.data
               const derivedStatus = statusData?.status ?? stream.status
               const isRunning = statusData?.is_running ?? stream.status === 'running'
+              const statusUpdatedAtMs = statusQuery?.dataUpdatedAt ?? 0
+              const statusAgeSeconds =
+                isRunning && statusUpdatedAtMs > 0
+                  ? Math.max(Math.floor((nowTick - statusUpdatedAtMs) / 1000), 0)
+                  : 0
               const startedAtMs = stream.started_at ? new Date(stream.started_at).getTime() : null
+              const statusLiveSeconds =
+                typeof statusData?.live_duration_seconds === 'number' ? statusData.live_duration_seconds : null
               const liveDurationSeconds = isRunning
-                ? typeof statusData?.live_duration_seconds === 'number'
-                  ? statusData.live_duration_seconds
+                ? statusLiveSeconds != null
+                  ? statusLiveSeconds + statusAgeSeconds
                   : startedAtMs != null
                     ? Math.max(Math.floor((nowTick - startedAtMs) / 1000), 0)
                     : null
@@ -117,15 +127,20 @@ export function StreamsList({
               const statusTotalSeconds =
                 typeof statusData?.total_duration_seconds === 'number' ? statusData.total_duration_seconds : null
               let totalDurationSeconds = statusTotalSeconds ?? storedTotalSeconds
-              if (isRunning && statusTotalSeconds == null) {
-                totalDurationSeconds = storedTotalSeconds + (liveDurationSeconds ?? 0)
+              if (isRunning) {
+                totalDurationSeconds =
+                  statusTotalSeconds != null
+                    ? statusTotalSeconds + statusAgeSeconds
+                    : storedTotalSeconds + (liveDurationSeconds ?? 0)
               }
               const dailyLimitSeconds =
                 typeof statusData?.daily_limit_seconds === 'number' ? statusData.daily_limit_seconds : null
+              const statusRemainingDailySeconds =
+                typeof statusData?.remaining_daily_seconds === 'number' ? statusData.remaining_daily_seconds : null
               const remainingDailySeconds =
-                typeof statusData?.remaining_daily_seconds === 'number'
-                  ? statusData.remaining_daily_seconds
-                  : null
+                isRunning && statusRemainingDailySeconds != null
+                  ? Math.max(statusRemainingDailySeconds - statusAgeSeconds, 0)
+                  : statusRemainingDailySeconds
               const quotaReached =
                 typeof statusData?.quota_limit_reached === 'boolean'
                   ? statusData.quota_limit_reached
@@ -146,7 +161,13 @@ export function StreamsList({
                   key={stream.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
+                  className={`rounded-lg p-4 border ${
+                    derivedStatus === 'error'
+                      ? 'border-error-200 dark:border-error-800 bg-error-50/40 dark:bg-error-900/10'
+                      : isRunning
+                        ? 'border-success-200 dark:border-success-800 bg-success-50/40 dark:bg-success-900/10'
+                        : 'border-slate-200 dark:border-slate-700'
+                  }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -178,7 +199,9 @@ export function StreamsList({
                           <p className="text-slate-500 dark:text-slate-400">{t('streams.labels.status')}</p>
                           <p className="font-medium flex items-center gap-2">
                             {streamingStatus(derivedStatus)}
-                            {statusQuery?.isFetching && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+                            {statusQuery?.isFetching && !statusData ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
+                            ) : null}
                           </p>
                         </div>
                         <div>
@@ -247,13 +270,12 @@ export function StreamsList({
                       <Button size="sm" variant="outline" onClick={() => onViewLogs(stream.id)}>
                         {t('streams.buttons.logs')}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        data-testid={`stream-live-edit-${stream.id}`}
-                        onClick={() => onOpenLiveEditor(stream)}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => onOpenLiveEditor(stream)}>
                         {t('streams.liveEdit.button')}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => onEditSchedule(stream)}>
+                        <Clock3 className="w-4 h-4 mr-2" />
+                        {t('streams.buttons.schedule')}
                       </Button>
                       {stream.status === 'running' ? (
                         <Button

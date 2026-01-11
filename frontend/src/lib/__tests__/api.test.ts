@@ -26,7 +26,7 @@ describe('api client', () => {
     const result = await api.streams.start('abc')
 
     expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:8000/api/streams/abc/start/',
+      expect.stringContaining('/api/streams/abc/start'),
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
@@ -49,13 +49,13 @@ describe('api client', () => {
     await api.admin.users.list({ is_suspended: true, limit: 10 })
 
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/admin/users/'),
+      expect.stringContaining('/api/admin/users'),
       expect.objectContaining({
         headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
       })
     )
 
-    const url = new URL((global.fetch as jest.Mock).mock.calls[0][0])
+    const url = new URL((global.fetch as jest.Mock).mock.calls[0][0], 'http://localhost')
     expect(url.searchParams.get('suspended')).toBe('true')
     expect(url.searchParams.get('limit')).toBe('10')
   })

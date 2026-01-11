@@ -27,6 +27,52 @@
 ✅ Observability: метрики + структуровані логи + базовий UI  
 ✅ Runtime режими: `manager` / `supervisor` / `systemd`, CLI runner + reconciler  
 
+## Оновлення станом на 2026-01-09 (що виправлено/додано)
+✅ Виправлено падіння `GET /api/streams/` (eager-load `stream_destinations → destination`), через що список трансляцій стабільно відображається без “рефреш-лупа”.  
+✅ Додано міграцію `026_collection_items_updated_at.sql` (локальна БД сумісність: `collection_items.updated_at` + trigger).  
+✅ Streaming UI: останній крок створення трансляції в модалці більше не “ховає” кнопку (правильний scroll).  
+✅ Library UI: після upload файли з’являються без ручного refresh (довший refetch/backoff).  
+✅ Streaming: статус “Зупиняється” більше не зависає — reconciler тепер синхронізує `stopping`, а supervisor parse коректно розпізнає “процесу не існує” як `NOT_FOUND`.  
+✅ Логи стрімів: “важливе” за замовчуванням + перемикач “показати всі”, лише `error` підсвічується червоним (решта — сірим).  
+✅ FFmpeg: зменшено spam “frame=…” (`-hide_banner -nostats`) + фільтрація progress‑рядків у “important” режимі.  
+✅ Library: відео прев’ю більше не порожнє — `thumbnail_url` стабільно зберігається в `assets.meta` + fallback `/thumbnails/{asset_id}.jpg`.  
+✅ Рекомендації якості: оновлено рекомендовані bitrate (включно з 720p і підтримкою дробних значень на кшталт `4.5 Mbps`).  
+✅ DB: автопатч для старих локальних БД (створює `collection_items.updated_at` + trigger), щоб не ловити 500 на колекціях.
+
+## Оновлення станом на 2026-01-10
+✅ Backend: вирівняно “fresh” локальний bootstrap БД (schema + міграції без конфліктів) і узгоджено ORM (FK/relationships по `user_id`).  
+✅ Library (A10): додано пошук за назвою, сортування та перемикач “Компактно/Детально”.  
+✅ Dashboard (A10): checklist зроблено collapsible для менш перевантаженого екрану.  
+✅ Streaming (A5): додано попередження про VOD < 12h, рекомендовані налаштування енкодера (GOP 2s, H.264/AAC) та “First stream checklist” у продукті/доках.  
+✅ Streaming schedule: швидкі кнопки тривалості (12/24/48 год) + модал редагування розкладу для існуючих стрімів (PATCH `/streams/{id}`).  
+✅ Frontend: виправлено падіння `make type-check` (test fixture `Asset` узгоджено з типом).  
+✅ Upload quota hardening: `tusd-hooks/pre-create` більше не логує raw payload, має ретраї/таймаути і **fail-closed** у `production/staging` (dev override: `TUSD_FAIL_OPEN=1`).  
+✅ Docker/Edge: `docker/Caddyfile` блокує `/api/internal/*` назовні (defence-in-depth), `docker-compose` healthcheck для tusd переведено на `curl`.  
+✅ CI: backend workflow тепер запускає `ruff` + повний `pytest` з Postgres service; frontend workflow додає `npm run type-check`.  
+✅ Frontend build hygiene: прибрано зайвий `frontend/pnpm-lock.yaml` і додано `outputFileTracingRoot` для Next.js (щоб не було warning про workspace root/lockfiles).  
+
+## Польові спостереження з тестування (записуємо окремо)
+> Цей блок — “журнал проблем”, які помічаємо під час ручного тесту, щоб не загубити. Кожен пункт має короткий статус.
+
+- [x] Library: після завантаження файл не видно до ручного refresh сторінки (виправлено довшим refetch/backoff).
+- [x] Streaming: після створення трансляції показує “створено”, але в списку не з’являється / сторінка перезавантажується (виправлено падінням `GET /api/streams/` через async lazy-load).
+- [x] Streaming: в останньому кроці модалки кнопка “Створити” була нижче екрану (виправлено scroll/лейаутом модалки).
+- [x] Docker: `runner` був `unhealthy` через некоректний healthcheck (вирівняно; тепер `runner` healthy).
+- [x] Docker: `tusd` міг бути `unhealthy` через healthcheck на `wget --spider` (виправлено: healthcheck на `curl`).
+- [x] Streaming: стрім міг “зависати” в статусі “Зупиняється” після планового stop (виправлено reconciler + parse supervisor статусу).
+- [x] Streaming logs: занадто багато “frame=…” (виправлено `-nostats` + “important” режим за замовчуванням).
+- [x] Library: у відео не було прев’ю (виправлено thumbnail_url + fallback `/thumbnails/{asset_id}.jpg`).
+- [x] Рекомендації: bitrate/quality підказки були неточні (оновлено до актуальніших діапазонів, включно з 720p).
+- [ ] i18n: в інтерфейсі місцями змішані мови (частково: Library/Streaming — прибрано англомовні confirm/fallback; dashboard checklist — “Go Live” локалізовано).
+- [x] Dashboard: екран перенавантажений — частково спрощено (checklist зроблено collapsible; далі можна згортати usage/secondary блоки).
+- [x] Library UI: “важко і замудро” — частково спрощено (пошук, сортування, compact/detailed режим; далі — швидкі фільтри “in use/warnings”).
+- [x] Frontend: `make type-check` падав через fixture `Asset` у тесті (виправлено: узгоджено типи/обовʼязкові поля).
+- [x] Security: tusd `pre-create` робив fail-open, коли quota endpoint недоступний (виправлено: fail-closed у `production/staging`, опція `TUSD_FAIL_OPEN=1` тільки для dev).
+- [x] Edge proxy: `/api/internal/*` був доступний через Caddy (виправлено: `respond 404` на edge).
+- [x] CI: backend workflow запускав лише `tests/test_security.py`, а frontend — без `type-check` (виправлено: ruff + повний pytest з Postgres service, та `npm run type-check`).
+- [x] Next.js: warning про workspace root через зайві lockfile (виправлено: прибрано `frontend/pnpm-lock.yaml` + додано `outputFileTracingRoot`).
+- [ ] (додати) Опиши нову проблему 1 рядком + де її бачиш (URL/кроки/повідомлення в консолі).
+
 ---
 
 # Phase 0 — Узгодження “production default” і baseline (P0)
@@ -45,7 +91,7 @@
 - Є 1 сторінка “Production deployment” (мінімум), без суперечностей з фактичними файлами (`docs/systemd/*`, `backend/supervisord.conf`, `docker/docker-compose.yml`).
 
 ## 0.2. Baseline tests + smoke (P0)
-- Прогнати і зафіксувати команди (див. `docs/TESTING.md`):
+- Прогнати і зафіксувати команди (див. `README.md` / `Makefile`):
   - backend pytest
   - frontend unit
   - e2e playwright
@@ -73,30 +119,11 @@
 **Ціль:** сервіс надійно стартує/стопає стріми по таймеру і **не втрачає ефір** при рестартах API.
 
 ## A1. Scheduler: `stop_at` (one‑shot) + stop job (P0)
-**Що є:** `scheduled_start_time` + launcher (`backend/app/services/streams/scheduler.py`).  
-**Що треба:** stop‑частина + чіткий state machine.
+**Статус:** ✅ виконано (2026-01-08) — stop‑scheduler додано.
 
-**Задачі**
-1) **DB/model**
-   - Додати поля в streams:
-     - `scheduled_stop_time` (TIMESTAMPTZ, nullable)
-     - (опц.) `scheduled_stop_enabled` / `scheduled_stop_attempted_at` (для retry)
-   - Міграція + оновлення `backend/app/models/database.py`.
-2) **Backend scheduler**
-   - Додати `stop_due_streams()` і викликати в циклі поруч зі `launch_due_streams()`.
-   - Idempotency:
-     - lock через `SELECT … FOR UPDATE SKIP LOCKED`,
-     - перевірка статусу (stop лише якщо stream “running/starting”).
-   - Поведінка при помилках: retry interval, логування, не блокувати інші стріми.
-3) **API + schemas**
-   - Розширити Stream create/update schema (де зараз `scheduled_start_*`) на stop поля.
-4) **Frontend**
-   - Додати в Stream builder/редактор:
-     - `start_at` і `stop_at`,
-     - зрозуміле відображення timezone (див. A2).
-5) **Тести**
-   - Backend: unit/integration для stop job (мок часу або “due” записи).
-   - E2E: сценарій “schedule start через 1 хв, stop через 2 хв” (з прискоренням через mock часу або прямим встановленням `scheduled_*_time` у минуле).
+**Зроблено**
+- Додані stop‑поля для streams + логіка планового stop у scheduler.
+- Додано UI для `stop_at` у builder/редакторі.
 
 **AC**
 - Якщо `stop_at` в минулому і стрім running → зупиняється.
@@ -106,13 +133,7 @@
 **Мінімально:** зберігаємо часи в UTC, у UI показуємо локально.  
 **Опційно:** timezone per stream (потрібно для repeats у v1).
 
-**Задачі**
-- Додати `user_profiles.timezone` (наприклад `Europe/Kyiv`) і використовувати його як default для UI.
-- Frontend:
-  - детерміновано показувати “Local time (Europe/Kyiv)” і “UTC”.
-  - валідатор: `stop_at > start_at`.
-- Backend:
-  - валідація payload (tz‑aware datetime).
+**Статус:** ✅ виконано (2026-01-08) — timezone профіль користувача додано.
 
 **AC**
 - Один і той самий стрім має однаковий час у різних браузерах (через збережений timezone або явний UTC‑показ).
@@ -120,16 +141,18 @@
 ## A3. Production runner для Docker/self‑host (P0)
 **Ціль:** при рестарті FastAPI стріми не падають (у production‑режимі).
 
-**Задачі**
-- Додати в `docker/docker-compose.yml` окремий сервіс `runner/supervisord`, який:
-  - монтує `../backend/supervisord` (programs + logs) спільно з `backend`,
-  - має доступ до `../backend/uploads`, `../backend/streams`, `../backend/logs`,
-  - запускає `supervisord` з `backend/supervisord.conf`.
-- Забезпечити доступ `backend` до supervisor control:
-  - або через **shared unix socket volume** (безпечніше, без відкриття TCP),
-  - або через внутрішній TCP (лише в docker network + auth).
-- Перевірити end‑to‑end:
-  - start stream → рестарт backend → stream продовжує йти → UI синхронізується (reconciler).
+**Статус:** ✅ зроблено (2026-01-08 → 2026-01-09).
+
+**Зроблено**
+- У `docker/docker-compose.yml` є окремий сервіс `runner` (supervisord) + shared volumes для програм/логів.
+- Додано коректний healthcheck для `runner` (не плутає “unhealthy” у Docker).
+
+**Примітка (важливо для macOS/Docker Desktop)**
+- У Docker керування `supervisorctl` іде через внутрішній HTTP endpoint (`runner:9001`) з `backend/supervisord.docker.conf`.
+- Варіант з **unix socket** можливий на Linux (особливо якщо `/app/supervisord` — named volume), але на macOS bind-mount для unix sockets може працювати нестабільно.
+
+**Ще треба (P0, найближче)**
+- Для VPS/prod: або додати базову auth на supervisor HTTP API, або перейти на unix socket (Linux) — щоб не тримати “open control plane” навіть у внутрішній мережі.
 
 **AC**
 - Рестарт API не зупиняє стрім (в обраному production‑mode).
@@ -138,11 +161,7 @@
 **Що є:** delete блокується якщо asset використовується (409), `force=true` дозволяє “знести”.  
 **Рішення для MVP:** safe delete як default (без soft delete), щоб не видаляти файли, які FFmpeg може ще відтворити.
 
-**Задачі**
-- Прибрати `force` з UI для звичайних користувачів (або показувати тільки адмінам).
-- Залишити safe delete (409 + usage details) як основний сценарій.
-- UI:
-  - показувати “Asset in use” з переліком залежностей (вже повертається в 409).
+**Статус:** ✅ виконано (2026-01-08) — safe delete в UI як default.
 
 **AC**
 - Неможливо випадково зламати активний стрім через видалення файлу.
@@ -156,10 +175,83 @@
 - Repo docs:
   - короткий “First Stream Checklist” для self‑host (env vars, ffmpeg path, storage, quotas).
 
+**Статус:** ✅ виконано (2026-01-10).
+
+**Зроблено**
+- UI: VOD <12h warning + recommended encoder settings (GOP 2s, H.264/AAC).
+- Product: короткий “First stream checklist”.
+- Docs: `docs/operations/first_stream_checklist.md`.
+
 **AC**
 - Користувач може налаштувати destination без пошуку по документації.
 
 ---
+
+## A6. Streaming: коректні статуси (без “stopping” hang) (P0)
+**Статус:** ✅ виконано (2026-01-09).
+
+**Зроблено**
+- Reconciler синхронізує не тільки `running/starting`, але й `stopping` (startup + periodic).
+- Supervisor parse коректно розпізнає “process not found” як `NOT_FOUND`, щоб DB не зависала в `UNKNOWN`.
+- `stopped_at` не виставляємо на `stopping` — тільки на фінальні `stopped|error`.
+
+**AC**
+- Стрім, який вже фактично зупинився, не може “висіти” у статусі “Зупиняється” довше ~10–20 сек.
+
+## A7. Логи стрімів: “важливе” за замовчуванням (P1)
+**Статус:** ✅ виконано (2026-01-09).
+
+**Зроблено**
+- Backend підтримує `mode=important|raw` для `GET /api/streams/{id}/logs`.
+- UI: за замовчуванням показує “important” і дає перемикач “показати всі”.
+- Підсвітка: лише `error` червоне, решта — сіре.
+
+**AC**
+- Логи не засмічені прогрес‑рядками, але показують помилки/причину падіння.
+
+## A8. i18n: 3 мови всюди (uk/en/ru), default — українська (P1)
+**Статус:** ✅ виконано (2026-01-10).
+
+**Задачі**
+- Пройтись по ключових екранах: `dashboard`, `library`, `streaming`, `login`, `plans`.
+- Прибрати literal strings, замінити на `useTranslations()`.
+- Прогнати `npm run i18n:check` і виправити missing keys.
+
+**Зроблено (2026-01-09 → 2026-01-10)**
+- Library: локалізовано confirm видалення плейлиста + fallback error/toast повідомлення.
+- Streaming: локалізовано fallback error/toast повідомлення (builder + live editor).
+- Dashboard: локалізовано згадку “Go Live” у checklist (uk/ru).
+- Library (A10): додано пошук/сортування/filtered-empty тексти (uk/en/ru).
+- Streaming (A5): додано help тексти для налаштування каналу (uk/en/ru).
+
+**AC**
+- UI не “стрибає” між мовами і не показує англомовні/російськомовні шматки в українському режимі.
+
+## A9. Library: прев’ю + швидке оновлення списку після upload (P1)
+**Статус:** ✅ виконано (2026-01-09).
+
+**AC**
+- Після upload файл з’являється в списку без ручного refresh.
+- Для відео відображається прев’ю/thumbnail (або стабільний fallback).
+
+## A10. UX‑спрощення: Dashboard + Library (P2)
+**Статус:** 🚧 частково виконано (2026-01-10).
+
+**Зроблено (2026-01-10)**
+- Dashboard: checklist зроблено collapsible.
+- Library: додано пошук за назвою, сортування, перемикач “Компактно/Детально” (persist у localStorage) та швидкі фільтри “Використовується/Попередження”.
+
+**Задачі**
+- Dashboard:
+  - згрупувати “операційні” блоки і зробити їх collapsible/secondary,
+  - залишити 1–2 ключові карти вгорі (Active streams, Storage, Quota).
+- Library:
+  - режим “простий” (compact list / optional grid з прев’ю) як default,
+  - сортування (нові/старі, назва, тривалість, розмір),
+  - швидкі фільтри (video/audio, warnings, in use).
+
+**AC**
+- На першому погляді зрозуміло “що відбувається”, без перевантаження UI.
 
 # Phase B — Cost‑aware: Optimize pipeline (P0 → P1)
 

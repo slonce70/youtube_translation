@@ -3,10 +3,11 @@
 import pytest
 from uuid import uuid4
 from sqlalchemy import select, text
+from fastapi import HTTPException
 
 from app.api.routes import media_collections as collections_api
 from app.core.database import async_session_maker
-from app.models.database import Asset, CollectionItem, MediaCollection, UserProfile
+from app.models.database import Asset, CollectionItem, MediaCollection, Stream, UserProfile
 from app.schemas.api import CollectionItemCreate, CollectionItemsUpdate, MediaCollectionCreate
 
 
@@ -135,3 +136,55 @@ async def test_replace_media_collection_items_updates_payload():
         ).scalars().all()
         assert [item.asset_id for item in db_items] == [second_asset.id, first_asset.id]
         assert [item.loop_mode for item in db_items] == ["once", "shuffle"]
+
+
+@pytest.mark.asyncio
+async def test_delete_media_collection_blocked_when_stream_uses_it():
+    user_id = uuid4()
+    async with async_session_maker() as session:
+        for table in ("media_collections", "collection_items", "assets", "streams"):
+            await _require_table(session, table)
+
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"{user_id}@collections.test",
+                subscription_tier="free",
+                subscription_status="active",
+            )
+        )
+
+        asset = Asset(
+            user_id=user_id,
+            filename="clip.mp4",
+            storage_path=f"/tmp/{user_id}.mp4",
+            size_bytes=1024,
+            asset_type="video",
+        )
+        session.add(asset)
+        await session.commit()
+        await session.refresh(asset)
+
+        collection = await collections_api.create_media_collection(
+            MediaCollectionCreate(
+                name="In use",
+                collection_type="video_background",
+                items=[CollectionItemCreate(asset_id=asset.id, position=0, loop_mode="loop")],
+            ),
+            user_deps=(session, user_id),
+        )
+
+        session.add(
+            Stream(
+                user_id=user_id,
+                name="Test stream",
+                status="stopped",
+                video_collection_id=collection.id,
+            )
+        )
+        await session.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            await collections_api.delete_media_collection(collection.id, user_deps=(session, user_id))
+
+        assert exc.value.status_code == 409

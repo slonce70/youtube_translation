@@ -1,4 +1,4 @@
-import { getAccessToken, waitForAuth } from './supabase'
+import { clearAuthSession, getAccessToken, refreshAccessToken, waitForAuth } from './supabase'
 import type {
   Asset,
   Playlist,
@@ -10,6 +10,7 @@ import type {
   StreamLogsResponse,
   MetricsResponse,
   CreateStreamPayload,
+  StreamSchedulePayload,
   CreateAssetPayload,
   DestinationCreatePayload,
   DestinationUpdatePayload,
@@ -33,11 +34,10 @@ import type {
   StreamLiveUpdatePayload,
   StreamQueueAppendPayload,
   StreamQueueResponse,
-  StreamWsTokenResponse,
   UploadTokenResponse,
 } from './types'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api'
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
@@ -151,9 +151,8 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
   const { base: normalizedBase } = resolveApiBase()
 
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
-  const endpointWithSlash = normalizedEndpoint.endsWith('/') ? normalizedEndpoint : `${normalizedEndpoint}/`
 
-  let urlString = `${normalizedBase}${endpointWithSlash}`
+  let urlString = `${normalizedBase}${normalizedEndpoint}`
 
   if (params) {
     const searchParams = new URLSearchParams()
@@ -173,7 +172,7 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
   // This prevents race conditions on initial page load
   await waitForAuth()
   const token = await getAccessToken()
-  if (!token && process.env.NODE_ENV !== 'test') {
+  if (!token && process.env.NODE_ENV === 'development') {
     console.warn('[api] Missing Supabase access token for request', normalizedEndpoint)
   }
 
@@ -206,7 +205,39 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
 
   requestInit.headers = headers
 
-  const response = await fetch(urlString, requestInit)
+  const executeRequest = async (overrideToken?: string | null) => {
+    const requestHeaders = { ...headers }
+    if (overrideToken) {
+      requestHeaders['Authorization'] = `Bearer ${overrideToken}`
+    }
+
+    const response = await fetch(urlString, { ...requestInit, headers: requestHeaders })
+    return response
+  }
+
+  let response = await executeRequest()
+
+  const isAuthFailure =
+    (response.status === 401 || response.status === 403) &&
+    Boolean(response.headers.get('www-authenticate'))
+
+  if (!response.ok && isAuthFailure) {
+    const refreshedToken = await refreshAccessToken()
+    if (refreshedToken && refreshedToken !== token) {
+      response = await executeRequest(refreshedToken)
+    }
+
+    const retryAuthFailure =
+      (response.status === 401 || response.status === 403) &&
+      Boolean(response.headers.get('www-authenticate'))
+
+    if (!response.ok && retryAuthFailure) {
+      await clearAuthSession()
+      if (typeof window !== 'undefined') {
+        window.location.assign('/login')
+      }
+    }
+  }
 
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => ({ detail: 'Unknown error' }))
@@ -224,9 +255,9 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
 export const api = {
   assets: {
     list: (params?: { asset_type?: 'video' | 'audio'; folder_id?: string }) =>
-      apiRequest<Asset[]>('/assets', { params }),
+      apiRequest<Asset[]>('/assets/', { params }),
     get: (id: string) => apiRequest<Asset>(`/assets/${id}`),
-    create: (data: CreateAssetPayload) => apiRequest<Asset>('/assets', { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: CreateAssetPayload) => apiRequest<Asset>('/assets/', { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: string, options?: { force?: boolean }) =>
       apiRequest<void>(`/assets/${id}`, {
         method: 'DELETE',
@@ -242,10 +273,10 @@ export const api = {
   },
 
   playlists: {
-    list: () => apiRequest<Playlist[]>('/playlists'),
+    list: () => apiRequest<Playlist[]>('/playlists/'),
     get: (id: string) => apiRequest<Playlist>(`/playlists/${id}`),
     create: (data: PlaylistCreatePayload) =>
-      apiRequest<Playlist>('/playlists', { method: 'POST', body: JSON.stringify(data) }),
+      apiRequest<Playlist>('/playlists/', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: PlaylistUpdatePayload) =>
       apiRequest<Playlist>(`/playlists/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiRequest<void>(`/playlists/${id}`, { method: 'DELETE' }),
@@ -253,27 +284,37 @@ export const api = {
   },
 
   destinations: {
-    list: () => apiRequest<Destination[]>('/destinations'),
+    list: () => apiRequest<Destination[]>('/destinations/'),
     get: (id: string) => apiRequest<Destination>(`/destinations/${id}`),
     create: (data: DestinationCreatePayload) =>
-      apiRequest<Destination>('/destinations', { method: 'POST', body: JSON.stringify(data) }),
+      apiRequest<Destination>('/destinations/', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: DestinationUpdatePayload) =>
       apiRequest<Destination>(`/destinations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiRequest<void>(`/destinations/${id}`, { method: 'DELETE' }),
   },
 
   streams: {
-    list: () => apiRequest<Stream[]>('/streams'),
-    create: (data: CreateStreamPayload) => apiRequest<Stream>('/streams', {
+    list: () => apiRequest<Stream[]>('/streams/'),
+    create: (data: CreateStreamPayload) => apiRequest<Stream>('/streams/', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+    update: (id: string, payload: StreamSchedulePayload) =>
+      apiRequest<Stream>(`/streams/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
     delete: (id: string) => apiRequest<void>(`/streams/${id}`, { method: 'DELETE' }),
     start: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/start`, { method: 'POST' }),
     stop: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/stop`, { method: 'POST' }),
     status: (id: string) => apiRequest<StreamStatusResponse>(`/streams/${id}/status`),
-    createWsToken: () => apiRequest<StreamWsTokenResponse>('/streams/ws-token', { method: 'POST' }),
-    logs: (id: string, lines?: number) => apiRequest<StreamLogsResponse>(`/streams/${id}/logs`, { params: { lines: lines ?? 100 } }),
+    logs: (id: string, options?: { lines?: number; mode?: 'important' | 'raw' }) =>
+      apiRequest<StreamLogsResponse>(`/streams/${id}/logs`, {
+        params: {
+          lines: options?.lines ?? 100,
+          ...(options?.mode ? { mode: options.mode } : undefined),
+        },
+      }),
     quality: (id: string) => apiRequest<StreamQualityResponse>(`/streams/${id}/quality`),
     liveUpdate: (id: string, payload: StreamLiveUpdatePayload) =>
       apiRequest<Stream>(`/streams/${id}/live-config`, {
@@ -297,9 +338,9 @@ export const api = {
 
   mediaFolders: {
     list: (params?: { parent_id?: string; is_root?: boolean; search?: string }) =>
-      apiRequest<MediaFolder[]>('/media-folders', { params }),
+      apiRequest<MediaFolder[]>('/media-folders/', { params }),
     create: (data: { name: string; parent_id?: string | null }) =>
-      apiRequest<MediaFolder>('/media-folders', { method: 'POST', body: JSON.stringify(data) }),
+      apiRequest<MediaFolder>('/media-folders/', { method: 'POST', body: JSON.stringify(data) }),
     update: (folderId: string, data: { name?: string; parent_id?: string | null }) =>
       apiRequest<MediaFolder>(`/media-folders/${folderId}`, {
         method: 'PATCH',
@@ -326,7 +367,7 @@ export const api = {
       is_active?: boolean
       include_items?: boolean
     }) =>
-      apiRequest<MediaCollection[]>('/media-collections', {
+      apiRequest<MediaCollection[]>('/media-collections/', {
         params: params
           ? {
               collection_type: params.collection_type,
@@ -340,7 +381,7 @@ export const api = {
         params: { include_items: includeItems },
       }),
     create: (payload: MediaCollectionCreatePayload) =>
-      apiRequest<MediaCollection>('/media-collections', {
+      apiRequest<MediaCollection>('/media-collections/', {
         method: 'POST',
         body: JSON.stringify(payload),
       }),

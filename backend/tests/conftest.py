@@ -240,4 +240,41 @@ async def ensure_subscription_tiers() -> AsyncGenerator[None, None]:
             """
         ))
 
+        await session.execute(text(
+            """
+            DO $$
+            DECLARE
+                constraint_def TEXT;
+            BEGIN
+                IF to_regclass('public.streams') IS NULL THEN
+                    RETURN;
+                END IF;
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint c
+                    WHERE c.conrelid = 'public.streams'::regclass
+                      AND c.conname = 'streams_status_check'
+                ) THEN
+                    ALTER TABLE streams DROP CONSTRAINT streams_status_check;
+                END IF;
+
+                SELECT pg_get_constraintdef(c.oid)
+                INTO constraint_def
+                FROM pg_constraint c
+                WHERE c.conrelid = 'public.streams'::regclass
+                  AND c.conname = 'check_status'
+                LIMIT 1;
+
+                IF constraint_def IS NULL OR position('scheduled' in constraint_def) = 0 THEN
+                    ALTER TABLE streams DROP CONSTRAINT IF EXISTS check_status;
+                    ALTER TABLE streams
+                        ADD CONSTRAINT check_status
+                        CHECK (status IN ('stopped', 'starting', 'running', 'error', 'stopping', 'scheduled'));
+                END IF;
+            END $$;
+            """
+        ))
+
+        await session.commit()
+
     yield

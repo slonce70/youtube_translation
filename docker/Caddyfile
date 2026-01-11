@@ -2,9 +2,9 @@
 # Replace yourdomain.com with your actual domain
 
 yourdomain.com {
-    # Frontend
-    handle / {
-        reverse_proxy frontend:3000
+    # Block internal backend endpoints on the public edge proxy
+    handle /api/internal/* {
+        respond 404
     }
 
     # Backend API
@@ -13,8 +13,18 @@ yourdomain.com {
     }
 
     # tusd upload endpoint
-    handle /uploads/* {
+    handle /files/* {
         reverse_proxy tusd:1080
+    }
+
+    # Backward-compatible alias
+    handle_path /uploads/* {
+        redir /files{path} 308
+    }
+
+    # Frontend (fallback)
+    handle {
+        reverse_proxy frontend:3000
     }
 
     # Enable compression
@@ -36,15 +46,23 @@ yourdomain.com {
 
 # Development Caddyfile (localhost)
 :80 {
-    handle / {
-        reverse_proxy frontend:3000
+    handle /api/internal/* {
+        respond 404
     }
 
     handle /api/* {
         reverse_proxy backend:8000
     }
 
-    handle /uploads/* {
+    handle /files/* {
         reverse_proxy tusd:1080
+    }
+
+    handle_path /uploads/* {
+        redir /files{path} 308
+    }
+
+    handle {
+        reverse_proxy frontend:3000
     }
 }

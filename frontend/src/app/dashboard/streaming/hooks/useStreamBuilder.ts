@@ -371,26 +371,33 @@ export const useStreamBuilder = ({
       }
     }
 
+    const createdCollectionTracker = {
+      video: null as string | null,
+      audio: null as string | null,
+    }
+
     setIsBuilderSubmitting(true)
     try {
       let videoCollectionId = videoEditor.selectedCollectionId
       if (!videoCollectionId || videoEditor.mode === 'custom') {
-        videoCollectionId = await persistEditorAsCollection(
+        createdCollectionTracker.video = await persistEditorAsCollection(
           videoEditor,
           'video_background',
           tStreaming('streams.builder.video.title'),
         )
+        videoCollectionId = createdCollectionTracker.video
       }
 
       let audioCollectionId: string | undefined
       if (audioEnabled) {
         audioCollectionId = audioEditor.selectedCollectionId ?? undefined
         if (!audioCollectionId || audioEditor.mode === 'custom') {
-          audioCollectionId = await persistEditorAsCollection(
+          createdCollectionTracker.audio = await persistEditorAsCollection(
             audioEditor,
             'audio_playlist',
             tStreaming('streams.builder.audio.title'),
           )
+          audioCollectionId = createdCollectionTracker.audio
         }
       }
 
@@ -414,8 +421,17 @@ export const useStreamBuilder = ({
 
       await createStreamMutation.mutateAsync(payload)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create collection'
+      const message =
+        error instanceof Error ? error.message : streamingToasts('errors.createStreamFailed')
       toast.error(streamingToasts('generic.errorWithMessage', { message }))
+
+      const createdCollectionIds = [createdCollectionTracker.video, createdCollectionTracker.audio].filter(
+        (id): id is string => Boolean(id),
+      )
+      if (createdCollectionIds.length > 0) {
+        await Promise.allSettled(createdCollectionIds.map((id) => api.mediaCollections.delete(id)))
+        queryClient.invalidateQueries({ queryKey: ['media-collections', user?.id] })
+      }
     } finally {
       setIsBuilderSubmitting(false)
     }
@@ -424,10 +440,12 @@ export const useStreamBuilder = ({
     audioEnabled,
     editorHasSelection,
     persistEditorAsCollection,
+    queryClient,
     scheduleState,
     streamForm,
     streamingToasts,
     tStreaming,
+    user?.id,
     videoEditor,
     createStreamMutation,
   ])

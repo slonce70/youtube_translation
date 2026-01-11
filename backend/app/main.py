@@ -48,7 +48,6 @@ from app.middleware.api_metrics import APIMetricsMiddleware
 from app.core.logging_config import setup_logging, get_logger
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.services.streams.scheduler import scheduled_stream_launcher
-from app.services.streams.websocket import stream_ws_manager
 
 
 _background_tasks = set()
@@ -151,28 +150,6 @@ async def startup_event():
     # Start periodic stream status sync (only in supervisor/systemd mode)
     if settings.stream_runtime_mode in ("supervisor", "systemd"):
         schedule_background_task(periodic_stream_status_sync())
-    
-    # Start WebSocket broadcaster
-    schedule_background_task(broadcast_stream_updates())
-
-
-async def broadcast_stream_updates():
-    """Periodically broadcast stream status to WebSocket clients"""
-    while True:
-        await asyncio.sleep(1.0)
-        try:
-            # Get active stream status from ffmpeg manager
-            active_streams = ffmpeg_manager.get_all_streams()
-            
-            # We might want to enrich this with DB info in the future, 
-            # but for "Control Room" visuals, runtime state is key.
-            # Format: { stream_id: { is_running: bool, uptime: int, ... } }
-            await stream_ws_manager.broadcast({
-                "type": "stream_update",
-                "payload": active_streams
-            })
-        except Exception as e:
-            logger.error(f"Error broadcasting stream updates: {e}")
 
 
 async def cleanup_rate_limiter():

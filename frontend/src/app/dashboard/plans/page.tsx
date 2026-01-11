@@ -137,13 +137,24 @@ export default function PlansPage() {
   }
 
   const { currentTier } = useDashboardContext()
-  const [quality, setQuality] = useState<PlanQuality>('fhd')
+  const [quality, setQuality] = useState<PlanQuality>(() => {
+    if (!currentTier || currentTier === 'free') return 'fhd'
+
+    const planQuality = PLAN_CONFIGS[currentTier as PlanId]?.quality
+    return planQuality && planQuality !== 'free' ? planQuality : 'fhd'
+  })
+  const [qualityPinned, setQualityPinned] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanId>((currentTier ?? 'free') as PlanId)
 
   const planMessages = messages.plans?.page?.plans ?? ({} as Record<PlanId, PlanMessage>)
   const comparisonMessages = messages.plans?.page?.comparison ?? ({} as ComparisonMessages)
   const faqMessages = messages.plans?.page?.faq ?? ({} as FaqMessage)
   const qualityToggleMessages = messages.plans?.page?.qualityToggle ?? ({} as Record<PlanQuality, string>)
+
+  const currentPlanId = ((currentTier ?? 'free') as PlanId)
+  const currentPlanName = planMessages[currentPlanId]?.name ?? currentPlanId
+  const selectedPlanName = planMessages[selectedPlan]?.name ?? selectedPlan
+  const showSelectedBadge = selectedPlan !== currentPlanId
 
   const activePlanOrder = useMemo(() => (['free', ...QUALITY_PLAN_ORDER[quality]] as PlanId[]), [quality])
   const activeComparison = comparisonMessages.qualities?.[quality] ?? {
@@ -154,21 +165,28 @@ export default function PlansPage() {
   useEffect(() => {
     if (!currentTier) return
     if (currentTier === 'free') return
+    if (qualityPinned) return
 
     const planQuality = PLAN_CONFIGS[currentTier as PlanId]?.quality
-    if (planQuality && planQuality !== 'free' && planQuality !== quality) {
+    if (planQuality && planQuality !== 'free') {
       setQuality(planQuality)
     }
-  }, [currentTier, quality])
+  }, [currentTier, qualityPinned])
 
   useEffect(() => {
     if (currentTier) {
       setSelectedPlan(currentTier as PlanId)
+      setQualityPinned(false)
     }
   }, [currentTier])
 
   useEffect(() => {
-    setSelectedPlan((prev) => (activePlanOrder.includes(prev) ? prev : activePlanOrder[0]))
+    setSelectedPlan((prev) => {
+      if (activePlanOrder.includes(prev)) return prev
+
+      const defaultPlan = activePlanOrder.find((planId) => planId !== 'free')
+      return defaultPlan ?? activePlanOrder[0]
+    })
   }, [activePlanOrder])
 
   const handlePlanNavigation = (planConfig: PlanConfig) => {
@@ -197,6 +215,16 @@ export default function PlansPage() {
 
       <section>
         <div className="mb-6 flex flex-wrap items-center gap-3">
+          {currentTier ? (
+            <Badge variant={currentTier === 'free' ? 'secondary' : 'success'}>
+              {tPlans('selection.badges.current')}: {currentPlanName}
+            </Badge>
+          ) : null}
+          {showSelectedBadge ? (
+            <Badge variant="info">
+              {tPlans('selection.badges.selected')}: {selectedPlanName}
+            </Badge>
+          ) : null}
           <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
             {QUALITY_TOGGLE_ORDER.map((tier) => {
               const label = qualityToggleMessages[tier] ?? tier.toUpperCase()
@@ -205,7 +233,10 @@ export default function PlansPage() {
                 <button
                   key={tier}
                   type="button"
-                  onClick={() => setQuality(tier)}
+                  onClick={() => {
+                    setQualityPinned(true)
+                    setQuality(tier)
+                  }}
                   className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                     isActive
                       ? 'bg-primary-500 text-white shadow-sm'
@@ -224,7 +255,7 @@ export default function PlansPage() {
             const planConfig = PLAN_CONFIGS[planId]
             const planData = planMessages[planConfig.id] ?? ({} as PlanMessage)
             const highlights = Array.isArray(planData.highlights) ? planData.highlights : []
-            const badgeText = planData.badge
+            const badgeText = planConfig.id === 'free' ? undefined : planData.badge
             const planName = planData.name ?? planId
             const planPrice = planData.price ?? ''
             const planPeriod = planData.period ?? ''
@@ -268,17 +299,21 @@ export default function PlansPage() {
                   isCurrentPlan ? 'bg-primary-50/40 dark:bg-primary-950/10' : 'bg-white/95 dark:bg-slate-900/70'
                 )}
               >
-                <div className="absolute left-4 top-4 flex flex-col gap-2">
-                  {selectionBadge ? (
-                    <Badge variant={isCurrentPlan ? 'success' : 'secondary'}>{selectionBadge}</Badge>
-                  ) : null}
-                </div>
-                {badgeText ? (
-                  <Badge variant={planConfig.badgeVariant} className="absolute right-4 top-4">
-                    {badgeText}
-                  </Badge>
-                ) : null}
                 <CardHeader>
+                  {selectionBadge || badgeText ? (
+                    <div className="flex items-start gap-2">
+                      <div className="flex flex-col gap-2">
+                        {selectionBadge ? (
+                          <Badge variant={isCurrentPlan ? 'success' : 'info'}>{selectionBadge}</Badge>
+                        ) : null}
+                      </div>
+                      {badgeText ? (
+                        <Badge variant={planConfig.badgeVariant} className="ml-auto">
+                          {badgeText}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <CardTitle className="text-xl font-semibold">{planName}</CardTitle>
                   <div className="mt-4">
                     <p className="text-3xl font-bold text-slate-900 dark:text-white">{planPrice}</p>

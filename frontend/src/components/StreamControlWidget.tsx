@@ -23,11 +23,11 @@ interface StreamControlWidgetProps {
   loading?: boolean
 }
 
-const statusBadges: Record<string, 'success' | 'info' | 'warning' | 'error'> = {
-  running: 'success',
-  stopped: 'info',
-  starting: 'warning',
-  stopping: 'warning',
+const statusBadges: Record<string, 'secondary' | 'error'> = {
+  running: 'secondary',
+  stopped: 'secondary',
+  starting: 'secondary',
+  stopping: 'secondary',
   error: 'error',
 }
 
@@ -109,7 +109,7 @@ export function StreamControlWidget({ streams, loading, onRefresh }: StreamContr
         ) : (
           <div className="space-y-3">
             {activeStreams.slice(0, 3).map((stream, index) => {
-              const badgeVariant = statusBadges[stream.status] ?? 'info'
+              const badgeVariant = statusBadges[stream.status] ?? 'secondary'
               const statusLabel = stream.status in statusBadges ? t(`status.${stream.status}`) : stream.status
               const isMutating =
                 (startMutation.isPending && startMutation.variables === stream.id) ||

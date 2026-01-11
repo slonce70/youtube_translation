@@ -1,7 +1,4 @@
 {
-  "scripts": {
-    "zll": "node scripts/zll.cjs"
-  },
   "devDependencies": {
     "documentation": "^14.0.3",
     "jsdoc": "^4.0.5",

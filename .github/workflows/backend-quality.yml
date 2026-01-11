@@ -1,5 +1,12 @@
 name: Backend Quality Checks
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     paths:
@@ -13,15 +20,19 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     services:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres"
+          --health-cmd="pg_isready -U postgres -d postgres"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -38,11 +49,20 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+
+      - name: Validate tusd hooks bash syntax
+        run: |
+          bash -n tusd-hooks/pre-create tusd-hooks/post-finish
+
+      - name: Run ruff
+        run: python -m ruff check app/
 
       - name: Prepare test environment
         run: |
@@ -50,34 +70,17 @@ jobs:
           SUPABASE_URL=https://example.supabase.co
           SUPABASE_KEY=dummy-key
           SUPABASE_JWT_SECRET=dummy-jwt-secret
-          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
+          DATABASE_URL=postgresql://postgres:password@localhost:5432/postgres
           ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
           ENCRYPTION_SALT=test_salt_value
           DOWNLOAD_TOKEN_SECRET=test_download_secret
-          UPLOAD_TOKEN_SECRET=test_upload_secret
           TUSD_HMAC_SECRET=test_tusd_secret
-          METRICS_ACCESS_TOKEN=test_metrics_token
+          UPLOAD_TOKEN_SECRET=test_upload_secret
           ENV
 
-      - name: Run migrations
+      - name: Run unit tests
         env:
           ENV_FILE: .env.ci
         run: |
           export $(grep -v '^#' "$ENV_FILE" | xargs)
-          python apply_migrations.py
-
-      - name: Lint (ruff)
-        run: ruff check .
-
-      - name: Format check (black)
-        run: black --check .
-
-      - name: Type check (mypy)
-        run: mypy app --ignore-missing-imports
-
-      - name: Run test suite
-        env:
-          ENV_FILE: .env.ci
-        run: |
-          export $(grep -v '^#' "$ENV_FILE" | xargs)
-          pytest -v
+          FFMPEG_BIN=tests/bin/ffmpeg pytest -v

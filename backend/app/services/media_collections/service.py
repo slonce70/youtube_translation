@@ -7,7 +7,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,7 +17,7 @@ from app.core.collections import (
     replace_collection_items as replace_collection_items_helper,
     validate_collection_assets,
 )
-from app.models.database import CollectionItem, MediaCollection
+from app.models.database import CollectionItem, MediaCollection, Stream
 from app.schemas.api import (
     CollectionItemResponse,
     CollectionItemsUpdate,
@@ -194,6 +194,19 @@ class MediaCollectionService:
         collection = await self._load_collection(collection_id, include_items=False)
         if not collection:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+
+        in_use_query = (
+            select(Stream.id)
+            .where(Stream.user_id == self.user_id)
+            .where(or_(Stream.video_collection_id == collection_id, Stream.audio_collection_id == collection_id))
+            .limit(1)
+        )
+        in_use_result = await self.db.execute(in_use_query)
+        if in_use_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"error": "collection_in_use"},
+            )
 
         await self.db.execute(delete(MediaCollection).where(MediaCollection.id == collection_id))
         await self.db.commit()

@@ -28,7 +28,12 @@ from app.models.database import (
     StreamAsset,
     StreamDestination,
 )
-from app.schemas.api import StreamCreate, StreamLiveUpdateRequest, StreamQueueAppend
+from app.schemas.api import (
+    StreamCreate,
+    StreamLiveUpdateRequest,
+    StreamQueueAppend,
+    StreamScheduleUpdate,
+)
 
 from .helpers import (
     ALLOWED_MIX_MODES,
@@ -54,10 +59,13 @@ class StreamService:
         self.settings = settings_provider
 
     async def list_streams(self) -> List[Stream]:
+        # Optimization: Use lighter query options for listing.
+        # We only need stream_assets (for ID/position) and not the full nested objects
+        # like playlists, collections, or asset details which are not returned in the list view.
         query = (
             select(Stream)
             .where(Stream.user_id == self.user_id)
-            .options(*load_stream_with_relations_options())
+            .options(*_load_stream_list_options())
         )
         result = await self.db.execute(query)
         return result.scalars().all()
@@ -209,6 +217,47 @@ class StreamService:
 
         await self.db.execute(delete(Stream).where(Stream.id == stream_id))
         await self.db.commit()
+
+    async def update_stream_schedule(self, stream_id: UUID, payload: StreamScheduleUpdate) -> Stream:
+        stream = await self._get_stream_basic(stream_id)
+        schedule_mode = (payload.schedule_mode or "now").lower()
+
+        if schedule_mode == "schedule" and stream.status in {"running", "starting", "stopping"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot schedule start while stream is running",
+            )
+
+        if schedule_mode == "schedule":
+            stream.scheduled_start_enabled = True
+            stream.scheduled_start_time = payload.schedule_start_at
+            stream.scheduled_start_attempted_at = None
+            if stream.status in {"stopped", "error", "scheduled"}:
+                stream.status = "scheduled"
+        else:
+            stream.scheduled_start_enabled = False
+            stream.scheduled_start_time = None
+            stream.scheduled_start_attempted_at = None
+            if stream.status == "scheduled":
+                stream.status = "stopped"
+
+        if payload.schedule_stop_at:
+            stream.scheduled_stop_time = payload.schedule_stop_at
+            stream.scheduled_stop_attempted_at = None
+        else:
+            stream.scheduled_stop_time = None
+            stream.scheduled_stop_attempted_at = None
+
+        await self.db.commit()
+
+        updated_stream = await load_stream_with_relations(self.db, self.user_id, stream.id)
+        if not updated_stream:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Stream updated but could not be loaded",
+            )
+
+        return updated_stream
 
     async def live_update_stream(
         self,
@@ -497,6 +546,18 @@ def load_stream_with_relations_options():  # pragma: no cover - helper for reada
         selectinload(Stream.audio_collection)
         .selectinload(MediaCollection.items)
         .selectinload(CollectionItem.asset),
+    )
+
+
+def _load_stream_list_options():
+    from sqlalchemy.orm import selectinload
+
+    return (
+        # stream_assets are needed for StreamResponse.stream_assets (List[StreamAssetLink])
+        # which requires asset_id and position. These are on the StreamAsset table.
+        selectinload(Stream.stream_assets),
+        # stream_destinations are accessed to build StreamResponse.destinations
+        selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
     )
 
 

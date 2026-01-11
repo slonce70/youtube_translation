@@ -14,11 +14,32 @@
 - **Streaming ядро:** start/stop, статуси, лог‑файли, auto‑restart/backoff, multi‑destination через `tee`, placeholders, hot‑swap/live edit механіка (slot/queue).
 - **Runtime режими:** `manager` / `supervisor` / `systemd`, CLI `python -m app.cli.run_stream <stream_id>`, reconciler для supervisor/systemd.
 - **Observability:** JSON‑логи, метрики (`/api/metrics`, `/api/metrics/prometheus`), базові UI‑екрани (dashboard/streaming).
-- **Тестування:** backend pytest, frontend unit (jest), e2e (playwright) — описано в `docs/TESTING.md`.
+- **Тестування:** backend pytest, frontend unit (jest), e2e (playwright) — описано в `README.md` / `Makefile`.
+
+## Оновлення (2026-01-09)
+- ✅ Виправлено список трансляцій: `GET /api/streams/` більше не падає через async lazy-load (`stream_destinations` тепер eager-load).
+- ✅ Додано міграцію `026_collection_items_updated_at.sql` для сумісності старих локальних БД.
+- ✅ Streaming builder: останній крок у модалці тепер коректно скролиться (кнопка “Створити” доступна без зуму).
+- ✅ Library: після upload файли з’являються в списку без ручного refresh (довший refetch/backoff).
+- ✅ Streaming: статус “Зупиняється” більше не зависає — reconciler синхронізує `stopping`, supervisor parse розпізнає `NOT_FOUND`.
+- ✅ Streaming logs: “важливе” за замовчуванням + перемикач raw; зменшено FFmpeg spam (`-hide_banner -nostats`).
+- ✅ Library: відео прев’ю/thumbnail (`thumbnail_url` + fallback `/thumbnails/{asset_id}.jpg`).
+- ✅ Оновлено рекомендації bitrate/quality (включно з 720p і дробними значеннями).
+- ✅ DB: автопатч для старих локальних БД (`collection_items.updated_at` + trigger), щоб уникнути 500 на колекціях.
+- ✅ i18n: прибрано залишки англомовних confirm/toast fallback у Library/Streaming та локалізовано згадку “Go Live” в dashboard checklist (uk/ru).
+
+## Оновлення (2026-01-10)
+- ✅ Backend: зроблено міграції більш ідемпотентними для “fresh” локальної БД + узгоджено ORM (FK/relationships для `user_id`), щоб уникнути 500 після перевстановлення/скидання середовища.
+- ✅ Library (A10): пошук за назвою, сортування та перемикач “Компактно/Детально”.
+- ✅ Dashboard (A10): checklist зроблено collapsible для менш перевантаженого UI.
+- ✅ Streaming (A5): help-блок у формі каналу (як знайти YouTube stream key + RTMPS підказка).
+- ✅ Admin: скрипт `create_admin.py` підтримує підняття адміна за email.
+- ✅ Streaming (A5): VOD <12h warning, recommended encoder settings (GOP 2s, H.264/AAC) + “First stream checklist” у продукті/доках.
+- ✅ Streaming schedule: швидкі кнопки тривалості (12/24/48 год) + редагування розкладу існуючих стрімів.
 
 ## Ключові прогалини (що дає найбільший приріст цінності)
-1) **Scheduler stop + повтори + timezone** (зараз є лише scheduled start).
-2) **Production‑готовий runner** для Docker/self‑host: щоб рестарт API не “вбивав” стріми (supervisord runner/service).
+1) **Repeats scheduler + windows + DST** (stop/timezone для one‑shot вже є, але repeats ще немає).
+2) **Production‑готовий runner** для Docker/self‑host: довести до “не плутає” dev/prod (healthcheck, unix socket як default, docs).
 3) **Optimize once → copy‑mode** (smart encoder pipeline) для бюджету і стабільності.
 4) **YouTube Connect (OAuth) + Live Streaming API** для “one‑click connect” та автоматизації lifecycle.
 5) **VOD segmentation** (auto‑restart під <12h архівування) + **live controls** (skip/jump/emergency).
@@ -33,6 +54,7 @@
 - Production runner: default для деплою через Docker Compose (окремий runner service) + інструкції.
 - Asset lifecycle: “safe delete” як default (не можна видалити використаний asset; `force` — тільки для адмінів/не в UI).
 - UX/Docs: “як взяти stream key”, попередження про 12h VOD, “first stream checklist”.
+- Streaming UX/stability: коректні статуси (без “stopping” hang) + логи “important” за замовчуванням + базова i18n‑консистентність (uk/en/ru).
 - Regression tests для scheduler stop та runner/reconcile сценаріїв.
 
 **Exit criteria**
