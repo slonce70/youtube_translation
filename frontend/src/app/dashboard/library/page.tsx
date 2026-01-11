@@ -1711,9 +1711,13 @@ export default function LibraryPage() {
                   </div>
                 )}
 
-                {/* Render assets as list */}
+                {/* Render assets (grid for compact view) */}
                 {displayedAssets.length > 0 ? (
-                  <div className="flex flex-col gap-3">
+                  <div
+                    className={assetDensity === 'compact'
+                      ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+                      : 'flex flex-col gap-3'}
+                  >
                     {displayedAssets.map((asset) => (
                       <AssetCard
                         key={asset.id}
