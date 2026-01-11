@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Uppy from '@uppy/core'
@@ -11,7 +11,7 @@ import { useTranslations } from 'next-intl'
 import { 
   AlertCircle, Upload, ListVideo, Plus, CheckCircle, XCircle, Clock, 
   List, PlayCircle, CalendarClock, Edit, Trash2, ChevronDown, ChevronUp, Loader2, X,
-  Folder, FolderPlus, CheckSquare, Square, MinusSquare
+  Folder, FolderPlus, CheckSquare, Square, MinusSquare, Search
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -42,6 +42,7 @@ import {
   type AssetDisplayInfo,
   type AssetWarning,
 } from './asset-utils'
+import { applyAssetView, type AssetSortValue } from './asset-view'
 import { useDashboardContext } from '../dashboard-context'
 import { Breadcrumbs } from '@/components/library/Breadcrumbs'
 import { FolderCard } from '@/components/library/FolderCard'
@@ -60,6 +61,7 @@ export default function LibraryPage() {
   const tFolders = useTranslations('library.folders')
   const tUploadModal = useTranslations('library.uploadModal')
   const tAssetWarnings = useTranslations('library.page.assets.warnings')
+  const tStreamingStatus = useTranslations('streaming.status')
   const actionLabels = useTranslations('common.actions')
 
   const buildLibraryRoute = useCallback(
@@ -193,12 +195,19 @@ export default function LibraryPage() {
   const [checkModalInfo, setCheckModalInfo] = useState<AssetDisplayInfo | null>(null)
   const [isCheckModalLoading, setIsCheckModalLoading] = useState(false)
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set())
+  const [assetSearchQuery, setAssetSearchQuery] = useState('')
+  const [assetSort, setAssetSort] = useState<AssetSortValue>('newest')
+  const [assetDensity, setAssetDensity] = useState<'compact' | 'comfortable'>('compact')
+  const [inUseOnly, setInUseOnly] = useState(false)
+  const [warningsOnly, setWarningsOnly] = useState(false)
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(new Set())
+  const [pendingUsageActionKeys, setPendingUsageActionKeys] = useState<Set<string>>(new Set())
   const [moveModalState, setMoveModalState] = useState<{ open: boolean; assetIds: string[] }>({
     open: false,
     assetIds: [],
   })
   const [uploadTokenState, setUploadTokenState] = useState<{ token: string; expiresAt: number } | null>(null)
+  const assetsRefreshTimeoutRef = useRef<number | null>(null)
   const [deleteModalState, setDeleteModalState] = useState<{
     open: boolean
     assetIds: string[]
@@ -220,6 +229,33 @@ export default function LibraryPage() {
     { mode: 'create' | 'rename' | 'delete'; folder: MediaFolder | null } | null
   >(null)
   const [folderNameInput, setFolderNameInput] = useState('')
+
+  useEffect(() => {
+    const density = window.localStorage.getItem('yt.library.assetDensity')
+    if (density === 'compact' || density === 'comfortable') {
+      setAssetDensity(density)
+    }
+
+    const sort = window.localStorage.getItem('yt.library.assetSort')
+    if (
+      sort === 'newest' ||
+      sort === 'oldest' ||
+      sort === 'nameAsc' ||
+      sort === 'nameDesc' ||
+      sort === 'sizeDesc' ||
+      sort === 'sizeAsc'
+    ) {
+      setAssetSort(sort)
+    }
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem('yt.library.assetDensity', assetDensity)
+  }, [assetDensity])
+
+  useEffect(() => {
+    window.localStorage.setItem('yt.library.assetSort', assetSort)
+  }, [assetSort])
 
   // Playlists state
   const [showCreatePlaylist, setShowCreatePlaylist] = useState(false)
@@ -265,6 +301,9 @@ export default function LibraryPage() {
       if (!result.successful || !result.successful.length) {
         return
       }
+      if (!user?.id) {
+        return
+      }
 
       setIsProcessingUpload(true)
       const toastId = toast.loading(libraryToasts('upload.finalizing'))
@@ -283,17 +322,17 @@ export default function LibraryPage() {
           selectedFolderId,
         ]
 
-        const refreshUntilVisible = async () => {
-          const pollSchedule = [0, 350, 900, 1600]
+        const refreshUntilVisible = async (): Promise<boolean> => {
+          const pollSchedule = [0, 800, 1600, 3200, 6400, 12000, 20000]
           for (const delayMs of pollSchedule) {
             if (delayMs) {
               await sleep(delayMs)
             }
-            await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
-            await queryClient.refetchQueries({ queryKey: ['assets', user?.id], type: 'active' })
+            await queryClient.invalidateQueries({ queryKey: activeAssetsKey, exact: true })
+            await queryClient.refetchQueries({ queryKey: activeAssetsKey, type: 'active', exact: true })
 
             if (!shouldVerifyPresence || !uploadedFiles.length) {
-              continue
+              return true
             }
 
             const currentAssets = queryClient.getQueryData<Asset[]>(activeAssetsKey)
@@ -307,16 +346,28 @@ export default function LibraryPage() {
                 })
               )
             ) {
-              return
+              return true
             }
           }
+          return !shouldVerifyPresence
         }
 
-        await refreshUntilVisible()
+        const found = await refreshUntilVisible()
+        if (!found && shouldVerifyPresence) {
+          if (assetsRefreshTimeoutRef.current) {
+            window.clearTimeout(assetsRefreshTimeoutRef.current)
+          }
+          assetsRefreshTimeoutRef.current = window.setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: activeAssetsKey, exact: true })
+            queryClient.refetchQueries({ queryKey: activeAssetsKey, type: 'active', exact: true })
+            assetsRefreshTimeoutRef.current = null
+          }, 5000)
+        }
         toast.success(libraryToasts('upload.processed'), { id: toastId })
         setIsUploadOpen(false)
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
+        const message =
+          error instanceof Error ? error.message : libraryToasts('generic.unknownError')
         toast.error(libraryToasts('upload.refreshFailed', { message }), { id: toastId })
       } finally {
         uppy.cancelAll()
@@ -338,6 +389,10 @@ export default function LibraryPage() {
     return () => {
       uppy.off('complete', handleComplete)
       uppy.off('error', handleError)
+      if (assetsRefreshTimeoutRef.current) {
+        window.clearTimeout(assetsRefreshTimeoutRef.current)
+        assetsRefreshTimeoutRef.current = null
+      }
       const plugin = uppy.getPlugin('Tus')
       if (plugin) {
         uppy.removePlugin(plugin)
@@ -360,7 +415,7 @@ export default function LibraryPage() {
       const message =
         error instanceof ApiError
           ? error.message
-          : (error as Error)?.message ?? 'Unable to refresh upload token'
+          : (error as Error)?.message ?? libraryToasts('upload.tokenRefreshFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
     }
   }, [libraryToasts, uppy, user?.id])
@@ -439,6 +494,31 @@ export default function LibraryPage() {
     return root ? root.id : null
   }, [folders])
 
+  const visibleAssets = useMemo(() => {
+    if (!assets) return [] as Asset[]
+
+    // "all" view behaves like the root screen: show only root-level assets (unassigned or explicitly linked to root)
+    if (selectedFolderId === 'all') {
+      return assets.filter((asset) => {
+        if (asset.primary_folder_id) {
+          return Boolean(rootFolderId && asset.primary_folder_id === rootFolderId)
+        }
+        return true
+      })
+    }
+
+    return assets
+  }, [assets, rootFolderId, selectedFolderId])
+
+  const displayedAssets = useMemo(() => {
+    return applyAssetView(visibleAssets, {
+      query: assetSearchQuery,
+      sort: assetSort,
+      inUseOnly,
+      warningsOnly,
+    })
+  }, [assetSearchQuery, assetSort, inUseOnly, warningsOnly, visibleAssets])
+
   const assetMap = useMemo(() => {
     if (!assets) {
       return new Map<string, Asset>()
@@ -450,7 +530,7 @@ export default function LibraryPage() {
     if (!assets) return
     setSelectedAssets((prev) => {
       if (prev.size === 0) return prev
-      const allowedIds = new Set(assets.map((asset) => asset.id))
+      const allowedIds = new Set(visibleAssets.map((asset) => asset.id))
       const next = new Set<string>()
       let changed = false
       prev.forEach((id) => {
@@ -465,7 +545,30 @@ export default function LibraryPage() {
       }
       return prev
     })
-  }, [assets])
+  }, [assets, visibleAssets])
+
+  const hasViewFilters = Boolean(assetSearchQuery.trim() || inUseOnly || warningsOnly)
+
+  useEffect(() => {
+    if (!hasViewFilters) return
+    setSelectedAssets((prev) => {
+      if (prev.size === 0) return prev
+      const allowedIds = new Set(displayedAssets.map((asset) => asset.id))
+      const next = new Set<string>()
+      let changed = false
+      prev.forEach((id) => {
+        if (allowedIds.has(id)) {
+          next.add(id)
+        } else {
+          changed = true
+        }
+      })
+      if (changed || next.size !== prev.size) {
+        return next
+      }
+      return prev
+    })
+  }, [displayedAssets, hasViewFilters])
 
   // Mutations
   const revalidateAssetMutation = useMutation({
@@ -639,12 +742,17 @@ export default function LibraryPage() {
   const selectedAssetCount = selectedAssets.size
   const hasSelection = selectedAssetCount > 0
   const selectedAssetsArray = useMemo(() => Array.from(selectedAssets), [selectedAssets])
-  const allVisibleSelected = Boolean(
-    assets && assets.length > 0 && selectedAssetCount === assets.length
+  const selectedDisplayedCount = useMemo(() => {
+    if (displayedAssets.length === 0) return 0
+    return displayedAssets.reduce(
+      (count, asset) => (selectedAssets.has(asset.id) ? count + 1 : count),
+      0
+    )
+  }, [displayedAssets, selectedAssets])
+  const allDisplayedSelected = Boolean(
+    displayedAssets.length > 0 && selectedDisplayedCount === displayedAssets.length
   )
-  const isPartiallySelected = Boolean(
-    assets && selectedAssetCount > 0 && selectedAssetCount < assets.length
-  )
+  const isPartiallySelected = Boolean(selectedDisplayedCount > 0 && !allDisplayedSelected)
 
   const toggleAssetSelection = (assetId: string) => {
     setSelectedAssets((prev) => {
@@ -658,12 +766,12 @@ export default function LibraryPage() {
     })
   }
 
-  const selectAllVisibleAssets = () => {
-    if (!assets || assets.length === 0) {
+  const selectAllDisplayedAssets = () => {
+    if (displayedAssets.length === 0) {
       setSelectedAssets(new Set())
       return
     }
-    setSelectedAssets(new Set(assets.map((asset) => asset.id)))
+    setSelectedAssets(new Set(displayedAssets.map((asset) => asset.id)))
   }
 
   const clearAssetSelection = () => {
@@ -684,11 +792,25 @@ export default function LibraryPage() {
 
   const openDeleteModal = (assetIds: string[]) => {
     if (!assetIds.length) return
+    const candidateAssets = resolveAssetsByIds(assetIds)
+    const firstUsed = candidateAssets.find((asset) => {
+      const usage = asset.usage
+      const playlists = usage?.playlists?.length ?? 0
+      const collections = usage?.collections?.length ?? 0
+      const streams = usage?.streams?.length ?? 0
+      return playlists + collections + streams > 0
+    })
     setDeleteModalState({
       open: true,
       assetIds,
-      forceRequired: false,
-      forceTarget: undefined,
+      forceRequired: Boolean(firstUsed),
+      forceTarget: firstUsed
+        ? {
+            assetId: firstUsed.id,
+            name: firstUsed.filename,
+            usage: firstUsed.usage,
+          }
+        : undefined,
     })
   }
 
@@ -740,6 +862,124 @@ export default function LibraryPage() {
     [tLibrary]
   )
 
+  const markUsageActionPending = useCallback((key: string, pending: boolean) => {
+    setPendingUsageActionKeys((prev) => {
+      const next = new Set(prev)
+      if (pending) {
+        next.add(key)
+      } else {
+        next.delete(key)
+      }
+      return next
+    })
+  }, [])
+
+  const pruneForceUsage = useCallback((
+    label: 'streams' | 'collections' | 'playlists',
+    itemId: string
+  ) => {
+    setDeleteModalState((prev) => {
+      if (!prev.forceTarget?.usage) {
+        return prev
+      }
+
+      const usage = prev.forceTarget.usage
+      const nextUsage = {
+        playlists: label === 'playlists' ? usage.playlists?.filter((item) => item.id !== itemId) : usage.playlists,
+        collections: label === 'collections' ? usage.collections?.filter((item) => item.id !== itemId) : usage.collections,
+        streams: label === 'streams' ? usage.streams?.filter((item) => item.id !== itemId) : usage.streams,
+      }
+
+      const hasRemaining =
+        (nextUsage.playlists?.length ?? 0) + (nextUsage.collections?.length ?? 0) + (nextUsage.streams?.length ?? 0) > 0
+
+      return {
+        ...prev,
+        forceRequired: hasRemaining,
+        forceTarget: prev.forceTarget
+          ? {
+              ...prev.forceTarget,
+              usage: nextUsage,
+            }
+          : prev.forceTarget,
+      }
+    })
+  }, [])
+
+  const formatCollectionContext = useCallback(
+    (context?: string | null) => {
+      if (!context) return null
+      if (context === 'video_background') {
+        return tLibrary('assets.selection.collectionContext.video_background')
+      }
+      if (context === 'audio_playlist') {
+        return tLibrary('assets.selection.collectionContext.audio_playlist')
+      }
+      return null
+    },
+    [tLibrary],
+  )
+
+  const handleDeleteUsageStream = useCallback(
+    async (streamRef: AssetUsageReference) => {
+      const confirmDelete = confirm(
+        tLibrary('assets.selection.confirmDeleteStream', {
+          name: streamRef.name || tLibrary('assets.selection.forceUnknown'),
+        }),
+      )
+      if (!confirmDelete) return
+
+      const pendingKey = `stream:${streamRef.id}`
+      markUsageActionPending(pendingKey, true)
+      try {
+        await api.streams.delete(streamRef.id)
+        toast.success(libraryToasts('references.streamDeleted'))
+        pruneForceUsage('streams', streamRef.id)
+        queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
+        queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
+      } catch (error) {
+        const message =
+          error instanceof ApiError ? error.message : (error as Error)?.message ?? tAssetWarnings('unknownValue')
+        toast.error(libraryToasts('references.streamDeleteFailed', { message }))
+      } finally {
+        markUsageActionPending(pendingKey, false)
+      }
+    },
+    [libraryToasts, markUsageActionPending, pruneForceUsage, queryClient, tAssetWarnings, tLibrary, user?.id],
+  )
+
+  const handleDeleteUsageCollection = useCallback(
+    async (collectionRef: AssetUsageReference) => {
+      const confirmDelete = confirm(
+        tLibrary('assets.selection.confirmDeleteCollection', {
+          name: collectionRef.name || tLibrary('assets.selection.forceUnknown'),
+        }),
+      )
+      if (!confirmDelete) return
+
+      const pendingKey = `collection:${collectionRef.id}`
+      markUsageActionPending(pendingKey, true)
+      try {
+        await api.mediaCollections.delete(collectionRef.id)
+        toast.success(libraryToasts('references.collectionDeleted'))
+        pruneForceUsage('collections', collectionRef.id)
+        queryClient.invalidateQueries({ queryKey: ['media-collections', user?.id] })
+        queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          toast.error(libraryToasts('references.collectionDeleteBlocked'))
+        } else {
+          const message =
+            error instanceof ApiError ? error.message : (error as Error)?.message ?? tAssetWarnings('unknownValue')
+          toast.error(libraryToasts('references.collectionDeleteFailed', { message }))
+        }
+      } finally {
+        markUsageActionPending(pendingKey, false)
+      }
+    },
+    [libraryToasts, markUsageActionPending, pruneForceUsage, queryClient, tAssetWarnings, tLibrary, user?.id],
+  )
+
   const renderForceUsageList = (
     label: 'streams' | 'collections' | 'playlists',
     items?: AssetUsageReference[]
@@ -752,6 +992,11 @@ export default function LibraryPage() {
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           {tLibrary(`assets.selection.forceUsage.${label}` as const)}
         </p>
+        {label === 'collections' && (
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {tLibrary('assets.selection.collectionsHint')}
+          </p>
+        )}
         <ul className="mt-1 space-y-1 text-sm text-slate-600 dark:text-slate-300">
           {items.map((item) => (
             <li
@@ -761,9 +1006,49 @@ export default function LibraryPage() {
               <span className="truncate">
                 {item.name || tLibrary('assets.selection.forceUnknown')}
               </span>
-              {item.status && (
-                <span className="text-xs text-slate-400 dark:text-slate-500">{item.status}</span>
-              )}
+              <div className="flex items-center gap-2">
+                {label === 'collections' && item.context && (() => {
+                  const contextLabel = formatCollectionContext(item.context)
+                  if (!contextLabel) return null
+                  return (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-700/50 dark:text-slate-200">
+                      {contextLabel}
+                    </span>
+                  )
+                })()}
+                {label === 'streams' && item.status && (() => {
+                  const status = item.status ?? ''
+                  const knownStatuses = new Set(['running', 'stopped', 'starting', 'stopping', 'error', 'scheduled'])
+                  return (
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      {knownStatuses.has(status) ? tStreamingStatus(status) : status}
+                    </span>
+                  )
+                })()}
+                {label === 'streams' && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    isLoading={pendingUsageActionKeys.has(`stream:${item.id}`)}
+                    disabled={item.status === 'running' || item.status === 'starting' || item.status === 'stopping'}
+                    onClick={() => handleDeleteUsageStream(item)}
+                  >
+                    {tLibrary('assets.selection.actions.deleteStream')}
+                  </Button>
+                )}
+                {label === 'collections' && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    isLoading={pendingUsageActionKeys.has(`collection:${item.id}`)}
+                    onClick={() => handleDeleteUsageCollection(item)}
+                  >
+                    {tLibrary('assets.selection.actions.deleteCollection')}
+                  </Button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
@@ -878,7 +1163,7 @@ export default function LibraryPage() {
       await updateAssetMutation.mutateAsync({ id: assetBeingRenamed.id, data: { filename: trimmed } })
       closeRenameModal()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update asset'
+      const message = error instanceof Error ? error.message : libraryToasts('asset.updateFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
     }
   }
@@ -896,7 +1181,7 @@ export default function LibraryPage() {
         toast.success(libraryToasts('asset.validationRefreshed'))
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to validate asset'
+      const message = error instanceof Error ? error.message : libraryToasts('asset.validateFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
       setCheckModalAsset(null)
       setCheckModalInfo(null)
@@ -919,7 +1204,8 @@ export default function LibraryPage() {
       window.open(link.download_url, '_blank', 'noopener,noreferrer')
       toast.info(libraryToasts('asset.download', { name: asset.filename }))
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to generate download link'
+      const message =
+        error instanceof Error ? error.message : libraryToasts('asset.downloadLinkFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
     } finally {
       setDownloadAssetId(null)
@@ -976,7 +1262,7 @@ export default function LibraryPage() {
       })
       closeDeleteModal()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to delete assets'
+      const message = error instanceof Error ? error.message : libraryToasts('asset.deleteFailed')
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
       closeDeleteModal()
     } finally {
@@ -1091,7 +1377,7 @@ export default function LibraryPage() {
   }
 
   const handleDeletePlaylist = (playlistId: string) => {
-    if (confirm('Are you sure you want to delete this playlist?')) {
+    if (confirm(tLibrary('playlists.messages.confirmDelete'))) {
       deletePlaylistMutation.mutate(playlistId)
     }
   }
@@ -1123,19 +1409,21 @@ export default function LibraryPage() {
   const currentFolders = useMemo(() => {
     if (!folders || folders.length === 0) return []
     
-    // Determine parent_id for current view
-    let parentId: string | null = null
-    if (selectedFolderId !== 'all') {
-      parentId = selectedFolderId
-    } else {
-      // Show root folders when in "all" view
-      parentId = null
-    }
-    
+    // Treat "all" as "root contents" and never render the root folder itself.
+    // If root isn't available yet, fall back to top-level non-root folders.
+    const effectiveParentId =
+      selectedFolderId === 'all' ? rootFolderId ?? null : selectedFolderId
+
     return folders
-      .filter((folder) => folder.parent_id === parentId || (parentId === null && folder.is_root))
+      .filter((folder) => {
+        if (folder.is_root) return false
+        if (effectiveParentId === null) {
+          return folder.parent_id === null
+        }
+        return folder.parent_id === effectiveParentId
+      })
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [folders, selectedFolderId])
+  }, [folders, rootFolderId, selectedFolderId])
 
   // Calculate item count for each folder (recursive)
   const folderItemCounts = useMemo(() => {
@@ -1166,9 +1454,9 @@ export default function LibraryPage() {
   }, [folders, assets])
 
   // Calculate stats
-  const totalAssets = assets?.length || 0
+  const totalAssets = visibleAssets.length
   const totalPlaylists = playlists?.length || 0
-  const totalStorage = assets?.reduce((sum, asset) => sum + asset.size_bytes, 0) || 0
+  const totalStorage = visibleAssets.reduce((sum, asset) => sum + asset.size_bytes, 0)
 
   if (!user) {
     return <LoadingState text={tLibrary('loading')} />
@@ -1218,54 +1506,137 @@ export default function LibraryPage() {
                   {tLibrary('assets.filters.label')}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {(
-                  [
-                    { value: 'all', label: tLibrary('assets.filters.all') },
-                    { value: 'video', label: tLibrary('assets.filters.video') },
-                    { value: 'audio', label: tLibrary('assets.filters.audio') },
-                  ] as { value: AssetFilterValue; label: string }[]
-                ).map((option) => (
-                  <Button
-                    key={option.value}
-                    size="sm"
-                    variant={assetFilter === option.value ? 'primary' : 'outline'}
-                    onClick={() => handleAssetFilterChange(option.value)}
+              <div className="flex w-full flex-col gap-2 lg:w-auto">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <div className="relative w-full sm:w-80">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      value={assetSearchQuery}
+                      onChange={(event) => setAssetSearchQuery(event.target.value)}
+                      placeholder={tLibrary('assets.search.placeholder')}
+                      aria-label={tLibrary('assets.search.placeholder')}
+                      className="pl-9 pr-10"
+                    />
+                    {assetSearchQuery.trim() ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setAssetSearchQuery('')}
+                        aria-label={tLibrary('assets.search.clear')}
+                        title={tLibrary('assets.search.clear')}
+                        className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <select
+                    value={assetSort}
+                    onChange={(event) => setAssetSort(event.target.value as AssetSortValue)}
+                    aria-label={tLibrary('assets.sort.ariaLabel')}
+                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white sm:w-56"
                   >
-                    {option.label}
+                    <option value="newest">{tLibrary('assets.sort.options.newest')}</option>
+                    <option value="oldest">{tLibrary('assets.sort.options.oldest')}</option>
+                    <option value="nameAsc">{tLibrary('assets.sort.options.nameAsc')}</option>
+                    <option value="nameDesc">{tLibrary('assets.sort.options.nameDesc')}</option>
+                    <option value="sizeDesc">{tLibrary('assets.sort.options.sizeDesc')}</option>
+                    <option value="sizeAsc">{tLibrary('assets.sort.options.sizeAsc')}</option>
+                  </select>
+
+                  <div
+                    className="inline-flex w-full items-center justify-between gap-1 rounded-lg border border-slate-300 bg-white p-1 shadow-sm dark:border-slate-600 dark:bg-slate-800 sm:w-auto"
+                    role="group"
+                    aria-label={tLibrary('assets.view.ariaLabel')}
+                  >
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={assetDensity === 'compact' ? 'primary' : 'ghost'}
+                      onClick={() => setAssetDensity('compact')}
+                      className="gap-2"
+                    >
+                      <List className="h-4 w-4" />
+                      {tLibrary('assets.view.compact')}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={assetDensity === 'comfortable' ? 'primary' : 'ghost'}
+                      onClick={() => setAssetDensity('comfortable')}
+                      className="gap-2"
+                    >
+                      <ListVideo className="h-4 w-4" />
+                      {tLibrary('assets.view.comfortable')}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {(
+                    [
+                      { value: 'all', label: tLibrary('assets.filters.all') },
+                      { value: 'video', label: tLibrary('assets.filters.video') },
+                      { value: 'audio', label: tLibrary('assets.filters.audio') },
+                    ] as { value: AssetFilterValue; label: string }[]
+                  ).map((option) => (
+                    <Button
+                      key={option.value}
+                      size="sm"
+                      variant={assetFilter === option.value ? 'primary' : 'outline'}
+                      onClick={() => handleAssetFilterChange(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant={inUseOnly ? 'primary' : 'outline'}
+                    onClick={() => setInUseOnly((prev) => !prev)}
+                  >
+                    {tLibrary('assets.quickFilters.inUse')}
                   </Button>
-                ))}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={openCreateFolderModal}
-                  className="gap-2"
-                >
-                  <FolderPlus className="w-4 h-4" />
-                  {tFolders('create')}
-                </Button>
-                <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  {tLibrary('assets.upload')}
-                </Button>
+                  <Button
+                    size="sm"
+                    variant={warningsOnly ? 'primary' : 'outline'}
+                    onClick={() => setWarningsOnly((prev) => !prev)}
+                  >
+                    {tLibrary('assets.quickFilters.warnings')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={openCreateFolderModal}
+                    className="gap-2"
+                  >
+                    <FolderPlus className="w-4 h-4" />
+                    {tFolders('create')}
+                  </Button>
+                  <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
+                    <Plus className="w-4 h-4" />
+                    {tLibrary('assets.upload')}
+                  </Button>
+                </div>
               </div>
             </div>
 
-              {assets && assets.length > 0 && (
+              {displayedAssets.length > 0 && (
                 <div className="rounded-md border border-slate-200/80 bg-slate-50/60 px-4 py-3 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <button
                       type="button"
                       onClick={() => {
-                        if (allVisibleSelected) {
+                        if (allDisplayedSelected) {
                           clearAssetSelection()
                         } else {
-                          selectAllVisibleAssets()
+                          selectAllDisplayedAssets()
                         }
                       }}
                       className="inline-flex items-center gap-2 text-left font-medium text-slate-700 transition-colors hover:text-slate-900 dark:text-slate-200 dark:hover:text-white"
                     >
-                      {allVisibleSelected ? (
+                      {allDisplayedSelected ? (
                         <CheckSquare className="h-4 w-4" />
                       ) : isPartiallySelected ? (
                         <MinusSquare className="h-4 w-4" />
@@ -1340,13 +1711,18 @@ export default function LibraryPage() {
                   </div>
                 )}
 
-                {/* Render assets as list */}
-                {assets && assets.length > 0 ? (
-                  <div className="flex flex-col gap-3">
-                    {assets.map((asset) => (
+                {/* Render assets (grid for compact view) */}
+                {displayedAssets.length > 0 ? (
+                  <div
+                    className={assetDensity === 'compact'
+                      ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+                      : 'flex flex-col gap-3'}
+                  >
+                    {displayedAssets.map((asset) => (
                       <AssetCard
                         key={asset.id}
                         asset={asset}
+                        density={assetDensity}
                         isSelected={selectedAssets.has(asset.id)}
                         onSelect={(checked) => {
                           if (checked) {
@@ -1401,8 +1777,26 @@ export default function LibraryPage() {
                   </div>
                 ) : null}
 
+                {hasViewFilters && visibleAssets.length > 0 && displayedAssets.length === 0 && (
+                  <Card className="py-12">
+                    <CardContent className="text-center">
+                      <Search className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-600 mb-3" />
+                      <p className="text-lg font-medium text-slate-900 dark:text-white mb-2">
+                        {assetSearchQuery.trim()
+                          ? tLibrary('assets.search.noResultsTitle')
+                          : tLibrary('assets.filteredEmpty.title')}
+                      </p>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        {assetSearchQuery.trim()
+                          ? tLibrary('assets.search.noResultsDescription', { query: assetSearchQuery.trim() })
+                          : tLibrary('assets.filteredEmpty.description')}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Empty state - shown when no folders and no assets */}
-                {!currentFolders.length && (!assets || assets.length === 0) && (
+                {!currentFolders.length && visibleAssets.length === 0 && (
                   <Card className="text-center py-16">
                     <div className="flex flex-col items-center space-y-4">
                       <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-100 to-accent-100 dark:from-primary-900/20 dark:to-accent-900/20 flex items-center justify-center">
@@ -1707,7 +2101,7 @@ export default function LibraryPage() {
                   {tLibrary('assets.selection.bulkMoveDescription')}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" onClick={closeMoveModal}>
+              <Button variant="ghost" size="icon" onClick={closeMoveModal} aria-label={actionLabels('close')}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -1786,7 +2180,7 @@ export default function LibraryPage() {
                   {tLibrary('assets.selection.deleteDescription')}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" onClick={closeDeleteModal}>
+              <Button variant="ghost" size="icon" onClick={closeDeleteModal} aria-label={actionLabels('close')}>
                 <X className="h-4 w-4" />
               </Button>
             </div>

@@ -3,7 +3,9 @@
 # Зручний wrapper для supervisorctl
 # Використання: ./supervisor.sh status
 
-BACKEND_DIR="/Users/alinakovpaka/Documents/Work/youtube_translation/backend"
-CONFIG="$BACKEND_DIR/supervisord.conf"
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG="$ROOT_DIR/backend/supervisord.conf"
 
 supervisorctl -c "$CONFIG" "$@"

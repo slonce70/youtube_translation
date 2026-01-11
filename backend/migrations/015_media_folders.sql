@@ -11,6 +11,10 @@ CREATE TABLE IF NOT EXISTS media_folders (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Backfill missing columns when media_folders pre-exists (e.g. created by 000_local_initial_schema.sql)
+ALTER TABLE media_folders
+    ADD COLUMN IF NOT EXISTS is_root BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- Ensure folder names are unique per parent (case-insensitive)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_media_folders_unique_name
     ON media_folders(user_id, COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name));

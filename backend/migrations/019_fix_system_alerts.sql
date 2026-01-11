@@ -15,7 +15,8 @@ ALTER TABLE system_alerts
         'ffmpeg_error',
         'upload_failed',
         'validation_error',
-        'rate_limit_exceeded'
+        'rate_limit_exceeded',
+        'collection_depleted'
     ));
 
 -- Align severity levels (remove legacy 'error')

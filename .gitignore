@@ -29,6 +29,7 @@ env/
 .env.local
 .env.production
 backend/.env
+/backend/.env.bak-*
 frontend/.env.local
 
 # Node
@@ -58,6 +59,7 @@ Thumbs.db
 /backend/uploads/
 /backend/streams/
 /backend/logs/
+/backend/supervisord/
 *.mp4
 *.mp3
 # MPEG transport stream video files (not TypeScript)

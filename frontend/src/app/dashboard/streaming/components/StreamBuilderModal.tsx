@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useTranslations } from 'next-intl'
 import type { TranslationValues } from 'next-intl'
 import {
   AlertTriangle,
@@ -34,6 +35,7 @@ import type {
 } from '@/lib/types'
 
 import { useStreamBuilder } from '../hooks/useStreamBuilder'
+import { applyDurationPreset, DURATION_PRESETS } from '../schedule-utils'
 
 type Translator = (key: string, values?: TranslationValues) => string
 
@@ -74,6 +76,7 @@ export function StreamBuilderModal({
   streamingToasts,
   formatLimitValue,
 }: StreamBuilderModalProps) {
+  const actionLabels = useTranslations('common.actions')
   const localTimezone =
     typeof Intl === 'undefined'
       ? null
@@ -84,7 +87,6 @@ export function StreamBuilderModal({
             return null
           }
         })()
-
   const {
     streamForm,
     setStreamForm,
@@ -147,22 +149,23 @@ export function StreamBuilderModal({
   }
 
   const destinationsList = destinationsState ?? []
+  const durationOptions = DURATION_PRESETS
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-      <Card className="w-full max-w-5xl animate-scale-in">
-        <CardHeader className="flex items-start justify-between space-y-0">
+      <Card className="w-full max-w-5xl max-h-[90vh] overflow-hidden animate-scale-in flex flex-col">
+        <CardHeader className="flex items-start justify-between space-y-0 shrink-0">
           <div>
             <CardTitle>{t('streams.form.title')}</CardTitle>
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {t('streams.builder.subtitle')}
             </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleClose}>
+          <Button variant="ghost" size="icon" onClick={handleClose} aria-label={actionLabels('close')}>
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
               <div className="flex items-center gap-3">
@@ -209,8 +212,7 @@ export function StreamBuilderModal({
               </TabsTrigger>
               <TabsTrigger value="timeline" className="flex items-center gap-2">
                 <Layers className="h-4 w-4" />
-                {/* eslint-disable-next-line i18next/no-literal-string */}
-                Timeline
+                {t('streams.builder.tabs.timeline')}
               </TabsTrigger>
               <TabsTrigger value="destinations" className="flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
@@ -327,7 +329,7 @@ export function StreamBuilderModal({
                               </p>
                             </div>
                             {draggable && (
-                              <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('video', item.asset_id)}>
+                              <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('video', item.asset_id)} aria-label={t('streams.liveEdit.actions.remove')}>
                                 <X className="h-4 w-4" />
                               </Button>
                             )}
@@ -495,7 +497,7 @@ export function StreamBuilderModal({
                                   </p>
                                 </div>
                                 {draggable && (
-                                  <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('audio', item.asset_id)}>
+                                  <Button variant="ghost" size="icon" onClick={() => removeAssetFromEditor('audio', item.asset_id)} aria-label={t('streams.liveEdit.actions.remove')}>
                                     <X className="h-4 w-4" />
                                   </Button>
                                 )}
@@ -549,10 +551,12 @@ export function StreamBuilderModal({
 
             <TabsContent value="timeline" className="mt-4 space-y-4">
               <div className="space-y-1">
-                {/* eslint-disable-next-line i18next/no-literal-string */}
-                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-200">Studio Timeline</h3>
-                {/* eslint-disable-next-line i18next/no-literal-string */}
-                <p className="text-xs text-slate-500 dark:text-slate-400">Visual overview of your stream content</p>
+                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  {t('streams.builder.timeline.title')}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t('streams.builder.timeline.subtitle')}
+                </p>
               </div>
               
               <TimelineEditor
@@ -565,13 +569,13 @@ export function StreamBuilderModal({
                   asset: assetMap.get(item.asset_id)!
                 })).filter(x => x.asset) : []}
                 onReorder={reorderEditorItems}
+                t={t}
               />
               
               <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
-                {/* eslint-disable-next-line i18next/no-literal-string */}
                 <p className="text-sm text-blue-800 dark:text-blue-200">
                   <Info className="inline-block w-4 h-4 mr-1.5 -mt-0.5" />
-                  Drag and drop assets from the Video/Audio tabs to populate this timeline.
+                  {t('streams.builder.timeline.hint')}
                 </p>
               </div>
             </TabsContent>
@@ -708,6 +712,29 @@ export function StreamBuilderModal({
                   value={scheduleState.stopAt}
                   onChange={(event) => setScheduleState((prev) => ({ ...prev, stopAt: event.target.value }))}
                 />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t('streams.builder.schedule.stopHint')}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {t('streams.builder.schedule.durationLabel')}
+                  </span>
+                  {durationOptions.map((hours) => (
+                    <Button
+                      key={`duration-${hours}`}
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setScheduleState((prev) => ({
+                          ...prev,
+                          ...applyDurationPreset(prev, hours),
+                        }))
+                      }
+                    >
+                      {t(`streams.builder.schedule.durationOptions.${hours}h`)}
+                    </Button>
+                  ))}
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -719,6 +746,29 @@ export function StreamBuilderModal({
                   <Repeat className="mr-1 h-4 w-4" />
                   {t('streams.builder.schedule.loop')}
                 </Button>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>{t('streams.builder.schedule.vodWarning.title')}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-200/80">
+                    {t('streams.builder.schedule.vodWarning.description')}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-200">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <Info className="h-4 w-4 text-primary-500" />
+                    <span>{t('streams.builder.schedule.encoder.title')}</span>
+                  </div>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
+                    <li>{t('streams.builder.schedule.encoder.gop')}</li>
+                    <li>{t('streams.builder.schedule.encoder.video')}</li>
+                    <li>{t('streams.builder.schedule.encoder.audio')}</li>
+                  </ul>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">

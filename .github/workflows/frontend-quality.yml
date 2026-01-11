@@ -1,5 +1,12 @@
 name: Frontend Quality Checks
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     paths:
@@ -13,6 +20,7 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     defaults:
       run:
@@ -43,6 +51,9 @@ jobs:
 
       - name: Verify translations
         run: npm run i18n:check
+
+      - name: Type check
+        run: npm run type-check
 
       - name: Run unit tests
         run: npm test -- --runInBand

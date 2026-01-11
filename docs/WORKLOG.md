@@ -1,5 +1,37 @@
 # Журнал робіт
 
+## 2026-01-10
+- Library (A10): додано пошук за назвою, сортування та перемикач “Компактно/Детально” (збереження вибору в localStorage).
+- Library (A10): додано швидкі фільтри “Використовується/Попередження”.
+- Dashboard (A10): checklist зроблено collapsible, щоб не перевантажувати головний екран.
+- Backend: вирівняно локальний bootstrap БД (fresh schema + міграції без конфліктів) та узгоджено ORM (FK/relationships для `user_id`).
+- Streaming (A5): додано help-блок у формі каналу (де знайти YouTube stream key).
+- Streaming (A5): VOD <12h warning, рекомендовані налаштування енкодера та “First stream checklist” у продукті/доках.
+- Streaming schedule: швидкі кнопки тривалості (12/24/48 год) + редагування розкладу для існуючих стрімів (PATCH `/streams/{id}`).
+- Admin: оновлено `backend/create_admin.py` (можна зробити адміном за email).
+- Перевірив: `make i18n-check`, `make test-backend` (120 passed, 8 skipped), `make test-frontend` (35 passed).
+- Перевірив: `make i18n-check && make lint && make test` (backend: 117 passed, 8 skipped; frontend: 29 passed).
+- Frontend: полагоджено `make type-check` (виправлено fixture `Asset` у `asset-view.test.ts`).
+- Upload quota hardening: `backend/tusd-hooks/pre-create` тепер fail-closed у `production/staging`, має ретраї/таймаути і не логує raw payload (dev override: `TUSD_FAIL_OPEN=1`).
+- Docker/Edge: `docker/Caddyfile` блокує `/api/internal/*` назовні (перевірено `curl http://localhost/api/internal/check-quota → 404`).
+- Docker: tusd healthcheck переведено на `curl` (стабільний `healthy`), tusd rebuilt/restarted.
+- CI: backend workflow тепер запускає `ruff` + повний `pytest` з Postgres service; frontend workflow додає `npm run type-check`.
+- Frontend build hygiene: прибрано `frontend/pnpm-lock.yaml` і додано `outputFileTracingRoot` у `frontend/next.config.js`.
+
+## 2026-01-09
+- Виправив падіння `GET /api/streams/` (lazy-load у async) — додано eager-load `stream_destinations → destination`, через що список трансляцій стабільно відображається без “перезавантажень” сторінки.
+- Додав міграцію `026_collection_items_updated_at.sql` для сумісності старих локальних БД (колонка `collection_items.updated_at` + trigger). Оновив `backend/apply_migrations.py`.
+- Полагодив UX останнього кроку створення трансляції: модалка `StreamBuilder` тепер скролиться і кнопка підтвердження не “ховається” під екран.
+- Поліпшив UX після завантаження файлів: Library робить довший refetch (backoff) і показує щойно завантажений файл без ручного refresh сторінки.
+- Вирівняв Docker runner: прибрав застарілий `version` з compose, додав окремий healthcheck для `runner` (бо образ успадковував backend healthcheck на `:8000`), підтвердив роботу з `supervisord.docker.conf` через `runner:9001` (Docker Desktop/macOS-friendly).
+- Усунув зависання статусу `stopping`: reconciler тепер обробляє `stopping` (startup + periodic sync), а supervisor parse коректно розпізнає `NOT_FOUND`, щоб не лишати DB у `UNKNOWN`.
+- Поліпшив логи стрімів: `mode=important` за замовчуванням + перемикач “показати всі” у UI; лише `error` підсвічується червоним, решта — сірим. Також зменшив FFmpeg spam (`-hide_banner -nostats`) і відфільтрував прогрес‑рядки.
+- Library: виправив запис `thumbnail_url` (JSONB mutation tracking) + додав fallback прев’ю `/thumbnails/{asset_id}.jpg`, щоб відео не показувало “порожній квадрат”.
+- Оновив рекомендації bitrate/quality (включно з 720p та підтримкою дробних значень на кшталт `4.5 Mbps`).
+- i18n: додав ключі та переклади (uk/en/ru) для timeline/logs у streaming builder, прибрав частину hardcoded рядків.
+- i18n: прибрав залишки англомовних confirm/toast fallback у Library/Streaming та локалізував згадку “Go Live” в dashboard checklist (uk/ru).
+- Підтвердив тестами: `cd backend && python -m pytest` (117 passed, 8 skipped).
+
 ## 2026-01-08
 - Виніс supervisord у окремий Docker-сервіс `runner` і підключив shared socket/volumes.
 - Оновив `supervisord.conf` під shared UNIX socket (`/app/supervisord/supervisor.sock`).

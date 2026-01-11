@@ -69,10 +69,6 @@ def _supervisor_conf() -> Path:
     return _resolve_path(settings.supervisor_conf_path)
 
 
-def _supervisor_conf() -> Path:
-    return _resolve_path(settings.supervisor_conf_path)
-
-
 def _program_config_path(stream_id: UUID | str) -> Path:
     return _config_dir() / f"{program_name(stream_id)}.ini"
 
@@ -233,8 +229,9 @@ async def program_status(stream_id: UUID) -> Dict[str, str]:
     program = program_name(stream_id)
     code, out, err = await _run_supervisorctl("status", program)
     if code != 0:
-        message = (err or out).strip()
-        lowered = message.lower()
+        combined = "\n".join([part for part in [out.strip(), err.strip()] if part]).strip()
+        message = combined or (err or out).strip()
+        lowered = (combined or message).lower()
 
         if any(token in lowered for token in ["no such process", "not found", "no such file"]):
             state = "NOT_FOUND"

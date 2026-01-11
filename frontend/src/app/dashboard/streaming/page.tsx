@@ -6,14 +6,16 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { Locale as DateFnsLocale } from 'date-fns'
 import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
-import { Play, Loader2 } from 'lucide-react'
+import { Play, Loader2, X, Info, ChevronDown } from 'lucide-react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from 'next/navigation'
 
 import { api, ApiError } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { Input } from '@/components/ui/Input'
 import type {
   Destination,
   DestinationUpdatePayload,
@@ -26,25 +28,30 @@ import type {
   StreamQualityResponse,
   SubscriptionTierKey,
   MediaCollection,
+  StreamSchedulePayload,
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
 import { ChannelsSidebar } from './components/ChannelsSidebar'
 import { StreamsList } from './components/StreamsList'
-import { ChannelFormModal } from './components/ChannelFormModal'
-import { StreamLogsModal } from './components/StreamLogsModal'
-import { StreamStatsCards } from './components/StreamStatsCards'
 import { StreamBuilderModal } from './components/StreamBuilderModal'
 import { LiveEditorModal } from './components/LiveEditorModal'
 import { QualityGateModal } from './components/QualityGateModal'
+import { StreamScheduleModal } from './components/StreamScheduleModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
-import type { DestinationFormState } from './types'
 
-const statusVariantMap: Record<StreamStatusValue, 'success' | 'info' | 'warning' | 'error'> = {
+type DestinationFormState = {
+  name: string
+  rtmps_url: string
+  stream_key: string
+  enabled: boolean
+}
+
+const statusVariantMap: Record<StreamStatusValue, 'secondary' | 'error' | 'success' | 'info'> = {
   running: 'success',
-  stopped: 'info',
-  starting: 'warning',
-  stopping: 'warning',
+  stopped: 'secondary',
+  starting: 'info',
+  stopping: 'info',
   error: 'error',
   scheduled: 'info',
 }
@@ -78,7 +85,9 @@ export default function StreamingPage() {
     enabled: true,
   })
   const [viewingLogs, setViewingLogs] = useState<string | null>(null)
+  const [logsMode, setLogsMode] = useState<'important' | 'raw'>('important')
   const [showCreateStream, setShowCreateStream] = useState(false)
+  const [scheduleModalStream, setScheduleModalStream] = useState<Stream | null>(null)
 
   const { data: destinations, isLoading: isLoadingDestinations } = useQuery<Destination[]>({
     queryKey: ['destinations', user?.id],
@@ -98,7 +107,7 @@ export default function StreamingPage() {
       queryKey: ['stream-status', user?.id, stream.id],
       queryFn: () => api.streams.status(stream.id),
       enabled: !!user && Boolean(stream?.id),
-      refetchInterval: ['running', 'starting', 'error'].includes(stream.status) ? 5000 : 30000,
+      refetchInterval: ['running', 'starting', 'stopping', 'error'].includes(stream.status) ? 5000 : 30000,
       retry: false,
     })),
   }) as UseQueryResult<StreamStatusResponse>[]
@@ -202,6 +211,18 @@ export default function StreamingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
       toast.success(streamingToasts('destination.deleted'))
+    },
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
+  })
+
+  const updateScheduleMutation = useMutation({
+    mutationFn: ({ streamId, payload }: { streamId: string; payload: StreamSchedulePayload }) =>
+      api.streams.update(streamId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
+      toast.success(streamingToasts('stream.scheduleUpdated'))
+      setScheduleModalStream(null)
     },
     onError: (error: Error) =>
       toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
@@ -333,6 +354,48 @@ export default function StreamingPage() {
     setShowChannelForm(true)
   }
 
+  const handleOpenSchedule = (stream: Stream) => {
+    setScheduleModalStream(stream)
+  }
+
+  const handleSaveSchedule = (draft: { startMode: 'now' | 'schedule'; startAt: string; stopAt: string }) => {
+    if (!scheduleModalStream) return
+
+    if (draft.startMode === 'schedule' && !draft.startAt) {
+      toast.error(streamingToasts('errors.scheduleTime'))
+      return
+    }
+
+    const now = new Date()
+    const startAtIso =
+      draft.startMode === 'schedule' && draft.startAt ? new Date(draft.startAt).toISOString() : null
+    const stopAtIso = draft.stopAt ? new Date(draft.stopAt).toISOString() : null
+
+    if (draft.stopAt) {
+      const stopAt = new Date(draft.stopAt)
+      if (Number.isNaN(stopAt.getTime()) || stopAt <= now) {
+        toast.error(streamingToasts('errors.scheduleStopTime'))
+        return
+      }
+      if (draft.startMode === 'schedule' && draft.startAt) {
+        const startAt = new Date(draft.startAt)
+        if (stopAt <= startAt) {
+          toast.error(streamingToasts('errors.scheduleStopAfterStart'))
+          return
+        }
+      }
+    }
+
+    updateScheduleMutation.mutate({
+      streamId: scheduleModalStream.id,
+      payload: {
+        schedule_mode: draft.startMode,
+        schedule_start_at: startAtIso,
+        schedule_stop_at: stopAtIso,
+      },
+    })
+  }
+
   const handleDeleteChannel = (destinationId: string) => {
     if (confirm(tStreaming('channels.form.confirmDelete'))) {
       deleteDestinationMutation.mutate(destinationId)
@@ -340,7 +403,10 @@ export default function StreamingPage() {
   }
 
   const renderStatusBadge = (status: StreamStatusValue) => (
-    <Badge variant={statusVariantMap[status]}>{streamingStatus(status)}</Badge>
+    <Badge variant={statusVariantMap[status]} className={status === 'running' ? 'gap-1' : undefined}>
+      {status === 'running' ? <span className="h-2 w-2 rounded-full bg-success-600" /> : null}
+      {streamingStatus(status)}
+    </Badge>
   )
 
   const handleStartStream = (stream: Stream) =>
@@ -353,8 +419,8 @@ export default function StreamingPage() {
   const handleDeleteStream = (streamId: string) => deleteStreamMutation.mutate(streamId)
 
   const { data: logsResponse } = useQuery<StreamLogsResponse>({
-    queryKey: ['stream-logs', user?.id, viewingLogs],
-    queryFn: () => api.streams.logs(viewingLogs!, 200),
+    queryKey: ['stream-logs', user?.id, viewingLogs, logsMode],
+    queryFn: () => api.streams.logs(viewingLogs!, { lines: 200, mode: logsMode }),
     enabled: !!viewingLogs,
     refetchInterval: 2000,
   })
@@ -401,6 +467,25 @@ export default function StreamingPage() {
         </Button>
       </div>
 
+      <Card>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
+            <span className="text-base font-semibold text-slate-900 dark:text-white">
+              {tStreaming('checklist.title')}
+            </span>
+            <ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
+          </summary>
+          <div className="px-6 pb-6 text-sm text-slate-600 dark:text-slate-300">
+            <ul className="list-disc space-y-2 pl-5">
+              <li>{tStreaming('checklist.items.destination')}</li>
+              <li>{tStreaming('checklist.items.assets')}</li>
+              <li>{tStreaming('checklist.items.schedule')}</li>
+              <li>{tStreaming('checklist.items.test')}</li>
+            </ul>
+          </div>
+        </details>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <ChannelsSidebar
           destinations={destinations}
@@ -422,11 +507,15 @@ export default function StreamingPage() {
             isLoading={isLoadingStreams}
             liveStatusMap={liveStatusMap}
             onCreateStream={() => setShowCreateStream(true)}
-            onViewLogs={(streamId) => setViewingLogs(streamId)}
+            onViewLogs={(streamId) => {
+              setLogsMode('important')
+              setViewingLogs(streamId)
+            }}
             onOpenLiveEditor={openLiveEditor}
             onStartStream={handleStartStream}
             onStopStream={handleStopStream}
             onDeleteStream={handleDeleteStream}
+            onEditSchedule={handleOpenSchedule}
             renderStatusBadge={renderStatusBadge}
             playlistMap={playlistMap}
             t={tStreaming}
@@ -437,26 +526,151 @@ export default function StreamingPage() {
             isDeletePending={deleteStreamMutation.isPending}
           />
 
-          <StreamStatsCards
-            streams={streams}
-            quotaLoading={quotaLoading}
-            concurrentStreamsLimit={concurrentStreamsLimit}
-            formatLimitValue={formatLimitValue}
-            t={tStreaming}
-          />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-success-600">
+                    {streams?.filter((s) => s.status === 'running').length || 0}
+                  </p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    {tStreaming('streams.stats.active')}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <p className="text-3xl font-bold gradient-text">{streams?.length || 0}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    {tStreaming('streams.stats.total')}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <p className="text-3xl font-bold gradient-text">
+                    {quotaLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                    ) : (
+                      `${streams?.filter((s) => s.status === 'running').length || 0}/${formatLimitValue(concurrentStreamsLimit)}`
+                    )}
+                  </p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    {tStreaming('streams.stats.concurrent')}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
-      <ChannelFormModal
-        open={showChannelForm}
-        editingChannelId={editingChannelId}
-        channelForm={channelForm}
-        onChange={setChannelForm}
-        onSubmit={handleSubmitChannel}
-        onCancel={resetChannelForm}
-        isSaving={createDestinationMutation.isPending || updateDestinationMutation.isPending}
-        t={tStreaming}
-      />
+      {showChannelForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
+          <Card className="w-full max-w-lg animate-scale-in">
+            <CardHeader>
+              <CardTitle>
+                {editingChannelId
+                  ? tStreaming('channels.form.editTitle')
+                  : tStreaming('channels.form.newTitle')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmitChannel} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    {tStreaming('channels.form.nameLabel')}
+                  </label>
+                  <Input
+                    type="text"
+                    required
+                    value={channelForm.name}
+                    onChange={(event) => setChannelForm({ ...channelForm, name: event.target.value })}
+                    placeholder={tStreaming('channels.form.namePlaceholder')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    {tStreaming('channels.form.urlLabel')}
+                  </label>
+                  <Input
+                    type="text"
+                    required
+                    value={channelForm.rtmps_url}
+                    onChange={(event) => setChannelForm({ ...channelForm, rtmps_url: event.target.value })}
+                  />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {tStreaming('channels.form.help.rtmpsHint')}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    {tStreaming('channels.form.keyLabel')} {editingChannelId ? tStreaming('channels.form.keepExisting') : ''}
+                  </label>
+                  <Input
+                    type="password"
+                    required={!editingChannelId}
+                    value={channelForm.stream_key}
+                    onChange={(event) => setChannelForm({ ...channelForm, stream_key: event.target.value })}
+                    placeholder="xxxx-xxxx-xxxx-xxxx"
+                  />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {tStreaming('channels.form.keyHint')}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-200">
+                  <div className="mb-2 flex items-center gap-2 font-semibold">
+                    <Info className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                    <span>{tStreaming('channels.form.help.title')}</span>
+                  </div>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                    <li>{tStreaming('channels.form.help.steps.openStudio')}</li>
+                    <li>{tStreaming('channels.form.help.steps.goLive')}</li>
+                    <li>{tStreaming('channels.form.help.steps.copyKey')}</li>
+                  </ul>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    {tStreaming('channels.form.help.note')}
+                  </p>
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={channelForm.enabled}
+                    onChange={(event) => setChannelForm({ ...channelForm, enabled: event.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
+                  />
+                  <label className="ml-2 block text-sm text-slate-700 dark:text-slate-300">
+                    {tStreaming('channels.form.enabled')}
+                  </label>
+                </div>
+                <div className="flex justify-end gap-3">
+                  <Button type="button" onClick={resetChannelForm} variant="secondary">
+                    {tStreaming('channels.form.cancel')}
+                  </Button>
+                  <Button
+                    type="submit"
+                    isLoading={
+                      createDestinationMutation.isPending || updateDestinationMutation.isPending
+                    }
+                  >
+                    {editingChannelId
+                      ? tStreaming('channels.form.update')
+                      : tStreaming('channels.form.create')}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <StreamBuilderModal
         open={showCreateStream}
@@ -477,12 +691,71 @@ export default function StreamingPage() {
         formatLimitValue={formatLimitValue}
       />
 
-      <StreamLogsModal
-        open={Boolean(viewingLogs)}
-        logs={logsResponse?.logs}
-        onClose={() => setViewingLogs(null)}
+      <StreamScheduleModal
+        open={Boolean(scheduleModalStream)}
+        stream={scheduleModalStream}
         t={tStreaming}
+        onClose={() => setScheduleModalStream(null)}
+        onSave={handleSaveSchedule}
+        isSaving={updateScheduleMutation.isPending}
       />
+
+      {viewingLogs && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
+          <Card className="w-full max-w-4xl animate-scale-in">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>{tStreaming('streams.logs.title')}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setLogsMode(logsMode === 'important' ? 'raw' : 'important')}
+                  >
+                    {logsMode === 'important'
+                      ? tStreaming('streams.logs.showAll')
+                      : tStreaming('streams.logs.showImportant')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setViewingLogs(null)
+                      setLogsMode('important')
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs max-h-96 overflow-y-auto">
+                {logsResponse?.logs?.length ? (
+                  logsResponse.logs.map((line, index) => (
+                    <p
+                      key={index}
+                      className={
+                        /error|failed|forbidden|invalid|denied|fatal/i.test(line)
+                          ? 'text-error-300'
+                          : 'text-slate-300'
+                      }
+                    >
+                      {line}
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-slate-300">
+                    {logsMode === 'important'
+                      ? tStreaming('streams.logs.emptyImportant')
+                      : tStreaming('streams.logs.empty')}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <LiveEditorModal
         stream={liveEditingStream}

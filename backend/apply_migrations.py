@@ -46,6 +46,8 @@ MIGRATIONS = [
     'migrations/023_stream_schedule_columns.sql',
     'migrations/024_stream_schedule_stop_columns.sql',
     'migrations/025_user_profile_timezone.sql',
+    'migrations/026_collection_items_updated_at.sql',
+    'migrations/027_stream_status_constraint.sql',
 ]
 
 
@@ -71,18 +73,65 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     
     # Check if assets has user_id column (migration 004)
     query = text("""
-        SELECT EXISTS (
-            SELECT FROM information_schema.columns 
-            WHERE table_schema = 'public' 
-            AND table_name = 'assets'
-            AND column_name = 'user_id'
-        )
+        SELECT
+            (
+                (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'assets'
+                   AND column_name = 'user_id') +
+                (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'playlists'
+                   AND column_name = 'user_id') +
+                (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'destinations'
+                   AND column_name = 'user_id') +
+                (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'streams'
+                   AND column_name = 'user_id')
+            ) = 4
+            AND
+            (
+                (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'streams'
+                   AND column_name = 'total_duration_seconds') = 1
+            )
+            AND
+            (
+                (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'playlists'
+                   AND column_name IN ('total_duration_seconds', 'total_assets')
+                ) = 2
+            )
     """)
     result = await conn.execute(query)
-    status['004'] = result.scalar()
+    status['004'] = bool(result.scalar())
     
-    # Check if admin_actions exists (migration 005)
-    status['005'] = await check_table_exists(conn, 'admin_actions')
+    # Check if admin/system tables exist (migration 005)
+    admin_actions = await check_table_exists(conn, 'admin_actions')
+    system_alerts = await check_table_exists(conn, 'system_alerts')
+    activity_log = await check_table_exists(conn, 'user_activity_log')
+    if system_alerts:
+        result = await conn.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'system_alerts'
+                  AND column_name IN ('stream_id', 'asset_id', 'resolution_notes')
+                """
+            )
+        )
+        system_alert_columns = int(result.scalar() or 0)
+    else:
+        system_alert_columns = 0
+
+    status['005'] = bool(admin_actions and system_alerts and activity_log and system_alert_columns == 3)
     
     # Check if new RLS policies exist (migration 006)
     query = text("""
@@ -202,21 +251,85 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     status['013'] = bool(tiers_seeded and price_column)
 
     # Check asset metadata enhancements (migration 014)
-    query = text("""
-        SELECT COUNT(*) = 2
+    query = text(
+        """
+        SELECT COUNT(*)
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'assets'
-          AND column_name IN ('asset_type', 'codec_info')
-    """)
+          AND column_name IN (
+              'asset_type',
+              'codec_info',
+              'video_codec',
+              'audio_codec',
+              'resolution',
+              'bitrate',
+              'fps',
+              'validation_status'
+          )
+        """
+    )
     result = await conn.execute(query)
-    status['014'] = result.scalar()
+    status['014'] = int(result.scalar() or 0) == 8
 
     # Check media folders tables (migration 015)
-    status['015'] = await check_table_exists(conn, 'media_folders') and await check_table_exists(conn, 'asset_folder_links')
+    folders_exist = await check_table_exists(conn, 'media_folders')
+    links_exist = await check_table_exists(conn, 'asset_folder_links')
+    if folders_exist:
+        result = await conn.execute(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'media_folders'
+                      AND column_name = 'is_root'
+                )
+                """
+            )
+        )
+        has_is_root = bool(result.scalar())
+    else:
+        has_is_root = False
+    status['015'] = bool(folders_exist and links_exist and has_is_root)
 
     # Check media collections tables (migration 016)
-    status['016'] = await check_table_exists(conn, 'media_collections') and await check_table_exists(conn, 'collection_items')
+    collections_exist = await check_table_exists(conn, 'media_collections')
+    items_exist = await check_table_exists(conn, 'collection_items')
+    if collections_exist:
+        result = await conn.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'media_collections'
+                  AND column_name IN ('collection_type', 'origin_playlist_id', 'is_active')
+                """
+            )
+        )
+        collections_columns = int(result.scalar() or 0)
+    else:
+        collections_columns = 0
+
+    if items_exist:
+        result = await conn.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'collection_items'
+                  AND column_name IN ('loop_mode', 'updated_at')
+                """
+            )
+        )
+        items_columns = int(result.scalar() or 0)
+    else:
+        items_columns = 0
+
+    status['016'] = bool(collections_exist and items_exist and collections_columns == 3 and items_columns == 2)
 
     # Check streams link columns (migration 017)
     query = text("""
@@ -263,6 +376,20 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           AND constraint_name IN ('system_alerts_alert_type_check', 'system_alerts_severity_check')
     """)
     constraints_ok = (await conn.execute(query)).scalar()
+
+    query = text(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            WHERE t.relname = 'system_alerts'
+              AND c.conname = 'system_alerts_alert_type_check'
+              AND pg_get_constraintdef(c.oid) ILIKE '%collection_depleted%'
+        )
+        """
+    )
+    allows_collection_depleted = bool((await conn.execute(query)).scalar())
     query = text("""
         SELECT COUNT(*) = 2
         FROM pg_constraint c
@@ -272,7 +399,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           AND r.relname = 'user_profiles'
     """)
     fks_ok = (await conn.execute(query)).scalar()
-    status['019'] = bool(constraints_ok and fks_ok)
+    status['019'] = bool(constraints_ok and allows_collection_depleted and fks_ok)
 
     # Check admin actions reason column (migration 020)
     query = text("""
@@ -353,6 +480,31 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     result = await conn.execute(query)
     status['025'] = result.scalar()
+
+    # Check collection_items updated_at column (migration 026)
+    query = text("""
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'collection_items'
+              AND column_name = 'updated_at'
+        )
+    """)
+    result = await conn.execute(query)
+    status['026'] = result.scalar()
+
+    # Check stream status constraint includes 'scheduled' (migration 027)
+    query = text("""
+        SELECT pg_get_constraintdef(c.oid)
+        FROM pg_constraint c
+        WHERE c.conrelid = 'public.streams'::regclass
+          AND c.conname IN ('check_status', 'streams_status_check')
+        ORDER BY c.conname
+        LIMIT 1
+    """)
+    result = await conn.execute(query)
+    definition = result.scalar()
+    status['027'] = bool(definition and 'scheduled' in definition)
 
     return status
 
@@ -439,20 +591,46 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         return count >= 4
     
     elif migration_num == '004':
-        # Check user_id columns exist
-        query = text("""
-            SELECT 
-                (SELECT COUNT(*) FROM information_schema.columns 
-                 WHERE table_name = 'assets' AND column_name = 'user_id') +
-                (SELECT COUNT(*) FROM information_schema.columns 
-                 WHERE table_name = 'playlists' AND column_name = 'user_id') +
-                (SELECT COUNT(*) FROM information_schema.columns 
-                 WHERE table_name = 'destinations' AND column_name = 'user_id') +
-                (SELECT COUNT(*) FROM information_schema.columns 
-                 WHERE table_name = 'streams' AND column_name = 'user_id')
-        """)
+        query = text(
+            """
+            SELECT
+                (
+                    (SELECT COUNT(*) FROM information_schema.columns
+                     WHERE table_schema = 'public'
+                       AND table_name = 'assets'
+                       AND column_name = 'user_id') +
+                    (SELECT COUNT(*) FROM information_schema.columns
+                     WHERE table_schema = 'public'
+                       AND table_name = 'playlists'
+                       AND column_name = 'user_id') +
+                    (SELECT COUNT(*) FROM information_schema.columns
+                     WHERE table_schema = 'public'
+                       AND table_name = 'destinations'
+                       AND column_name = 'user_id') +
+                    (SELECT COUNT(*) FROM information_schema.columns
+                     WHERE table_schema = 'public'
+                       AND table_name = 'streams'
+                       AND column_name = 'user_id')
+                ) = 4
+                AND
+                (
+                    (SELECT COUNT(*) FROM information_schema.columns
+                     WHERE table_schema = 'public'
+                       AND table_name = 'streams'
+                       AND column_name = 'total_duration_seconds') = 1
+                )
+                AND
+                (
+                    (SELECT COUNT(*) FROM information_schema.columns
+                     WHERE table_schema = 'public'
+                       AND table_name = 'playlists'
+                       AND column_name IN ('total_duration_seconds', 'total_assets')
+                    ) = 2
+                )
+            """
+        )
         result = await conn.execute(query)
-        return result.scalar() == 4
+        return bool(result.scalar())
     
     elif migration_num == '005':
         # Check admin tables exist
@@ -460,7 +638,18 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         for table in tables:
             if not await check_table_exists(conn, table):
                 return False
-        return True
+
+        query = text(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'system_alerts'
+              AND column_name IN ('stream_id', 'asset_id', 'resolution_notes')
+            """
+        )
+        result = await conn.execute(query)
+        return int(result.scalar() or 0) == 3
     
     elif migration_num == '006':
         # Check new RLS policies exist
@@ -612,25 +801,76 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         return result.scalar() == 1
 
     elif migration_num == '014':
-        query = text("""
-            SELECT COUNT(*) = 2
+        query = text(
+            """
+            SELECT COUNT(*)
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'assets'
-              AND column_name IN ('asset_type', 'codec_info')
-        """)
+              AND column_name IN (
+                  'asset_type',
+                  'codec_info',
+                  'video_codec',
+                  'audio_codec',
+                  'resolution',
+                  'bitrate',
+                  'fps',
+                  'validation_status'
+              )
+            """
+        )
         result = await conn.execute(query)
-        return result.scalar()
+        return int(result.scalar() or 0) == 8
 
     elif migration_num == '015':
         folders = await check_table_exists(conn, 'media_folders')
         links = await check_table_exists(conn, 'asset_folder_links')
-        return folders and links
+        if not (folders and links):
+            return False
+
+        query = text(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'media_folders'
+                  AND column_name = 'is_root'
+            )
+            """
+        )
+        result = await conn.execute(query)
+        return bool(result.scalar())
 
     elif migration_num == '016':
         collections = await check_table_exists(conn, 'media_collections')
         items = await check_table_exists(conn, 'collection_items')
-        return collections and items
+        if not (collections and items):
+            return False
+
+        query = text(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'media_collections'
+              AND column_name IN ('collection_type', 'origin_playlist_id', 'is_active')
+            """
+        )
+        collections_columns = int((await conn.execute(query)).scalar() or 0)
+
+        query = text(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'collection_items'
+              AND column_name IN ('loop_mode', 'updated_at')
+            """
+        )
+        items_columns = int((await conn.execute(query)).scalar() or 0)
+
+        return bool(collections_columns == 3 and items_columns == 2)
 
     elif migration_num == '017':
         query = text("""
@@ -677,6 +917,21 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
               AND constraint_name IN ('system_alerts_alert_type_check', 'system_alerts_severity_check')
         """)
         constraints_ok = (await conn.execute(query)).scalar()
+
+        query = text(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_constraint c
+                JOIN pg_class t ON c.conrelid = t.oid
+                WHERE t.relname = 'system_alerts'
+                  AND c.conname = 'system_alerts_alert_type_check'
+                  AND pg_get_constraintdef(c.oid) ILIKE '%collection_depleted%'
+            )
+            """
+        )
+        allows_collection_depleted = bool((await conn.execute(query)).scalar())
+
         query = text("""
             SELECT COUNT(*) = 2
             FROM pg_constraint c
@@ -686,7 +941,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
               AND r.relname = 'user_profiles'
         """)
         fks_ok = (await conn.execute(query)).scalar()
-        return bool(constraints_ok and fks_ok)
+        return bool(constraints_ok and allows_collection_depleted and fks_ok)
 
     elif migration_num == '020':
         query = text("""
@@ -767,6 +1022,31 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         result = await conn.execute(query)
         return result.scalar()
+
+    elif migration_num == '026':
+        query = text("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'collection_items'
+                  AND column_name = 'updated_at'
+            )
+        """)
+        result = await conn.execute(query)
+        return result.scalar()
+
+    elif migration_num == '027':
+        query = text("""
+            SELECT pg_get_constraintdef(c.oid)
+            FROM pg_constraint c
+            WHERE c.conrelid = 'public.streams'::regclass
+              AND c.conname IN ('check_status', 'streams_status_check')
+            ORDER BY c.conname
+            LIMIT 1
+        """)
+        result = await conn.execute(query)
+        definition = result.scalar()
+        return bool(definition and 'scheduled' in definition)
 
     return False
 

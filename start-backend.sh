@@ -23,7 +23,7 @@ if [ -f "backend/.env" ]; then
 fi
 
 # Создаем папки рядом с backend
-mkdir -p backend/uploads backend/streams backend/logs
+mkdir -p backend/uploads backend/streams backend/logs backend/supervisord/logs backend/supervisord/programs
 
 # Значения по умолчанию для путей, если не переопределены в .env
 export UPLOAD_DIR="${UPLOAD_DIR:-$(pwd)/backend/uploads}"

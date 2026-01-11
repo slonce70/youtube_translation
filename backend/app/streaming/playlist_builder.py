@@ -263,14 +263,6 @@ class PlaylistBuilder:
         valid_slot_paths: List[Path] = []
         remaining_assets = list(assets)
 
-        if shuffle and len(remaining_assets) > 1:
-            seed_mode = (settings.playlist_shuffle_seed_mode or "deterministic").lower()
-            if seed_mode == "random":
-                rng = random.Random()
-            else:
-                rng = random.Random(self._seed_from_components(stream_id, target))
-            rng.shuffle(remaining_assets)
-
         for slot_path in slot_paths:
             asset = remaining_assets.pop(0) if remaining_assets else None
             if self._assign_slot_file(slot_path, asset):

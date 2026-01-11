@@ -4,15 +4,20 @@
       "finalizing": "Finalizing upload…",
       "processed": "Upload processed",
       "refreshFailed": "Failed to refresh assets: {message}",
+      "tokenRefreshFailed": "Unable to refresh upload token",
       "failed": "Upload failed: {message}"
     },
     "asset": {
       "deleted": "Asset deleted",
       "updated": "Asset updated",
+      "updateFailed": "Failed to update asset",
       "renameEmpty": "Filename cannot be empty",
       "validationRefreshed": "Validation refreshed",
+      "validateFailed": "Failed to validate asset",
       "download": "Starting download for {name}",
+      "downloadLinkFailed": "Failed to generate download link",
       "moved": "Assets moved",
+      "deleteFailed": "Failed to delete assets",
       "forceToast": "This file is still used and cannot be deleted. Remove the references first.",
       "forceCheckboxRequired": "This file is still used and cannot be deleted.",
       "invalidSelection": "Select at least one uploaded asset before moving."
@@ -28,8 +33,16 @@
       "updated": "Playlist updated",
       "deleted": "Playlist deleted"
     },
+    "references": {
+      "streamDeleted": "Stream deleted",
+      "streamDeleteFailed": "Failed to delete stream: {message}",
+      "collectionDeleted": "Collection deleted",
+      "collectionDeleteFailed": "Failed to delete collection: {message}",
+      "collectionDeleteBlocked": "This collection is used by streams. Delete or update the stream first."
+    },
     "generic": {
       "comingSoon": "{feature} is coming soon.",
+      "unknownError": "Unknown error",
       "errorWithMessage": "Error: {message}"
     }
   },
@@ -50,6 +63,36 @@
         "all": "All",
         "video": "Video",
         "audio": "Audio"
+      },
+      "quickFilters": {
+        "inUse": "In use",
+        "warnings": "Warnings"
+      },
+      "search": {
+        "placeholder": "Search by filename…",
+        "clear": "Clear search",
+        "noResultsTitle": "No results",
+        "noResultsDescription": "No files match “{query}”."
+      },
+      "filteredEmpty": {
+        "title": "No results",
+        "description": "Try disabling filters or changing the media type."
+      },
+      "sort": {
+        "ariaLabel": "Sort files",
+        "options": {
+          "newest": "Newest first",
+          "oldest": "Oldest first",
+          "nameAsc": "Name (A → Z)",
+          "nameDesc": "Name (Z → A)",
+          "sizeDesc": "Size (desc)",
+          "sizeAsc": "Size (asc)"
+        }
+      },
+      "view": {
+        "ariaLabel": "View mode",
+        "compact": "Compact",
+        "comfortable": "Detailed"
       },
       "upload": "Upload files",
       "previewAlt": "Preview of {filename}",
@@ -117,6 +160,17 @@
         "deleteUsageWarning": "Some files are used by playlists or streams. Remove the references to delete them.",
         "forceTitle": "File is in use",
         "forceDescription": "“{name}” is still used by the resources below. Remove the references to delete it.",
+        "collectionsHint": "Collections are saved video/audio sets used by streams (see Streaming → New Stream).",
+        "confirmDeleteStream": "Delete stream “{name}”? This may affect this file's dependencies.",
+        "confirmDeleteCollection": "Delete collection “{name}”? This may affect this file's dependencies.",
+        "collectionContext": {
+          "video_background": "Video playlist",
+          "audio_playlist": "Audio playlist"
+        },
+        "actions": {
+          "deleteStream": "Delete stream",
+          "deleteCollection": "Delete collection"
+        },
         "forceCheckbox": "I understand this will remove the asset from all references.",
         "forceUsage": {
           "streams": "Streams",
@@ -168,6 +222,7 @@
         "unknownAsset": "Unknown asset",
         "noAssets": "No assets added yet",
         "noAvailableAssets": "Upload compatible assets to build playlists.",
+        "confirmDelete": "Are you sure you want to delete this playlist?",
         "emptyTitle": "No playlists created yet",
         "emptyDescription": "Create your first playlist to organize your videos",
         "emptyCta": "Create your first playlist"
