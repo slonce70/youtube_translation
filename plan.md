@@ -45,6 +45,11 @@
 ✅ Dashboard (A10): checklist зроблено collapsible для менш перевантаженого екрану.  
 ✅ Streaming (A5): додано попередження про VOD < 12h, рекомендовані налаштування енкодера (GOP 2s, H.264/AAC) та “First stream checklist” у продукті/доках.  
 ✅ Streaming schedule: швидкі кнопки тривалості (12/24/48 год) + модал редагування розкладу для існуючих стрімів (PATCH `/streams/{id}`).  
+✅ Frontend: виправлено падіння `make type-check` (test fixture `Asset` узгоджено з типом).  
+✅ Upload quota hardening: `tusd-hooks/pre-create` більше не логує raw payload, має ретраї/таймаути і **fail-closed** у `production/staging` (dev override: `TUSD_FAIL_OPEN=1`).  
+✅ Docker/Edge: `docker/Caddyfile` блокує `/api/internal/*` назовні (defence-in-depth), `docker-compose` healthcheck для tusd переведено на `curl`.  
+✅ CI: backend workflow тепер запускає `ruff` + повний `pytest` з Postgres service; frontend workflow додає `npm run type-check`.  
+✅ Frontend build hygiene: прибрано зайвий `frontend/pnpm-lock.yaml` і додано `outputFileTracingRoot` для Next.js (щоб не було warning про workspace root/lockfiles).  
 
 ## Польові спостереження з тестування (записуємо окремо)
 > Цей блок — “журнал проблем”, які помічаємо під час ручного тесту, щоб не загубити. Кожен пункт має короткий статус.
@@ -53,6 +58,7 @@
 - [x] Streaming: після створення трансляції показує “створено”, але в списку не з’являється / сторінка перезавантажується (виправлено падінням `GET /api/streams/` через async lazy-load).
 - [x] Streaming: в останньому кроці модалки кнопка “Створити” була нижче екрану (виправлено scroll/лейаутом модалки).
 - [x] Docker: `runner` був `unhealthy` через некоректний healthcheck (вирівняно; тепер `runner` healthy).
+- [x] Docker: `tusd` міг бути `unhealthy` через healthcheck на `wget --spider` (виправлено: healthcheck на `curl`).
 - [x] Streaming: стрім міг “зависати” в статусі “Зупиняється” після планового stop (виправлено reconciler + parse supervisor статусу).
 - [x] Streaming logs: занадто багато “frame=…” (виправлено `-nostats` + “important” режим за замовчуванням).
 - [x] Library: у відео не було прев’ю (виправлено thumbnail_url + fallback `/thumbnails/{asset_id}.jpg`).
@@ -60,6 +66,11 @@
 - [ ] i18n: в інтерфейсі місцями змішані мови (частково: Library/Streaming — прибрано англомовні confirm/fallback; dashboard checklist — “Go Live” локалізовано).
 - [x] Dashboard: екран перенавантажений — частково спрощено (checklist зроблено collapsible; далі можна згортати usage/secondary блоки).
 - [x] Library UI: “важко і замудро” — частково спрощено (пошук, сортування, compact/detailed режим; далі — швидкі фільтри “in use/warnings”).
+- [x] Frontend: `make type-check` падав через fixture `Asset` у тесті (виправлено: узгоджено типи/обовʼязкові поля).
+- [x] Security: tusd `pre-create` робив fail-open, коли quota endpoint недоступний (виправлено: fail-closed у `production/staging`, опція `TUSD_FAIL_OPEN=1` тільки для dev).
+- [x] Edge proxy: `/api/internal/*` був доступний через Caddy (виправлено: `respond 404` на edge).
+- [x] CI: backend workflow запускав лише `tests/test_security.py`, а frontend — без `type-check` (виправлено: ruff + повний pytest з Postgres service, та `npm run type-check`).
+- [x] Next.js: warning про workspace root через зайві lockfile (виправлено: прибрано `frontend/pnpm-lock.yaml` + додано `outputFileTracingRoot`).
 - [ ] (додати) Опиши нову проблему 1 рядком + де її бачиш (URL/кроки/повідомлення в консолі).
 
 ---

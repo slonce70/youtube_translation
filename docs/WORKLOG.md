@@ -11,6 +11,12 @@
 - Admin: оновлено `backend/create_admin.py` (можна зробити адміном за email).
 - Перевірив: `make i18n-check`, `make test-backend` (120 passed, 8 skipped), `make test-frontend` (35 passed).
 - Перевірив: `make i18n-check && make lint && make test` (backend: 117 passed, 8 skipped; frontend: 29 passed).
+- Frontend: полагоджено `make type-check` (виправлено fixture `Asset` у `asset-view.test.ts`).
+- Upload quota hardening: `backend/tusd-hooks/pre-create` тепер fail-closed у `production/staging`, має ретраї/таймаути і не логує raw payload (dev override: `TUSD_FAIL_OPEN=1`).
+- Docker/Edge: `docker/Caddyfile` блокує `/api/internal/*` назовні (перевірено `curl http://localhost/api/internal/check-quota → 404`).
+- Docker: tusd healthcheck переведено на `curl` (стабільний `healthy`), tusd rebuilt/restarted.
+- CI: backend workflow тепер запускає `ruff` + повний `pytest` з Postgres service; frontend workflow додає `npm run type-check`.
+- Frontend build hygiene: прибрано `frontend/pnpm-lock.yaml` і додано `outputFileTracingRoot` у `frontend/next.config.js`.
 
 ## 2026-01-09
 - Виправив падіння `GET /api/streams/` (lazy-load у async) — додано eager-load `stream_destinations → destination`, через що список трансляцій стабільно відображається без “перезавантажень” сторінки.
