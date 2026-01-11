@@ -6,7 +6,7 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --legacy-peer-deps
+RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
