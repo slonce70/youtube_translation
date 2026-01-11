@@ -33,7 +33,7 @@ install: backend-venv ## Install all dependencies (backend + frontend)
 	@echo "$(BLUE)Installing backend dependencies...$(NC)"
 	cd backend && $(BACKEND_PIP) install --upgrade pip && $(BACKEND_PIP) install -r requirements.txt
 	@echo "$(BLUE)Installing frontend dependencies...$(NC)"
-	cd frontend && npm install
+	cd frontend && npm ci
 	@echo "$(GREEN)✓ All dependencies installed$(NC)"
 
 install-backend: backend-venv ## Install backend dependencies only
@@ -43,7 +43,7 @@ install-backend: backend-venv ## Install backend dependencies only
 
 install-frontend: ## Install frontend dependencies only
 	@echo "$(BLUE)Installing frontend dependencies...$(NC)"
-	cd frontend && npm install
+	cd frontend && npm ci
 	@echo "$(GREEN)✓ Frontend dependencies installed$(NC)"
 
 # ==========================================
@@ -114,7 +114,7 @@ lint: ## Run linters for backend and frontend
 lint-backend: backend-venv ## Run backend linters only
 	@echo "$(BLUE)Linting backend...$(NC)"
 	cd backend && $(BACKEND_PY) -m ruff check app/
-	@if [ "${RUN_BLACK:-0}" = "1" ]; then \
+	@if [ "$${RUN_BLACK:-0}" = "1" ]; then \
 		cd backend && $(BACKEND_PY) -m black --check app/; \
 	else \
 		echo "$(BLUE)Skipping Black check (set RUN_BLACK=1 to enable)$(NC)"; \
@@ -133,12 +133,12 @@ lint-fix: backend-venv ## Fix linting issues automatically
 	cd backend && $(BACKEND_PY) -m ruff check --fix app/
 	cd backend && $(BACKEND_PY) -m black app/
 	@echo "$(BLUE)Fixing frontend code...$(NC)"
-	cd frontend && npm run lint -- --fix
+	cd frontend && npm run lint:fix
 	@echo "$(GREEN)✓ Code formatting completed$(NC)"
 
 type-check: backend-venv ## Run type checking
 	@echo "$(BLUE)Type checking backend...$(NC)"
-	@if [ "${RUN_MYPY:-0}" = "1" ]; then \
+	@if [ "$${RUN_MYPY:-0}" = "1" ]; then \
 		cd backend && $(BACKEND_PY) -m mypy app/; \
 	else \
 		echo "$(BLUE)Skipping mypy (set RUN_MYPY=1 to enable)$(NC)"; \

@@ -42,6 +42,7 @@ const TRAILING_SLASH_API_ROUTES = [
 const nextConfig = {
   transpilePackages: ['@supabase/supabase-js'],
   output: 'standalone',
+  outputFileTracingRoot: __dirname,
   reactStrictMode: true,
   skipTrailingSlashRedirect: true,
   allowedDevOrigins: allowedOrigins,
