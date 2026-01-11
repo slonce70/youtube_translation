@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     upload_token_secret: str = "change_this_upload_secret"
     upload_token_ttl_seconds: int = 900  # 15 minutes
     csrf_secret: Optional[str] = None
+    ws_token_secret: Optional[str] = None
+    ws_token_ttl_seconds: int = 60
 
     # Storage
     upload_dir: str = "/app/uploads"
@@ -59,6 +61,7 @@ class Settings(BaseSettings):
     ffprobe_bin: str = "/usr/bin/ffprobe"
     ffmpeg_auto_restart_attempts: int = 1
     ffmpeg_restart_backoff_seconds: int = 5
+    ffmpeg_restart_backoff_max_seconds: int = 60
     placeholder_video_path: Optional[str] = None
     placeholder_audio_path: Optional[str] = None
     placeholder_video_resolution: str = "1280x720"
@@ -72,12 +75,18 @@ class Settings(BaseSettings):
     ffmpeg_audio_bitrate_kbps: int = 160
     ffmpeg_keyframe_interval_seconds: float = 2.0  # YouTube/Twitch recommend 2s, max 4s
     ffmpeg_cleanup_interval_seconds: int = 60
+    stream_log_max_bytes: int = 52428800  # 50MB
+    stream_log_max_backups: int = 5
 
     # Monitoring
     sentry_dsn: str = ""
+    metrics_access_token: Optional[str] = None
+    disk_warning_percent: int = 80
+    disk_critical_percent: int = 90
 
     # CORS
     allowed_origins: Union[List[str], str] = ["http://localhost:3000"]
+    trusted_proxy_ips: Union[List[str], str] = []
 
     # Internal integrations
     tusd_hmac_secret: Optional[str] = None
@@ -95,6 +104,11 @@ class Settings(BaseSettings):
     supervisor_log_dir: str = "supervisord/logs"
     stream_schedule_poll_interval_seconds: int = 15
     stream_schedule_retry_interval_seconds: int = 60
+    playlist_shuffle_seed_mode: str = "deterministic"
+
+    # Rate limiting / Redis (optional)
+    redis_url: Optional[str] = None
+    redis_rate_limit_prefix: str = "rate-limit"
 
     @property
     def cors_origins(self) -> List[str]:
@@ -104,6 +118,15 @@ class Settings(BaseSettings):
         else:
             origins = self.allowed_origins
         return origins
+
+    @property
+    def trusted_proxies(self) -> List[str]:
+        proxies: List[str]
+        if isinstance(self.trusted_proxy_ips, str):
+            proxies = [proxy.strip() for proxy in self.trusted_proxy_ips.split(",") if proxy.strip()]
+        else:
+            proxies = [proxy.strip() for proxy in self.trusted_proxy_ips if proxy.strip()]
+        return proxies
 
     @field_validator('database_url')
     @classmethod
@@ -207,6 +230,14 @@ class Settings(BaseSettings):
         environment = (info.data or {}).get('environment', 'development')
         if environment != 'development' and value == "change_this_download_secret":
             raise ValueError("DOWNLOAD_TOKEN_SECRET must be configured")
+        return value
+
+    @field_validator('enable_dev_auth')
+    @classmethod
+    def validate_dev_auth(cls, value: bool, info: FieldValidationInfo) -> bool:
+        environment = (info.data or {}).get('environment', 'development')
+        if value and environment != 'development':
+            raise ValueError("ENABLE_DEV_AUTH is only allowed in development")
         return value
 
     @field_validator('upload_token_secret')
