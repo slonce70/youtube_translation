@@ -479,6 +479,33 @@ async def get_current_user_optional(
         return None
 
 
+async def require_metrics_access(
+    authorization: Optional[str] = Header(None),
+    metrics_token: Optional[str] = Header(default=None, alias="X-Metrics-Token"),
+) -> dict:
+    """
+    Allow access to metrics endpoints via either:
+    - A shared metrics token (X-Metrics-Token or Bearer token), or
+    - A valid Supabase JWT (Authorization: Bearer <token>).
+    """
+    if settings.metrics_access_token:
+        if metrics_token == settings.metrics_access_token:
+            return {"token": "metrics"}
+        if authorization and authorization.startswith("Bearer "):
+            raw_token = authorization.replace("Bearer ", "")
+            if raw_token == settings.metrics_access_token:
+                return {"token": "metrics"}
+
+    if authorization:
+        return await get_current_user(authorization)
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing authorization header",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 class UserDependency:
     """Dependency class for getting current user with database session"""
     
