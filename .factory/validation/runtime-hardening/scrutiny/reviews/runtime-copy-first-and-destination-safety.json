@@ -1,0 +1,34 @@
+{
+  "featureId": "runtime-copy-first-and-destination-safety",
+  "reviewedAt": "2026-04-01T15:37:47.267356+00:00",
+  "commitId": "7c1c719d2aefb977dcc98863c4e96ace60483fb1",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature closes the UUID crash on the real start route and preserves the earlier masking/log/launch-safety work, but one blocking reliability gap remains in the live quality/start preflight path and there is one smaller control-path regression in the managed runtime start ordering.",
+    "issues": [
+      {
+        "file": "backend/app/core/quota.py",
+        "line": 109,
+        "severity": "blocking",
+        "description": "`evaluate_stream_quality()` and the new launch preflight both depend on `_load_limits()`, which raises HTTP 500 whenever the DB is missing the `subscription_tier_limits` row for the user's tier. DEV auth auto-provisions users with `subscription_tier=\"free\"`, so on a fresh/stale local DB the feature's own `/api/streams/{id}/quality` and start checks fail with `Invalid subscription tier: free` instead of returning the actionable `quality_rejected` / launch-guard responses this feature promises. The handoff for worker `e7187690-92d2-40fc-afe4-7066e7433ccd` records this exact curl failure, while `backend/tests/conftest.py` masks the problem by seeding `subscription_tier_limits` only inside tests."
+      },
+      {
+        "file": "backend/app/services/streams/control.py",
+        "line": 147,
+        "severity": "non_blocking",
+        "description": "The managed-runtime start branches now run `validate_stream_launch_prerequisites()` before checking whether supervisor/systemd already has the stream running. If a live stream later loses its enabled destinations or its assets become incompatible, a repeated `POST /api/streams/{id}/start` returns `No enabled destinations found` / `quality_rejected` instead of the accurate `Stream already running` response, because lines 147-155 and 181-189 perform the expensive preflight before `systemd_is_active()` / `supervisor_program_status()`. This does not launch a bad stream, but it makes operator control behavior misleading on an already-running stream."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Mission shared-state docs do not mention that local runtime quality/start verification depends on migrated and seeded `subscription_tier_limits` data, so workers can hit a misleading HTTP 500 on `/api/streams/{id}/quality` even when DEV auth and the approved services are configured correctly.",
+      "evidence": "`backend/tests/conftest.py:37-127` seeds `subscription_tier_limits` for tests, but `.factory/library/environment.md:17-53` lists local validation assumptions without noting that quota-tier seed data is required for runtime quality/start paths. The completed handoff for worker `e7187690-92d2-40fc-afe4-7066e7433ccd` explicitly reports a live curl failure due to missing tier data (`Invalid subscription tier: free` / missing `subscription_tiers`)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed. The UUID dependency fix repaired the real HTTP start route, but the feature still relies on test-only tier seeding to keep the quality/start preflight from returning HTTP 500 on a local runtime stack, and the managed-runtime start path now checks launch prerequisites before it checks whether the stream is already running."
+}

@@ -26,6 +26,8 @@ If missing, workers may create them from examples, but must never commit secrets
 - Default local validation uses:
   - `ENABLE_DEV_AUTH=true` in backend
   - `NEXT_PUBLIC_DEV_BYPASS_AUTH=1` in frontend
+- If `DEV_USER_EMAIL` or `DEV_USER_ID` are unset, backend DEV auth falls back to `dev@example.com` and `00000000-0000-0000-0000-000000000001`.
+- Local runtime quality/start checks depend on migrated and seeded `subscription_tier_limits` data for the active user's tier; otherwise `/api/streams/{id}/quality` and launch preflight can fail with `Invalid subscription tier` HTTP 500s instead of actionable runtime validation errors.
 - Real YouTube E2E is deferred for this mission.
 - Manual plans are the only V1 billing path.
 
