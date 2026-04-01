@@ -6,9 +6,91 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 
 from app.core.database import async_session_maker
-from app.models.database import Stream, UserProfile
-from app.schemas.api import StreamScheduleUpdate
+from app.models.database import Asset, Destination, Stream, UserProfile
+from app.schemas.api import StreamCreate, StreamScheduleUpdate
 from app.services.streams.service import StreamService
+
+
+@pytest.mark.asyncio
+async def test_create_stream_persists_immediate_intent():
+    user_id = uuid4()
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@schedule-create-now.test",
+            subscription_tier="free",
+        )
+        asset = Asset(
+            user_id=user_id,
+            filename="clip.mp4",
+            storage_path=f"/tmp/{uuid4()}.mp4",
+            size_bytes=1024,
+            asset_type="video",
+        )
+        destination = Destination(
+            user_id=user_id,
+            name="YouTube",
+            stream_key_encrypted="encrypted-key",
+        )
+        session.add_all([profile, asset, destination])
+        await session.commit()
+
+        service = StreamService(session, user_id)
+        created = await service.create_stream(
+            StreamCreate(asset_ids=[asset.id], destination_ids=[destination.id])
+        )
+
+        assert created.status == "stopped"
+        assert created.scheduled_start_enabled is False
+        assert created.scheduled_start_time is None
+        assert created.scheduled_stop_time is None
+
+
+@pytest.mark.asyncio
+async def test_create_stream_persists_scheduled_intent():
+    user_id = uuid4()
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@schedule-create-later.test",
+            subscription_tier="free",
+        )
+        asset = Asset(
+            user_id=user_id,
+            filename="clip.mp4",
+            storage_path=f"/tmp/{uuid4()}.mp4",
+            size_bytes=1024,
+            asset_type="video",
+        )
+        destination = Destination(
+            user_id=user_id,
+            name="YouTube",
+            stream_key_encrypted="encrypted-key",
+        )
+        session.add_all([profile, asset, destination])
+        await session.commit()
+
+        service = StreamService(session, user_id)
+        start_at = (datetime.now(timezone.utc) + timedelta(hours=2)).replace(
+            microsecond=0
+        )
+        stop_at = (start_at + timedelta(hours=1)).replace(microsecond=0)
+        created = await service.create_stream(
+            StreamCreate(
+                asset_ids=[asset.id],
+                destination_ids=[destination.id],
+                schedule_mode="schedule",
+                schedule_start_at=start_at,
+                schedule_stop_at=stop_at,
+            )
+        )
+
+        assert created.status == "scheduled"
+        assert created.scheduled_start_enabled is True
+        assert created.scheduled_start_time == start_at
+        assert created.scheduled_stop_time == stop_at
 
 
 @pytest.mark.asyncio

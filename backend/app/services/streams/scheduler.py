@@ -159,6 +159,8 @@ async def stop_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
             await db.flush()
             control = StreamControlService(db, stream.user_id)
             await control.stop_stream(stream.id)
+            stream.scheduled_stop_time = None
+            stream.scheduled_stop_attempted_at = None
             stopped += 1
             logger.info("Scheduled stream %s stopped", stream.id)
         except HTTPException as exc:
@@ -182,16 +184,15 @@ async def scheduled_stream_launcher() -> None:
     from app.core.database import async_session_maker
 
     interval = max(settings.stream_schedule_poll_interval_seconds, 5)
-    await asyncio.sleep(interval)
 
     while True:
-        await asyncio.sleep(interval)
         try:
             async with async_session_maker() as session:
                 await launch_due_streams(session)
                 await stop_due_streams(session)
         except Exception as exc:
             logger.error("Scheduled stream launcher error: %s", exc)
+        await asyncio.sleep(interval)
 
 
 def _advance_repeating_schedule(stream: Stream, occurrence_start: datetime) -> None:
