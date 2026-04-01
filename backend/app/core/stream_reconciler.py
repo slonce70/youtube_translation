@@ -523,9 +523,9 @@ async def restart_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
     query = (
         select(Stream)
         .where(
-            Stream.status == "error",
             Stream.runtime_next_restart_at.isnot(None),
             Stream.runtime_next_restart_at <= now,
+            Stream.status.in_(["error", "stopped"]),
         )
         .order_by(Stream.runtime_next_restart_at)
         .limit(batch_size)
