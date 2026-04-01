@@ -134,15 +134,23 @@ class VideoValidator:
 
             try:
                 keyframe_stats = await self._analyze_keyframes(file_path)
-            except Exception as exc:  # pragma: no cover - defensive logging around ffprobe
+            except (
+                Exception
+            ) as exc:  # pragma: no cover - defensive logging around ffprobe
                 logger.warning("Keyframe analysis failed for %s: %s", file_path, exc)
                 keyframe_stats = None
 
-            is_compatible, media_kind = self._check_compatibility(meta, keyframe_stats=keyframe_stats)
-            validation_errors = [] if is_compatible else self._get_validation_errors(
-                meta,
-                media_kind,
-                keyframe_stats=keyframe_stats,
+            is_compatible, media_kind = self._check_compatibility(
+                meta, keyframe_stats=keyframe_stats
+            )
+            validation_errors = (
+                []
+                if is_compatible
+                else self._get_validation_errors(
+                    meta,
+                    media_kind,
+                    keyframe_stats=keyframe_stats,
+                )
             )
 
             return {
@@ -194,17 +202,17 @@ class VideoValidator:
         """Get video metadata using ffprobe"""
         cmd = [
             self.ffprobe_bin,
-            "-v", "quiet",
-            "-print_format", "json",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
             "-show_streams",
             "-show_format",
-            str(file_path)
+            str(file_path),
         ]
 
         process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
 
         stdout, stderr = await process.communicate()
@@ -222,7 +230,9 @@ class VideoValidator:
     ) -> tuple[bool, str]:
         """Return compatibility flag and detected media kind."""
         try:
-            video_stream, audio_stream, _cover_art, media_kind = self._classify_streams(meta)
+            video_stream, audio_stream, _cover_art, media_kind = self._classify_streams(
+                meta
+            )
 
             if media_kind == "audio":
                 if not audio_stream:
@@ -307,7 +317,9 @@ class VideoValidator:
 
             gop_size = video_stream.get("gop_size")
             if gop_size and int(gop_size) > self.MAX_GOP_SIZE:
-                errors.append(f"GOP size too large: {gop_size} (max {self.MAX_GOP_SIZE})")
+                errors.append(
+                    f"GOP size too large: {gop_size} (max {self.MAX_GOP_SIZE})"
+                )
 
             if keyframe_stats:
                 max_interval = keyframe_stats.get("max_interval_seconds")
@@ -332,7 +344,10 @@ class VideoValidator:
 
     @classmethod
     def allowed_audio_codec_labels(cls) -> str:
-        labels = {cls.AUDIO_CODEC_LABELS.get(codec, codec.upper()) for codec in cls.ALLOWED_AUDIO_CODECS}
+        labels = {
+            cls.AUDIO_CODEC_LABELS.get(codec, codec.upper())
+            for codec in cls.ALLOWED_AUDIO_CODECS
+        }
         return ", ".join(sorted(labels))
 
     def get_stream_info(self, meta: Dict[str, Any]) -> Dict[str, Any]:
@@ -359,7 +374,7 @@ class VideoValidator:
                 "height": video_stream.get("height"),
                 "fps": self._parse_fps(video_stream.get("r_frame_rate", "0/1")),
                 "pix_fmt": video_stream.get("pix_fmt"),
-                "bitrate": int(video_stream.get("bit_rate", 0))
+                "bitrate": int(video_stream.get("bit_rate", 0)),
             }
 
         if cover_art_stream and not video_stream:
@@ -374,19 +389,23 @@ class VideoValidator:
                 "codec": audio_stream.get("codec_name"),
                 "sample_rate": int(audio_stream.get("sample_rate", 0)),
                 "channels": audio_stream.get("channels"),
-                "bitrate": int(audio_stream.get("bit_rate", 0))
+                "bitrate": int(audio_stream.get("bit_rate", 0)),
             }
 
         warnings: list[str] = []
 
         if has_primary_video:
-            recommendation, fps_bucket, fps_out_of_guideline = self._match_bitrate_guidance(
-                info.get("video", {}).get("height"),
-                info.get("video", {}).get("fps"),
+            recommendation, fps_bucket, fps_out_of_guideline = (
+                self._match_bitrate_guidance(
+                    info.get("video", {}).get("height"),
+                    info.get("video", {}).get("fps"),
+                )
             )
 
             if recommendation:
-                bitrate_source = info.get("video", {}).get("bitrate") or info.get("bitrate")
+                bitrate_source = info.get("video", {}).get("bitrate") or info.get(
+                    "bitrate"
+                )
                 bitrate_status = "unknown"
                 if bitrate_source:
                     bitrate_mbps = bitrate_source / 1_000_000
@@ -416,7 +435,9 @@ class VideoValidator:
                 }
 
             if recommendation and fps_out_of_guideline:
-                warnings.append("Frame rate differs from the recommended 30 or 60 fps for live streaming.")
+                warnings.append(
+                    "Frame rate differs from the recommended 30 or 60 fps for live streaming."
+                )
         else:
             info["recommendation"] = None
 
@@ -452,7 +473,9 @@ class VideoValidator:
             return 30, True
         return 60, True
 
-    def _match_bitrate_guidance(self, height: Optional[int], fps_value: Optional[float]):
+    def _match_bitrate_guidance(
+        self, height: Optional[int], fps_value: Optional[float]
+    ):
         """Find the best matching bitrate recommendation for provided height/fps."""
         if not height:
             return None, None, True
@@ -473,7 +496,9 @@ class VideoValidator:
 
         return None, fps_bucket, fps_out_of_guideline
 
-    def _split_video_streams(self, streams: list[dict[str, Any]]) -> Tuple[Optional[dict[str, Any]], Optional[dict[str, Any]]]:
+    def _split_video_streams(
+        self, streams: list[dict[str, Any]]
+    ) -> Tuple[Optional[dict[str, Any]], Optional[dict[str, Any]]]:
         """Return primary video stream and optional cover art stream."""
         primary = None
         cover_art = None
@@ -505,11 +530,16 @@ class VideoValidator:
 
     def _is_cover_art_stream(self, stream: dict[str, Any]) -> bool:
         disposition = stream.get("disposition") or {}
-        if any(str(disposition.get(flag, 0)) == "1" for flag in ("attached_pic", "still_image", "cover_art")):
+        if any(
+            str(disposition.get(flag, 0)) == "1"
+            for flag in ("attached_pic", "still_image", "cover_art")
+        ):
             return True
 
         codec = (stream.get("codec_name") or "").lower()
-        fps = self._parse_fps(stream.get("r_frame_rate") or stream.get("avg_frame_rate") or "0/1")
+        fps = self._parse_fps(
+            stream.get("r_frame_rate") or stream.get("avg_frame_rate") or "0/1"
+        )
         if codec in {"mjpeg", "png", "bmp", "jpeg"} and (fps is None or fps <= 1):
             nb_frames = stream.get("nb_frames")
             try:
@@ -526,12 +556,17 @@ class VideoValidator:
 
         return False
 
-    def _classify_streams(
-        self, meta: Dict[str, Any]
-    ) -> Tuple[Optional[dict[str, Any]], Optional[dict[str, Any]], Optional[dict[str, Any]], str]:
+    def _classify_streams(self, meta: Dict[str, Any]) -> Tuple[
+        Optional[dict[str, Any]],
+        Optional[dict[str, Any]],
+        Optional[dict[str, Any]],
+        str,
+    ]:
         streams = meta.get("streams", [])
         video_stream, cover_art = self._split_video_streams(streams)
-        audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
+        audio_stream = next(
+            (s for s in streams if s.get("codec_type") == "audio"), None
+        )
 
         if video_stream and audio_stream:
             return video_stream, audio_stream, cover_art, "video"
@@ -568,11 +603,15 @@ class VideoValidator:
         stdout, stderr = await process.communicate()
 
         if process.returncode != 0:
-            raise RuntimeError(f"ffprobe keyframe analysis failed: {stderr.decode().strip()}")
+            raise RuntimeError(
+                f"ffprobe keyframe analysis failed: {stderr.decode().strip()}"
+            )
 
         try:
             payload = json.loads(stdout.decode())
-        except json.JSONDecodeError as exc:  # pragma: no cover - malformed ffprobe output
+        except (
+            json.JSONDecodeError
+        ) as exc:  # pragma: no cover - malformed ffprobe output
             raise RuntimeError("Unable to parse ffprobe keyframe output") from exc
 
         frames = payload.get("frames") or []
@@ -587,7 +626,11 @@ class VideoValidator:
         timestamps: list[float] = []
 
         for frame in frames:
-            raw_ts = frame.get("pkt_pts_time") or frame.get("best_effort_timestamp_time") or frame.get("pkt_dts_time")
+            raw_ts = (
+                frame.get("pkt_pts_time")
+                or frame.get("best_effort_timestamp_time")
+                or frame.get("pkt_dts_time")
+            )
             if raw_ts is None:
                 continue
             try:

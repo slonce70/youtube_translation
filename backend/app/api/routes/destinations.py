@@ -29,7 +29,9 @@ async def list_destinations(
     return [_dump_destination(resp) for resp in responses]
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=DestinationResponse)
+@router.post(
+    "/", status_code=status.HTTP_201_CREATED, response_model=DestinationResponse
+)
 async def create_destination(
     destination_data: DestinationCreate,
     user_deps: tuple = Depends(require_user),
@@ -59,7 +61,9 @@ async def update_destination(
 ):
     """Update destination."""
 
-    response = await _get_service(user_deps).update_destination(destination_id, destination_data)
+    response = await _get_service(user_deps).update_destination(
+        destination_id, destination_data
+    )
     return _dump_destination(response)
 
 

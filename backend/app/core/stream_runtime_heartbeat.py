@@ -45,7 +45,9 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     return parsed.astimezone(timezone.utc)
 
 
-def get_runtime_heartbeat_datetime(payload: Optional[Dict[str, Any]], field: str) -> Optional[datetime]:
+def get_runtime_heartbeat_datetime(
+    payload: Optional[Dict[str, Any]], field: str
+) -> Optional[datetime]:
     if not payload:
         return None
     return _parse_datetime(payload.get(field))
@@ -82,7 +84,9 @@ def write_runtime_heartbeat(
 
     target = get_runtime_heartbeat_path(stream_id)
     temp_path = target.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(payload, ensure_ascii=True, sort_keys=True), encoding="utf-8")
+    temp_path.write_text(
+        json.dumps(payload, ensure_ascii=True, sort_keys=True), encoding="utf-8"
+    )
     temp_path.replace(target)
     return payload
 

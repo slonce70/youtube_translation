@@ -55,7 +55,9 @@ async def collect_asset_folders(
         folder_map[asset_id].append(info)
 
     for asset_id, folders in folder_map.items():
-        primary = next((folder.folder_id for folder in folders if not folder.is_root), None)
+        primary = next(
+            (folder.folder_id for folder in folders if not folder.is_root), None
+        )
         if primary is None and folders:
             primary = folders[0].folder_id
         primary_map[asset_id] = primary
@@ -165,8 +167,16 @@ async def collect_asset_usage(
             )
         )
 
-        for stream_id, stream_name, stream_status, video_collection_id, audio_collection_id in stream_via_collection_rows:
-            linked_collections = [cid for cid in [video_collection_id, audio_collection_id] if cid]
+        for (
+            stream_id,
+            stream_name,
+            stream_status,
+            video_collection_id,
+            audio_collection_id,
+        ) in stream_via_collection_rows:
+            linked_collections = [
+                cid for cid in [video_collection_id, audio_collection_id] if cid
+            ]
             for collection_id in linked_collections:
                 for asset_id in collection_to_assets.get(collection_id, []):
                     pair = (asset_id, stream_id)
@@ -194,8 +204,16 @@ def extract_thumbnail_url(asset: Asset) -> Optional[str]:
 
 def build_asset_optimization_info(asset: Asset) -> AssetOptimizationInfo:
     recommended_strategy = "copy" if asset.compatible_for_copy else "transcode"
-    raw_status = str(getattr(asset, "optimization_status", "") or "not_requested").strip().lower()
-    status = raw_status if raw_status in {"not_requested", "queued", "processing", "ready", "failed"} else "not_requested"
+    raw_status = (
+        str(getattr(asset, "optimization_status", "") or "not_requested")
+        .strip()
+        .lower()
+    )
+    status = (
+        raw_status
+        if raw_status in {"not_requested", "queued", "processing", "ready", "failed"}
+        else "not_requested"
+    )
     raw_strategy = getattr(asset, "optimization_strategy", None)
     strategy = str(raw_strategy).strip().lower() if raw_strategy else None
     if strategy not in {"copy", "transcode"}:

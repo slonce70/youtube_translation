@@ -28,7 +28,9 @@ logger = logging.getLogger(__name__)
 async def launch_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
     """Start streams whose scheduled time has arrived."""
     now = datetime.now(timezone.utc)
-    retry_threshold = now - timedelta(seconds=settings.stream_schedule_retry_interval_seconds)
+    retry_threshold = now - timedelta(
+        seconds=settings.stream_schedule_retry_interval_seconds
+    )
 
     query = (
         select(Stream)
@@ -75,7 +77,10 @@ async def launch_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
                 )
                 if occurrence_stop is not None and occurrence_stop <= now:
                     _advance_repeating_schedule(stream, occurrence_start)
-                    logger.info("Skipped expired recurring schedule window for stream %s", stream.id)
+                    logger.info(
+                        "Skipped expired recurring schedule window for stream %s",
+                        stream.id,
+                    )
                     continue
 
             stream.scheduled_start_attempted_at = now
@@ -109,7 +114,9 @@ async def launch_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
                 exc.detail,
             )
         except Exception as exc:
-            logger.exception("Unexpected error launching scheduled stream %s: %s", stream.id, exc)
+            logger.exception(
+                "Unexpected error launching scheduled stream %s: %s", stream.id, exc
+            )
         finally:
             await db.commit()
 
@@ -119,7 +126,9 @@ async def launch_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
 async def stop_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
     """Stop streams whose scheduled stop time has arrived."""
     now = datetime.now(timezone.utc)
-    retry_threshold = now - timedelta(seconds=settings.stream_schedule_retry_interval_seconds)
+    retry_threshold = now - timedelta(
+        seconds=settings.stream_schedule_retry_interval_seconds
+    )
 
     query = (
         select(Stream)
@@ -159,7 +168,9 @@ async def stop_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
                 exc.detail,
             )
         except Exception as exc:
-            logger.exception("Unexpected error stopping scheduled stream %s: %s", stream.id, exc)
+            logger.exception(
+                "Unexpected error stopping scheduled stream %s: %s", stream.id, exc
+            )
         finally:
             await db.commit()
 

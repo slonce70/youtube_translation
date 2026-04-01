@@ -69,24 +69,32 @@ class MediaFolderService:
         try:
             await self.db.commit()
             await self.db.refresh(new_folder)
-            logger.info("Created media folder %s for user %s", new_folder.id, self.user_id)
+            logger.info(
+                "Created media folder %s for user %s", new_folder.id, self.user_id
+            )
             return new_folder
         except IntegrityError as exc:
             await self.db.rollback()
-            logger.warning("Folder creation conflict for user %s: %s", self.user_id, exc)
+            logger.warning(
+                "Folder creation conflict for user %s: %s", self.user_id, exc
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Folder with the same name already exists",
             ) from exc
         except Exception as exc:  # pragma: no cover - defensive logging
             await self.db.rollback()
-            logger.exception("Error creating media folder for user %s: %s", self.user_id, exc)
+            logger.exception(
+                "Error creating media folder for user %s: %s", self.user_id, exc
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create folder",
             ) from exc
 
-    async def update_folder(self, folder_id: UUID, payload: MediaFolderUpdate) -> MediaFolder:
+    async def update_folder(
+        self, folder_id: UUID, payload: MediaFolderUpdate
+    ) -> MediaFolder:
         folder = await self._get_folder(folder_id)
 
         if payload.name is not None:
@@ -127,7 +135,9 @@ class MediaFolderService:
             ) from exc
         except Exception as exc:  # pragma: no cover
             await self.db.rollback()
-            logger.exception("Error updating folder %s for user %s: %s", folder_id, self.user_id, exc)
+            logger.exception(
+                "Error updating folder %s for user %s: %s", folder_id, self.user_id, exc
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update folder",
@@ -146,7 +156,9 @@ class MediaFolderService:
             select(MediaFolder.id).where(MediaFolder.parent_id == folder.id).limit(1)
         )
         asset_exists = await self.db.execute(
-            select(AssetFolderLink.asset_id).where(AssetFolderLink.folder_id == folder.id).limit(1)
+            select(AssetFolderLink.asset_id)
+            .where(AssetFolderLink.folder_id == folder.id)
+            .limit(1)
         )
 
         if child_exists.first() is not None or asset_exists.first() is not None:
@@ -159,7 +171,9 @@ class MediaFolderService:
         await self.db.commit()
         logger.info("Deleted media folder %s for user %s", folder.id, self.user_id)
 
-    async def add_asset_to_folder(self, folder_id: UUID, asset_id: UUID) -> AssetFolderLink:
+    async def add_asset_to_folder(
+        self, folder_id: UUID, asset_id: UUID
+    ) -> AssetFolderLink:
         folder = await self._get_folder(folder_id)
         await self._assert_asset_owned(asset_id)
 
@@ -187,7 +201,9 @@ class MediaFolderService:
         )
 
         if result.rowcount == 0:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Link not found"
+            )
 
         await self.db.commit()
 
@@ -204,19 +220,28 @@ class MediaFolderService:
             )
 
         owned_assets = await self.db.execute(
-            select(Asset.id).where(Asset.user_id == self.user_id, Asset.id.in_(asset_ids))
+            select(Asset.id).where(
+                Asset.user_id == self.user_id, Asset.id.in_(asset_ids)
+            )
         )
         owned_ids = {row[0] for row in owned_assets}
         missing = [str(asset_id) for asset_id in asset_ids if asset_id not in owned_ids]
         if missing:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"missing_assets": missing})
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"missing_assets": missing},
+            )
 
         if payload.exclusive:
-            await self.db.execute(delete(AssetFolderLink).where(AssetFolderLink.asset_id.in_(asset_ids)))
+            await self.db.execute(
+                delete(AssetFolderLink).where(AssetFolderLink.asset_id.in_(asset_ids))
+            )
 
         existing_links = await self.db.execute(
-            select(AssetFolderLink.asset_id)
-            .where(AssetFolderLink.asset_id.in_(asset_ids), AssetFolderLink.folder_id == folder.id)
+            select(AssetFolderLink.asset_id).where(
+                AssetFolderLink.asset_id.in_(asset_ids),
+                AssetFolderLink.folder_id == folder.id,
+            )
         )
         already_linked = {row[0] for row in existing_links}
 
@@ -234,12 +259,16 @@ class MediaFolderService:
     async def _get_folder(self, folder_id: UUID) -> MediaFolder:
         folder = await self._fetch_folder(folder_id)
         if not folder:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found"
+            )
         return folder
 
     async def _fetch_folder(self, folder_id: UUID) -> Optional[MediaFolder]:
         result = await self.db.execute(
-            select(MediaFolder).where(MediaFolder.id == folder_id, MediaFolder.user_id == self.user_id)
+            select(MediaFolder).where(
+                MediaFolder.id == folder_id, MediaFolder.user_id == self.user_id
+            )
         )
         return result.scalar_one_or_none()
 
@@ -247,12 +276,17 @@ class MediaFolderService:
         if parent_id:
             parent = await self._fetch_folder(parent_id)
             if not parent:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent folder not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Parent folder not found",
+                )
             return parent
         return await self._ensure_root_folder()
 
     async def _ensure_root_folder(self) -> MediaFolder:
-        query = select(MediaFolder).where(MediaFolder.user_id == self.user_id, MediaFolder.is_root.is_(True))
+        query = select(MediaFolder).where(
+            MediaFolder.user_id == self.user_id, MediaFolder.is_root.is_(True)
+        )
         result = await self.db.execute(query)
         root = result.scalar_one_or_none()
         if root:
@@ -263,7 +297,9 @@ class MediaFolderService:
         await self.db.flush()
         return root
 
-    async def _ensure_not_descendant(self, folder_id: UUID, candidate_parent_id: UUID) -> None:
+    async def _ensure_not_descendant(
+        self, folder_id: UUID, candidate_parent_id: UUID
+    ) -> None:
         ancestor_id = candidate_parent_id
         while ancestor_id is not None:
             if ancestor_id == folder_id:
@@ -277,8 +313,12 @@ class MediaFolderService:
             ancestor_id = ancestor.parent_id
 
     async def _assert_asset_owned(self, asset_id: UUID) -> Asset:
-        result = await self.db.execute(select(Asset).where(Asset.id == asset_id, Asset.user_id == self.user_id))
+        result = await self.db.execute(
+            select(Asset).where(Asset.id == asset_id, Asset.user_id == self.user_id)
+        )
         asset = result.scalar_one_or_none()
         if not asset:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found"
+            )
         return asset

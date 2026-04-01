@@ -15,7 +15,9 @@ import httpx
 
 from app.core.config import settings
 
-_METRIC_LINE_RE = re.compile(r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)(?P<labels>\{.*\})?\s+(?P<value>[-+]?[0-9]*\.?[0-9]+)$")
+_METRIC_LINE_RE = re.compile(
+    r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)(?P<labels>\{.*\})?\s+(?P<value>[-+]?[0-9]*\.?[0-9]+)$"
+)
 _STATE_RE = re.compile(r'state="([^"]+)"')
 
 
@@ -47,14 +49,18 @@ def _summarize_control_api_items(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "source_type": (item.get("source") or {}).get("type"),
                 "tracks": item.get("tracks") or [],
                 "reader_count": len(item.get("readers") or []),
-                "bytes_received": item.get("bytesReceived", item.get("inboundBytes", 0)),
+                "bytes_received": item.get(
+                    "bytesReceived", item.get("inboundBytes", 0)
+                ),
                 "bytes_sent": item.get("bytesSent", item.get("outboundBytes", 0)),
             }
         )
 
     return {
         "active_paths": active_paths,
-        "active_path_names": [path["name"] for path in active_paths if path.get("name")],
+        "active_path_names": [
+            path["name"] for path in active_paths if path.get("name")
+        ],
         "control_api_path_count": len(active_paths),
     }
 
@@ -89,7 +95,9 @@ def parse_mediamtx_metrics(payload: str) -> Dict[str, Any]:
             summary["path_count"] += int(value)
             state_match = _STATE_RE.search(labels)
             state = state_match.group(1) if state_match else "unknown"
-            summary["path_states"][state] = summary["path_states"].get(state, 0) + int(value)
+            summary["path_states"][state] = summary["path_states"].get(state, 0) + int(
+                value
+            )
             if state == "ready":
                 summary["ready_path_count"] += int(value)
         elif name == "paths_bytes_received":

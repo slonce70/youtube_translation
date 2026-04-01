@@ -18,7 +18,9 @@ class APIMetricsMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.logger = get_logger(__name__)
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         start = time.perf_counter()
         path = request.url.path
         method = request.method

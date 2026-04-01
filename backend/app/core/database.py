@@ -34,20 +34,13 @@ else:
         pool_use_lifo=True,
     )
 
-engine = create_async_engine(
-    DATABASE_URL,
-    **engine_kwargs
-)
+engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
 # Backwards-compatible export expected by older modules/tests
 async_engine = engine
 
 # Create async session factory
-async_session_maker = sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 _db_connection_semaphore = asyncio.Semaphore(max(settings.db_pool_size, 1))
@@ -90,7 +83,7 @@ async def get_db() -> AsyncSession:
     """
     Dependency for getting database session.
     Commits only on success, rolls back on error.
-    
+
     Usage in FastAPI:
         @app.get("/items")
         async def get_items(db: AsyncSession = Depends(get_db)):
@@ -105,7 +98,7 @@ async def get_db_context():
     """
     Context manager for database session.
     Commits only on success, rolls back on error.
-    
+
     Usage:
         async with get_db_context() as db:
             result = await db.execute(...)
@@ -154,7 +147,7 @@ async def _missing_columns(conn, table: str, columns: list[str]) -> list[str]:
 async def _apply_schema_changes(conn):
     """Apply idempotent schema updates for new columns."""
     # Ensure local auth schema exists for tests/local development
-    await conn.execute(text('CREATE SCHEMA IF NOT EXISTS auth'))
+    await conn.execute(text("CREATE SCHEMA IF NOT EXISTS auth"))
     await conn.execute(
         text(
             """
@@ -267,7 +260,9 @@ async def _apply_schema_changes(conn):
         )
 
     await conn.execute(
-        text("CREATE INDEX IF NOT EXISTS idx_streams_runtime_owner_id ON streams(runtime_owner_id)")
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_streams_runtime_owner_id ON streams(runtime_owner_id)"
+        )
     )
     await conn.execute(
         text(
@@ -281,7 +276,7 @@ async def _apply_schema_changes(conn):
             "ON streams(runtime_next_restart_at)"
         )
     )
-    
+
     # Add check constraint for mix_mode if not exists
     await conn.execute(
         text(
@@ -314,7 +309,7 @@ async def _apply_schema_changes(conn):
             """
         )
     )
-    
+
     # Add missing statistics columns to destinations table
     destination_columns = ["total_streams", "total_stream_hours", "last_used_at"]
     if await _missing_columns(conn, "destinations", destination_columns):
@@ -328,7 +323,7 @@ async def _apply_schema_changes(conn):
                 """
             )
         )
-    
+
     await conn.execute(
         text(
             """
@@ -395,7 +390,7 @@ async def _apply_schema_changes(conn):
                 """
             )
         )
-    
+
     # Add missing columns to assets table
     asset_columns = [
         "asset_type",
@@ -433,19 +428,23 @@ async def _apply_schema_changes(conn):
                 """
             )
         )
-    
+
     await conn.execute(
         text("CREATE INDEX IF NOT EXISTS idx_assets_asset_type ON assets(asset_type)")
     )
-    
+
     await conn.execute(
-        text("CREATE INDEX IF NOT EXISTS idx_assets_validation_status ON assets(validation_status)")
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_assets_validation_status ON assets(validation_status)"
+        )
     )
 
     await conn.execute(
-        text("CREATE INDEX IF NOT EXISTS idx_assets_optimization_status ON assets(optimization_status)")
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_assets_optimization_status ON assets(optimization_status)"
+        )
     )
-    
+
     # Add missing columns to subscription_tier_limits table
     await conn.execute(
         text(
@@ -461,7 +460,7 @@ async def _apply_schema_changes(conn):
             """
         )
     )
-    
+
     # Note: media_folders root constraint removed - managed by application logic
 
 

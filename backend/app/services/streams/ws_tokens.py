@@ -27,7 +27,9 @@ def generate_ws_token(user_id: UUID) -> tuple[str, int]:
     nonce = uuid4().hex
     payload = f"{user_id}:{expires_at}:{nonce}"
     signature = _sign_ws_payload(payload)
-    token = base64.urlsafe_b64encode(f"{payload}:{signature}".encode("utf-8")).decode("utf-8")
+    token = base64.urlsafe_b64encode(f"{payload}:{signature}".encode("utf-8")).decode(
+        "utf-8"
+    )
     return token, expires_at
 
 

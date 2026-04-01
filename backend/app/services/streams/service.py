@@ -60,7 +60,9 @@ logger = logging.getLogger(__name__)
 class StreamService:
     """High-level stream operations that interact with the database."""
 
-    def __init__(self, db: AsyncSession, user_id: UUID, *, settings_provider=default_settings):
+    def __init__(
+        self, db: AsyncSession, user_id: UUID, *, settings_provider=default_settings
+    ):
         self.db = db
         self.user_id = user_id
         self.settings = settings_provider
@@ -127,9 +129,13 @@ class StreamService:
         if not playlist and not video_collection and not audio_collection:
             selected_assets = await self._get_assets(stream_data.asset_ids)
 
-        mix_mode = self._determine_mix_mode(stream_data.mix_mode, video_collection, audio_collection)
+        mix_mode = self._determine_mix_mode(
+            stream_data.mix_mode, video_collection, audio_collection
+        )
 
-        if mix_mode in {"video_only", "mixed"} and not (playlist or selected_assets or video_collection):
+        if mix_mode in {"video_only", "mixed"} and not (
+            playlist or selected_assets or video_collection
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Video source is required for selected mix mode",
@@ -150,7 +156,9 @@ class StreamService:
 
         source_type = "playlist" if playlist else "assets"
         schedule_config = await self._build_schedule_config(stream_data)
-        initial_status = "scheduled" if schedule_config["scheduled_start_enabled"] else "stopped"
+        initial_status = (
+            "scheduled" if schedule_config["scheduled_start_enabled"] else "stopped"
+        )
 
         stream = Stream(
             user_id=self.user_id,
@@ -178,16 +186,22 @@ class StreamService:
         if selected_assets:
             for position, asset in enumerate(selected_assets):
                 self.db.add(
-                    StreamAsset(stream_id=stream.id, asset_id=asset.id, position=position)
+                    StreamAsset(
+                        stream_id=stream.id, asset_id=asset.id, position=position
+                    )
                 )
 
-        destinations = await fetch_destinations(self.db, self.user_id, stream_data.destination_ids)
+        destinations = await fetch_destinations(
+            self.db, self.user_id, stream_data.destination_ids
+        )
         for dest in destinations:
             self.db.add(StreamDestination(stream_id=stream.id, destination_id=dest.id))
 
         await self.db.commit()
 
-        loaded_stream = await load_stream_with_relations(self.db, self.user_id, stream.id)
+        loaded_stream = await load_stream_with_relations(
+            self.db, self.user_id, stream.id
+        )
         if not loaded_stream:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -228,12 +242,18 @@ class StreamService:
         await self.db.execute(delete(Stream).where(Stream.id == stream_id))
         await self.db.commit()
 
-    async def update_stream_schedule(self, stream_id: UUID, payload: StreamScheduleUpdate) -> Stream:
+    async def update_stream_schedule(
+        self, stream_id: UUID, payload: StreamScheduleUpdate
+    ) -> Stream:
         stream = await self._get_stream_basic(stream_id)
         schedule_mode = (payload.schedule_mode or "now").lower()
         schedule_config = await self._build_schedule_config(payload)
 
-        if schedule_mode == "schedule" and stream.status in {"running", "starting", "stopping"}:
+        if schedule_mode == "schedule" and stream.status in {
+            "running",
+            "starting",
+            "stopping",
+        }:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot schedule start while stream is running",
@@ -246,8 +266,12 @@ class StreamService:
             stream.schedule_timezone = schedule_config["schedule_timezone"]
             stream.schedule_repeat = schedule_config["schedule_repeat"]
             stream.schedule_weekdays = schedule_config["schedule_weekdays"]
-            stream.schedule_window_end_time = schedule_config["schedule_window_end_time"]
-            stream.schedule_stop_after_seconds = schedule_config["schedule_stop_after_seconds"]
+            stream.schedule_window_end_time = schedule_config[
+                "schedule_window_end_time"
+            ]
+            stream.schedule_stop_after_seconds = schedule_config[
+                "schedule_stop_after_seconds"
+            ]
             if stream.status in {"stopped", "error", "scheduled"}:
                 stream.status = "scheduled"
         else:
@@ -271,7 +295,9 @@ class StreamService:
 
         await self.db.commit()
 
-        updated_stream = await load_stream_with_relations(self.db, self.user_id, stream.id)
+        updated_stream = await load_stream_with_relations(
+            self.db, self.user_id, stream.id
+        )
         if not updated_stream:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -280,21 +306,40 @@ class StreamService:
 
         return updated_stream
 
-    async def _build_schedule_config(self, payload: StreamCreate | StreamScheduleUpdate) -> Dict[str, Any]:
+    async def _build_schedule_config(
+        self, payload: StreamCreate | StreamScheduleUpdate
+    ) -> Dict[str, Any]:
         schedule_mode = (payload.schedule_mode or "now").lower()
         scheduled_start_enabled = schedule_mode == "schedule"
-        schedule_repeat = normalize_schedule_repeat(getattr(payload, "schedule_repeat", "none"))
+        schedule_repeat = normalize_schedule_repeat(
+            getattr(payload, "schedule_repeat", "none")
+        )
         explicit_timezone = getattr(payload, "schedule_timezone", None)
-        user_timezone = await self._get_user_timezone() if scheduled_start_enabled and schedule_repeat != "none" else None
-        schedule_timezone = (
-            resolve_schedule_timezone(explicit_timezone, user_timezone)
-            if scheduled_start_enabled and (schedule_repeat != "none" or explicit_timezone or user_timezone)
+        user_timezone = (
+            await self._get_user_timezone()
+            if scheduled_start_enabled and schedule_repeat != "none"
             else None
         )
-        scheduled_start_time = getattr(payload, "schedule_start_at", None) if scheduled_start_enabled else None
+        schedule_timezone = (
+            resolve_schedule_timezone(explicit_timezone, user_timezone)
+            if scheduled_start_enabled
+            and (schedule_repeat != "none" or explicit_timezone or user_timezone)
+            else None
+        )
+        scheduled_start_time = (
+            getattr(payload, "schedule_start_at", None)
+            if scheduled_start_enabled
+            else None
+        )
         schedule_weekdays = (
-            resolve_weekly_weekdays(scheduled_start_time, schedule_timezone, getattr(payload, "schedule_weekdays", None))
-            if scheduled_start_enabled and schedule_repeat == "weekly" and scheduled_start_time is not None
+            resolve_weekly_weekdays(
+                scheduled_start_time,
+                schedule_timezone,
+                getattr(payload, "schedule_weekdays", None),
+            )
+            if scheduled_start_enabled
+            and schedule_repeat == "weekly"
+            and scheduled_start_time is not None
             else None
         )
         scheduled_stop_time = compute_schedule_stop_time(
@@ -312,8 +357,16 @@ class StreamService:
             "schedule_timezone": schedule_timezone,
             "schedule_repeat": schedule_repeat if scheduled_start_enabled else "none",
             "schedule_weekdays": schedule_weekdays,
-            "schedule_window_end_time": getattr(payload, "schedule_window_end_time", None) if scheduled_start_enabled else None,
-            "schedule_stop_after_seconds": getattr(payload, "schedule_stop_after_seconds", None) if scheduled_start_enabled else None,
+            "schedule_window_end_time": (
+                getattr(payload, "schedule_window_end_time", None)
+                if scheduled_start_enabled
+                else None
+            ),
+            "schedule_stop_after_seconds": (
+                getattr(payload, "schedule_stop_after_seconds", None)
+                if scheduled_start_enabled
+                else None
+            ),
             "scheduled_stop_time": scheduled_stop_time,
         }
 
@@ -337,7 +390,9 @@ class StreamService:
             )
 
         target_collection = (
-            stream.video_collection if update.target == "video" else stream.audio_collection
+            stream.video_collection
+            if update.target == "video"
+            else stream.audio_collection
         )
         if not target_collection:
             raise HTTPException(
@@ -347,7 +402,9 @@ class StreamService:
 
         normalized_items = normalize_collection_items(update.items)
         expected_type = "video" if update.target == "video" else "audio"
-        await validate_collection_assets(self.db, self.user_id, normalized_items, expected_type)
+        await validate_collection_assets(
+            self.db, self.user_id, normalized_items, expected_type
+        )
 
         try:
             await replace_collection_items(self.db, target_collection, normalized_items)
@@ -363,7 +420,9 @@ class StreamService:
         shuffle_enabled = False
         if normalized_items:
             loop_enabled = any(item.loop_mode != "once" for item in normalized_items)
-            shuffle_enabled = any(item.loop_mode == "shuffle" for item in normalized_items)
+            shuffle_enabled = any(
+                item.loop_mode == "shuffle" for item in normalized_items
+            )
 
         control = control_service
         if control is None:
@@ -375,7 +434,9 @@ class StreamService:
         wants_live_apply = not update.restart and stream.status == "running"
         should_hot_swap = wants_live_apply and control.supports_hot_swap()
         if should_hot_swap:
-            items_with_assets = await self._fetch_collection_items_with_assets(target_collection.id)
+            items_with_assets = await self._fetch_collection_items_with_assets(
+                target_collection.id
+            )
             runtime_assets = [
                 build_asset_payload(item.asset, item.loop_mode or "loop")
                 for item in items_with_assets
@@ -418,7 +479,9 @@ class StreamService:
             await control.restart_stream(stream_id, update.target)
 
         await self.db.commit()
-        updated_stream = await load_stream_with_relations(self.db, self.user_id, stream_id)
+        updated_stream = await load_stream_with_relations(
+            self.db, self.user_id, stream_id
+        )
         if not updated_stream:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -443,7 +506,9 @@ class StreamService:
 
         target = payload.target
         if target not in {"video", "audio"}:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid target")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid target"
+            )
 
         asset = await self._get_asset(payload.asset_id)
         expected_type = "video" if target == "video" else "audio"
@@ -457,7 +522,13 @@ class StreamService:
         asset_payload = build_asset_payload(asset, loop_mode=loop_mode)
 
         if target == "video" and stream.video_collection:
-            next_position = max((item.position for item in stream.video_collection.items), default=-1) + 1
+            next_position = (
+                max(
+                    (item.position for item in stream.video_collection.items),
+                    default=-1,
+                )
+                + 1
+            )
             self.db.add(
                 CollectionItem(
                     collection_id=stream.video_collection.id,
@@ -467,7 +538,13 @@ class StreamService:
                 )
             )
         elif target == "audio" and stream.audio_collection:
-            next_position = max((item.position for item in stream.audio_collection.items), default=-1) + 1
+            next_position = (
+                max(
+                    (item.position for item in stream.audio_collection.items),
+                    default=-1,
+                )
+                + 1
+            )
             self.db.add(
                 CollectionItem(
                     collection_id=stream.audio_collection.id,
@@ -477,7 +554,9 @@ class StreamService:
                 )
             )
         elif stream.playlist and target == "video":
-            next_position = max((item.position for item in stream.playlist.items), default=-1) + 1
+            next_position = (
+                max((item.position for item in stream.playlist.items), default=-1) + 1
+            )
             self.db.add(
                 PlaylistItem(
                     playlist_id=stream.playlist.id,
@@ -486,9 +565,13 @@ class StreamService:
                 )
             )
         else:
-            next_position = max((link.position for link in stream.stream_assets), default=-1) + 1
+            next_position = (
+                max((link.position for link in stream.stream_assets), default=-1) + 1
+            )
             self.db.add(
-                StreamAsset(stream_id=stream.id, asset_id=asset.id, position=next_position)
+                StreamAsset(
+                    stream_id=stream.id, asset_id=asset.id, position=next_position
+                )
             )
 
         control = control_service
@@ -505,13 +588,17 @@ class StreamService:
             raise
         except Exception as exc:  # pragma: no cover - defensive
             await self.db.rollback()
-            logger.exception("Failed to enqueue runtime update for stream %s", stream_id)
+            logger.exception(
+                "Failed to enqueue runtime update for stream %s", stream_id
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to enqueue stream update",
             ) from exc
 
-    async def _fetch_collection_items_with_assets(self, collection_id: UUID) -> List[CollectionItem]:
+    async def _fetch_collection_items_with_assets(
+        self, collection_id: UUID
+    ) -> List[CollectionItem]:
         query = (
             select(CollectionItem)
             .where(CollectionItem.collection_id == collection_id)
@@ -522,7 +609,9 @@ class StreamService:
         return result.scalars().all()
 
     async def _get_playlist(self, playlist_id: UUID) -> Playlist:
-        query = select(Playlist).where(Playlist.id == playlist_id, Playlist.user_id == self.user_id)
+        query = select(Playlist).where(
+            Playlist.id == playlist_id, Playlist.user_id == self.user_id
+        )
         result = await self.db.execute(query)
         playlist = result.scalar_one_or_none()
         if not playlist:
@@ -540,7 +629,9 @@ class StreamService:
                 detail="At least one asset must be selected",
             )
 
-        assets_query = select(Asset).where(Asset.user_id == self.user_id, Asset.id.in_(asset_ids))
+        assets_query = select(Asset).where(
+            Asset.user_id == self.user_id, Asset.id.in_(asset_ids)
+        )
         result = await self.db.execute(assets_query)
         fetched_assets = result.scalars().all()
 
@@ -599,7 +690,9 @@ class StreamService:
         return mix_mode
 
     async def _get_stream_basic(self, stream_id: UUID) -> Stream:
-        query = select(Stream).where(Stream.id == stream_id, Stream.user_id == self.user_id)
+        query = select(Stream).where(
+            Stream.id == stream_id, Stream.user_id == self.user_id
+        )
         result = await self.db.execute(query)
         stream = result.scalar_one_or_none()
         if not stream:
@@ -614,9 +707,13 @@ def load_stream_with_relations_options():  # pragma: no cover - helper for reada
     from sqlalchemy.orm import selectinload
 
     return (
-        selectinload(Stream.playlist).selectinload(Playlist.items).selectinload(PlaylistItem.asset),
+        selectinload(Stream.playlist)
+        .selectinload(Playlist.items)
+        .selectinload(PlaylistItem.asset),
         selectinload(Stream.stream_assets).selectinload(StreamAsset.asset),
-        selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
+        selectinload(Stream.stream_destinations).selectinload(
+            StreamDestination.destination
+        ),
         selectinload(Stream.video_collection)
         .selectinload(MediaCollection.items)
         .selectinload(CollectionItem.asset),
@@ -634,7 +731,9 @@ def _load_stream_list_options():
         # which requires asset_id and position. These are on the StreamAsset table.
         selectinload(Stream.stream_assets),
         # stream_destinations are accessed to build StreamResponse.destinations
-        selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
+        selectinload(Stream.stream_destinations).selectinload(
+            StreamDestination.destination
+        ),
     )
 
 

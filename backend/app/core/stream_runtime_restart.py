@@ -110,7 +110,9 @@ def _deterministic_jitter_seconds(stream: Stream, max_jitter_seconds: int) -> in
 
 def _restart_delay_seconds(stream: Stream, attempt: int) -> int:
     base_backoff = max(int(settings.stream_runtime_restart_backoff_seconds or 0), 0)
-    max_backoff = max(int(settings.stream_runtime_restart_backoff_max_seconds or 0), base_backoff)
+    max_backoff = max(
+        int(settings.stream_runtime_restart_backoff_max_seconds or 0), base_backoff
+    )
     if base_backoff <= 0:
         base_delay = 0
     else:

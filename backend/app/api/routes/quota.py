@@ -25,7 +25,7 @@ async def check_quota_internal(
     """
     Internal endpoint for tusd pre-create hook.
     Checks if user has enough quota to upload a file.
-    
+
     This endpoint does NOT require authentication (called by tusd hook).
     Security: Only accessible from localhost (configured in Caddy/nginx)
     """
@@ -46,6 +46,7 @@ async def check_quota_internal(
 # ==========================================
 # User-facing Endpoints
 # ==========================================
+
 
 @router.get("/quota", response_model=QuotaUsageResponse)
 async def get_user_quota(

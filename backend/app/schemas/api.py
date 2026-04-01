@@ -13,6 +13,7 @@ from app.core.stream_schedule import (
 
 ALLOWED_ASSET_TYPES = {"video", "audio"}
 
+
 # Asset schemas
 class AssetBase(BaseModel):
     filename: str
@@ -57,7 +58,7 @@ class AssetFolderInfo(BaseModel):
 class AssetUsageReference(BaseModel):
     id: UUID
     name: str
-    kind: Literal['playlist', 'collection', 'stream']
+    kind: Literal["playlist", "collection", "stream"]
     status: Optional[str] = None
     context: Optional[str] = None
 
@@ -69,12 +70,12 @@ class AssetUsageSummary(BaseModel):
 
 
 class AssetOptimizationInfo(BaseModel):
-    status: Literal['not_requested', 'queued', 'processing', 'ready', 'failed']
-    strategy: Optional[Literal['copy', 'transcode']] = None
+    status: Literal["not_requested", "queued", "processing", "ready", "failed"]
+    strategy: Optional[Literal["copy", "transcode"]] = None
     optimized_storage_path: Optional[str] = None
     error: Optional[str] = None
     updated_at: Optional[datetime] = None
-    recommended_strategy: Literal['copy', 'transcode']
+    recommended_strategy: Literal["copy", "transcode"]
     can_stream_from_source: bool
 
 
@@ -160,7 +161,7 @@ class PlaylistItemCreate(BaseModel):
 
 class PlaylistItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     playlist_id: UUID
     asset_id: UUID
@@ -186,7 +187,7 @@ class PlaylistUpdate(BaseModel):
 
 class PlaylistResponse(PlaylistBase):
     model_config = ConfigDict(from_attributes=True)
-    
+
     user_id: UUID
     id: UUID
     created_at: datetime
@@ -202,7 +203,9 @@ class DestinationBase(BaseModel):
 
 
 class DestinationCreate(DestinationBase):
-    stream_key: str = Field(..., min_length=1, description="YouTube stream key (will be encrypted)")
+    stream_key: str = Field(
+        ..., min_length=1, description="YouTube stream key (will be encrypted)"
+    )
 
 
 class DestinationUpdate(BaseModel):
@@ -214,7 +217,7 @@ class DestinationUpdate(BaseModel):
 
 class DestinationResponse(DestinationBase):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     stream_key_masked: str = Field(default="****")  # Never expose real key
     created_at: datetime
@@ -248,10 +251,14 @@ class StreamCreate(StreamBase):
         playlist_id = model.playlist_id
         asset_ids = model.asset_ids
 
-        collections_provided = bool(model.video_collection_id or model.audio_collection_id)
+        collections_provided = bool(
+            model.video_collection_id or model.audio_collection_id
+        )
 
         if not any([playlist_id, asset_ids, collections_provided]):
-            raise ValueError("Provide playlist_id, asset_ids, or at least one media collection when creating a stream")
+            raise ValueError(
+                "Provide playlist_id, asset_ids, or at least one media collection when creating a stream"
+            )
 
         if playlist_id and asset_ids:
             raise ValueError("Choose only one source between playlist_id and asset_ids")
@@ -269,7 +276,9 @@ class StreamCreate(StreamBase):
 
         if model.schedule_mode == "schedule":
             if not model.schedule_start_at:
-                raise ValueError("schedule_start_at is required when schedule_mode is 'schedule'")
+                raise ValueError(
+                    "schedule_start_at is required when schedule_mode is 'schedule'"
+                )
             start_at = ensure_utc(model.schedule_start_at)
             if start_at <= datetime.now(timezone.utc):
                 raise ValueError("schedule_start_at must be in the future")
@@ -281,9 +290,13 @@ class StreamCreate(StreamBase):
             if model.schedule_weekdays:
                 raise ValueError("schedule_weekdays requires schedule_repeat='weekly'")
             if model.schedule_window_end_time is not None:
-                raise ValueError("schedule_window_end_time requires a repeating schedule")
+                raise ValueError(
+                    "schedule_window_end_time requires a repeating schedule"
+                )
             if model.schedule_stop_after_seconds is not None:
-                raise ValueError("schedule_stop_after_seconds requires schedule_mode='schedule'")
+                raise ValueError(
+                    "schedule_stop_after_seconds requires schedule_mode='schedule'"
+                )
 
         stop_at = model.schedule_stop_at
         if stop_at:
@@ -296,17 +309,30 @@ class StreamCreate(StreamBase):
 
         if model.schedule_repeat != "none":
             if model.schedule_stop_at:
-                raise ValueError("schedule_stop_at is only supported for one-shot schedules")
-            if model.schedule_repeat == "weekly" and model.schedule_weekdays is not None and len(model.schedule_weekdays) == 0:
+                raise ValueError(
+                    "schedule_stop_at is only supported for one-shot schedules"
+                )
+            if (
+                model.schedule_repeat == "weekly"
+                and model.schedule_weekdays is not None
+                and len(model.schedule_weekdays) == 0
+            ):
                 raise ValueError("schedule_weekdays must not be empty when provided")
         elif model.schedule_weekdays:
             raise ValueError("schedule_weekdays requires schedule_repeat='weekly'")
 
-        if model.schedule_window_end_time is not None and model.schedule_repeat == "none":
-            raise ValueError("schedule_window_end_time requires schedule_repeat='daily' or 'weekly'")
+        if (
+            model.schedule_window_end_time is not None
+            and model.schedule_repeat == "none"
+        ):
+            raise ValueError(
+                "schedule_window_end_time requires schedule_repeat='daily' or 'weekly'"
+            )
 
         if model.schedule_stop_at and model.schedule_stop_after_seconds is not None:
-            raise ValueError("schedule_stop_at and schedule_stop_after_seconds are mutually exclusive")
+            raise ValueError(
+                "schedule_stop_at and schedule_stop_after_seconds are mutually exclusive"
+            )
 
         return model
 
@@ -333,7 +359,9 @@ class StreamScheduleUpdate(BaseModel):
 
         if model.schedule_mode == "schedule":
             if not model.schedule_start_at:
-                raise ValueError("schedule_start_at is required when schedule_mode is 'schedule'")
+                raise ValueError(
+                    "schedule_start_at is required when schedule_mode is 'schedule'"
+                )
             start_at = ensure_utc(model.schedule_start_at)
             if start_at <= datetime.now(timezone.utc):
                 raise ValueError("schedule_start_at must be in the future")
@@ -345,9 +373,13 @@ class StreamScheduleUpdate(BaseModel):
             if model.schedule_weekdays:
                 raise ValueError("schedule_weekdays requires schedule_repeat='weekly'")
             if model.schedule_window_end_time is not None:
-                raise ValueError("schedule_window_end_time requires a repeating schedule")
+                raise ValueError(
+                    "schedule_window_end_time requires a repeating schedule"
+                )
             if model.schedule_stop_after_seconds is not None:
-                raise ValueError("schedule_stop_after_seconds requires schedule_mode='schedule'")
+                raise ValueError(
+                    "schedule_stop_after_seconds requires schedule_mode='schedule'"
+                )
 
         stop_at = model.schedule_stop_at
         if stop_at:
@@ -360,17 +392,30 @@ class StreamScheduleUpdate(BaseModel):
 
         if model.schedule_repeat != "none":
             if model.schedule_stop_at:
-                raise ValueError("schedule_stop_at is only supported for one-shot schedules")
-            if model.schedule_repeat == "weekly" and model.schedule_weekdays is not None and len(model.schedule_weekdays) == 0:
+                raise ValueError(
+                    "schedule_stop_at is only supported for one-shot schedules"
+                )
+            if (
+                model.schedule_repeat == "weekly"
+                and model.schedule_weekdays is not None
+                and len(model.schedule_weekdays) == 0
+            ):
                 raise ValueError("schedule_weekdays must not be empty when provided")
         elif model.schedule_weekdays:
             raise ValueError("schedule_weekdays requires schedule_repeat='weekly'")
 
-        if model.schedule_window_end_time is not None and model.schedule_repeat == "none":
-            raise ValueError("schedule_window_end_time requires schedule_repeat='daily' or 'weekly'")
+        if (
+            model.schedule_window_end_time is not None
+            and model.schedule_repeat == "none"
+        ):
+            raise ValueError(
+                "schedule_window_end_time requires schedule_repeat='daily' or 'weekly'"
+            )
 
         if model.schedule_stop_at and model.schedule_stop_after_seconds is not None:
-            raise ValueError("schedule_stop_at and schedule_stop_after_seconds are mutually exclusive")
+            raise ValueError(
+                "schedule_stop_at and schedule_stop_after_seconds are mutually exclusive"
+            )
 
         return model
 
@@ -400,7 +445,9 @@ class StreamDestinationLink(BaseModel):
     destination: Optional[DestinationSummary] = None
 
 
-StreamRuntimeRestartState = Literal["disabled", "idle", "scheduled", "retrying", "exhausted"]
+StreamRuntimeRestartState = Literal[
+    "disabled", "idle", "scheduled", "retrying", "exhausted"
+]
 
 
 def _stream_runtime_restart_state(
@@ -417,7 +464,11 @@ def _stream_runtime_restart_state(
     if status in {"starting", "running"} and attempts > 0:
         return "retrying"
     max_attempts = max(int(settings.stream_runtime_restart_max_attempts), 0)
-    if status == "error" and attempts > 0 and (max_attempts == 0 or attempts >= max_attempts):
+    if (
+        status == "error"
+        and attempts > 0
+        and (max_attempts == 0 or attempts >= max_attempts)
+    ):
         return "exhausted"
     return "idle"
 
@@ -451,8 +502,10 @@ class StreamResponse(StreamBase):
     total_duration_seconds: Optional[float]
     created_at: datetime
     updated_at: datetime
-    stream_assets: List['StreamAssetLink'] = []
-    stream_destinations: List['StreamDestinationLink'] = Field(default_factory=list, exclude=True)
+    stream_assets: List["StreamAssetLink"] = []
+    stream_destinations: List["StreamDestinationLink"] = Field(
+        default_factory=list, exclude=True
+    )
     scheduled_start_enabled: bool = False
     scheduled_start_time: Optional[datetime] = None
     schedule_timezone: Optional[str] = None
@@ -543,7 +596,7 @@ class StreamEventCreate(BaseModel):
 
 class StreamEventResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     stream_id: UUID
     level: str
@@ -554,7 +607,12 @@ class StreamEventResponse(BaseModel):
 
 # Stream logs schemas
 class StreamLogsRequest(BaseModel):
-    lines: int = Field(default=100, ge=1, le=10000, description="Number of log lines to fetch (1-10000)")
+    lines: int = Field(
+        default=100,
+        ge=1,
+        le=10000,
+        description="Number of log lines to fetch (1-10000)",
+    )
 
 
 class StreamLogsResponse(BaseModel):
@@ -634,7 +692,7 @@ class CollectionItemResponse(CollectionItemBase):
     collection_id: UUID
     created_at: datetime
     updated_at: datetime
-    asset: Optional['AssetResponse'] = None
+    asset: Optional["AssetResponse"] = None
 
 
 class MediaCollectionBase(BaseModel):

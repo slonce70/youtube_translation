@@ -97,14 +97,23 @@ async def claim_stream_runtime_lease(
     effective_owner = runtime_lease_owner_id(owner_id)
     effective_now = (now or utcnow()).astimezone(timezone.utc)
 
-    query = select(Stream).where(Stream.id == _coerce_stream_id(stream_id)).with_for_update()
+    query = (
+        select(Stream)
+        .where(Stream.id == _coerce_stream_id(stream_id))
+        .with_for_update()
+    )
     result = await db.execute(query)
     stream = result.scalar_one_or_none()
     if stream is None:
         return StreamRuntimeLeaseResult(False, None, None)
 
-    if runtime_lease_is_active(stream, now=effective_now) and stream.runtime_owner_id != effective_owner:
-        return StreamRuntimeLeaseResult(False, stream.runtime_owner_id, stream.runtime_lease_expires_at)
+    if (
+        runtime_lease_is_active(stream, now=effective_now)
+        and stream.runtime_owner_id != effective_owner
+    ):
+        return StreamRuntimeLeaseResult(
+            False, stream.runtime_owner_id, stream.runtime_lease_expires_at
+        )
 
     expiry = sync_stream_runtime_lease(
         stream,
@@ -126,13 +135,20 @@ async def renew_stream_runtime_lease(
     effective_owner = runtime_lease_owner_id(owner_id)
     effective_now = (now or utcnow()).astimezone(timezone.utc)
 
-    query = select(Stream).where(Stream.id == _coerce_stream_id(stream_id)).with_for_update()
+    query = (
+        select(Stream)
+        .where(Stream.id == _coerce_stream_id(stream_id))
+        .with_for_update()
+    )
     result = await db.execute(query)
     stream = result.scalar_one_or_none()
     if stream is None:
         return False
 
-    if runtime_lease_is_active(stream, now=effective_now) and stream.runtime_owner_id != effective_owner:
+    if (
+        runtime_lease_is_active(stream, now=effective_now)
+        and stream.runtime_owner_id != effective_owner
+    ):
         return False
 
     sync_stream_runtime_lease(
@@ -153,13 +169,21 @@ async def release_stream_runtime_lease(
 ) -> bool:
     effective_owner = runtime_lease_owner_id(owner_id)
 
-    query = select(Stream).where(Stream.id == _coerce_stream_id(stream_id)).with_for_update()
+    query = (
+        select(Stream)
+        .where(Stream.id == _coerce_stream_id(stream_id))
+        .with_for_update()
+    )
     result = await db.execute(query)
     stream = result.scalar_one_or_none()
     if stream is None:
         return False
 
-    if not force and stream.runtime_owner_id and stream.runtime_owner_id != effective_owner:
+    if (
+        not force
+        and stream.runtime_owner_id
+        and stream.runtime_owner_id != effective_owner
+    ):
         return False
 
     clear_stream_runtime_lease(stream)

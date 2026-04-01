@@ -40,7 +40,10 @@ class MediaCollectionService:
         self.user_id = user_id
 
     async def list_collections(
-        self, collection_type: Optional[str], is_active: Optional[bool], include_items: bool
+        self,
+        collection_type: Optional[str],
+        is_active: Optional[bool],
+        include_items: bool,
     ) -> List[MediaCollectionResponse]:
         query = select(MediaCollection).where(MediaCollection.user_id == self.user_id)
 
@@ -59,14 +62,22 @@ class MediaCollectionService:
         query = query.order_by(MediaCollection.created_at)
         result = await self.db.execute(query)
         collections = result.scalars().unique().all()
-        return [self._to_response(collection, include_items) for collection in collections]
+        return [
+            self._to_response(collection, include_items) for collection in collections
+        ]
 
-    async def create_collection(self, payload: MediaCollectionCreate) -> MediaCollectionResponse:
+    async def create_collection(
+        self, payload: MediaCollectionCreate
+    ) -> MediaCollectionResponse:
         self._assert_supported_type(payload.collection_type)
 
         normalized_items = normalize_collection_items(payload.items)
-        expected_type = "video" if payload.collection_type == "video_background" else "audio"
-        await validate_collection_assets(self.db, self.user_id, normalized_items, expected_type)
+        expected_type = (
+            "video" if payload.collection_type == "video_background" else "audio"
+        )
+        await validate_collection_assets(
+            self.db, self.user_id, normalized_items, expected_type
+        )
 
         name = payload.name.strip() if payload.name else ""
         if not name:
@@ -97,14 +108,18 @@ class MediaCollectionService:
             return self._to_response(refreshed_collection)
         except IntegrityError as exc:
             await self.db.rollback()
-            logger.warning("Collection creation conflict for user %s: %s", self.user_id, exc)
+            logger.warning(
+                "Collection creation conflict for user %s: %s", self.user_id, exc
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Collection violates uniqueness constraints",
             ) from exc
         except Exception as exc:  # pragma: no cover
             await self.db.rollback()
-            logger.exception("Error creating collection for user %s: %s", self.user_id, exc)
+            logger.exception(
+                "Error creating collection for user %s: %s", self.user_id, exc
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create collection",
@@ -115,7 +130,9 @@ class MediaCollectionService:
     ) -> MediaCollectionResponse:
         collection = await self._load_collection(collection_id, include_items)
         if not collection:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
+            )
         return self._to_response(collection, include_items)
 
     async def update_collection(
@@ -123,7 +140,9 @@ class MediaCollectionService:
     ) -> MediaCollectionResponse:
         collection = await self._load_collection(collection_id, include_items=True)
         if not collection:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
+            )
 
         if payload.name is not None:
             new_name = payload.name.strip()
@@ -149,7 +168,9 @@ class MediaCollectionService:
             return self._to_response(refreshed_collection)
         except IntegrityError as exc:
             await self.db.rollback()
-            logger.warning("Collection update conflict for user %s: %s", self.user_id, exc)
+            logger.warning(
+                "Collection update conflict for user %s: %s", self.user_id, exc
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Collection update violates constraints",
@@ -157,7 +178,10 @@ class MediaCollectionService:
         except Exception as exc:  # pragma: no cover
             await self.db.rollback()
             logger.exception(
-                "Error updating collection %s for user %s: %s", collection_id, self.user_id, exc
+                "Error updating collection %s for user %s: %s",
+                collection_id,
+                self.user_id,
+                exc,
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -169,11 +193,17 @@ class MediaCollectionService:
     ) -> MediaCollectionResponse:
         collection = await self._load_collection(collection_id, include_items=True)
         if not collection:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
+            )
 
         normalized_items = normalize_collection_items(payload.items)
-        expected_type = "video" if collection.collection_type == "video_background" else "audio"
-        await validate_collection_assets(self.db, self.user_id, normalized_items, expected_type)
+        expected_type = (
+            "video" if collection.collection_type == "video_background" else "audio"
+        )
+        await validate_collection_assets(
+            self.db, self.user_id, normalized_items, expected_type
+        )
 
         try:
             await replace_collection_items_helper(self.db, collection, normalized_items)
@@ -185,7 +215,9 @@ class MediaCollectionService:
             return self._to_response(refreshed_collection)
         except Exception as exc:  # pragma: no cover
             await self.db.rollback()
-            logger.exception("Error replacing collection items for %s: %s", collection_id, exc)
+            logger.exception(
+                "Error replacing collection items for %s: %s", collection_id, exc
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update collection items",
@@ -194,12 +226,19 @@ class MediaCollectionService:
     async def delete_collection(self, collection_id: UUID) -> None:
         collection = await self._load_collection(collection_id, include_items=False)
         if not collection:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
+            )
 
         in_use_query = (
             select(Stream.id)
             .where(Stream.user_id == self.user_id)
-            .where(or_(Stream.video_collection_id == collection_id, Stream.audio_collection_id == collection_id))
+            .where(
+                or_(
+                    Stream.video_collection_id == collection_id,
+                    Stream.audio_collection_id == collection_id,
+                )
+            )
             .limit(1)
         )
         in_use_result = await self.db.execute(in_use_query)
@@ -209,9 +248,13 @@ class MediaCollectionService:
                 detail={"error": "collection_in_use"},
             )
 
-        await self.db.execute(delete(MediaCollection).where(MediaCollection.id == collection_id))
+        await self.db.execute(
+            delete(MediaCollection).where(MediaCollection.id == collection_id)
+        )
         await self.db.commit()
-        logger.info("Deleted media collection %s for user %s", collection_id, self.user_id)
+        logger.info(
+            "Deleted media collection %s for user %s", collection_id, self.user_id
+        )
 
     async def _load_collection(
         self, collection_id: UUID, include_items: bool, populate_existing: bool = False
@@ -261,12 +304,12 @@ class MediaCollectionService:
                     "created_at": item.created_at,
                     "updated_at": item.updated_at,
                 }
-                
+
                 # Only include asset if it's already loaded (not lazy)
-                if hasattr(item, '__dict__') and 'asset' in item.__dict__:
+                if hasattr(item, "__dict__") and "asset" in item.__dict__:
                     if item.asset is not None:
                         item_data["asset"] = serialize_loaded_asset(item.asset)
-                
+
                 response_items.append(CollectionItemResponse(**item_data))
         else:
             response_items = []

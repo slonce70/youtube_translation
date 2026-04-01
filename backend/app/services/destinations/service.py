@@ -26,11 +26,15 @@ class DestinationService:
         self.user_id = user_id
 
     async def list_destinations(self) -> List[DestinationResponse]:
-        result = await self.db.execute(select(Destination).where(Destination.user_id == self.user_id))
+        result = await self.db.execute(
+            select(Destination).where(Destination.user_id == self.user_id)
+        )
         destinations = result.scalars().all()
         return [self._to_response(dest) for dest in destinations]
 
-    async def create_destination(self, payload: DestinationCreate) -> DestinationResponse:
+    async def create_destination(
+        self, payload: DestinationCreate
+    ) -> DestinationResponse:
         enforcer = QuotaEnforcer(self.db, self.user_id)
         await enforcer.check_destinations_limit()
         await enforcer.ensure_destination_allowed(payload.rtmps_url)
@@ -50,7 +54,9 @@ class DestinationService:
         await self.db.refresh(destination)
 
         logger.info("Created destination %s for user %s", destination.id, self.user_id)
-        return self._to_response(destination, masked_key=mask_stream_key(payload.stream_key))
+        return self._to_response(
+            destination, masked_key=mask_stream_key(payload.stream_key)
+        )
 
     async def get_destination(self, destination_id: UUID) -> DestinationResponse:
         destination = await self._get_destination(destination_id)
@@ -106,11 +112,19 @@ class DestinationService:
         )
         destination = result.scalar_one_or_none()
         if not destination:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Destination not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Destination not found"
+            )
         return destination
 
-    def _to_response(self, destination: Destination, masked_key: str | None = None) -> DestinationResponse:
-        stream_key_masked = masked_key if masked_key is not None else self._mask_destination_key(destination)
+    def _to_response(
+        self, destination: Destination, masked_key: str | None = None
+    ) -> DestinationResponse:
+        stream_key_masked = (
+            masked_key
+            if masked_key is not None
+            else self._mask_destination_key(destination)
+        )
         return DestinationResponse(
             id=destination.id,
             name=destination.name,
@@ -128,6 +142,9 @@ class DestinationService:
             decrypted = decrypt_stream_key(destination.stream_key_encrypted)
             return mask_stream_key(decrypted)
         except Exception as exc:  # pragma: no cover - logging path
-            logger.exception("Failed to decrypt stream key for destination %s: %s", destination.id, exc)
+            logger.exception(
+                "Failed to decrypt stream key for destination %s: %s",
+                destination.id,
+                exc,
+            )
             return ""
-

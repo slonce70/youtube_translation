@@ -89,7 +89,9 @@ async def load_stream_with_relations(
             .selectinload(Playlist.items)
             .selectinload(PlaylistItem.asset),
             selectinload(Stream.stream_assets).selectinload(StreamAsset.asset),
-            selectinload(Stream.stream_destinations).selectinload(StreamDestination.destination),
+            selectinload(Stream.stream_destinations).selectinload(
+                StreamDestination.destination
+            ),
             selectinload(Stream.video_collection)
             .selectinload(MediaCollection.items)
             .selectinload(CollectionItem.asset),
@@ -147,7 +149,9 @@ def extract_stream_assets(stream: Stream) -> StreamAssetSelection:
         items = sorted(stream.video_collection.items or [], key=lambda x: x.position)
         for item in items:
             if item.asset:
-                loop_mode = (item.loop_mode or "loop") if hasattr(item, "loop_mode") else "loop"
+                loop_mode = (
+                    (item.loop_mode or "loop") if hasattr(item, "loop_mode") else "loop"
+                )
                 video_assets.append(build_payload(item.asset, loop_mode))
     elif stream.source_type == "playlist":
         if not stream.playlist:
@@ -185,7 +189,9 @@ def extract_stream_assets(stream: Stream) -> StreamAssetSelection:
             )
         for item in items:
             if item.asset:
-                loop_mode = (item.loop_mode or "loop") if hasattr(item, "loop_mode") else "loop"
+                loop_mode = (
+                    (item.loop_mode or "loop") if hasattr(item, "loop_mode") else "loop"
+                )
                 audio_assets.append(build_payload(item.asset, loop_mode))
     elif mix_mode == "mixed":
         raise HTTPException(
@@ -193,7 +199,9 @@ def extract_stream_assets(stream: Stream) -> StreamAssetSelection:
             detail="Mixed streams require an audio collection",
         )
 
-    return StreamAssetSelection(video_assets=video_assets, audio_assets=audio_assets, mix_mode=mix_mode)
+    return StreamAssetSelection(
+        video_assets=video_assets, audio_assets=audio_assets, mix_mode=mix_mode
+    )
 
 
 def gather_stream_destinations(stream: Stream) -> List[Dict[str, str]]:
@@ -272,19 +280,26 @@ async def validate_stream_launch_prerequisites(
     audio_ok = True
 
     if selection.video_assets:
-        video_ok, video_issues = PlaylistBuilder.validate_playlist_assets(selection.video_assets)
+        video_ok, video_issues = PlaylistBuilder.validate_playlist_assets(
+            selection.video_assets
+        )
         if not video_ok:
             compatibility_issues.extend(video_issues)
 
     if selection.mix_mode in {"audio_only", "mixed"}:
-        audio_ok, audio_issues = PlaylistBuilder.validate_audio_playlist_assets(selection.audio_assets)
+        audio_ok, audio_issues = PlaylistBuilder.validate_audio_playlist_assets(
+            selection.audio_assets
+        )
         if not audio_ok:
             compatibility_issues.extend(audio_issues)
 
     if not video_ok or not audio_ok:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error": "Playlist assets are incompatible", "issues": compatibility_issues},
+            detail={
+                "error": "Playlist assets are incompatible",
+                "issues": compatibility_issues,
+            },
         )
 
     stream_dir = Path(settings_obj.stream_dir) / str(stream.id)
@@ -301,13 +316,17 @@ async def validate_stream_launch_prerequisites(
     return selection, destinations, log_file
 
 
-async def fetch_destinations(db: AsyncSession, user_id: UUID, destination_ids: List[UUID]) -> List[Destination]:
+async def fetch_destinations(
+    db: AsyncSession, user_id: UUID, destination_ids: List[UUID]
+) -> List[Destination]:
     if not destination_ids:
         return []
 
     fetched: List[Destination] = []
     for dest_id in destination_ids:
-        dest_query = select(Destination).where(Destination.id == dest_id, Destination.user_id == user_id)
+        dest_query = select(Destination).where(
+            Destination.id == dest_id, Destination.user_id == user_id
+        )
         dest_result = await db.execute(dest_query)
         destination = dest_result.scalar_one_or_none()
         if not destination:

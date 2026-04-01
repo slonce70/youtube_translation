@@ -81,4 +81,3 @@ async def validate_playlist(
 
     service = _get_service(user_deps)
     return await service.validate_playlist(playlist_id)
-

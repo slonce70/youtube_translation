@@ -43,7 +43,7 @@ def decode_program_name(name: str) -> Optional[str]:
         return None
     if after and not name.endswith(after):
         return None
-    core = name[len(before):] if not after else name[len(before):-len(after)]
+    core = name[len(before) :] if not after else name[len(before) : -len(after)]
     return core or None
 
 
@@ -143,7 +143,9 @@ environment=PYTHONPATH="{py_path}"
     return cfg_path
 
 
-async def _wait_for_state(stream_id: UUID | str, desired: str = "RUNNING", timeout: float = 10.0) -> None:
+async def _wait_for_state(
+    stream_id: UUID | str, desired: str = "RUNNING", timeout: float = 10.0
+) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() <= deadline:
         status = await program_status(stream_id)
@@ -152,9 +154,13 @@ async def _wait_for_state(stream_id: UUID | str, desired: str = "RUNNING", timeo
             return
         if state in {"FATAL", "BACKOFF", "EXITED", "UNKNOWN", "ERROR"}:
             details = status.get("details") or status.get("error", "")
-            raise RuntimeError(f"Supervisor program {program_name(stream_id)} failed to reach {desired}: {state} {details or ''}")
+            raise RuntimeError(
+                f"Supervisor program {program_name(stream_id)} failed to reach {desired}: {state} {details or ''}"
+            )
         await asyncio.sleep(0.5)
-    raise RuntimeError(f"Timed out waiting for supervisor program {program_name(stream_id)} to reach state {desired}")
+    raise RuntimeError(
+        f"Timed out waiting for supervisor program {program_name(stream_id)} to reach state {desired}"
+    )
 
 
 async def _reread() -> None:
@@ -201,23 +207,26 @@ async def restart_program(stream_id: UUID) -> None:
 async def remove_program(stream_id: UUID) -> None:
     """Remove a supervisor program and its config. Safe to call even if program doesn't exist."""
     program = program_name(stream_id)
-    
+
     # Try to stop, but don't fail if already stopped or not found
     await _run_supervisorctl("stop", program)
-    
+
     # Try to remove, but don't fail if program doesn't exist
     code, out, err = await _run_supervisorctl("remove", program)
     combined_output = out + err
-    
+
     # These are OK states - program already removed or never existed
-    if code != 0 and not any(status in combined_output for status in ["UNKNOWN", "FileNotFoundError", "no such file"]):
+    if code != 0 and not any(
+        status in combined_output
+        for status in ["UNKNOWN", "FileNotFoundError", "no such file"]
+    ):
         raise _build_error("remove", program, out, err)
-    
+
     # Remove config file if exists
     cfg_path = _program_config_path(stream_id)
     cfg_path.unlink(missing_ok=True)
     clear_runtime_heartbeat(stream_id)
-    
+
     # Reread configs
     await _reread()
 
@@ -231,11 +240,16 @@ async def program_status(stream_id: UUID) -> Dict[str, str]:
     program = program_name(stream_id)
     code, out, err = await _run_supervisorctl("status", program)
     if code != 0:
-        combined = "\n".join([part for part in [out.strip(), err.strip()] if part]).strip()
+        combined = "\n".join(
+            [part for part in [out.strip(), err.strip()] if part]
+        ).strip()
         message = combined or (err or out).strip()
         lowered = (combined or message).lower()
 
-        if any(token in lowered for token in ["no such process", "not found", "no such file"]):
+        if any(
+            token in lowered
+            for token in ["no such process", "not found", "no such file"]
+        ):
             state = "NOT_FOUND"
         elif "connection refused" in lowered or "refused connection" in lowered:
             state = "SUPERVISOR_UNAVAILABLE"
