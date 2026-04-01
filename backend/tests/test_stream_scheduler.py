@@ -107,6 +107,55 @@ async def test_launch_due_streams_skips_expired_recurring_window(monkeypatch):
         assert stream.scheduled_stop_time is None
 
 
+@pytest.mark.asyncio
+async def test_launch_due_streams_clears_expired_one_shot_window(monkeypatch):
+    user_id = uuid4()
+    original_start = (datetime.now(timezone.utc) - timedelta(hours=3)).replace(
+        microsecond=0
+    )
+    expired_stop = original_start + timedelta(hours=1)
+
+    async with async_session_maker() as session:
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"{user_id}@scheduler-one-shot-window.test",
+                subscription_tier="free",
+            )
+        )
+        stream = Stream(
+            user_id=user_id,
+            source_type="playlist",
+            mix_mode="video_only",
+            status="scheduled",
+            scheduled_start_enabled=True,
+            scheduled_start_time=original_start,
+            schedule_repeat="none",
+            scheduled_stop_time=expired_stop,
+        )
+        session.add(stream)
+        await session.commit()
+
+        async def fake_start(self, stream_id, *, preserve_schedule=False):  # pragma: no cover - should not run
+            raise AssertionError("expired one-shot window should not trigger start_stream")
+
+        monkeypatch.setattr(
+            "app.services.streams.scheduler.StreamControlService.start_stream",
+            fake_start,
+        )
+
+        launched = await launch_due_streams(session)
+        await session.refresh(stream)
+
+        assert launched == 0
+        assert stream.status == "stopped"
+        assert stream.scheduled_start_enabled is False
+        assert stream.scheduled_start_time is None
+        assert stream.scheduled_start_attempted_at is None
+        assert stream.scheduled_stop_time is None
+        assert stream.scheduled_stop_attempted_at is None
+
+
 def test_compute_next_repeating_start_preserves_local_time_across_dst():
     start_at = datetime(2026, 3, 7, 15, 30, tzinfo=timezone.utc)
 
