@@ -22,9 +22,11 @@ from app.core.stream_runtime_heartbeat import (
     write_runtime_heartbeat,
 )
 from app.core.stream_runtime_lease import (
+    clear_stream_runtime_lease,
     release_stream_runtime_lease,
     renew_stream_runtime_lease,
 )
+from app.core.stream_runtime_restart import clear_stream_runtime_restart_state
 from app.models.database import Stream
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.services.streams.helpers import (
@@ -105,9 +107,8 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
             # Update timestamps
             db_stream.stopped_at = datetime.utcnow()
             db_stream.pid = None
-            db_stream.runtime_owner_id = None
-            db_stream.runtime_lease_expires_at = None
-            db_stream.runtime_last_heartbeat_at = None
+            clear_stream_runtime_lease(db_stream)
+            clear_stream_runtime_restart_state(db_stream)
 
             await db.commit()
             LOGGER.info(

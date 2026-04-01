@@ -16,13 +16,15 @@ import aiofiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
-from app.core.quota import QuotaEnforcer
-from app.core.metrics import track_stream_error, track_stream_start, track_stream_stop
 from app.core.database import get_db_context
+from app.core.metrics import track_stream_error, track_stream_start, track_stream_stop
 from app.core.observability import capture_alert
+from app.core.quota import QuotaEnforcer
+from app.core.stream_runtime_lease import clear_stream_runtime_lease
+from app.core.stream_runtime_restart import clear_stream_runtime_restart_state
 from app.models.database import Stream, SystemAlert
-from app.streaming.playlist_builder import PlaylistFileSet
 from app.streaming.hot_swap import hot_swap_manager
+from app.streaming.playlist_builder import PlaylistFileSet
 
 logger = logging.getLogger(__name__)
 
@@ -1560,6 +1562,8 @@ class FFmpegStreamManager:
 
                     stream.pid = None
                     stream.stopped_at = now
+                    clear_stream_runtime_lease(stream)
+                    clear_stream_runtime_restart_state(stream)
                     if quota_context and quota_context.get("message"):
                         stream.error_message = str(quota_context["message"])[:500]
                     else:

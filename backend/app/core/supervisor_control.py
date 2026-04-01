@@ -158,7 +158,8 @@ async def _write_program_config(stream_id: UUID) -> Path:
 directory={directory}
 command={command}
 autostart=true
-autorestart=true
+autorestart=unexpected
+exitcodes=0
 startsecs=5
 stopwaitsecs=20
 stdout_logfile={stdout}

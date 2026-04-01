@@ -384,6 +384,56 @@ async def test_supervisor_status_preserves_queued_runtime_restart(
 
 
 @pytest.mark.asyncio
+async def test_supervisor_status_preserves_quota_stop_message_when_runtime_probe_degraded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    quota_message = "Daily streaming limit reached (8h). Stream stopped automatically."
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"quota-status-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=uuid4(),
+            user_id=user_id,
+            name="quota-terminal",
+            status="stopped",
+            started_at=datetime.now(timezone.utc) - timedelta(hours=8, minutes=5),
+            stopped_at=datetime.now(timezone.utc),
+            total_duration_seconds=8 * 3600,
+            error_message=quota_message,
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+
+        async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {
+                "state": "SUPERVISOR_UNAVAILABLE",
+                "error": "unix:///tmp/supervisor.sock no such file",
+            }
+
+        monkeypatch.setattr(
+            streams_control, "supervisor_program_status", fake_program_status
+        )
+
+        service = StreamControlService(session, user_id)
+        status = await service.get_stream_status(stream.id)
+
+        assert status.status == "stopped"
+        assert status.is_running is False
+        assert status.error_message == quota_message
+        assert status.remaining_daily_seconds == 0
+        assert status.quota_limit_reached is True
+
+
+@pytest.mark.asyncio
 async def test_enforce_runtime_limit_stops_stream(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -447,6 +497,12 @@ async def test_runner_exit_preserves_quota_stop_state(
             name="quota-stopped",
             status="running",
             started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            runtime_owner_id="runner-node",
+            runtime_last_heartbeat_at=datetime.now(timezone.utc) - timedelta(seconds=5),
+            runtime_lease_expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
+            runtime_restart_attempts=2,
+            runtime_next_restart_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+            runtime_last_failure_at=datetime.now(timezone.utc) - timedelta(seconds=30),
         )
         session.add_all([profile, stream])
         await session.commit()
@@ -471,3 +527,9 @@ async def test_runner_exit_preserves_quota_stop_state(
         assert refreshed is not None
         assert refreshed.status == "stopped"
         assert refreshed.error_message == quota_message
+        assert refreshed.runtime_owner_id is None
+        assert refreshed.runtime_last_heartbeat_at is None
+        assert refreshed.runtime_lease_expires_at is None
+        assert refreshed.runtime_restart_attempts == 0
+        assert refreshed.runtime_next_restart_at is None
+        assert refreshed.runtime_last_failure_at is None
