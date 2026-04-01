@@ -14,7 +14,7 @@ if settings.sentry_dsn:
     import sentry_sdk
     from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-    
+
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
         environment=settings.environment,
@@ -25,9 +25,13 @@ if settings.sentry_dsn:
             SqlalchemyIntegration(),
         ],
         send_default_pii=False,  # Don't send personally identifiable information
-        before_send=lambda event, hint: event if settings.environment != "development" else None,
+        before_send=lambda event, hint: (
+            event if settings.environment != "development" else None
+        ),
     )
-    logging.getLogger(__name__).info(f"Sentry initialized for environment: {settings.environment}")
+    logging.getLogger(__name__).info(
+        f"Sentry initialized for environment: {settings.environment}"
+    )
 from app.api.routes import (
     auth,
     assets,
@@ -60,6 +64,7 @@ def schedule_background_task(coro):
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
+
 
 # Configure structured logging
 setup_logging(level="INFO", json_output=settings.environment == "production")
@@ -109,31 +114,51 @@ app.include_router(quota.router, prefix="/api", tags=["quota"])  # Quota managem
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])  # Admin panel
 app.include_router(assets.router, prefix="/api/assets", tags=["assets"])
 app.include_router(playlists.router, prefix="/api/playlists", tags=["playlists"])
-app.include_router(destinations.router, prefix="/api/destinations", tags=["destinations"])
+app.include_router(
+    destinations.router, prefix="/api/destinations", tags=["destinations"]
+)
 app.include_router(streams.router, prefix="/api/streams", tags=["streams"])
-app.include_router(media_folders.router, prefix="/api/media-folders", tags=["media-folders"])
-app.include_router(media_collections.router, prefix="/api/media-collections", tags=["media-collections"])
+app.include_router(
+    media_folders.router, prefix="/api/media-folders", tags=["media-folders"]
+)
+app.include_router(
+    media_collections.router,
+    prefix="/api/media-collections",
+    tags=["media-collections"],
+)
 app.include_router(metrics.router, prefix="/api", tags=["metrics"])
 app.include_router(monitoring.router, prefix="/api/monitoring", tags=["monitoring"])
 
 # Mount static files for thumbnails
 thumbnails_dir = Path(settings.upload_dir) / "thumbnails"
-thumbnails_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/thumbnails", StaticFiles(directory=str(thumbnails_dir)), name="thumbnails")
+try:
+    thumbnails_dir.mkdir(parents=True, exist_ok=True)
+except OSError as exc:
+    logger.warning(
+        "Unable to initialize thumbnails directory %s: %s", thumbnails_dir, exc
+    )
+else:
+    app.mount(
+        "/thumbnails", StaticFiles(directory=str(thumbnails_dir)), name="thumbnails"
+    )
 
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
-    from app.core.database import check_db_connection, apply_schema_patches, async_session_maker
+    from app.core.database import (
+        check_db_connection,
+        apply_schema_patches,
+        async_session_maker,
+    )
     from app.core.stream_reconciler import reconcile_streams
-    
+
     logger.info("Starting YouTube Multi-Channel Streaming Service")
     logger.info(f"FFmpeg: {settings.ffmpeg_bin}")
     logger.info(f"Upload dir: {settings.upload_dir}")
     logger.info(f"Stream dir: {settings.stream_dir}")
     logger.info(f"Stream runtime mode: {settings.stream_runtime_mode}")
-    
+
     # Check database connection
     await check_db_connection()
     await apply_schema_patches()
@@ -148,7 +173,7 @@ async def startup_event():
     schedule_background_task(cleanup_ffmpeg_streams())
     schedule_background_task(broadcast_stream_updates())
     schedule_background_task(scheduled_stream_launcher())
-    
+
     # Start periodic stream status sync (only in supervisor/systemd mode)
     if settings.stream_runtime_mode in ("supervisor", "systemd"):
         schedule_background_task(periodic_stream_status_sync())
@@ -196,9 +221,9 @@ async def periodic_stream_status_sync():
     """Periodically sync stream statuses with supervisor/systemd (every 10 seconds)."""
     from app.core.database import async_session_maker
     from app.core.stream_reconciler import periodic_reconciliation, restart_due_streams
-    
+
     await asyncio.sleep(10)  # Initial delay
-    
+
     while True:
         await asyncio.sleep(10)  # Every 10 seconds (was 30 - too slow!)
         try:
@@ -221,7 +246,7 @@ async def root():
     return {
         "service": "YouTube Multi-Channel Streaming API",
         "version": "1.0.0",
-        "status": "running"
+        "status": "running",
     }
 
 
@@ -233,10 +258,11 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "app.main:app",
         host=settings.api_host,
         port=settings.api_port,
         reload=True,
-        log_level="info"
+        log_level="info",
     )

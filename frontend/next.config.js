@@ -1,7 +1,7 @@
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
-const withNextIntl = require('next-intl/plugin')('./i18n.ts')
+const withNextIntl = require('next-intl/plugin')('./src/i18n/request-config.ts')
 
 /** @type {import('next').NextConfig} */
 const DEV_API_PROXY_TARGET = process.env.DEV_API_PROXY_TARGET || 'http://localhost:8000'
