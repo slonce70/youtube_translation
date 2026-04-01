@@ -18,10 +18,19 @@ from app.core.quota import QuotaEnforcer as DefaultQuotaEnforcer
 from app.core.stream_runtime_lease import (
     claim_stream_runtime_lease,
     clear_stream_runtime_lease,
+    runtime_lease_is_active,
+    sync_stream_runtime_lease,
 )
 from app.core.stream_runtime_restart import (
     clear_stream_runtime_restart_state,
     mark_stream_runtime_restart_dispatched,
+    reset_stream_runtime_restart_state_if_healthy,
+    schedule_stream_runtime_restart,
+)
+from app.core.stream_runtime_heartbeat import (
+    get_runtime_heartbeat_datetime,
+    read_runtime_heartbeat,
+    runtime_heartbeat_is_stale,
 )
 from app.core.supervisor_control import (
     supervisor_enabled,
@@ -478,6 +487,7 @@ class StreamControlService:
         if supervisor_enabled():
             info = await supervisor_program_status(stream_id)
             state = info.get("state", stream.status)
+            previous_status = stream.status
 
             raw_state = (state or "").lower()
             supervisor_status_map = {
@@ -520,29 +530,152 @@ class StreamControlService:
                 )
             )
 
+            stale_heartbeat_reason = None
+            heartbeat_payload = None
+            if normalized_status == "running":
+                heartbeat_payload = read_runtime_heartbeat(stream_id)
+                if heartbeat_payload and runtime_heartbeat_is_stale(heartbeat_payload):
+                    expires_at = (
+                        heartbeat_payload.get("expires_at")
+                        or heartbeat_payload.get("updated_at")
+                        or "unknown"
+                    )
+                    runner_pid = heartbeat_payload.get("runner_pid")
+                    runtime_mode = heartbeat_payload.get("runtime_mode") or "managed"
+                    stale_heartbeat_reason = (
+                        f"{runtime_mode} runner heartbeat expired at {expires_at}"
+                    )
+                    if runner_pid:
+                        stale_heartbeat_reason += f" (runner_pid={runner_pid})"
+
+            if stale_heartbeat_reason:
+                effective_now = _utcnow()
+                stream.status = "error"
+                stream.pid = None
+                if stream.stopped_at is None:
+                    stream.stopped_at = effective_now
+                clear_stream_runtime_lease(stream)
+                if previous_status in {"running", "starting"}:
+                    decision = schedule_stream_runtime_restart(
+                        stream, now=effective_now
+                    )
+                    if decision.scheduled and decision.next_restart_at is not None:
+                        next_attempt_iso = decision.next_restart_at.astimezone(
+                            timezone.utc
+                        ).isoformat()
+                        stream.error_message = (
+                            f"{stale_heartbeat_reason}. Auto-restart scheduled at "
+                            f"{next_attempt_iso} (attempt {decision.attempt}/"
+                            f"{decision.max_attempts}, backoff {decision.delay_seconds}s)."
+                        )[:500]
+                    else:
+                        stream.error_message = (
+                            f"{stale_heartbeat_reason}. Auto-restart exhausted after "
+                            f"{decision.attempt}/{decision.max_attempts} attempts."
+                        )[:500]
+                else:
+                    stream.error_message = stale_heartbeat_reason[:500]
+
+                await self.db.commit()
+                usage = await self._get_usage_snapshot()
+                return self._status_payload(
+                    stream,
+                    False,
+                    0,
+                    status_override="error",
+                    error_message=stream.error_message,
+                    usage=usage,
+                )
+
             running = normalized_status == "running"
             uptime_seconds = _uptime_seconds(stream) if running else 0
+            state_dirty = False
 
-            status_changed = normalized_status != stream.status
+            if running:
+                if not stream.started_at:
+                    stream.started_at = _utcnow()
+                    state_dirty = True
+                stream.stopped_at = None
+                if heartbeat_payload:
+                    owner_id = (
+                        heartbeat_payload.get("lease_owner_id")
+                        or heartbeat_payload.get("node_id")
+                        or stream.runtime_owner_id
+                    )
+                    updated_at = get_runtime_heartbeat_datetime(
+                        heartbeat_payload, "updated_at"
+                    )
+                    expires_at = get_runtime_heartbeat_datetime(
+                        heartbeat_payload, "expires_at"
+                    )
+                    if owner_id and updated_at and expires_at:
+                        if (
+                            stream.runtime_owner_id != owner_id
+                            or not runtime_lease_is_active(stream, now=updated_at)
+                        ):
+                            sync_stream_runtime_lease(
+                                stream,
+                                owner_id=owner_id,
+                                now=updated_at,
+                                ttl_seconds=max(
+                                    int((expires_at - updated_at).total_seconds()), 1
+                                ),
+                            )
+                            state_dirty = True
+                if reset_stream_runtime_restart_state_if_healthy(stream):
+                    state_dirty = True
+
+            status_changed = normalized_status != previous_status
             if status_changed:
                 stream.status = normalized_status
-                if running:
-                    if not stream.started_at:
-                        stream.started_at = _utcnow()
-                    stream.stopped_at = None
-                elif normalized_status in {"stopped", "error"}:
-                    stream.pid = None
-                    stream.stopped_at = _utcnow()
-                    clear_stream_runtime_lease(stream)
+                state_dirty = True
+                if normalized_status in {"stopped", "error"}:
+                    if previous_status in {"running", "starting"}:
+                        effective_now = _utcnow()
+                        decision = schedule_stream_runtime_restart(
+                            stream,
+                            now=effective_now,
+                        )
+                        if decision.scheduled and decision.next_restart_at is not None:
+                            next_attempt_iso = decision.next_restart_at.astimezone(
+                                timezone.utc
+                            ).isoformat()
+                            stream.error_message = (
+                                f"Runtime state {state}: "
+                                f"{' '.join(str(info.get('error') or info.get('details') or '').split())}. "
+                                f"Auto-restart scheduled at {next_attempt_iso} "
+                                f"(attempt {decision.attempt}/{decision.max_attempts}, "
+                                f"backoff {decision.delay_seconds}s)."
+                            )[:500]
+                            stream.status = "error"
+                            normalized_status = "error"
+                        else:
+                            stream.error_message = (
+                                f"Runtime state {state}: "
+                                f"{' '.join(str(info.get('error') or info.get('details') or '').split())}. "
+                                f"Auto-restart exhausted after {decision.attempt}/"
+                                f"{decision.max_attempts} attempts."
+                            )[:500]
+                            stream.status = "error"
+                            normalized_status = "error"
+                    else:
+                        stream.pid = None
+                        stream.stopped_at = _utcnow()
+                        clear_stream_runtime_lease(stream)
                 elif normalized_status == "stopping":
                     # Transitional state: do not mark stopped_at yet. The periodic reconciler
                     # will finalize once supervisor reports STOPPED/EXITED/NOT_FOUND.
                     stream.pid = None
 
                 error_payload = info.get("error") or info.get("details")
-                if normalized_status == "error" and error_payload:
+                if (
+                    normalized_status == "error"
+                    and error_payload
+                    and not stream.error_message
+                ):
                     stream.error_message = str(error_payload)[:500]
 
+            if state_dirty:
                 await self.db.commit()
 
             error_message = (

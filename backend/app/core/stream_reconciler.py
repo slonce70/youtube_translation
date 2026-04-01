@@ -445,6 +445,7 @@ async def periodic_reconciliation(db: AsyncSession) -> None:
             runtime = await _check_stream_status(stream.id)
             state = runtime.get("state", "UNKNOWN")
             normalized = _normalize_runtime_state(state)
+            previous_status = stream.status
 
             if normalized is None or normalized == "starting":
                 continue
@@ -459,24 +460,23 @@ async def periodic_reconciliation(db: AsyncSession) -> None:
                     normalized = "error"
                     runtime["error"] = heartbeat_reason
 
-            if normalized == stream.status and normalized == "running":
+            if normalized == previous_status and normalized == "running":
                 _sync_runtime_lease_from_heartbeat(stream)
                 reset_stream_runtime_restart_state_if_healthy(stream)
 
-            if normalized == stream.status:
+            if normalized == previous_status:
                 continue
 
             logger.warning(
                 "Periodic check: Stream %s status drifted: db=%s runtime=%s → %s",
                 stream.id,
-                stream.status,
+                previous_status,
                 state,
                 normalized,
             )
 
-            stream.status = normalized
-
             if normalized == "running":
+                stream.status = "running"
                 if not stream.started_at:
                     stream.started_at = datetime.now(timezone.utc)
                 stream.stopped_at = None
@@ -484,7 +484,7 @@ async def periodic_reconciliation(db: AsyncSession) -> None:
                 reset_stream_runtime_restart_state_if_healthy(stream)
                 continue
 
-            if normalized in {"stopped", "error"} and stream.status in {
+            if normalized in {"stopped", "error"} and previous_status in {
                 "running",
                 "starting",
             }:
@@ -497,6 +497,7 @@ async def periodic_reconciliation(db: AsyncSession) -> None:
                 )
                 continue
 
+            stream.status = normalized
             stream.pid = None
             clear_stream_runtime_lease(stream)
             if normalized in {"stopped", "error"} and stream.stopped_at is None:

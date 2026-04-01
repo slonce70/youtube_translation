@@ -133,6 +133,57 @@ async def test_periodic_reconciliation_repairs_runtime_lease_from_fresh_heartbea
 
 
 @pytest.mark.asyncio
+async def test_periodic_reconciliation_schedules_restart_when_runtime_exits(
+    monkeypatch,
+) -> None:
+    user_id = uuid4()
+
+    monkeypatch.setattr(settings, "stream_runtime_mode", "supervisor")
+    monkeypatch.setattr(settings, "stream_runtime_auto_restart_enabled", True)
+    monkeypatch.setattr(settings, "stream_runtime_restart_backoff_seconds", 0)
+    monkeypatch.setattr(settings, "stream_runtime_restart_backoff_max_seconds", 0)
+    monkeypatch.setattr(settings, "stream_runtime_restart_jitter_seconds", 0)
+    monkeypatch.setattr("app.core.stream_reconciler.supervisor_enabled", lambda: True)
+    monkeypatch.setattr("app.core.stream_reconciler.systemd_enabled", lambda: False)
+
+    async def _exited_status(_stream_id):
+        return {"state": "EXITED", "details": "process exited unexpectedly"}
+
+    monkeypatch.setattr("app.core.stream_reconciler.supervisor_program_status", _exited_status)
+
+    async with async_session_maker() as session:
+        streams_table = await session.execute(text("SELECT to_regclass('public.streams')"))
+        if not streams_table.scalar():
+            pytest.skip("streams table not available in this test DB")
+
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"{user_id}@reconciler.test",
+                subscription_tier="free",
+            )
+        )
+
+        stream = Stream(
+            user_id=user_id,
+            name="Managed stream",
+            status="running",
+            mix_mode="video_only",
+        )
+        session.add(stream)
+        await session.commit()
+
+        await periodic_reconciliation(session)
+        await session.refresh(stream)
+
+        assert stream.status == "error"
+        assert stream.runtime_restart_attempts == 1
+        assert stream.runtime_next_restart_at is not None
+        assert stream.error_message is not None
+        assert "Runtime state EXITED" in stream.error_message
+
+
+@pytest.mark.asyncio
 async def test_restart_due_streams_dispatches_orchestrated_restart(monkeypatch):
     user_id = uuid4()
     now = datetime.now(timezone.utc)
