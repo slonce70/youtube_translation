@@ -1,0 +1,15 @@
+{
+  "featureId": "runtime-restart-queue-convergence-fixes",
+  "reviewedAt": "2026-04-01T16:21:03.549871+00:00",
+  "commitId": "bff611b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix closes the original orphaned-restart hole: supervisor/systemd status reads now preserve queued restart state for error streams with pending restart metadata, and the restart dispatcher also recovers previously downgraded stopped rows.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "~/Documents/Work/youtube_translation/.factory/validation/runtime-hardening/scrutiny/reviews/runtime-reconcile-and-recovery-hardening.json",
+  "summary": "Pass: reviewed the fix transcript skeleton plus both diffs (54e2eef and bff611b). The new preserve-restart logic in backend/app/services/streams/control.py and the widened restart_due_streams() selector in backend/app/core/stream_reconciler.py adequately address the prior blocking failure, and I did not find new actionable issues in scope."
+}
