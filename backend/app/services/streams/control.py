@@ -730,11 +730,11 @@ class StreamControlService:
             if state_dirty:
                 await self.db.commit()
 
-            error_message = (
-                None
-                if preserve_scheduled
-                else (info.get("error") or stream.error_message)
-            )
+            error_message = None if preserve_scheduled else stream.error_message
+            if normalized_status in {"running", "starting", "stopping"}:
+                error_message = info.get("error") or error_message
+            elif normalized_status == "error" and not error_message:
+                error_message = info.get("error") or info.get("details")
             if preserve_restart_queue:
                 error_message = stream.error_message
             usage = await self._get_usage_snapshot()

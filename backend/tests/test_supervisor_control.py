@@ -141,6 +141,8 @@ async def test_write_program_config_uses_container_visible_paths_for_host_docker
     program = supervisor_control.program_name(stream_id)
     assert "directory=/app" in config_text
     assert f"command=python -m app.cli.run_stream {stream_id}" in config_text
+    assert "autorestart=unexpected" in config_text
+    assert "exitcodes=0" in config_text
     assert f"stdout_logfile=/app/supervisord/logs/{program}.log" in config_text
     assert f"stderr_logfile=/app/supervisord/logs/{program}.err" in config_text
     assert 'environment=PYTHONPATH="/app"' in config_text
