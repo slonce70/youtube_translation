@@ -1,7 +1,7 @@
 {
   "milestone": "runtime-hardening",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,33 +20,25 @@
     }
   },
   "reviewsSummary": {
-    "total": 3,
-    "passed": 2,
-    "failed": 1,
-    "failedFeatures": [
-      "runtime-scheduler-window-and-live-reschedule-fixes"
-    ]
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "runtime-scheduler-window-and-live-reschedule-fixes",
-      "severity": "blocking",
-      "description": "The overdue one-shot launch gap is fixed, but live-reschedule protection still falls back to stale DB status when supervisor runtime inspection is unavailable. `get_stream_status()` collapses `SUPERVISOR_UNAVAILABLE`/`PERMISSION_DENIED` back to the persisted row, so `update_stream_schedule()` can still accept a future schedule for an actually live stream if the DB status is stale `stopped`."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [
     {
       "target": "library",
-      "description": "Documented the local runner unhealthy-state caused by stale supervisor program configs pointing at missing host log directories in `.factory/library/environment.md` so validators can recognize it as a bootstrap cleanup issue.",
-      "sourceFeature": "runtime-scheduler-window-and-live-reschedule-fixes"
+      "description": "Corrected `.factory/library/environment.md` so DEV auth fallback notes match the backend's derived `uuid5(NAMESPACE_DNS, email)` user ID behavior when `DEV_USER_ID` is unset or invalid.",
+      "sourceFeature": "runtime-live-reschedule-fail-closed-fix"
+    },
+    {
+      "target": "library",
+      "description": "Updated `.factory/library/environment.md` to reflect the current runtime preflight behavior: missing `subscription_tier_limits` metadata now fails closed with structured validation errors instead of HTTP 500s.",
+      "sourceFeature": "runtime-preflight-fail-closed-fixes"
     }
   ],
   "suggestedGuidanceUpdates": [],
-  "rejectedObservations": [
-    {
-      "observation": "Mission/shared-state docs still do not mention that DEV auth falls back to a built-in default identity when `DEV_USER_EMAIL` and `DEV_USER_ID` are unset, so workers keep rediscovering the effective local auth identity during API verification.",
-      "reason": "already-documented in `.factory/library/environment.md` during round 1"
-    }
-  ],
-  "previousRound": ".factory/validation/runtime-hardening/scrutiny/synthesis.round1.json"
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/runtime-hardening/scrutiny/synthesis.round2.json"
 }
