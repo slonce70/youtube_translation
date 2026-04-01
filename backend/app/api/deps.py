@@ -567,7 +567,7 @@ class UserDependency:
         db: AsyncSession = Depends(get_db),
         authorization: Optional[str] = Header(None),
         user_timezone: Optional[str] = Header(default=None, alias="X-User-Timezone"),
-    ) -> tuple[AsyncSession, Optional[str]]:
+    ) -> tuple[AsyncSession, Optional[UUID]]:
         """
         Get database session and current user ID.
 
@@ -584,10 +584,9 @@ class UserDependency:
             except HTTPException:
                 user_payload = None
 
-        user_id: Optional[str] = None
+        user_id: Optional[UUID] = None
         if user_payload:
-            ensured_id = await _ensure_user_profile(db, user_payload, user_timezone)
-            user_id = str(ensured_id)
+            user_id = await _ensure_user_profile(db, user_payload, user_timezone)
 
         return db, user_id
 
@@ -597,24 +596,16 @@ require_user = UserDependency(required=True)
 
 
 async def require_admin(
-    user_deps: tuple[AsyncSession, Optional[str]] = Depends(require_user),
+    user_deps: tuple[AsyncSession, Optional[UUID]] = Depends(require_user),
 ) -> tuple[AsyncSession, UUID]:
     """Ensure the current user has admin privileges."""
 
-    db, user_id_str = user_deps
+    db, user_id = user_deps
 
-    if not user_id_str:
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
-        )
-
-    try:
-        user_id = UUID(str(user_id_str))
-    except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid user identifier",
         )
 
     result = await db.execute(select(UserProfile).where(UserProfile.user_id == user_id))
