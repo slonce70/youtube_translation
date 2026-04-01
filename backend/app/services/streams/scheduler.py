@@ -59,11 +59,31 @@ async def launch_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
     for stream in streams:
         occurrence_start = ensure_utc(stream.scheduled_start_time)
         recurring_schedule = has_recurring_schedule(stream)
+        occurrence_stop = ensure_utc(stream.scheduled_stop_time)
         try:
             if occurrence_start is None:
                 stream.scheduled_start_enabled = False
                 stream.scheduled_start_attempted_at = None
                 await db.flush()
+                continue
+
+            if (
+                not recurring_schedule
+                and occurrence_stop is not None
+                and occurrence_stop <= now
+            ):
+                stream.scheduled_start_enabled = False
+                stream.scheduled_start_time = None
+                stream.scheduled_start_attempted_at = None
+                stream.scheduled_stop_time = None
+                stream.scheduled_stop_attempted_at = None
+                if stream.status == "scheduled":
+                    stream.status = "stopped"
+                await db.flush()
+                logger.info(
+                    "Cleared expired one-shot schedule window for stream %s",
+                    stream.id,
+                )
                 continue
 
             if recurring_schedule:

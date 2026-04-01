@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from app.core.database import async_session_maker
 from app.models.database import Asset, Destination, Stream, UserProfile
 from app.schemas.api import StreamCreate, StreamScheduleUpdate
+from app.services.streams.control import StreamControlService
 from app.services.streams.service import StreamService
 
 
@@ -246,3 +247,57 @@ async def test_update_stream_schedule_blocks_running_start():
             await service.update_stream_schedule(stream.id, payload)
 
         assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_stream_schedule_blocks_real_live_reschedule_when_db_status_is_stale(
+    monkeypatch,
+):
+    user_id = uuid4()
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@schedule-runtime-live.test",
+            subscription_tier="free",
+        )
+        session.add(profile)
+
+        stream = Stream(
+            user_id=user_id,
+            source_type="playlist",
+            mix_mode="video_only",
+            status="stopped",
+        )
+        session.add(stream)
+        await session.commit()
+
+        async def fake_get_stream_status(self, stream_id):
+            assert stream_id == stream.id
+
+            class Status:
+                is_running = True
+                status = "running"
+
+            return Status()
+
+        monkeypatch.setattr(
+            StreamControlService,
+            "get_stream_status",
+            fake_get_stream_status,
+        )
+
+        service = StreamService(session, user_id)
+        payload = StreamScheduleUpdate(
+            schedule_mode="schedule",
+            schedule_start_at=(datetime.now(timezone.utc) + timedelta(hours=1)).replace(
+                microsecond=0
+            ),
+            schedule_stop_at=None,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await service.update_stream_schedule(stream.id, payload)
+
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "Cannot schedule start while stream is running"
