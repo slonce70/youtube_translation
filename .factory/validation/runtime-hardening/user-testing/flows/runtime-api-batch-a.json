@@ -1,0 +1,273 @@
+{
+  "groupId": "runtime-api-batch-a",
+  "testedAt": "2026-04-01T17:13:24.931350Z",
+  "isolation": {
+    "missionDir": "/Users/trend/.factory/missions/cd16c8b1-cdd0-4a16-94cf-f28a2114f609",
+    "primaryApiBaseUrl": "http://127.0.0.1:8000",
+    "primaryDevUser": "dev@example.com",
+    "secondaryApiBaseUrl": "http://127.0.0.1:8001",
+    "secondaryDevUser": "tenant2@example.com",
+    "seedLabel": "ut-runtime-20260401165636",
+    "enabledDestinationId": "e4f3b13e-6648-42c0-ac4a-253533d2fd7a",
+    "disabledDestinationId": "3dc1e5ad-3838-4cff-8f74-741e8f1505cc",
+    "tenant2DestinationId": "d13550cf-bb0c-4448-b46a-6ba93f22b1ed",
+    "manualStreamId": "e779c08a-d87b-4fa7-be11-bfd5b1be4cdd",
+    "disabledStreamId": "f497cb45-9460-4636-8aa7-1adfa3cf8464",
+    "incompatibleStreamId": "0776e92c-38be-4410-9879-abee433d7042",
+    "scheduleEditStreamId": "9c2856a1-0036-4b1d-a9ee-6c945ac93afc",
+    "emptyLogsStreamId": "a0ba7143-c8fa-4271-b985-410b9dbe8762"
+  },
+  "toolsUsed": [
+    "curl"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-STREAM-001",
+      "title": "Destination secrets stay masked and tenant-scoped",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /api/destinations/ on port 8000",
+          "expected": "Seeded destination only exposes masked key",
+          "observed": "status 200; masked key for enabled destination was ************bled"
+        },
+        {
+          "action": "POST /api/destinations/ on port 8000",
+          "expected": "Create response never returns raw stream key",
+          "observed": "status 201; stream_key_masked=************1234"
+        },
+        {
+          "action": "GET /api/destinations/e4f3b13e-6648-42c0-ac4a-253533d2fd7a on port 8000",
+          "expected": "Fetch response stays masked",
+          "observed": "status 200; stream_key_masked=************bled"
+        },
+        {
+          "action": "GET/PUT/DELETE /api/destinations/e4f3b13e-6648-42c0-ac4a-253533d2fd7a on port 8001",
+          "expected": "Cross-tenant access is denied",
+          "observed": "GET=404, PUT=404, DELETE=404"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "GET /api/destinations/ -> 200; POST /api/destinations/ -> 201; GET own destination -> 200; cross-tenant GET/PUT/DELETE on port 8001 -> 404/404/404",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-a/VAL-STREAM-001-requests.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STREAM-002",
+      "title": "Disabled destinations are excluded from runnable output",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "POST /api/streams/f497cb45-9460-4636-8aa7-1adfa3cf8464/start",
+          "expected": "Start is rejected while all linked destinations are disabled",
+          "observed": "status 400; detail=No enabled destinations found"
+        },
+        {
+          "action": "PUT /api/destinations/3dc1e5ad-3838-4cff-8f74-741e8f1505cc {\"enabled\": true}",
+          "expected": "The linked destination can be re-enabled on the same seeded stream",
+          "observed": "status 200; enabled=True"
+        },
+        {
+          "action": "PUT /api/destinations/3dc1e5ad-3838-4cff-8f74-741e8f1505cc {\"enabled\": false}",
+          "expected": "Seeded destination restored after inspection",
+          "observed": "status 200; enabled=False"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "POST /api/streams/f497cb45-9460-4636-8aa7-1adfa3cf8464/start -> 400; PUT /api/destinations/3dc1e5ad-3838-4cff-8f74-741e8f1505cc enabled=true -> 200; restore enabled=false -> 200",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-a/VAL-STREAM-002-requests.json"
+        ]
+      },
+      "issues": "Verified the disabled-destination start denial (400 No enabled destinations found), but the contract requires a successful follow-up POST /start after re-enabling a destination and this batch explicitly forbids starting/stopping managed streams, so eligibility-after-enable could not be exercised."
+    },
+    {
+      "id": "VAL-STREAM-003",
+      "title": "Stream creation reflects immediate versus scheduled intent",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/streams/ with schedule_mode=now",
+          "expected": "Created stream is manual/stopped",
+          "observed": "status 201; returned status=stopped scheduled_start_enabled=False"
+        },
+        {
+          "action": "POST /api/streams/ with schedule_mode=schedule and future schedule_start_at",
+          "expected": "Created stream is scheduled and persists future start",
+          "observed": "status 201; returned status=scheduled scheduled_start_time=2026-04-10T15:00:00Z"
+        },
+        {
+          "action": "DELETE temporary created streams",
+          "expected": "Temporary validation fixtures are cleaned up",
+          "observed": "/streams/c4c7aa13-bd26-4bd3-b95c-a9f64503eae3 -> 204, /streams/7cff97f7-9e95-4738-a332-a95596be3dda -> 204"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "POST /api/streams/ (now) -> 201; POST /api/streams/ (schedule) -> 201; cleanup DELETEs -> [204, 204]",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-a/VAL-STREAM-003-requests.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STREAM-004",
+      "title": "Schedule updates preserve repeat semantics and computed stop windows",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "PATCH /api/streams/9c2856a1-0036-4b1d-a9ee-6c945ac93afc with weekly schedule, timezone, window_end_time, and stop_after_seconds",
+          "expected": "Response persists repeat/timezone semantics and resolves the earliest valid stop boundary",
+          "observed": "status 200; status=scheduled repeat=weekly timezone=America/New_York weekdays=[4] scheduled_stop_time=2026-04-10T14:00:00Z"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "PATCH /api/streams/9c2856a1-0036-4b1d-a9ee-6c945ac93afc -> 200",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-a/VAL-STREAM-004-requests.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STREAM-005",
+      "title": "Clearing schedule resets the stream to manual control",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "PATCH /api/streams/9c2856a1-0036-4b1d-a9ee-6c945ac93afc with schedule_mode=now",
+          "expected": "Pending schedule fields clear and stream returns to manual stopped state",
+          "observed": "status 200; status=stopped scheduled_start_enabled=False scheduled_start_time=None scheduled_stop_time=None"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "PATCH /api/streams/9c2856a1-0036-4b1d-a9ee-6c945ac93afc schedule_mode=now -> 200",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-a/VAL-STREAM-005-requests.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STREAM-006",
+      "title": "Running streams reject conflicting start scheduling",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect current stream states on port 8000",
+          "expected": "At least one assigned stream is already live or can be marked live via API-only state",
+          "observed": "9c2856a1-0036-4b1d-a9ee-6c945ac93afc=stopped; e779c08a-d87b-4fa7-be11-bfd5b1be4cdd=stopped; f497cb45-9460-4636-8aa7-1adfa3cf8464=stopped; 0776e92c-38be-4410-9879-abee433d7042=stopped; a0ba7143-c8fa-4271-b985-410b9dbe8762=stopped"
+        },
+        {
+          "action": "Look for an API-only way to exercise the live reschedule guard without starting runtime",
+          "expected": "A non-runtime state transition is available",
+          "observed": "No API-only state mutator was exposed; task constraint also forbade starting a managed stream to create the live precondition."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "GET /api/streams/ -> 200",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-a/VAL-STREAM-006-requests.json"
+        ]
+      },
+      "issues": "Precondition missing: no live stream was available and runtime start was out of scope for this batch."
+    },
+    {
+      "id": "VAL-STREAM-007",
+      "title": "Copy-first quality gate blocks bad media before runtime launch",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /api/streams/0776e92c-38be-4410-9879-abee433d7042/quality",
+          "expected": "Quality endpoint returns ok=false with violations for incompatible media",
+          "observed": "status 200; ok=False violations=[{'code': 'incompatible_codecs', 'message': 'Asset must use H.264 video, AAC audio, and yuv420p pixel format for direct streaming. Validation issues: Video codec must be h264, got hevc.', 'asset_id': 'def6b2a6-3e8c-48bb-8fa9-2ebe94545085', 'filename': 'ut-runtime-20260401165636-incompatible.mp4', 'position': 0, 'current': None, 'allowed': None}]"
+        },
+        {
+          "action": "POST /api/streams/0776e92c-38be-4410-9879-abee433d7042/start",
+          "expected": "Start fails with structured quality_rejected error before runtime launch",
+          "observed": "status 422; detail={'error': 'quality_rejected', 'tier': 'fhd_flow', 'limits': {'max_resolution_height': 1080, 'max_fps': 60, 'min_video_bitrate_mbps': None, 'max_video_bitrate_mbps': None, 'enforce_stream_quality': True}, 'violations': [{'code': 'incompatible_codecs', 'message': 'Asset must use H.264 video, AAC audio, and yuv420p pixel format for direct streaming. Validation issues: Video codec must be h264, got hevc.', 'asset_id': 'def6b2a6-3e8c-48bb-8fa9-2ebe94545085', 'filename': 'ut-runtime-20260401165636-incompatible.mp4', 'position': 0}], 'ok': False, 'mode': 'video', 'audio_recommended': None}"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "GET /api/streams/0776e92c-38be-4410-9879-abee433d7042/quality -> 200; POST /api/streams/0776e92c-38be-4410-9879-abee433d7042/start -> 422",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-a/VAL-STREAM-007-requests.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STREAM-010",
+      "title": "Logs support operator-friendly and raw inspection modes",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "GET /api/streams/a0ba7143-c8fa-4271-b985-410b9dbe8762/logs?lines=20",
+          "expected": "Missing-log case returns empty logs with zero line count",
+          "observed": "status 200; response={'stream_id': 'a0ba7143-c8fa-4271-b985-410b9dbe8762', 'logs': [], 'total_lines': 0}"
+        },
+        {
+          "action": "GET /api/streams/a0ba7143-c8fa-4271-b985-410b9dbe8762/logs?lines=20&mode=raw",
+          "expected": "Raw mode is accepted on the missing-log case",
+          "observed": "status 200; response={'stream_id': 'a0ba7143-c8fa-4271-b985-410b9dbe8762', 'logs': [], 'total_lines': 0}"
+        },
+        {
+          "action": "Inspect seeded streams for available log-bearing records",
+          "expected": "At least one seeded stream exposes real logs for raw-vs-important comparison",
+          "observed": "9c2856a1-0036-4b1d-a9ee-6c945ac93afc:log_path=None; e779c08a-d87b-4fa7-be11-bfd5b1be4cdd:log_path=None; f497cb45-9460-4636-8aa7-1adfa3cf8464:log_path=None; 0776e92c-38be-4410-9879-abee433d7042:log_path=None; a0ba7143-c8fa-4271-b985-410b9dbe8762:log_path=None; bb27906b-4210-479a-b15e-bc82e621ee97:log_path=None"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "GET empty logs important -> 200; GET empty logs raw -> 200; GET /api/streams/ -> 200",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-a/VAL-STREAM-010-requests.json"
+        ]
+      },
+      "issues": "Only the missing-log branch was testable. No seeded stream had retrievable log content for raw-tail vs filtered-mode comparison without violating the no-runtime-start constraint."
+    }
+  ],
+  "frictions": [],
+  "blockers": [
+    {
+      "description": "Managed-runtime start was intentionally not executed for VAL-STREAM-002 because the batch constraint forbids starting/stopping streams; only the fail-closed disabled-destination denial was exercised.",
+      "affectedAssertions": [
+        "VAL-STREAM-002"
+      ],
+      "quickFixAttempted": "Enabled the linked destination and confirmed the stream configuration updated, but did not issue a second start request."
+    },
+    {
+      "description": "No seeded stream was already in running/starting/stopping state, and the batch constraint forbids launching a managed stream solely to create that live precondition. There is no API-only endpoint to mark a stream live without runtime ownership.",
+      "affectedAssertions": [
+        "VAL-STREAM-006"
+      ],
+      "quickFixAttempted": "Confirmed via GET /api/streams/ that every assigned stream on port 8000 was stopped before deciding not to fabricate runtime state."
+    },
+    {
+      "description": "Missing-log behavior was verified on emptyLogsStreamId, but no seeded stream on port 8000 exposed a non-null log_path or existing log payload, so raw-tail vs operator-friendly filtering could not be compared without launching runtime, which was outside this batch.",
+      "affectedAssertions": [
+        "VAL-STREAM-010"
+      ],
+      "quickFixAttempted": "Queried both important and raw modes on the empty-log stream and inspected the full stream list for any seeded stream with existing logs; none were available."
+    }
+  ],
+  "summary": "Tested 8 assertions: 5 passed, 0 failed, 3 blocked."
+}

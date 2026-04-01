@@ -61,3 +61,11 @@ Do not treat manager fallback as the desired acceptance baseline unless the cont
 - Verify one browser flow at a time.
 - Prefer deterministic seeded users over ad-hoc manual state.
 - When validating admin changes, always verify both admin and user-facing surfaces if the contract says the state must converge.
+
+## Flow Validator Guidance: API
+- For runtime-hardening API assertions, treat `http://127.0.0.1:8000` as the primary validation surface for the default DEV user (`dev@example.com`).
+- Use `http://127.0.0.1:8001` only for tenant-isolation checks that need a second authenticated caller (`tenant2@example.com`); that helper backend runs in manager mode and must not be used for managed-runtime start/stop assertions.
+- Keep runtime-mutating assertions serialized. Do not start or schedule more than one managed stream at a time for the same user.
+- Use the local `mediamtx` boundary (`rtmp://mediamtx:1935/...`) instead of real YouTube ingest when a runnable destination is required.
+- If a managed-runtime start returns a `500` with a long supervisor `stream_<id>: available` list, treat that as a product failure in the real user surface rather than a validator setup mistake.
+- If you simulate stale-heartbeat or phantom-runtime conditions, do it against the explicitly assigned stream only and restore the stream to a stopped or error state before handing control back.

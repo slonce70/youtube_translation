@@ -1,0 +1,242 @@
+{
+  "groupId": "runtime-api-batch-b",
+  "testedAt": "2026-04-01T17:28:03.764617+00:00",
+  "isolation": {
+    "apiBaseUrl": "http://127.0.0.1:8000",
+    "userEmail": "dev@example.com",
+    "seedLabel": "ut-runtime-20260401165636",
+    "manualStreamId": "e779c08a-d87b-4fa7-be11-bfd5b1be4cdd",
+    "enabledDestinationId": "e4f3b13e-6648-42c0-ac4a-253533d2fd7a",
+    "copyAssetId": "2bd124ad-28cb-4cf2-9278-7b8a1a8594f1"
+  },
+  "toolsUsed": [
+    "curl",
+    "docker compose",
+    "docker exec supervisorctl",
+    "python3"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-STREAM-008",
+      "title": "Start converges to one healthy live state with coherent status metadata",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "GET /api/streams/e779c08a-d87b-4fa7-be11-bfd5b1be4cdd/status and /quality",
+          "expected": "Stopped baseline with compatible quality before launch",
+          "observed": "Baseline status was stopped and quality returned ok=true."
+        },
+        {
+          "action": "POST /api/streams/e779c08a-d87b-4fa7-be11-bfd5b1be4cdd/start",
+          "expected": "200/starting followed by convergence to one healthy live state",
+          "observed": "HTTP 500 with detail ending in stream_e779c08a-d87b-4fa7-be11-bfd5b1be4cdd: available plus a long supervisorctl available list."
+        },
+        {
+          "action": "Manual continuation after recording failure: container-local symlink for the seeded asset path, then supervisorctl add/start for stream_e779c08a-d87b-4fa7-be11-bfd5b1be4cdd",
+          "expected": "Only used to continue downstream assertions; not needed for VAL-STREAM-008 to pass",
+          "observed": "Manual start reached RUNNING and status samples showed growing live_duration_seconds/total_duration_seconds and idle restart metadata, but daily_limit_seconds and remaining_daily_seconds stayed null."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API flow)",
+        "network": "GET /status -> 200 stopped; GET /quality -> 200 ok=true; POST /start -> 500 Internal Server Error (available list); manual supervisorctl add/start -> RUNNING; follow-up GET /status -> 200 running.",
+        "files": [
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-008-start.headers.txt",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-008-start.body.json",
+          "runtime-hardening/runtime-api-batch-b/manual-asset-symlink.txt",
+          "runtime-hardening/runtime-api-batch-b/runner-tail-after-manual-add.txt",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-008-live-status-samples.ndjson"
+        ]
+      },
+      "issues": "The API start never succeeded on the real user surface; it returned the known supervisor available-list 500. Reaching a live state required both a manual supervisorctl add/start and a container-local symlink because the seeded asset storage_path pointed at a host-only absolute path. Even after the workaround, quota counters stayed null."
+    },
+    {
+      "id": "VAL-STREAM-009",
+      "title": "Stop clears phantom runtime state",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "While the stream was live, kill the underlying runner PID from the supervisor-managed process",
+          "expected": "Underlying process exits before the API stop request so the stop path clears phantom runtime state",
+          "observed": "Killed pid 627; supervisor transitioned to STARTING for the same program."
+        },
+        {
+          "action": "POST /api/streams/e779c08a-d87b-4fa7-be11-bfd5b1be4cdd/stop",
+          "expected": "200 response with stopped status payload",
+          "observed": "HTTP 500 with body {\"detail\":\"stream_e779c08a-d87b-4fa7-be11-bfd5b1be4cdd: removed process group\"}."
+        },
+        {
+          "action": "GET /api/streams/e779c08a-d87b-4fa7-be11-bfd5b1be4cdd/status after stop",
+          "expected": "is_running=false with no ghost live state",
+          "observed": "HTTP 200 and is_running=false/status=stopped."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API flow)",
+        "network": "Process kill sequence -> supervisor STARTING; POST /stop -> 500 removed process group; GET /status -> 200 stopped/is_running=false.",
+        "files": [
+          "runtime-hardening/runtime-api-batch-b/phantom-runtime-kill-sequence.txt",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-009-stop.headers.txt",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-009-stop.body.json",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-009-status-after-stop.json"
+        ]
+      },
+      "issues": "The control plane eventually cleared the ghost running state, but the stop API itself failed with HTTP 500 instead of returning a stopped status payload."
+    },
+    {
+      "id": "VAL-STREAM-012",
+      "title": "Stale heartbeat converts false-running streams into recoverable errors",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Inspect backend/streams/.runtime-heartbeats while the stream was live",
+          "expected": "A heartbeat file exists for the running managed stream and can be expired for the test",
+          "observed": "No heartbeat file existed for e779c08a-d87b-4fa7-be11-bfd5b1be4cdd; the directory was absent until I created it manually for the simulation."
+        },
+        {
+          "action": "Recreate a live state on the same stream after VAL-STREAM-009",
+          "expected": "API start or documented manual continuation reaches a live state again",
+          "observed": "POST /start again returned the same 500 available list; manual supervisorctl add brought the program back to RUNNING."
+        },
+        {
+          "action": "Inject an expired heartbeat file at backend/streams/.runtime-heartbeats/e779c08a-d87b-4fa7-be11-bfd5b1be4cdd.json and query /status immediately",
+          "expected": "Status leaves healthy live state and exposes recoverable restart/error metadata",
+          "observed": "HTTP 200 status=error with is_running=false and runtime_restart.state=scheduled plus next_restart_at/last_failure_at."
+        },
+        {
+          "action": "Poll /status again after the scheduled recovery attempted",
+          "expected": "Recovery remains coherent and non-live",
+          "observed": "Status stayed non-live/error, but the error_message changed to an auto-restart dispatch failure caused by the same supervisor available-list 500 while supervisor still reported the program RUNNING."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API flow)",
+        "network": "Initial heartbeat directory check showed no file; POST /start retry -> 500 available list; manual supervisorctl add -> RUNNING; injected stale heartbeat then GET /status -> 200 error with scheduled restart metadata; later GET /status -> 200 error with auto-restart dispatch failure.",
+        "files": [
+          "runtime-hardening/runtime-api-batch-b/heartbeat-dir-check.txt",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-012-restart-start.headers.txt",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-012-restart-start.body.json",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-012-manual-add.txt",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-012-pre-stale-status.ndjson",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-012-stale-heartbeat.json"
+        ]
+      },
+      "issues": "The managed runner never emitted the expected heartbeat file on its own, so the stale-heartbeat scenario could only be exercised by manually creating an expired file. The status surface does move into a recoverable error when that file exists, but the real runtime surface is missing the heartbeat artifact needed for the contract, and the scheduled recovery then hits the same supervisor available-list failure."
+    },
+    {
+      "id": "VAL-STREAM-013",
+      "title": "Backend restart preserves healthy managed streams with one authoritative post-restart state",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Capture health, status, supervisor status, and logs while the stream was live",
+          "expected": "One healthy live state before restart",
+          "observed": "Health was healthy; API status and supervisorctl both reported one RUNNING stream program."
+        },
+        {
+          "action": "docker compose -f docker/docker-compose.yml restart backend while the runner remained live",
+          "expected": "Backend recovers and preserves the same live stream record without duplicate state",
+          "observed": "Health polling returned 000/000/200 across the restart and the same stream id came back as running; supervisor still showed a single RUNNING pid."
+        },
+        {
+          "action": "Run one follow-up control action on the same stream record (POST /stop in the phantom-runtime test)",
+          "expected": "Control action succeeds cleanly after restart",
+          "observed": "The control action returned HTTP 500 removed process group instead of a successful stopped response."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API flow)",
+        "network": "GET /health pre-restart -> 200 healthy; GET /status pre-restart -> 200 running; docker compose restart backend -> health 000,000,200; GET /status post-restart -> 200 running; POST /stop follow-up -> 500 removed process group.",
+        "files": [
+          "runtime-hardening/runtime-api-batch-b/pre-restart-health.json",
+          "runtime-hardening/runtime-api-batch-b/pre-restart-supervisor-status.txt",
+          "runtime-hardening/runtime-api-batch-b/pre-restart-logs-raw.json",
+          "runtime-hardening/runtime-api-batch-b/backend-restart.txt",
+          "runtime-hardening/runtime-api-batch-b/post-restart-status.json",
+          "runtime-hardening/runtime-api-batch-b/post-restart-supervisor-status.txt",
+          "runtime-hardening/runtime-api-batch-b/post-restart-logs-raw.json",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-009-stop.body.json"
+        ]
+      },
+      "issues": "The backend restart preserved a single live runtime, but the required post-restart control action did not work cleanly because POST /stop failed with HTTP 500. The immediate pre/post-restart log snapshots were also empty, which limited operator confirmation during the restart window."
+    },
+    {
+      "id": "VAL-CROSS-008",
+      "title": "Backend and runtime restart reconcile running-stream state without duplicate ownership",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Restart the backend while the same rehearsal stream stayed live on the runner",
+          "expected": "Health returns and the same stream record reconciles without duplicate ownership",
+          "observed": "Health returned to 200 quickly and both API status and supervisorctl showed one running stream after restart."
+        },
+        {
+          "action": "Compare log and status surfaces around the restart",
+          "expected": "Status and logs remain consistent again after restart",
+          "observed": "Status stayed coherent, but the immediate pre/post-restart log endpoint snapshots were empty even though later stream.log inspection showed active FFmpeg output."
+        },
+        {
+          "action": "Use one control action on the same stream record after restart",
+          "expected": "A stop/refresh/restart action works without duplicate running state",
+          "observed": "POST /stop returned HTTP 500 removed process group; follow-up status was stopped/is_running=false, so the state cleared but the control action was not healthy."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API flow)",
+        "network": "Restarted backend: /health -> healthy after two empty replies; /status stayed one running record; /logs snapshots were empty during the restart window; POST /stop -> 500, then GET /status -> 200 stopped/is_running=false.",
+        "files": [
+          "runtime-hardening/runtime-api-batch-b/backend-restart.txt",
+          "runtime-hardening/runtime-api-batch-b/pre-restart-health.json",
+          "runtime-hardening/runtime-api-batch-b/post-restart-status.json",
+          "runtime-hardening/runtime-api-batch-b/pre-restart-logs-raw.json",
+          "runtime-hardening/runtime-api-batch-b/post-restart-logs-raw.json",
+          "runtime-hardening/runtime-api-batch-b/log-surface-vs-file.txt",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-009-stop.body.json",
+          "runtime-hardening/runtime-api-batch-b/VAL-STREAM-009-status-after-stop.json"
+        ]
+      },
+      "issues": "The restart reconciled back to one running record, but the post-restart operator path was not fully coherent: the log surface was empty during the restart window and the follow-up stop control returned HTTP 500 instead of succeeding cleanly."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The documented API start flow immediately failed with the known supervisor available-list 500, so I had to record that failure and then use docker exec supervisorctl add/start on the assigned stream to continue downstream assertions.",
+      "resolved": true,
+      "resolution": "Recorded the failing API response in VAL-STREAM-008 evidence, then used manual supervisorctl add/start only to continue later assertions on the same stream.",
+      "affectedAssertions": [
+        "VAL-STREAM-008",
+        "VAL-STREAM-009",
+        "VAL-STREAM-012",
+        "VAL-STREAM-013",
+        "VAL-CROSS-008"
+      ]
+    },
+    {
+      "description": "The seeded copy asset existed at /app/uploads inside the runner, but the DB storage_path pointed at a host-only absolute path (/Users/trend/Documents/Work/youtube_translation/backend/uploads/...), so the runner crashed with FileNotFoundError until I added a container-local symlink.",
+      "resolved": true,
+      "resolution": "Created a temporary symlink inside youtube-streaming-runner from the host-style storage_path to /app/uploads/... for the assigned asset, then removed it during cleanup.",
+      "affectedAssertions": [
+        "VAL-STREAM-008",
+        "VAL-STREAM-009",
+        "VAL-STREAM-012",
+        "VAL-STREAM-013",
+        "VAL-CROSS-008"
+      ]
+    },
+    {
+      "description": "The managed stream never created backend/streams/.runtime-heartbeats/e779c08a-d87b-4fa7-be11-bfd5b1be4cdd.json on its own, so the stale-heartbeat flow required manual stale-file injection instead of expiring an emitted heartbeat.",
+      "resolved": true,
+      "resolution": "Created the expected heartbeat directory and injected one expired heartbeat JSON for the assigned stream, captured the status transition, then removed the file during cleanup.",
+      "affectedAssertions": [
+        "VAL-STREAM-012"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assertions: 0 passed, 5 failed. The real API start path failed with the known supervisor available-list 500; manual supervisorctl and asset-path workarounds were required to reach a live state. Backend restart preserved one running record, but the follow-up stop control still returned 500, and the actual managed runner did not emit heartbeat files without manual injection. Final cleanup restored the assigned stream to status=stopped with is_running=false."
+}
