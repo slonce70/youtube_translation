@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, Float, Boolean, Text, ForeignKey, ARRAY, CheckConstraint, PrimaryKeyConstraint, Index, text
+from sqlalchemy import Column, Integer, BigInteger, Float, Boolean, Text, ForeignKey, ARRAY, CheckConstraint, PrimaryKeyConstraint, Index, Time, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP, INET
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -142,6 +142,11 @@ class Asset(Base):
     compatible_for_copy = Column(Boolean, default=False, index=True)
     validation_errors = Column(ARRAY(Text))
     validation_status = Column(Text, default='pending', index=True)
+    optimization_status = Column(Text, default='not_requested', index=True)
+    optimization_strategy = Column(Text)
+    optimized_storage_path = Column(Text)
+    optimization_error = Column(Text)
+    optimization_updated_at = Column(TIMESTAMP(timezone=True))
     
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
@@ -272,8 +277,20 @@ class Stream(Base):
     scheduled_start_enabled = Column(Boolean, nullable=False, server_default=text("false"))
     scheduled_start_time = Column(TIMESTAMP(timezone=True))
     scheduled_start_attempted_at = Column(TIMESTAMP(timezone=True))
+    schedule_timezone = Column(Text)
+    schedule_repeat = Column(Text, nullable=False, server_default=text("'none'"))
+    schedule_weekdays = Column(ARRAY(Integer))
+    schedule_window_end_time = Column(Time(timezone=False))
+    schedule_stop_after_seconds = Column(Integer)
     scheduled_stop_time = Column(TIMESTAMP(timezone=True))
     scheduled_stop_attempted_at = Column(TIMESTAMP(timezone=True))
+    runtime_owner_id = Column(Text, index=True)
+    runtime_lease_expires_at = Column(TIMESTAMP(timezone=True), index=True)
+    runtime_last_heartbeat_at = Column(TIMESTAMP(timezone=True))
+    runtime_restart_attempts = Column(Integer, nullable=False, server_default=text("0"))
+    runtime_next_restart_at = Column(TIMESTAMP(timezone=True), index=True)
+    runtime_last_restart_at = Column(TIMESTAMP(timezone=True))
+    runtime_last_failure_at = Column(TIMESTAMP(timezone=True))
 
     # Track total duration for billing
     total_duration_seconds = Column(Float, default=0)
@@ -294,6 +311,7 @@ class Stream(Base):
         CheckConstraint("status IN ('stopped', 'starting', 'running', 'error', 'stopping', 'scheduled')", name='check_status'),
         CheckConstraint("source_type IN ('playlist', 'assets')", name='check_source_type'),
         CheckConstraint("mix_mode IN ('video_only', 'audio_only', 'mixed')", name='check_stream_mix_mode'),
+        CheckConstraint("schedule_repeat IN ('none', 'daily', 'weekly')", name='check_stream_schedule_repeat'),
     )
 
 

@@ -14,6 +14,9 @@
       "renameEmpty": "Назва файлу не може бути порожньою",
       "validationRefreshed": "Перевірку оновлено",
       "validateFailed": "Не вдалося перевірити актив",
+      "optimizeReady": "Файл {name} вже готовий до copy-mode",
+      "optimizeQueued": "Файл {name} додано до черги оптимізації",
+      "optimizeFailed": "Не вдалося запустити оптимізацію",
       "download": "Розпочинаємо завантаження для {name}",
       "downloadLinkFailed": "Не вдалося згенерувати посилання для завантаження",
       "moved": "Активи переміщено",
@@ -100,7 +103,10 @@
         "ready": "Готово до трансляції",
         "needsEncoding": "Потрібне перекодування",
         "bitrateOk": "Бітрейт у нормі",
-        "bitrateCheck": "Перевірте бітрейт"
+        "bitrateCheck": "Перевірте бітрейт",
+        "copyMode": "Copy-mode",
+        "optimizeQueued": "У черзі оптимізації",
+        "optimizeFailed": "Помилка оптимізації"
       },
       "recommendations": "Рекомендації: {label} → {details}",
       "metadata": {

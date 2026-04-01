@@ -72,5 +72,17 @@ class StreamWebSocketManager:
                 sanitized[key] = info[key]
         return sanitized
 
+    def snapshot_for_user(self, user_id: str, active_streams: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Build a sanitized active-stream snapshot for a single user."""
+        filtered: Dict[str, Dict[str, Any]] = {}
+        for stream_id, info in active_streams.items():
+            if not info or not isinstance(info, dict):
+                continue
+            metadata = info.get("metadata") or {}
+            if str(metadata.get("user_id")) != str(user_id):
+                continue
+            filtered[stream_id] = self._sanitize_stream_info(info)
+        return filtered
+
 # Global instance
 stream_ws_manager = StreamWebSocketManager()

@@ -1,7 +1,15 @@
 from pydantic import BaseModel, Field, ConfigDict, model_validator, computed_field
 from typing import Optional, List, Dict, Any, Literal
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from uuid import UUID
+
+from app.core.config import settings
+from app.core.stream_schedule import (
+    ensure_utc,
+    normalize_schedule_repeat,
+    normalize_schedule_timezone,
+    normalize_schedule_weekdays,
+)
 
 ALLOWED_ASSET_TYPES = {"video", "audio"}
 
@@ -60,6 +68,16 @@ class AssetUsageSummary(BaseModel):
     streams: List[AssetUsageReference] = Field(default_factory=list)
 
 
+class AssetOptimizationInfo(BaseModel):
+    status: Literal['not_requested', 'queued', 'processing', 'ready', 'failed']
+    strategy: Optional[Literal['copy', 'transcode']] = None
+    optimized_storage_path: Optional[str] = None
+    error: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    recommended_strategy: Literal['copy', 'transcode']
+    can_stream_from_source: bool
+
+
 class AssetResponse(AssetBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -79,6 +97,7 @@ class AssetResponse(AssetBase):
     folders: List[AssetFolderInfo] = Field(default_factory=list)
     usage: AssetUsageSummary = Field(default_factory=AssetUsageSummary)
     thumbnail_url: Optional[str] = None
+    optimization: AssetOptimizationInfo
 
 
 class AssetDownloadLinkResponse(BaseModel):
@@ -218,6 +237,11 @@ class StreamCreate(StreamBase):
     schedule_mode: Literal["now", "schedule"] = "now"
     schedule_start_at: Optional[datetime] = None
     schedule_stop_at: Optional[datetime] = None
+    schedule_repeat: Literal["none", "daily", "weekly"] = "none"
+    schedule_timezone: Optional[str] = None
+    schedule_weekdays: Optional[List[int]] = None
+    schedule_window_end_time: Optional[time] = None
+    schedule_stop_after_seconds: Optional[int] = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def validate_source(cls, model):
@@ -239,32 +263,50 @@ class StreamCreate(StreamBase):
         if mode not in {"now", "schedule"}:
             raise ValueError("schedule_mode must be 'now' or 'schedule'")
         model.schedule_mode = mode
+        model.schedule_repeat = normalize_schedule_repeat(model.schedule_repeat)
+        model.schedule_timezone = normalize_schedule_timezone(model.schedule_timezone)
+        model.schedule_weekdays = normalize_schedule_weekdays(model.schedule_weekdays)
 
         if model.schedule_mode == "schedule":
             if not model.schedule_start_at:
                 raise ValueError("schedule_start_at is required when schedule_mode is 'schedule'")
-            start_at = model.schedule_start_at
-            if start_at.tzinfo is None:
-                start_at = start_at.replace(tzinfo=timezone.utc)
-            else:
-                start_at = start_at.astimezone(timezone.utc)
+            start_at = ensure_utc(model.schedule_start_at)
             if start_at <= datetime.now(timezone.utc):
                 raise ValueError("schedule_start_at must be in the future")
             model.schedule_start_at = start_at
         else:
             model.schedule_start_at = None
+            if model.schedule_repeat != "none":
+                raise ValueError("schedule_repeat requires schedule_mode='schedule'")
+            if model.schedule_weekdays:
+                raise ValueError("schedule_weekdays requires schedule_repeat='weekly'")
+            if model.schedule_window_end_time is not None:
+                raise ValueError("schedule_window_end_time requires a repeating schedule")
+            if model.schedule_stop_after_seconds is not None:
+                raise ValueError("schedule_stop_after_seconds requires schedule_mode='schedule'")
 
         stop_at = model.schedule_stop_at
         if stop_at:
-            if stop_at.tzinfo is None:
-                stop_at = stop_at.replace(tzinfo=timezone.utc)
-            else:
-                stop_at = stop_at.astimezone(timezone.utc)
+            stop_at = ensure_utc(stop_at)
             if stop_at <= datetime.now(timezone.utc):
                 raise ValueError("schedule_stop_at must be in the future")
             if model.schedule_start_at and stop_at <= model.schedule_start_at:
                 raise ValueError("schedule_stop_at must be after schedule_start_at")
             model.schedule_stop_at = stop_at
+
+        if model.schedule_repeat != "none":
+            if model.schedule_stop_at:
+                raise ValueError("schedule_stop_at is only supported for one-shot schedules")
+            if model.schedule_repeat == "weekly" and model.schedule_weekdays is not None and len(model.schedule_weekdays) == 0:
+                raise ValueError("schedule_weekdays must not be empty when provided")
+        elif model.schedule_weekdays:
+            raise ValueError("schedule_weekdays requires schedule_repeat='weekly'")
+
+        if model.schedule_window_end_time is not None and model.schedule_repeat == "none":
+            raise ValueError("schedule_window_end_time requires schedule_repeat='daily' or 'weekly'")
+
+        if model.schedule_stop_at and model.schedule_stop_after_seconds is not None:
+            raise ValueError("schedule_stop_at and schedule_stop_after_seconds are mutually exclusive")
 
         return model
 
@@ -273,6 +315,11 @@ class StreamScheduleUpdate(BaseModel):
     schedule_mode: Literal["now", "schedule"] = "now"
     schedule_start_at: Optional[datetime] = None
     schedule_stop_at: Optional[datetime] = None
+    schedule_repeat: Literal["none", "daily", "weekly"] = "none"
+    schedule_timezone: Optional[str] = None
+    schedule_weekdays: Optional[List[int]] = None
+    schedule_window_end_time: Optional[time] = None
+    schedule_stop_after_seconds: Optional[int] = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def validate_schedule(cls, model):
@@ -280,32 +327,50 @@ class StreamScheduleUpdate(BaseModel):
         if mode not in {"now", "schedule"}:
             raise ValueError("schedule_mode must be 'now' or 'schedule'")
         model.schedule_mode = mode
+        model.schedule_repeat = normalize_schedule_repeat(model.schedule_repeat)
+        model.schedule_timezone = normalize_schedule_timezone(model.schedule_timezone)
+        model.schedule_weekdays = normalize_schedule_weekdays(model.schedule_weekdays)
 
         if model.schedule_mode == "schedule":
             if not model.schedule_start_at:
                 raise ValueError("schedule_start_at is required when schedule_mode is 'schedule'")
-            start_at = model.schedule_start_at
-            if start_at.tzinfo is None:
-                start_at = start_at.replace(tzinfo=timezone.utc)
-            else:
-                start_at = start_at.astimezone(timezone.utc)
+            start_at = ensure_utc(model.schedule_start_at)
             if start_at <= datetime.now(timezone.utc):
                 raise ValueError("schedule_start_at must be in the future")
             model.schedule_start_at = start_at
         else:
             model.schedule_start_at = None
+            if model.schedule_repeat != "none":
+                raise ValueError("schedule_repeat requires schedule_mode='schedule'")
+            if model.schedule_weekdays:
+                raise ValueError("schedule_weekdays requires schedule_repeat='weekly'")
+            if model.schedule_window_end_time is not None:
+                raise ValueError("schedule_window_end_time requires a repeating schedule")
+            if model.schedule_stop_after_seconds is not None:
+                raise ValueError("schedule_stop_after_seconds requires schedule_mode='schedule'")
 
         stop_at = model.schedule_stop_at
         if stop_at:
-            if stop_at.tzinfo is None:
-                stop_at = stop_at.replace(tzinfo=timezone.utc)
-            else:
-                stop_at = stop_at.astimezone(timezone.utc)
+            stop_at = ensure_utc(stop_at)
             if stop_at <= datetime.now(timezone.utc):
                 raise ValueError("schedule_stop_at must be in the future")
             if model.schedule_start_at and stop_at <= model.schedule_start_at:
                 raise ValueError("schedule_stop_at must be after schedule_start_at")
             model.schedule_stop_at = stop_at
+
+        if model.schedule_repeat != "none":
+            if model.schedule_stop_at:
+                raise ValueError("schedule_stop_at is only supported for one-shot schedules")
+            if model.schedule_repeat == "weekly" and model.schedule_weekdays is not None and len(model.schedule_weekdays) == 0:
+                raise ValueError("schedule_weekdays must not be empty when provided")
+        elif model.schedule_weekdays:
+            raise ValueError("schedule_weekdays requires schedule_repeat='weekly'")
+
+        if model.schedule_window_end_time is not None and model.schedule_repeat == "none":
+            raise ValueError("schedule_window_end_time requires schedule_repeat='daily' or 'weekly'")
+
+        if model.schedule_stop_at and model.schedule_stop_after_seconds is not None:
+            raise ValueError("schedule_stop_at and schedule_stop_after_seconds are mutually exclusive")
 
         return model
 
@@ -335,6 +400,38 @@ class StreamDestinationLink(BaseModel):
     destination: Optional[DestinationSummary] = None
 
 
+StreamRuntimeRestartState = Literal["disabled", "idle", "scheduled", "retrying", "exhausted"]
+
+
+def _stream_runtime_restart_state(
+    *,
+    status: str,
+    attempts: int,
+    next_restart_at: Optional[datetime],
+) -> StreamRuntimeRestartState:
+    enabled = bool(settings.stream_runtime_auto_restart_enabled)
+    if not enabled:
+        return "disabled"
+    if next_restart_at is not None:
+        return "scheduled"
+    if status in {"starting", "running"} and attempts > 0:
+        return "retrying"
+    max_attempts = max(int(settings.stream_runtime_restart_max_attempts), 0)
+    if status == "error" and attempts > 0 and (max_attempts == 0 or attempts >= max_attempts):
+        return "exhausted"
+    return "idle"
+
+
+class StreamRuntimeRestartInfo(BaseModel):
+    enabled: bool
+    state: StreamRuntimeRestartState
+    attempts: int
+    max_attempts: int
+    next_restart_at: Optional[datetime] = None
+    last_restart_at: Optional[datetime] = None
+    last_failure_at: Optional[datetime] = None
+
+
 class StreamResponse(StreamBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -358,7 +455,16 @@ class StreamResponse(StreamBase):
     stream_destinations: List['StreamDestinationLink'] = Field(default_factory=list, exclude=True)
     scheduled_start_enabled: bool = False
     scheduled_start_time: Optional[datetime] = None
+    schedule_timezone: Optional[str] = None
+    schedule_repeat: Literal["none", "daily", "weekly"] = "none"
+    schedule_weekdays: Optional[List[int]] = None
+    schedule_window_end_time: Optional[time] = None
+    schedule_stop_after_seconds: Optional[int] = None
     scheduled_stop_time: Optional[datetime] = None
+    runtime_restart_attempts: int = Field(default=0, exclude=True)
+    runtime_next_restart_at: Optional[datetime] = Field(default=None, exclude=True)
+    runtime_last_restart_at: Optional[datetime] = Field(default=None, exclude=True)
+    runtime_last_failure_at: Optional[datetime] = Field(default=None, exclude=True)
 
     @computed_field  # type: ignore[misc]
     @property
@@ -369,6 +475,25 @@ class StreamResponse(StreamBase):
             if destination:
                 summaries.append(destination)
         return summaries
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def runtime_restart(self) -> StreamRuntimeRestartInfo:
+        attempts = max(int(self.runtime_restart_attempts or 0), 0)
+        next_restart_at = self.runtime_next_restart_at
+        return StreamRuntimeRestartInfo(
+            enabled=bool(settings.stream_runtime_auto_restart_enabled),
+            state=_stream_runtime_restart_state(
+                status=self.status,
+                attempts=attempts,
+                next_restart_at=next_restart_at,
+            ),
+            attempts=attempts,
+            max_attempts=max(int(settings.stream_runtime_restart_max_attempts), 0),
+            next_restart_at=next_restart_at,
+            last_restart_at=self.runtime_last_restart_at,
+            last_failure_at=self.runtime_last_failure_at,
+        )
 
 
 class StreamStatus(BaseModel):
@@ -382,6 +507,7 @@ class StreamStatus(BaseModel):
     daily_limit_seconds: Optional[int] = None
     remaining_daily_seconds: Optional[int] = None
     quota_limit_reached: Optional[bool] = None
+    runtime_restart: StreamRuntimeRestartInfo
 
 
 class StreamWsTokenResponse(BaseModel):

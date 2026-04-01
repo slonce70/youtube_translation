@@ -56,6 +56,9 @@ interface AssetCardProps {
       needsEncoding: string
       bitrateOk: string
       bitrateCheck: string
+      copyMode: string
+      optimizeQueued: string
+      optimizeFailed: string
     }
     messages: { incompatibleSummary: string }
     details: { hide: string; show: string }
@@ -69,6 +72,16 @@ interface AssetCardProps {
     previewAlt: (params: { filename: string }) => string
   }
 }
+
+const FALLBACK_OPTIMIZATION = {
+  status: 'not_requested',
+  strategy: null,
+  optimized_storage_path: null,
+  error: null,
+  updated_at: null,
+  recommended_strategy: 'copy',
+  can_stream_from_source: true,
+} as const
 
 export function AssetCard({
   asset,
@@ -94,6 +107,7 @@ export function AssetCard({
   const [isExpanded, setIsExpanded] = useState(false)
   const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null)
   const info = deriveAssetDisplayInfo(asset)
+  const optimization = asset.optimization ?? FALLBACK_OPTIMIZATION
   const uploadedAt = format(new Date(asset.created_at), 'MMM d, yyyy • HH:mm')
   const isAudioAsset = asset.asset_type === 'audio'
   const isCompact = density === 'compact'
@@ -129,6 +143,15 @@ export function AssetCard({
     formatUsageLabel('collections', asset.usage?.collections?.length ?? 0),
     formatUsageLabel('playlists', asset.usage?.playlists?.length ?? 0),
   ].filter(Boolean) as string[]
+
+  const optimizationBadge =
+    optimization.status === 'queued'
+      ? { label: t.badges.optimizeQueued, variant: 'warning' as const }
+      : optimization.status === 'failed'
+        ? { label: t.badges.optimizeFailed, variant: 'error' as const }
+        : optimization.status === 'ready' && optimization.strategy === 'copy'
+          ? { label: t.badges.copyMode, variant: 'secondary' as const }
+          : null
 
   return (
     <Card
@@ -253,6 +276,11 @@ export function AssetCard({
                   {t.badges.bitrateCheck}
                 </Badge>
               ) : null)}
+              {optimizationBadge ? (
+                <Badge variant={optimizationBadge.variant} className="px-2 py-0.5 text-[10px]">
+                  {optimizationBadge.label}
+                </Badge>
+              ) : null}
               {usageBadges.map((label, index) => (
                 <Badge key={`usage-${index}`} variant="secondary" className="px-2 py-0.5 text-[10px]">
                   {label}

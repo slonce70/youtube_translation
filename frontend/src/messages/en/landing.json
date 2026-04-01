@@ -13,10 +13,54 @@
     "subtitle": "Upload your shows once, set a simple schedule, and let our platform keep the broadcast running while you sleep.",
     "primaryCTA": "Start for free",
     "secondaryCTA": "Watch a quick demo",
-    "trustIndicator": "Free tier included \u2022 Upgrade only when you grow"
+    "trustIndicator": "Free tier included \u2022 Upgrade only when you grow",
+    "scene": {
+      "badge": "LIVE MATRIX",
+      "routingLabel": "Signal routing",
+      "routingValue": "4 / 4 live",
+      "statusLive": "LIVE",
+      "mainDestinationLabel": "Main destination",
+      "mainDestinationValue": "YouTube RTMPS",
+      "statusHealthy": "HEALTHY",
+      "fallbackLabel": "Fallback",
+      "fallbackValue": "Backup relay armed",
+      "restartLabel": "Restart policy",
+      "restartValue": "Auto retry enabled"
+    },
+    "panel": {
+      "kicker": "Broadcast desk",
+      "title": "An operations cockpit for the stream that never sleeps",
+      "status": "Live orchestration",
+      "playlistLabel": "Active rotation",
+      "playlistTitle": "Night cycle / 14 assets",
+      "playlistItems": {
+        "overnight": "Auto intro plus evergreen episodes",
+        "day": "Prime blocks with sponsor-safe placements",
+        "evening": "Live fallback and scheduled swaps"
+      },
+      "healthLabel": "System health",
+      "healthDescription": "Failover, alerts, and restart control stay visible in one operator view.",
+      "channelsLabel": "Channels in sync",
+      "channels": {
+        "music": {
+          "name": "Music",
+          "state": "RTMPS stable"
+        },
+        "podcast": {
+          "name": "Podcast",
+          "state": "Backup active"
+        },
+        "live": {
+          "name": "Live cam",
+          "state": "Encoder healthy"
+        }
+      }
+    }
   },
   "features": {
+    "eyebrow": "Capabilities",
     "title": "Built for creators who stream around the clock",
+    "intro": "Instead of a generic video SaaS grid, we present the platform as an operating system for continuous broadcast: more clarity, less noise, and stronger control for the whole team.",
     "items": {
       "streaming": {
         "title": "Hands-off broadcasting",
@@ -45,6 +89,7 @@
     }
   },
   "howItWorks": {
+    "eyebrow": "Workflow",
     "title": "From upload to live in four clear steps",
     "steps": {
       "upload": {
@@ -84,15 +129,20 @@
     }
   },
   "pricing": {
+    "eyebrow": "Pricing",
     "title": "Plans for every type of channel",
     "subtitle": "Experiment on the free tier and upgrade only when you need extra streams, storage, or support.",
     "ctaLabel": "Choose plan",
     "billingPeriod": "/month",
+    "freeForever": "forever",
+    "selectedSummary": "{resolution} \u00b7 {streams} stream slots \u00b7 {destinations} destinations",
+    "popularBadge": "Popular",
     "freeCard": {
       "badge": "Start here",
       "title": "Free forever",
       "subtitle": "Perfect for testing automations or keeping a hobby channel online with zero risk.",
       "button": "Create free workspace",
+      "note": "Start in a free workspace and add more power only when your broadcast grows.",
       "features": [
         "1 live channel at a time",
         "8 hours of streaming each day",
@@ -164,6 +214,7 @@
     }
   },
   "comparison": {
+    "eyebrow": "Plan matrix",
     "title": "Snapshot of what's included",
     "subtitle": "Every plan delivers secure storage, analytics, and automation-ready infrastructure.",
     "features": {
@@ -183,7 +234,9 @@
     }
   },
   "benefits": {
+    "eyebrow": "Why teams stay",
     "title": "Why serious creators rely on us",
+    "intro": "A streaming service should do more than keep video online. It should remove operational weight, reduce risk, and give your team peace of mind across time zones.",
     "items": {
       "quality": {
         "title": "Sleep through the night",
@@ -204,9 +257,12 @@
     }
   },
   "cta": {
+    "eyebrow": "Launch window",
     "title": "Launch your always-on stream today",
     "subtitle": "Music channels, podcasts, radio stations, and webcams run nonstop on our platform.",
     "button": "Start for free",
+    "panelLabel": "Start now",
+    "note": "Build your own 24/7 workflow without late-night operator shifts.",
     "trustIndicators": {
       "noCard": "No credit card required",
       "freeStorage": "Free plan includes storage and daily streaming",

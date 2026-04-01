@@ -13,6 +13,9 @@ const messageMappings: Array<{ regex: RegExp; key: string }> = [
   { regex: /missing email/i, key: 'missingEmail' },
   { regex: /too many requests/i, key: 'rateLimited' },
   { regex: /over request rate limit/i, key: 'rateLimited' },
+  { regex: /failed to fetch/i, key: 'networkUnavailable' },
+  { regex: /networkerror/i, key: 'networkUnavailable' },
+  { regex: /load failed/i, key: 'networkUnavailable' },
 ]
 
 export function translateSupabaseError(error: unknown, t: Translator): string | undefined {
@@ -52,4 +55,3 @@ export function translateSupabaseError(error: unknown, t: Translator): string | 
     return undefined
   }
 }
-

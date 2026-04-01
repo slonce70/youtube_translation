@@ -40,7 +40,7 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
                │ PostgreSQL    │
                │ (app data)    │
                └──────┬───────┘
-                      │ supervisorctl (unix socket)
+                      │ supervisorctl (localhost:9001)
                       ▼
             ┌──────────────────────────┐
             │   Runner (supervisord)   │
@@ -123,13 +123,15 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 ### 3. Runner (Supervisor)
 
 In Docker Compose the FFmpeg processes are hosted in a dedicated **runner** container.
-У поточному Docker Compose керування йде через `supervisorctl` по внутрішній
-мережі Docker (`runner:9001`) з конфігом `backend/supervisord.docker.conf`.
+У поточному Docker Compose керування всередині мережі йде через
+`backend/supervisord.docker.conf` на `http://runner:9001`, а локальний
+`start-backend.sh` використовує `backend/supervisord.host-docker.conf` на
+`http://127.0.0.1:9001`. Порт публікується лише на loopback, тому перезапуск
+локального API не повинен роняти вже запущені FFmpeg-процеси і не відкриває
+management endpoint назовні ширше за localhost. Supervisor HTTP control
+додатково захищений username/password на базі `UPLOAD_TOKEN_SECRET`.
 Файли програм та логи (`/app/supervisord/programs/*.ini`, `/app/supervisord/logs`)
 зберігаються у спільному томі/маунті `/app/supervisord`.
-
-> Для Linux/VPS можна перейти на unix socket (окремий конфіг), але для macOS/Docker
-> Desktop bind-mount unix sockets може працювати нестабільно.
 
 ### 4. FFmpeg Streaming Engine
 
@@ -367,13 +369,59 @@ WantedBy=multi-user.target
 
 ## Future Enhancements
 
-1. **Scheduled Streaming** - Cron-like scheduling
-2. **YouTube API Integration** - Auto Go Live
-3. **Analytics Dashboard** - Viewer stats, bitrate graphs
-4. **Multi-user Organization** - Team workspaces
-5. **Prepare Function** - Auto-normalize videos
-6. **Telegram Bot** - Remote control
-7. **Advanced Monitoring** - Prometheus/Grafana
+### V1: what stays as-is
+
+- Backend remains the **control-plane**: auth, quotas, destinations, scheduling, runtime APIs.
+- Runner remains the **execution-plane** for FFmpeg.
+- FFmpeg stays the playout/publish engine with `tee + fifo + copy-first`.
+- Supervisor/systemd + heartbeat + DB lease ownership remain the runtime safety model.
+
+### V2: what gets added with MediaMTX
+
+- MediaMTX becomes an **optional media-plane relay/hub**.
+- FFmpeg can publish to a local MediaMTX path instead of pushing directly outward first.
+- MediaMTX provides:
+  - RTMP ingress surface
+  - wildcard relay paths via `all_others`
+  - path-level metrics
+  - control API visibility for active paths / tracks / readers
+  - future-ready relay hooks / forwarding entrypoint
+  - a cleaner split between orchestration and media transport
+
+Conceptually:
+
+```mermaid
+flowchart LR
+  UI["Frontend / API clients"] --> API["FastAPI control-plane"]
+  API --> RUNNER["Runner / supervisor / systemd"]
+  RUNNER --> FFMPEG["FFmpeg playout engine"]
+  FFMPEG --> MTX["MediaMTX relay / media-plane"]
+  MTX --> YT["YouTube RTMPS outputs"]
+```
+
+### V3: large-scale direction
+
+- Multiple runtime nodes with stable `STREAM_RUNTIME_NODE_ID`
+- FFmpeg workers separated from API nodes
+- MediaMTX used as the shared local relay/observability layer
+- Optional external fan-out / cluster routing only after traffic really justifies it
+
+### Why this path
+
+This keeps the current **no-transcode economics** intact while preparing the repo for a cleaner future split:
+
+- backend = orchestration
+- FFmpeg = playout / publish execution
+- MediaMTX = relay / metrics / future fan-out hub
+
+### Other backlog items
+
+1. **YouTube API Integration** - Auto Go Live
+2. **Analytics Dashboard** - Viewer stats, bitrate graphs
+3. **Multi-user Organization** - Team workspaces
+4. **Prepare Function** - Auto-normalize videos
+5. **Telegram Bot** - Remote control
+6. **Advanced Monitoring** - Prometheus/Grafana
 
 ## References
 

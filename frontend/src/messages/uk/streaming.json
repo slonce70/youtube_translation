@@ -110,7 +110,8 @@
         "liveDuration": "Тривалість ефіру",
         "totalDuration": "Загальна тривалість",
         "quotaRemaining": "Залишок денного ліміту",
-        "scheduledStart": "Заплановано"
+        "scheduledStart": "Заплановано",
+        "autoRetry": "Автоперезапуск"
       },
       "destinations": {
         "none": "Канал не вказано"
@@ -134,7 +135,17 @@
       "stats": {
         "active": "Активні трансляції",
         "total": "Усього трансляцій",
-        "concurrent": "Паралельний ліміт"
+        "concurrent": "Паралельний ліміт",
+        "autoRetry": "Очікують retry"
+      },
+      "retry": {
+        "attempt": "Спроба {current} з {max}",
+        "scheduled": "Автоперезапуск заплановано",
+        "nextRestart": "Наступний запуск {value}",
+        "lastRestartLabel": "Останній retry",
+        "lastRestart": "Перезапущено {value}",
+        "lastFailure": "Останній збій {value}",
+        "exhausted": "Ліміт автоперезапусків вичерпано після {count} спроб"
       },
       "form": {
         "title": "Створити трансляцію",

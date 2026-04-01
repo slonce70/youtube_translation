@@ -28,6 +28,18 @@ class UserListItem(BaseModel):
     last_login_at: Optional[datetime]
 
 
+class UserListSummary(BaseModel):
+    total: int
+    active: int
+    suspended: int
+    paid: int
+
+
+class UserListResponse(BaseModel):
+    items: list[UserListItem]
+    summary: UserListSummary
+
+
 class UserDetail(BaseModel):
     """Detailed admin view of a user profile."""
 
@@ -89,6 +101,18 @@ class StreamListItem(BaseModel):
     created_at: datetime
 
 
+class StreamListSummary(BaseModel):
+    total: int
+    running: int
+    errors: int
+    stopped: int
+
+
+class StreamListResponse(BaseModel):
+    items: list[StreamListItem]
+    summary: StreamListSummary
+
+
 class AlertListItem(BaseModel):
     """Model for representing alerts shown to admins."""
 
@@ -102,6 +126,18 @@ class AlertListItem(BaseModel):
     created_at: datetime
     resolved_at: Optional[datetime]
     resolved_by: Optional[UUID]
+
+
+class AlertListSummary(BaseModel):
+    total: int
+    unresolved: int
+    critical: int
+    resolved: int
+
+
+class AlertListResponse(BaseModel):
+    items: list[AlertListItem]
+    summary: AlertListSummary
 
 
 class ResolveAlertRequest(BaseModel):
@@ -140,10 +176,16 @@ __all__ = [
     "AdminAccessResponse",
     "AdminActionLog",
     "AlertListItem",
+    "AlertListResponse",
+    "AlertListSummary",
     "ChangeTierRequest",
     "ResolveAlertRequest",
     "StreamListItem",
+    "StreamListResponse",
+    "StreamListSummary",
     "SuspendUserRequest",
     "UserDetail",
     "UserListItem",
+    "UserListResponse",
+    "UserListSummary",
 ]

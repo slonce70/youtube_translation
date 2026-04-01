@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette_csrf import CSRFMiddleware
 
 from app.core.config import settings
 
@@ -45,9 +44,11 @@ from app.api.routes import (
 from app.middleware.rate_limiter import RateLimitMiddleware, global_rate_limiter
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.api_metrics import APIMetricsMiddleware
+from app.middleware.websocket_safe_csrf import WebSocketSafeCSRFMiddleware
 from app.core.logging_config import setup_logging, get_logger
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.services.streams.scheduler import scheduled_stream_launcher
+from app.services.streams.websocket import stream_ws_manager
 
 
 _background_tasks = set()
@@ -83,7 +84,7 @@ app.add_middleware(RateLimitMiddleware, rate_limiter=global_rate_limiter)
 
 # CSRF protection middleware
 app.add_middleware(
-    CSRFMiddleware,
+    WebSocketSafeCSRFMiddleware,
     secret=(settings.csrf_secret or settings.encryption_key),
     sensitive_cookies={"csrftoken", "sb-access-token", "sb-refresh-token"},
     header_name="X-CSRF-Token",
@@ -145,6 +146,7 @@ async def startup_event():
     # Start periodic cleanup task for rate limiter
     schedule_background_task(cleanup_rate_limiter())
     schedule_background_task(cleanup_ffmpeg_streams())
+    schedule_background_task(broadcast_stream_updates())
     schedule_background_task(scheduled_stream_launcher())
     
     # Start periodic stream status sync (only in supervisor/systemd mode)
@@ -173,10 +175,27 @@ async def cleanup_ffmpeg_streams():
             logger.error(f"Error cleaning up FFmpeg streams: {exc}")
 
 
+async def broadcast_stream_updates():
+    """Publish in-memory stream runtime updates to connected WebSocket clients."""
+    while True:
+        await asyncio.sleep(3)
+        try:
+            if not stream_ws_manager.active_connections:
+                continue
+            await stream_ws_manager.broadcast(
+                {
+                    "type": "stream_update",
+                    "payload": ffmpeg_manager.get_all_streams(),
+                }
+            )
+        except Exception as exc:
+            logger.error(f"Error broadcasting stream updates: {exc}")
+
+
 async def periodic_stream_status_sync():
     """Periodically sync stream statuses with supervisor/systemd (every 10 seconds)."""
     from app.core.database import async_session_maker
-    from app.core.stream_reconciler import periodic_reconciliation
+    from app.core.stream_reconciler import periodic_reconciliation, restart_due_streams
     
     await asyncio.sleep(10)  # Initial delay
     
@@ -185,6 +204,7 @@ async def periodic_stream_status_sync():
         try:
             async with async_session_maker() as db:
                 await periodic_reconciliation(db)
+                await restart_due_streams(db)
         except Exception as exc:
             logger.error(f"Error syncing stream statuses: {exc}")
 

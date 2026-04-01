@@ -12,6 +12,7 @@ import time
 from uuid import UUID
 
 from app.core.config import settings
+from app.core.stream_runtime_heartbeat import clear_runtime_heartbeat
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -215,6 +216,7 @@ async def remove_program(stream_id: UUID) -> None:
     # Remove config file if exists
     cfg_path = _program_config_path(stream_id)
     cfg_path.unlink(missing_ok=True)
+    clear_runtime_heartbeat(stream_id)
     
     # Reread configs
     await _reread()

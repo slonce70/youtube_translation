@@ -227,6 +227,18 @@ async def _apply_schema_changes(conn):
         "mix_mode",
         "settings_json",
         "total_duration_seconds",
+        "schedule_timezone",
+        "schedule_repeat",
+        "schedule_weekdays",
+        "schedule_window_end_time",
+        "schedule_stop_after_seconds",
+        "runtime_owner_id",
+        "runtime_lease_expires_at",
+        "runtime_last_heartbeat_at",
+        "runtime_restart_attempts",
+        "runtime_next_restart_at",
+        "runtime_last_restart_at",
+        "runtime_last_failure_at",
     ]
     if await _missing_columns(conn, "streams", streams_columns):
         await conn.execute(
@@ -237,10 +249,38 @@ async def _apply_schema_changes(conn):
                 ADD COLUMN IF NOT EXISTS audio_collection_id UUID REFERENCES media_collections(id) ON DELETE SET NULL,
                 ADD COLUMN IF NOT EXISTS mix_mode TEXT NOT NULL DEFAULT 'video_only',
                 ADD COLUMN IF NOT EXISTS settings_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-                ADD COLUMN IF NOT EXISTS total_duration_seconds FLOAT DEFAULT 0
+                ADD COLUMN IF NOT EXISTS total_duration_seconds FLOAT DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS schedule_timezone TEXT,
+                ADD COLUMN IF NOT EXISTS schedule_repeat TEXT NOT NULL DEFAULT 'none',
+                ADD COLUMN IF NOT EXISTS schedule_weekdays INTEGER[],
+                ADD COLUMN IF NOT EXISTS schedule_window_end_time TIME,
+                ADD COLUMN IF NOT EXISTS schedule_stop_after_seconds INTEGER,
+                ADD COLUMN IF NOT EXISTS runtime_owner_id TEXT,
+                ADD COLUMN IF NOT EXISTS runtime_lease_expires_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS runtime_last_heartbeat_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS runtime_restart_attempts INTEGER NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS runtime_next_restart_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS runtime_last_restart_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS runtime_last_failure_at TIMESTAMPTZ
                 """
             )
         )
+
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_streams_runtime_owner_id ON streams(runtime_owner_id)")
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_streams_runtime_lease_expires_at "
+            "ON streams(runtime_lease_expires_at)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_streams_runtime_next_restart_at "
+            "ON streams(runtime_next_restart_at)"
+        )
+    )
     
     # Add check constraint for mix_mode if not exists
     await conn.execute(
@@ -253,6 +293,22 @@ async def _apply_schema_changes(conn):
                 ) THEN
                     ALTER TABLE streams ADD CONSTRAINT check_stream_mix_mode
                     CHECK (mix_mode IN ('video_only', 'audio_only', 'mixed'));
+                END IF;
+            END $$;
+            """
+        )
+    )
+
+    await conn.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'check_stream_schedule_repeat'
+                ) THEN
+                    ALTER TABLE streams ADD CONSTRAINT check_stream_schedule_repeat
+                    CHECK (schedule_repeat IN ('none', 'daily', 'weekly'));
                 END IF;
             END $$;
             """
@@ -350,6 +406,11 @@ async def _apply_schema_changes(conn):
         "fps",
         "codec_info",
         "validation_status",
+        "optimization_status",
+        "optimization_strategy",
+        "optimized_storage_path",
+        "optimization_error",
+        "optimization_updated_at",
     ]
     if await _missing_columns(conn, "assets", asset_columns):
         await conn.execute(
@@ -363,7 +424,12 @@ async def _apply_schema_changes(conn):
                 ADD COLUMN IF NOT EXISTS bitrate INTEGER,
                 ADD COLUMN IF NOT EXISTS fps INTEGER,
                 ADD COLUMN IF NOT EXISTS codec_info JSONB,
-                ADD COLUMN IF NOT EXISTS validation_status TEXT NOT NULL DEFAULT 'pending'
+                ADD COLUMN IF NOT EXISTS validation_status TEXT NOT NULL DEFAULT 'pending',
+                ADD COLUMN IF NOT EXISTS optimization_status TEXT NOT NULL DEFAULT 'not_requested',
+                ADD COLUMN IF NOT EXISTS optimization_strategy TEXT,
+                ADD COLUMN IF NOT EXISTS optimized_storage_path TEXT,
+                ADD COLUMN IF NOT EXISTS optimization_error TEXT,
+                ADD COLUMN IF NOT EXISTS optimization_updated_at TIMESTAMPTZ
                 """
             )
         )
@@ -374,6 +440,10 @@ async def _apply_schema_changes(conn):
     
     await conn.execute(
         text("CREATE INDEX IF NOT EXISTS idx_assets_validation_status ON assets(validation_status)")
+    )
+
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_assets_optimization_status ON assets(optimization_status)")
     )
     
     # Add missing columns to subscription_tier_limits table

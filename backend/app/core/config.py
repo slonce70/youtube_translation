@@ -1,5 +1,7 @@
+import socket
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator, FieldValidationInfo
+from pydantic import field_validator, FieldValidationInfo, model_validator
 from typing import List, Optional, Union
 from urllib.parse import urlparse, urlunparse, quote, unquote, parse_qsl, urlencode
 
@@ -95,6 +97,7 @@ class Settings(BaseSettings):
     ffmpeg_error_history_size: int = 20  # Number of recent errors to keep
     user_cache_max_size: int = 512  # Maximum number of cached users
     stream_runtime_mode: str = "manager"  # manager | systemd | supervisor
+    allow_unsafe_manager_runtime: bool = False
     systemd_unit_template: str = "ffmpeg@{stream_id}"
     systemctl_path: str = "systemctl"
     supervisor_program_template: str = "stream_{stream_id}"
@@ -102,9 +105,23 @@ class Settings(BaseSettings):
     supervisor_conf_path: str = "supervisord.conf"
     supervisor_config_dir: str = "supervisord/programs"
     supervisor_log_dir: str = "supervisord/logs"
+    stream_runtime_node_id: str = socket.gethostname()
+    stream_runtime_lease_ttl_seconds: int = 60
+    stream_runtime_heartbeat_interval_seconds: int = 10
+    stream_runtime_heartbeat_ttl_seconds: int = 45
+    stream_runtime_auto_restart_enabled: bool = True
+    stream_runtime_restart_max_attempts: int = 5
+    stream_runtime_restart_backoff_seconds: int = 5
+    stream_runtime_restart_backoff_max_seconds: int = 300
+    stream_runtime_restart_jitter_seconds: int = 3
+    stream_runtime_restart_reset_after_seconds: int = 900
     stream_schedule_poll_interval_seconds: int = 15
     stream_schedule_retry_interval_seconds: int = 60
     playlist_shuffle_seed_mode: str = "deterministic"
+    mediamtx_enabled: bool = False
+    mediamtx_rtmp_publish_url: Optional[str] = None
+    mediamtx_control_api_url: Optional[str] = None
+    mediamtx_metrics_url: Optional[str] = None
 
     # Rate limiting / Redis (optional)
     redis_url: Optional[str] = None
@@ -255,6 +272,61 @@ class Settings(BaseSettings):
         if normalized not in {"manager", "systemd", "supervisor"}:
             raise ValueError("STREAM_RUNTIME_MODE must be 'manager', 'systemd', or 'supervisor'")
         return normalized
+
+    @field_validator(
+        'stream_runtime_lease_ttl_seconds',
+        'stream_runtime_heartbeat_interval_seconds',
+        'stream_runtime_heartbeat_ttl_seconds',
+        'stream_runtime_restart_backoff_seconds',
+        'stream_runtime_restart_backoff_max_seconds',
+        'stream_runtime_restart_max_attempts',
+        'stream_runtime_restart_jitter_seconds',
+        'stream_runtime_restart_reset_after_seconds',
+    )
+    @classmethod
+    def validate_stream_runtime_heartbeat_seconds(cls, value: int, info: FieldValidationInfo) -> int:
+        minimum = 0 if info.field_name in {
+            "stream_runtime_restart_max_attempts",
+            "stream_runtime_restart_backoff_seconds",
+            "stream_runtime_restart_backoff_max_seconds",
+            "stream_runtime_restart_jitter_seconds",
+            "stream_runtime_restart_reset_after_seconds",
+        } else 1
+        if int(value) < minimum:
+            qualifier = "at least 0" if minimum == 0 else "at least 1 second"
+            raise ValueError(f"{info.field_name.upper()} must be {qualifier}")
+        return int(value)
+
+    @model_validator(mode='after')
+    def validate_runtime_policy(self) -> "Settings":
+        environment = str(self.environment).lower()
+        if (
+            self.stream_runtime_mode == "manager"
+            and environment in {"production", "staging"}
+            and not self.allow_unsafe_manager_runtime
+        ):
+            raise ValueError(
+                "STREAM_RUNTIME_MODE=manager is disabled for staging/production. "
+                "Use supervisor/systemd or explicitly set ALLOW_UNSAFE_MANAGER_RUNTIME=true."
+            )
+
+        if self.stream_runtime_heartbeat_ttl_seconds < self.stream_runtime_heartbeat_interval_seconds:
+            raise ValueError(
+                "STREAM_RUNTIME_HEARTBEAT_TTL_SECONDS must be greater than or equal to "
+                "STREAM_RUNTIME_HEARTBEAT_INTERVAL_SECONDS."
+            )
+        if self.stream_runtime_lease_ttl_seconds < self.stream_runtime_heartbeat_interval_seconds:
+            raise ValueError(
+                "STREAM_RUNTIME_LEASE_TTL_SECONDS must be greater than or equal to "
+                "STREAM_RUNTIME_HEARTBEAT_INTERVAL_SECONDS."
+            )
+        if self.stream_runtime_restart_backoff_max_seconds < self.stream_runtime_restart_backoff_seconds:
+            raise ValueError(
+                "STREAM_RUNTIME_RESTART_BACKOFF_MAX_SECONDS must be greater than or equal to "
+                "STREAM_RUNTIME_RESTART_BACKOFF_SECONDS."
+            )
+
+        return self
 
     @field_validator('systemd_unit_template')
     @classmethod

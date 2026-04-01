@@ -12,6 +12,12 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.stream_schedule import (
+    compute_next_repeating_start,
+    compute_schedule_stop_time,
+    ensure_utc,
+    has_recurring_schedule,
+)
 from app.models.database import Stream
 from .control import StreamControlService
 from .service import load_stream_with_relations_options
@@ -49,15 +55,55 @@ async def launch_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
 
     launched = 0
     for stream in streams:
+        occurrence_start = ensure_utc(stream.scheduled_start_time)
+        recurring_schedule = has_recurring_schedule(stream)
         try:
+            if occurrence_start is None:
+                stream.scheduled_start_enabled = False
+                stream.scheduled_start_attempted_at = None
+                await db.flush()
+                continue
+
+            if recurring_schedule:
+                occurrence_stop = compute_schedule_stop_time(
+                    occurrence_start,
+                    explicit_stop_at=None,
+                    schedule_timezone=stream.schedule_timezone,
+                    repeat=stream.schedule_repeat,
+                    window_end_time=stream.schedule_window_end_time,
+                    stop_after_seconds=stream.schedule_stop_after_seconds,
+                )
+                if occurrence_stop is not None and occurrence_stop <= now:
+                    _advance_repeating_schedule(stream, occurrence_start)
+                    logger.info("Skipped expired recurring schedule window for stream %s", stream.id)
+                    continue
+
             stream.scheduled_start_attempted_at = now
             await db.flush()
             control = StreamControlService(db, stream.user_id)
-            await control.start_stream(stream.id)
+            await control.start_stream(stream.id, preserve_schedule=recurring_schedule)
+            if recurring_schedule:
+                stream.scheduled_stop_time = compute_schedule_stop_time(
+                    occurrence_start,
+                    explicit_stop_at=None,
+                    schedule_timezone=stream.schedule_timezone,
+                    repeat=stream.schedule_repeat,
+                    window_end_time=stream.schedule_window_end_time,
+                    stop_after_seconds=stream.schedule_stop_after_seconds,
+                )
+                stream.scheduled_stop_attempted_at = None
+                stream.scheduled_start_time = compute_next_repeating_start(
+                    occurrence_start,
+                    schedule_timezone=stream.schedule_timezone,
+                    repeat=stream.schedule_repeat,
+                    weekdays=stream.schedule_weekdays,
+                )
+                stream.scheduled_start_attempted_at = None
             launched += 1
             logger.info("Scheduled stream %s launched", stream.id)
         except HTTPException as exc:
-            logger.warning(
+            log_fn = logger.info if exc.status_code == 409 else logger.warning
+            log_fn(
                 "Scheduled start failed for %s: %s",
                 stream.id,
                 exc.detail,
@@ -135,3 +181,17 @@ async def scheduled_stream_launcher() -> None:
                 await stop_due_streams(session)
         except Exception as exc:
             logger.error("Scheduled stream launcher error: %s", exc)
+
+
+def _advance_repeating_schedule(stream: Stream, occurrence_start: datetime) -> None:
+    stream.scheduled_start_time = compute_next_repeating_start(
+        occurrence_start,
+        schedule_timezone=stream.schedule_timezone,
+        repeat=stream.schedule_repeat,
+        weekdays=stream.schedule_weekdays,
+    )
+    stream.scheduled_start_attempted_at = None
+    stream.scheduled_stop_time = None
+    stream.scheduled_stop_attempted_at = None
+    if stream.status in {"stopped", "error", "scheduled"}:
+        stream.status = "scheduled"

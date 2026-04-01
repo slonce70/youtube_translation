@@ -93,6 +93,8 @@ async def test_stream_status_reports_live_and_total_duration(monkeypatch: pytest
             status="running",
             started_at=now - timedelta(minutes=10),
             total_duration_seconds=1800,
+            runtime_restart_attempts=2,
+            runtime_last_restart_at=now - timedelta(minutes=2),
         )
 
         session.add_all([completed_stream, running_stream])
@@ -129,6 +131,9 @@ async def test_stream_status_reports_live_and_total_duration(monkeypatch: pytest
         assert status.remaining_daily_seconds is not None
         assert status.remaining_daily_seconds < status.daily_limit_seconds
         assert status.quota_limit_reached is False
+        assert status.runtime_restart.attempts == 2
+        assert status.runtime_restart.state == "retrying"
+        assert status.runtime_restart.last_restart_at is not None
 
 
 @pytest.mark.asyncio

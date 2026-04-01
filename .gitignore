@@ -70,6 +70,8 @@ Thumbs.db
 *.flv
 backend/*.log
 frontend/*.log
+frontend/test-results/
+docs/design/archive/
 
 # Runtime data
 /uploads/

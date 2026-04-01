@@ -36,6 +36,16 @@ const baseAsset = (overrides: Partial<Asset>): Asset =>
     primary_folder_id: overrides.primary_folder_id ?? null,
     folders: overrides.folders ?? [],
     usage: overrides.usage ?? { streams: [], collections: [], playlists: [] },
+    optimization:
+      overrides.optimization ?? {
+        status: 'not_requested',
+        strategy: null,
+        optimized_storage_path: null,
+        error: null,
+        updated_at: null,
+        recommended_strategy: overrides.compatible_for_copy ?? true ? 'copy' : 'transcode',
+        can_stream_from_source: overrides.compatible_for_copy ?? true,
+      },
   })
 
 describe('asset view helpers', () => {

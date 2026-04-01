@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 from datetime import datetime
@@ -16,12 +17,15 @@ from app.core.config import settings
 from app.core.database import async_session_maker
 from app.core.logging_config import setup_logging
 from app.core.quota import QuotaEnforcer
+from app.core.stream_runtime_heartbeat import clear_runtime_heartbeat, write_runtime_heartbeat
+from app.core.stream_runtime_lease import release_stream_runtime_lease, renew_stream_runtime_lease
 from app.models.database import Stream
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.services.streams.helpers import load_stream_with_relations, prepare_stream_launch
 
 LOGGER = logging.getLogger("app.cli.run_stream")
 CURRENT_STREAM_ID: Optional[str] = None
+CURRENT_HEARTBEAT_TASK: Optional[asyncio.Task] = None
 
 
 async def _load_stream_with_relations(db, stream_id: UUID) -> Tuple[Stream, UUID]:
@@ -76,6 +80,9 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
             # Update timestamps
             db_stream.stopped_at = datetime.utcnow()
             db_stream.pid = None
+            db_stream.runtime_owner_id = None
+            db_stream.runtime_lease_expires_at = None
+            db_stream.runtime_last_heartbeat_at = None
             
             await db.commit()
             LOGGER.info("Updated stream %s status in DB to %s", stream.id, db_stream.status)
@@ -84,8 +91,70 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
         LOGGER.exception("Failed to update stream %s status after exit: %s", stream.id, exc)
 
 
+async def _heartbeat_loop(stream_id: str) -> None:
+    interval = max(int(getattr(settings, "stream_runtime_heartbeat_interval_seconds", 10)), 1)
+    runner_pid = os.getpid()
+
+    while True:
+        stream_info = ffmpeg_manager.get_stream_info(stream_id) or {}
+        write_runtime_heartbeat(
+            stream_id,
+            runner_pid=runner_pid,
+            ffmpeg_pid=stream_info.get("pid"),
+            launcher="cli",
+            metadata=stream_info.get("metadata") or {},
+        )
+        try:
+            async with async_session_maker() as db:
+                renewed = await renew_stream_runtime_lease(
+                    db,
+                    stream_id,
+                    owner_id=settings.stream_runtime_node_id,
+                    ttl_seconds=settings.stream_runtime_lease_ttl_seconds,
+                )
+                await db.commit()
+        except Exception as exc:  # pylint: disable=broad-except
+            LOGGER.warning("Failed to renew runtime lease for %s: %s", stream_id, exc)
+            renewed = True
+
+        if not renewed:
+            LOGGER.error(
+                "Runtime lease for %s moved to another node. Stopping local FFmpeg runner.",
+                stream_id,
+            )
+            await ffmpeg_manager.stop_stream(stream_id)
+            return
+        await asyncio.sleep(interval)
+
+
+async def _stop_heartbeat_task(stream_id: str) -> None:
+    global CURRENT_HEARTBEAT_TASK  # pylint: disable=global-statement
+
+    task = CURRENT_HEARTBEAT_TASK
+    CURRENT_HEARTBEAT_TASK = None
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    clear_runtime_heartbeat(stream_id)
+    try:
+        async with async_session_maker() as db:
+            await release_stream_runtime_lease(
+                db,
+                stream_id,
+                owner_id=settings.stream_runtime_node_id,
+                force=True,
+            )
+            await db.commit()
+    except Exception as exc:  # pylint: disable=broad-except
+        LOGGER.warning("Failed to release runtime lease for %s: %s", stream_id, exc)
+
+
 async def _start_stream(stream_id: UUID, wait: bool = True) -> None:
-    global CURRENT_STREAM_ID  # pylint: disable=global-statement
+    global CURRENT_STREAM_ID, CURRENT_HEARTBEAT_TASK  # pylint: disable=global-statement
 
     async with async_session_maker() as db:
         stream, user_id = await _load_stream_with_relations(db, stream_id)
@@ -130,10 +199,14 @@ async def _start_stream(stream_id: UUID, wait: bool = True) -> None:
         await db.commit()
 
     if wait:
+        CURRENT_HEARTBEAT_TASK = asyncio.create_task(_heartbeat_loop(CURRENT_STREAM_ID))
         LOGGER.info("Waiting for stream %s to finish", CURRENT_STREAM_ID)
-        await ffmpeg_manager.wait_for_exit(CURRENT_STREAM_ID)
-        LOGGER.info("Stream %s finished", CURRENT_STREAM_ID)
-        
+        try:
+            await ffmpeg_manager.wait_for_exit(CURRENT_STREAM_ID)
+            LOGGER.info("Stream %s finished", CURRENT_STREAM_ID)
+        finally:
+            await _stop_heartbeat_task(CURRENT_STREAM_ID)
+
         # Update DB after stream exits to ensure consistency
         await _update_stream_status_after_exit(stream)
 

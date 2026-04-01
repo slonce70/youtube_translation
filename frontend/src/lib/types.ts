@@ -20,6 +20,25 @@ export interface AssetFolderInfo {
   is_root: boolean
 }
 
+export type AssetOptimizationStatus =
+  | 'not_requested'
+  | 'queued'
+  | 'processing'
+  | 'ready'
+  | 'failed'
+
+export type AssetOptimizationStrategy = 'copy' | 'transcode'
+
+export interface AssetOptimizationInfo {
+  status: AssetOptimizationStatus
+  strategy?: AssetOptimizationStrategy | null
+  optimized_storage_path?: string | null
+  error?: string | null
+  updated_at?: string | null
+  recommended_strategy: AssetOptimizationStrategy
+  can_stream_from_source: boolean
+}
+
 export type LoopMode = 'loop' | 'once' | 'shuffle'
 
 export interface Asset {
@@ -39,6 +58,7 @@ export interface Asset {
   folders?: AssetFolderInfo[]
   usage?: AssetUsageSummary
   thumbnail_url?: string | null
+  optimization: AssetOptimizationInfo
 }
 
 export interface UploadTokenResponse {
@@ -201,6 +221,23 @@ export type StreamStatusValue =
   | 'error'
   | 'scheduled'
 
+export type StreamRuntimeRestartState =
+  | 'disabled'
+  | 'idle'
+  | 'scheduled'
+  | 'retrying'
+  | 'exhausted'
+
+export interface StreamRuntimeRestartInfo {
+  enabled: boolean
+  state: StreamRuntimeRestartState
+  attempts: number
+  max_attempts: number
+  next_restart_at?: string | null
+  last_restart_at?: string | null
+  last_failure_at?: string | null
+}
+
 export interface StreamAssetLink {
   asset_id: string
   position: number
@@ -245,6 +282,7 @@ export interface Stream {
   scheduled_start_time?: string | null
   scheduled_stop_time?: string | null
   uptime_seconds?: number | null
+  runtime_restart: StreamRuntimeRestartInfo
 }
 
 export interface StreamStatusResponse {
@@ -258,6 +296,7 @@ export interface StreamStatusResponse {
   daily_limit_seconds?: number | null
   remaining_daily_seconds?: number | null
   quota_limit_reached?: boolean | null
+  runtime_restart: StreamRuntimeRestartInfo
 }
 
 export interface StreamLogsResponse {
@@ -342,6 +381,14 @@ export interface MetricsResponse {
     active_streams: number
     idle_streams: number
     error_streams: number
+    restart_orchestration: {
+      auto_restart_enabled: boolean
+      scheduled_restart_streams: number
+      streams_with_retry_history: number
+      total_restart_attempts: number
+      max_attempts: number
+      next_restart_at?: string | null
+    }
   }
   capacity: {
     active_streams: number
@@ -500,16 +547,41 @@ export interface AdminUserDetail extends AdminUserListItem {
   updated_at: string
 }
 
+export interface AdminUserListSummary {
+  total: number
+  active: number
+  suspended: number
+  paid: number
+}
+
+export interface AdminUserListResponse {
+  items: AdminUserListItem[]
+  summary: AdminUserListSummary
+}
+
 export interface AdminStreamListItem {
   stream_id: string
   user_id: string
   user_email: string
   name: string
   status: string
-  playlist_id: string
+  playlist_id: string | null
+  source_type: string
   destinations_count: number
   started_at: string | null
   created_at: string
+}
+
+export interface AdminStreamListSummary {
+  total: number
+  running: number
+  errors: number
+  stopped: number
+}
+
+export interface AdminStreamListResponse {
+  items: AdminStreamListItem[]
+  summary: AdminStreamListSummary
 }
 
 export interface AdminAlertListItem {
@@ -523,6 +595,18 @@ export interface AdminAlertListItem {
   created_at: string
   resolved_at: string | null
   resolved_by: string | null
+}
+
+export interface AdminAlertListSummary {
+  total: number
+  unresolved: number
+  critical: number
+  resolved: number
+}
+
+export interface AdminAlertListResponse {
+  items: AdminAlertListItem[]
+  summary: AdminAlertListSummary
 }
 
 export interface AdminActionLog {

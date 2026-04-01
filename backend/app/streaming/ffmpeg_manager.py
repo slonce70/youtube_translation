@@ -1,8 +1,10 @@
 import asyncio
 import inspect
 import logging
+import re
 import signal
 import shutil
+from urllib.parse import urlsplit, urlunsplit
 from collections import deque
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -28,6 +30,40 @@ logger = logging.getLogger(__name__)
 DEFAULT_KEYFRAME_INTERVAL_SECONDS = 2.0
 MIN_KEYFRAME_INTERVAL_SECONDS = 0.5
 MAX_KEYFRAME_INTERVAL_SECONDS = 4.0
+
+
+_RTMP_URL_PATTERN = re.compile(r"rtmps?://[^\s'\"|]+", re.IGNORECASE)
+
+
+def _redact_rtmp_uri(uri: str) -> str:
+    try:
+        parts = urlsplit(uri)
+    except Exception:
+        return uri
+
+    if parts.scheme.lower() not in {"rtmp", "rtmps"}:
+        return uri
+
+    path = parts.path or ""
+    if not path or path == "/":
+        return uri
+
+    segments = path.split("/")
+    if len(segments) >= 2:
+        segments[-1] = "<redacted>"
+    redacted_path = "/".join(segments)
+
+    return urlunsplit((parts.scheme, parts.netloc, redacted_path, parts.query, parts.fragment))
+
+
+def _redact_rtmp_text(value: str) -> str:
+    if not value:
+        return value
+
+    def _replace(match: re.Match[str]) -> str:
+        return _redact_rtmp_uri(match.group(0))
+
+    return _RTMP_URL_PATTERN.sub(_replace, value)
 
 
 @dataclass
@@ -62,7 +98,7 @@ class FFmpegCommandPlan:
             "audio_bitrate_kbps": self.audio_bitrate_kbps,
             "uses_video_placeholder": self.uses_video_placeholder,
             "uses_audio_placeholder": self.uses_audio_placeholder,
-            "destination_uris": list(self.destination_uris),
+            "destination_uris": [_redact_rtmp_uri(uri) for uri in self.destination_uris],
             "keyframe_interval_seconds": self.keyframe_interval_seconds,
             "keyframe_gop_frames": self.keyframe_gop_frames,
         }
@@ -72,7 +108,10 @@ class FFmpegStreamManager:
     """Manages FFmpeg streaming processes"""
 
     def __init__(self, ffmpeg_bin: Optional[str] = None):
-        self.ffmpeg_bin = self._resolve_ffmpeg_bin(ffmpeg_bin or settings.ffmpeg_bin)
+        self.ffmpeg_bin = self._resolve_ffmpeg_bin(
+            ffmpeg_bin or settings.ffmpeg_bin,
+            allow_deferred=ffmpeg_bin is None,
+        )
         self.active_streams: Dict[str, asyncio.subprocess.Process] = {}
         self.stream_info: Dict[str, Dict] = {}
         self._cleanup_lock = asyncio.Lock()  # Thread-safety for cleanup operations
@@ -229,7 +268,7 @@ class FFmpegStreamManager:
             cmd = plan.command
 
             logger.info(f"Starting stream {stream_id}")
-            logger.debug(f"FFmpeg command: {' '.join(cmd)}")
+            logger.debug("FFmpeg command: %s", _redact_rtmp_text(" ".join(cmd)))
             logger.info(
                 "Stream %s plan: mix_mode=%s copy_video=%s copy_audio=%s placeholders={'video': %s, 'audio': %s} destinations=%s",
                 stream_id,
@@ -238,7 +277,7 @@ class FFmpegStreamManager:
                 plan.copy_audio,
                 plan.uses_video_placeholder,
                 plan.uses_audio_placeholder,
-                plan.destination_uris,
+                [_redact_rtmp_uri(uri) for uri in plan.destination_uris],
             )
 
             # Start FFmpeg process with pipes (no file handle leak)
@@ -475,13 +514,11 @@ class FFmpegStreamManager:
             playlists.video_playlist is not None
             and not playlists.needs_video_placeholder
             and playlists.video_copy_compatible
-            and not multi_destination
         )
         copy_audio = (
             playlists.audio_playlist is not None
             and not playlists.needs_audio_placeholder
             and playlists.audio_copy_compatible
-            and not multi_destination
         )
 
         # Keep logs user-friendly by default (no frame progress spam).
@@ -561,7 +598,6 @@ class FFmpegStreamManager:
                 copy_audio = (
                     playlists.video_audio_copy_compatible
                     and not playlists.needs_audio_placeholder
-                    and not multi_destination
                 )
             elif playlists.mix_mode == "video_only":
                 audio_input_idx = add_input(
@@ -596,10 +632,6 @@ class FFmpegStreamManager:
 
         for section in input_sections:
             cmd.extend(section["args"])
-
-        if multi_destination:
-            copy_video = False
-            copy_audio = False
 
         cmd.extend(["-map", f"{video_input_idx}:v:0"])
         cmd.extend(["-map", f"{audio_input_idx}:a:0?"])
@@ -1435,7 +1467,7 @@ class FFmpegStreamManager:
 
 
     @staticmethod
-    def _resolve_ffmpeg_bin(candidate: str) -> str:
+    def _resolve_ffmpeg_bin(candidate: str, *, allow_deferred: bool) -> str:
         """Resolve FFmpeg binary path from settings or PATH with helpful errors."""
         provided_path = Path(candidate)
         if provided_path.exists():
@@ -1451,10 +1483,20 @@ class FFmpegStreamManager:
             logger.info("Detected FFmpeg binary via PATH at %s", fallback)
             return fallback
 
+        bare_candidate = bool(candidate) and provided_path.name == candidate and not provided_path.is_absolute()
+
+        if allow_deferred or bare_candidate:
+            deferred_candidate = provided_path.name or "ffmpeg"
+            logger.warning(
+                "FFmpeg binary %s not found during initialization; deferring resolution until execution time",
+                candidate,
+            )
+            return deferred_candidate
+
         raise FileNotFoundError(
             "FFmpeg binary not found. Install FFmpeg or set FFMPEG_BIN in your environment."
         )
 
 
 # Global instance
-ffmpeg_manager = FFmpegStreamManager(settings.ffmpeg_bin)
+ffmpeg_manager = FFmpegStreamManager()

@@ -41,40 +41,28 @@ export function StatsSection() {
   ]
 
   return (
-    <SectionContainer>
+    <SectionContainer className="pt-6 md:pt-10">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        whileInView={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.6 }}
-        className="relative overflow-hidden rounded-2xl p-8 md:p-12"
-        style={{
-          background: 'linear-gradient(to bottom right, rgb(15 23 42), rgb(2 6 23))',
-          boxShadow: '0 0 0 2px transparent',
-          backgroundImage: 'linear-gradient(to bottom right, rgb(15 23 42), rgb(2 6 23)), linear-gradient(to right, #a855f7, #06b6d4)',
-          backgroundOrigin: 'border-box',
-          backgroundClip: 'padding-box, border-box',
-        }}
+        className="landing-section-dark landing-noise overflow-hidden px-6 py-6 sm:px-8 md:py-8"
       >
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,rgba(245,158,11,0.14),transparent_22%),radial-gradient(circle_at_right,rgba(34,211,238,0.16),transparent_26%)]" />
+        <div className="relative grid gap-4 md:grid-cols-4">
           {stats.map((stat, index) => (
             <motion.div
               key={stat.key}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 18 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
-              className="text-center"
+              transition={{ duration: 0.45, delay: index * 0.08 }}
+              className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5"
             >
-              <div className="text-4xl md:text-5xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                {stat.value}
-              </div>
-              <div className="text-sm text-slate-200/80 dark:text-slate-300 mb-1">
-                {stat.label}
-              </div>
-              <div className="text-xs text-slate-400 dark:text-slate-500">
-                {stat.description}
-              </div>
+              <div className="text-xs uppercase tracking-[0.24em] text-slate-400">{stat.label}</div>
+              <div className="mt-4 landing-display text-4xl text-white">{stat.value}</div>
+              <div className="mt-3 text-sm leading-6 text-slate-300">{stat.description}</div>
             </motion.div>
           ))}
         </div>

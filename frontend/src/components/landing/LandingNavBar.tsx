@@ -25,7 +25,7 @@ export function LandingNavBar({ onStartStreaming }: Props) {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20)
     }
-    window.addEventListener('scroll', handleScroll)
+    window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
@@ -45,59 +45,56 @@ export function LandingNavBar({ onStartStreaming }: Props) {
   }
 
   return (
-    <nav
-      className={cn(
-        'sticky top-0 z-50 transition-all duration-300',
-        'glass border-b',
-        scrolled
-          ? 'border-slate-200/60 dark:border-slate-700/60 shadow-lg'
-          : 'border-transparent'
-      )}
-    >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
-          <div className="flex items-center space-x-3">
+    <div className="sticky top-0 z-50 px-4 pt-4 sm:px-6 lg:px-8">
+      <nav
+        className={cn(
+          'mx-auto max-w-7xl rounded-[1.6rem] border px-4 py-3 transition-all duration-300 sm:px-5',
+          scrolled
+            ? 'border-white/8 bg-[#070b12]/74 shadow-[0_24px_54px_-36px_rgba(0,0,0,0.78)] backdrop-blur-xl'
+            : 'border-white/7 bg-[#070b12]/58 shadow-[0_16px_38px_-28px_rgba(0,0,0,0.64)] backdrop-blur-xl'
+        )}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="rounded-2xl border border-transparent p-2 text-slate-100 transition hover:border-white/10 hover:bg-white/5 md:hidden"
               aria-label="Toggle navigation"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
 
-            {/* Logo */}
-            <Link href="/" className="flex items-center space-x-2">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center shadow-glow">
-                <Radio className="w-6 h-6 text-white" />
+            <Link href="/" className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/12 bg-gradient-to-br from-[#ff4a62]/30 to-[#66e6ff]/14 shadow-[0_18px_36px_-18px_rgba(0,0,0,0.72)]">
+                <Radio className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold gradient-text hidden sm:block">
-                {t('brand')}
-              </span>
+              <div className="hidden sm:block">
+                <div className="landing-display text-2xl text-white">
+                  {t('brand')}
+                </div>
+              </div>
             </Link>
           </div>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-1">
+          <div className="hidden items-center gap-1 md:flex">
             {navItems.map((item) => (
               <button
                 key={item.key}
                 onClick={() => scrollToSection(item.href)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="rounded-full border border-transparent px-4 py-2 text-sm font-medium text-slate-300/92 transition hover:border-white/10 hover:bg-white/6 hover:text-white"
               >
                 {t(item.key)}
               </button>
             ))}
           </div>
 
-          {/* Right Side Actions */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             <DarkModeToggle />
             <LanguageSwitcher />
-            
-            <div className="hidden md:flex items-center space-x-3">
+            <div className="hidden md:block">
               <Button
                 size="sm"
-                className="shadow-glow"
+                className="rounded-full border border-white/12 bg-white/92 px-5 py-2 text-slate-950 shadow-[0_18px_36px_-24px_rgba(0,0,0,0.7)] hover:-translate-y-0.5 hover:bg-white"
                 onClick={() => {
                   if (onStartStreaming) {
                     void onStartStreaming()
@@ -112,27 +109,29 @@ export function LandingNavBar({ onStartStreaming }: Props) {
           </div>
         </div>
 
-        {/* Mobile Menu */}
         <AnimatePresence>
           {mobileMenuOpen && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden pb-4 space-y-2"
+              className="overflow-hidden md:hidden"
             >
-              {navItems.map((item) => (
-                <button
-                  key={item.key}
-                  onClick={() => scrollToSection(item.href)}
-                  className="block w-full text-left px-4 py-3 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  {t(item.key)}
-                </button>
-              ))}
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+              <div className="mt-4 border-t border-white/10 pt-4">
+                <div className="space-y-2">
+                  {navItems.map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => scrollToSection(item.href)}
+                      className="block w-full rounded-2xl px-4 py-3 text-left text-base font-medium text-slate-100 transition hover:bg-white/5"
+                    >
+                      {t(item.key)}
+                    </button>
+                  ))}
+                </div>
+
                 <Button
-                  className="w-full shadow-glow"
+                  className="mt-4 w-full rounded-2xl border border-white/12 bg-white py-3 text-slate-950 shadow-[0_18px_36px_-24px_rgba(0,0,0,0.7)]"
                   onClick={() => {
                     setMobileMenuOpen(false)
                     if (onStartStreaming) {
@@ -148,7 +147,7 @@ export function LandingNavBar({ onStartStreaming }: Props) {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-    </nav>
+      </nav>
+    </div>
   )
 }

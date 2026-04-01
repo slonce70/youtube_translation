@@ -14,6 +14,9 @@
       "renameEmpty": "Filename cannot be empty",
       "validationRefreshed": "Validation refreshed",
       "validateFailed": "Failed to validate asset",
+      "optimizeReady": "{name} is already ready for copy mode",
+      "optimizeQueued": "{name} was queued for optimization",
+      "optimizeFailed": "Failed to start optimization",
       "download": "Starting download for {name}",
       "downloadLinkFailed": "Failed to generate download link",
       "moved": "Assets moved",
@@ -100,7 +103,10 @@
         "ready": "Ready for streaming",
         "needsEncoding": "Needs re-encoding",
         "bitrateOk": "Bitrate OK",
-        "bitrateCheck": "Check bitrate"
+        "bitrateCheck": "Check bitrate",
+        "copyMode": "Copy mode",
+        "optimizeQueued": "Optimization queued",
+        "optimizeFailed": "Optimization failed"
       },
       "recommendations": "Recommendations: {label} → {details}",
       "metadata": {

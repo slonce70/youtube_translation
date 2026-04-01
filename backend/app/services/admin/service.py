@@ -8,7 +8,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc, func, select, update
+from sqlalchemy import case, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database import (
@@ -26,12 +26,18 @@ from app.schemas.admin import (
     AdminAccessResponse,
     AdminActionLog,
     AlertListItem,
+    AlertListResponse,
+    AlertListSummary,
     ChangeTierRequest,
     ResolveAlertRequest,
     StreamListItem,
+    StreamListResponse,
+    StreamListSummary,
     SuspendUserRequest,
     UserDetail,
     UserListItem,
+    UserListResponse,
+    UserListSummary,
 )
 from app.services.streams import StreamControlService
 
@@ -64,38 +70,58 @@ class AdminService:
         suspended_filter: Optional[bool],
         limit: int,
         offset: int,
-    ) -> List[UserListItem]:
+    ) -> UserListResponse:
         try:
+            summary_query = select(
+                func.count(UserProfile.user_id),
+                func.sum(case((UserProfile.is_suspended.is_(False), 1), else_=0)),
+                func.sum(case((UserProfile.is_suspended.is_(True), 1), else_=0)),
+                func.sum(case((UserProfile.subscription_tier != "free", 1), else_=0)),
+            )
             query = select(UserProfile)
 
             if tier:
+                summary_query = summary_query.where(UserProfile.subscription_tier == tier)
                 query = query.where(UserProfile.subscription_tier == tier)
             if status_filter:
+                summary_query = summary_query.where(UserProfile.subscription_status == status_filter)
                 query = query.where(UserProfile.subscription_status == status_filter)
             if suspended_filter is not None:
+                summary_query = summary_query.where(UserProfile.is_suspended == suspended_filter)
                 query = query.where(UserProfile.is_suspended == suspended_filter)
+
+            summary_result = await self.db.execute(summary_query)
+            total, active, suspended, paid = summary_result.one()
 
             query = query.order_by(desc(UserProfile.created_at)).limit(limit).offset(offset)
 
             result = await self.db.execute(query)
             users = result.scalars().all()
-            return [
-                UserListItem(
-                    user_id=user.user_id,
-                    email=user.email,
-                    full_name=user.full_name,
-                    subscription_tier=user.subscription_tier,
-                    subscription_status=user.subscription_status,
-                    subscription_started_at=user.subscription_started_at,
-                    subscription_expires_at=user.subscription_expires_at,
-                    is_suspended=user.is_suspended,
-                    current_storage_bytes=user.current_storage_bytes or 0,
-                    total_stream_hours=user.total_stream_hours or 0,
-                    created_at=user.created_at,
-                    last_login_at=user.last_login_at,
+            return UserListResponse(
+                items=[
+                    UserListItem(
+                        user_id=user.user_id,
+                        email=user.email,
+                        full_name=user.full_name,
+                        subscription_tier=user.subscription_tier,
+                        subscription_status=user.subscription_status,
+                        subscription_started_at=user.subscription_started_at,
+                        subscription_expires_at=user.subscription_expires_at,
+                        is_suspended=user.is_suspended,
+                        current_storage_bytes=user.current_storage_bytes or 0,
+                        total_stream_hours=user.total_stream_hours or 0,
+                        created_at=user.created_at,
+                        last_login_at=user.last_login_at,
+                    )
+                    for user in users
+                ],
+                summary=UserListSummary(
+                    total=int(total or 0),
+                    active=int(active or 0),
+                    suspended=int(suspended or 0),
+                    paid=int(paid or 0),
                 )
-                for user in users
-            ]
+            )
         except Exception as exc:
             logger.exception("Error listing users: %s", exc)
             raise HTTPException(
@@ -275,8 +301,14 @@ class AdminService:
 
     async def list_all_streams(
         self, status_filter: Optional[str], limit: int, offset: int
-    ) -> List[StreamListItem]:
+    ) -> StreamListResponse:
         try:
+            summary_query = select(
+                func.count(Stream.id),
+                func.sum(case((Stream.status == "running", 1), else_=0)),
+                func.sum(case((Stream.status == "error", 1), else_=0)),
+                func.sum(case((Stream.status == "stopped", 1), else_=0)),
+            )
             query = (
                 select(
                     Stream.id,
@@ -293,7 +325,11 @@ class AdminService:
             )
 
             if status_filter:
+                summary_query = summary_query.where(Stream.status == status_filter)
                 query = query.where(Stream.status == status_filter)
+
+            summary_result = await self.db.execute(summary_query)
+            total, running, errors, stopped = summary_result.one()
 
             query = query.order_by(desc(Stream.created_at)).limit(limit).offset(offset)
 
@@ -310,21 +346,29 @@ class AdminService:
                 )
                 destination_counts = {stream_id: count for stream_id, count in dest_result.all()}
 
-            return [
-                StreamListItem(
-                    stream_id=row[0],
-                    user_id=row[1],
-                    user_email=row[2],
-                    name=row[3] or "Unnamed stream",
-                    status=row[4],
-                    playlist_id=row[5],
-                    source_type=row[6],
-                    destinations_count=destination_counts.get(row[0], 0),
-                    started_at=row[7],
-                    created_at=row[8],
+            return StreamListResponse(
+                items=[
+                    StreamListItem(
+                        stream_id=row[0],
+                        user_id=row[1],
+                        user_email=row[2],
+                        name=row[3] or "Unnamed stream",
+                        status=row[4],
+                        playlist_id=row[5],
+                        source_type=row[6],
+                        destinations_count=destination_counts.get(row[0], 0),
+                        started_at=row[7],
+                        created_at=row[8],
+                    )
+                    for row in rows
+                ],
+                summary=StreamListSummary(
+                    total=int(total or 0),
+                    running=int(running or 0),
+                    errors=int(errors or 0),
+                    stopped=int(stopped or 0),
                 )
-                for row in rows
-            ]
+            )
         except Exception as exc:
             logger.exception("Error listing streams: %s", exc)
             raise HTTPException(
@@ -369,8 +413,14 @@ class AdminService:
         alert_type: Optional[str],
         limit: int,
         offset: int,
-    ) -> List[AlertListItem]:
+    ) -> AlertListResponse:
         try:
+            summary_query = select(
+                func.count(SystemAlert.id),
+                func.sum(case((SystemAlert.resolved.is_(False), 1), else_=0)),
+                func.sum(case(((SystemAlert.severity == "critical") & (SystemAlert.resolved.is_(False)), 1), else_=0)),
+                func.sum(case((SystemAlert.resolved.is_(True), 1), else_=0)),
+            )
             query = (
                 select(
                     SystemAlert.id,
@@ -388,31 +438,45 @@ class AdminService:
             )
 
             if resolved is not None:
+                summary_query = summary_query.where(SystemAlert.resolved == resolved)
                 query = query.where(SystemAlert.resolved == resolved)
             if severity:
+                summary_query = summary_query.where(SystemAlert.severity == severity)
                 query = query.where(SystemAlert.severity == severity)
             if alert_type:
+                summary_query = summary_query.where(SystemAlert.alert_type == alert_type)
                 query = query.where(SystemAlert.alert_type == alert_type)
+
+            summary_result = await self.db.execute(summary_query)
+            total, unresolved, critical, resolved_count = summary_result.one()
 
             query = query.order_by(desc(SystemAlert.created_at)).limit(limit).offset(offset)
 
             result = await self.db.execute(query)
             rows = result.all()
-            return [
-                AlertListItem(
-                    alert_id=row[0],
-                    user_id=row[1],
-                    user_email=row[2],
-                    alert_type=row[3],
-                    severity=row[4],
-                    message=row[5],
-                    resolved=row[6],
-                    created_at=row[7],
-                    resolved_at=row[8],
-                    resolved_by=row[9],
+            return AlertListResponse(
+                items=[
+                    AlertListItem(
+                        alert_id=row[0],
+                        user_id=row[1],
+                        user_email=row[2],
+                        alert_type=row[3],
+                        severity=row[4],
+                        message=row[5],
+                        resolved=row[6],
+                        created_at=row[7],
+                        resolved_at=row[8],
+                        resolved_by=row[9],
+                    )
+                    for row in rows
+                ],
+                summary=AlertListSummary(
+                    total=int(total or 0),
+                    unresolved=int(unresolved or 0),
+                    critical=int(critical or 0),
+                    resolved=int(resolved_count or 0),
                 )
-                for row in rows
-            ]
+            )
         except Exception as exc:
             logger.exception("Error listing alerts: %s", exc)
             raise HTTPException(

@@ -14,13 +14,13 @@ from app.api.deps import require_admin
 from app.schemas.admin import (
     AdminAccessResponse,
     AdminActionLog,
-    AlertListItem,
+    AlertListResponse,
     ChangeTierRequest,
     ResolveAlertRequest,
-    StreamListItem,
+    StreamListResponse,
     SuspendUserRequest,
     UserDetail,
-    UserListItem,
+    UserListResponse,
 )
 from app.services.admin import AdminService
 
@@ -47,7 +47,8 @@ async def get_admin_access(service: AdminService = Depends(get_admin_service)):
 # User Management Endpoints
 # ==========================================
 
-@router.get("/users", response_model=List[UserListItem])
+
+@router.get("/users", response_model=UserListResponse)
 async def list_users(
     tier: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
@@ -59,7 +60,7 @@ async def list_users(
 ):
     """
     List all users with filters.
-    
+
     Admin only endpoint.
     """
     suspended_filter = suspended if suspended is not None else is_suspended
@@ -79,7 +80,7 @@ async def get_user_detail(
 ):
     """
     Get detailed information about a user.
-    
+
     Admin only endpoint.
     """
     return await service.get_user_detail(user_id)
@@ -93,7 +94,7 @@ async def suspend_user(
 ):
     """
     Suspend a user account.
-    
+
     Admin only endpoint.
     """
     return await service.suspend_user(user_id, request)
@@ -106,7 +107,7 @@ async def unsuspend_user(
 ):
     """
     Unsuspend a user account.
-    
+
     Admin only endpoint.
     """
     return await service.unsuspend_user(user_id)
@@ -120,7 +121,7 @@ async def change_user_tier(
 ):
     """
     Change user's subscription tier.
-    
+
     Admin only endpoint.
     """
     return await service.change_user_tier(user_id, request)
@@ -130,7 +131,8 @@ async def change_user_tier(
 # Streams Monitoring Endpoints
 # ==========================================
 
-@router.get("/streams/all", response_model=List[StreamListItem])
+
+@router.get("/streams/all", response_model=StreamListResponse)
 async def list_all_streams(
     status: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status_filter"),
@@ -140,7 +142,7 @@ async def list_all_streams(
 ):
     """
     List all streams across all users.
-    
+
     Admin only endpoint.
     """
     effective_status = status if status is not None else status_filter
@@ -154,7 +156,7 @@ async def force_stop_stream(
 ):
     """
     Force stop a stream (admin override).
-    
+
     Admin only endpoint.
     """
     return await service.force_stop_stream(stream_id)
@@ -164,7 +166,8 @@ async def force_stop_stream(
 # System Alerts Endpoints
 # ==========================================
 
-@router.get("/alerts", response_model=List[AlertListItem])
+
+@router.get("/alerts", response_model=AlertListResponse)
 async def list_alerts(
     resolved: Optional[bool] = None,
     severity: Optional[str] = None,
@@ -175,7 +178,7 @@ async def list_alerts(
 ):
     """
     List system alerts with filters.
-    
+
     Admin only endpoint.
     """
     return await service.list_alerts(resolved, severity, alert_type, limit, offset)
@@ -189,7 +192,7 @@ async def resolve_alert(
 ):
     """
     Mark an alert as resolved.
-    
+
     Admin only endpoint.
     """
     return await service.resolve_alert(alert_id, request)
@@ -198,6 +201,7 @@ async def resolve_alert(
 # ==========================================
 # Admin Activity Log
 # ==========================================
+
 
 @router.get("/actions", response_model=List[AdminActionLog])
 async def list_admin_actions(
@@ -208,7 +212,7 @@ async def list_admin_actions(
 ):
     """
     List admin actions (audit log).
-    
+
     Admin only endpoint.
     """
     return await service.list_admin_actions(action_type, limit, offset)

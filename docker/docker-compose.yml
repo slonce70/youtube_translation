@@ -56,6 +56,10 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - FFMPEG_BIN=/usr/bin/ffmpeg
       - FFPROBE_BIN=/usr/bin/ffprobe
+      - MEDIAMTX_ENABLED=true
+      - MEDIAMTX_RTMP_PUBLISH_URL=rtmp://mediamtx:1935
+      - MEDIAMTX_CONTROL_API_URL=http://mediamtx:9997
+      - MEDIAMTX_METRICS_URL=http://mediamtx:9998/metrics
     restart: unless-stopped
     networks:
       - app-network
@@ -160,6 +164,8 @@ services:
       dockerfile: Dockerfile
     container_name: youtube-streaming-runner
     entrypoint: ["supervisord", "-c", "/app/supervisord.conf", "-n"]
+    ports:
+      - "127.0.0.1:9001:9001"
     volumes:
       - ../backend/uploads:/app/uploads
       - ../backend/streams:/app/streams
@@ -191,6 +197,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # MediaMTX (optional future media-plane relay / metrics hub)
+  mediamtx:
+    image: bluenviron/mediamtx:1
+    container_name: youtube-streaming-mediamtx
+    ports:
+      - "127.0.0.1:9997:9997"
+      - "127.0.0.1:9998:9998"
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    restart: unless-stopped
+    networks:
+      - app-network
 
 volumes:
   caddy-data:

@@ -24,6 +24,15 @@ const baseAsset: Asset = {
     collections: [],
     playlists: [],
   },
+  optimization: {
+    status: 'not_requested',
+    strategy: null,
+    optimized_storage_path: null,
+    error: null,
+    updated_at: null,
+    recommended_strategy: 'copy',
+    can_stream_from_source: true,
+  },
   folders: [],
   primary_folder_id: null,
   thumbnail_url: '/thumbnails/asset-1.jpg',
@@ -38,6 +47,9 @@ const t = {
     needsEncoding: 'Needs encoding',
     bitrateOk: 'Bitrate OK',
     bitrateCheck: 'Check bitrate',
+    copyMode: 'Copy mode',
+    optimizeQueued: 'Optimization queued',
+    optimizeFailed: 'Optimization failed',
   },
   messages: { incompatibleSummary: 'Needs attention' },
   details: { hide: 'Hide details', show: 'Show details' },
@@ -82,6 +94,42 @@ describe('AssetCard thumbnails', () => {
       const image = screen.getByAltText(t.previewAlt({ filename: baseAsset.filename })) as HTMLImageElement
       expect(image).toBeInTheDocument()
       expect(new URL(image.src).pathname).toBe('/thumbnails/asset-1.jpg')
+    })
+  })
+
+  it('falls back when optimization payload is missing', async () => {
+    const legacyAsset = {
+      ...baseAsset,
+      optimization: undefined,
+    } as unknown as Asset
+
+    render(
+      <NextIntlClientProvider locale="en" messages={enMessages as unknown as AbstractIntlMessages}>
+        <AssetCard
+          asset={legacyAsset}
+          isSelected={false}
+          onSelect={noop}
+          onRename={noop}
+          onDelete={noop}
+          onCheck={noop}
+          onMove={noop}
+          onDownload={noop}
+          onPlaylistAdd={noop}
+          onOptimize={noop}
+          onDragStart={noop}
+          onDragEnd={noop}
+          isDeleting={false}
+          isChecking={false}
+          isGeneratingDownload={false}
+          formatWarningMessage={() => 'warning'}
+          formatUsageLabel={() => null}
+          t={t}
+        />
+      </NextIntlClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(baseAsset.filename)).toBeInTheDocument()
     })
   })
 })

@@ -1,26 +1,34 @@
 #!/bin/bash
-cd "$(dirname "$0")"
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "${ROOT_DIR}"
+
+TUSD_PORT="${TUSD_PORT:-1080}"
 
 echo "🚀 Starting tusd (upload server) with quota enforcement..."
-echo "📍 Upload endpoint: http://localhost:1080/files/"
+echo "📍 Upload endpoint: http://localhost:${TUSD_PORT}/files/"
 echo ""
 
 # Добавляем GOPATH/bin в PATH, если tusd установлен через go install
 export PATH="$HOME/go/bin:$PATH"
 
 # Создаем общую папку с бэкендом
-UPLOAD_ROOT="$(pwd)/backend/uploads"
+UPLOAD_ROOT="${ROOT_DIR}/backend/uploads"
 TEMP_DIR="${UPLOAD_ROOT}/_temp"
-HOOKS_DIR="$(pwd)/backend/tusd-hooks"
+HOOKS_DIR="${ROOT_DIR}/backend/tusd-hooks"
 
 export TUSD_UPLOAD_ROOT="$UPLOAD_ROOT"
 
 # Загружаем переменные окружения для совместного секрета
-if [ -f "backend/.env" ]; then
+if [ -f "${ROOT_DIR}/backend/.env" ]; then
     set -a
     # shellcheck disable=SC1091
-    source backend/.env
+    source "${ROOT_DIR}/backend/.env"
     set +a
+else
+    echo "ℹ️  backend/.env не знайдено. Використовую значення середовища для tusd."
 fi
 
 if [ -z "${TUSD_HMAC_SECRET:-}" ]; then
@@ -67,7 +75,7 @@ echo "🎯 Starting with quota enforcement and file isolation..."
 echo ""
 
 tusd \
-     -port=1080 \
+     -port="${TUSD_PORT}" \
      -upload-dir="${TEMP_DIR}" \
      -hooks-dir="${HOOKS_DIR}" \
      -hooks-enabled-events=pre-create,post-finish \

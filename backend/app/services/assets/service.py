@@ -58,7 +58,9 @@ class AssetService:
     ) -> List[AssetResponse]:
         query = select(Asset).where(Asset.user_id == self.user_id)
 
-        normalized_asset_type = asset_type.strip().lower() if isinstance(asset_type, str) else None
+        normalized_asset_type = (
+            asset_type.strip().lower() if isinstance(asset_type, str) else None
+        )
         if normalized_asset_type:
             if normalized_asset_type not in {"video", "audio"}:
                 raise HTTPException(
@@ -95,7 +97,8 @@ class AssetService:
                 """
             )
             result = await self.db.execute(
-                recursive, {"folder_id": str(resolved_folder_id), "user_id": str(self.user_id)}
+                recursive,
+                {"folder_id": str(resolved_folder_id), "user_id": str(self.user_id)},
             )
             asset_ids = [row[0] for row in result]
             if not asset_ids:
@@ -108,16 +111,21 @@ class AssetService:
         return await serialize_assets(self.db, self.user_id, assets)
 
     async def create_asset(self, asset_data: AssetCreate) -> AssetResponse:
+        file_path = _require_user_storage_path(
+            asset_data.storage_path, self.user_id, must_exist=True
+        )
+        size_bytes = file_path.stat().st_size
+
         enforcer = QuotaEnforcer(self.db, self.user_id)
         await enforcer.check_assets_limit()
-        await enforcer.check_storage_limit(asset_data.size_bytes)
+        await enforcer.check_storage_limit(size_bytes)
 
         stream_meta = asset_data.meta if isinstance(asset_data.meta, dict) else {}
         asset = Asset(
             user_id=self.user_id,
             filename=asset_data.filename,
-            storage_path=asset_data.storage_path,
-            size_bytes=asset_data.size_bytes,
+            storage_path=str(file_path),
+            size_bytes=size_bytes,
             duration_seconds=asset_data.duration_seconds,
             meta=asset_data.meta,
             compatible_for_copy=asset_data.compatible_for_copy,
@@ -142,7 +150,9 @@ class AssetService:
         logger.info("Created asset %s for user %s", asset.id, self.user_id)
         return (await serialize_assets(self.db, self.user_id, [asset]))[0]
 
-    async def update_asset(self, asset_id: UUID, asset_update: AssetUpdate) -> AssetResponse:
+    async def update_asset(
+        self, asset_id: UUID, asset_update: AssetUpdate
+    ) -> AssetResponse:
         asset = await self._get_asset_record(asset_id)
 
         updated = False
@@ -170,12 +180,9 @@ class AssetService:
             )
 
         asset = await self._get_asset_record(asset_id)
-        file_path = Path(asset.storage_path)
-        if not file_path.exists() or not file_path.is_file():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Asset file missing on disk",
-            )
+        file_path = _require_user_storage_path(
+            asset.storage_path, self.user_id, must_exist=True
+        )
 
         previous_size = asset.size_bytes or 0
 
@@ -196,18 +203,69 @@ class AssetService:
             filename=asset.filename,
         )
 
-        await apply_storage_delta(self.db, self.user_id, asset.size_bytes - previous_size)
+        await apply_storage_delta(
+            self.db, self.user_id, asset.size_bytes - previous_size
+        )
         await self.db.commit()
         await self.db.refresh(asset)
         return (await serialize_assets(self.db, self.user_id, [asset]))[0]
 
+    async def optimize_asset(self, asset_id: UUID) -> AssetResponse:
+        asset = await self._get_asset_record(asset_id)
+
+        if asset.asset_type not in {"video", "audio"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only video and audio assets can be optimized",
+            )
+
+        try:
+            file_path = _require_user_storage_path(
+                asset.storage_path, self.user_id, must_exist=True
+            )
+        except HTTPException as exc:
+            asset.optimization_status = "failed"
+            asset.optimization_error = str(exc.detail)
+            asset.optimization_updated_at = datetime.now(timezone.utc)
+            await self.db.commit()
+            await self.db.refresh(asset)
+            raise
+
+        strategy = "copy" if asset.compatible_for_copy else "transcode"
+        next_status = "ready" if strategy == "copy" else "queued"
+
+        asset.optimization_strategy = strategy
+        asset.optimization_status = next_status
+        asset.optimized_storage_path = str(file_path) if strategy == "copy" else None
+        asset.optimization_error = None
+        asset.optimization_updated_at = datetime.now(timezone.utc)
+
+        self.db.add(
+            UserActivityLog(
+                user_id=self.user_id,
+                activity_type="asset_optimization_requested",
+                details={
+                    "asset_id": str(asset.id),
+                    "strategy": strategy,
+                    "status": next_status,
+                },
+            )
+        )
+
+        await self.db.commit()
+        await self.db.refresh(asset)
+        logger.info(
+            "Optimization requested for asset %s (user=%s, strategy=%s, status=%s)",
+            asset.id,
+            self.user_id,
+            strategy,
+            next_status,
+        )
+        return (await serialize_assets(self.db, self.user_id, [asset]))[0]
+
     async def create_download_token(self, asset_id: UUID) -> tuple[str, datetime]:
         asset = await self._get_asset_record(asset_id)
-        if not Path(asset.storage_path).exists():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Asset file missing on disk",
-            )
+        _require_user_storage_path(asset.storage_path, self.user_id, must_exist=True)
 
         token, expires_at = generate_download_token(asset.id, self.user_id)
         return token, datetime.fromtimestamp(expires_at, tz=timezone.utc)
@@ -224,7 +282,11 @@ class AssetService:
             streams=stream_usage.get(asset.id, []),
         )
 
-        if (usage_summary.playlists or usage_summary.collections or usage_summary.streams) and not force:
+        if (
+            usage_summary.playlists
+            or usage_summary.collections
+            or usage_summary.streams
+        ) and not force:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
@@ -235,29 +297,41 @@ class AssetService:
             )
 
         collection_rows = await self.db.execute(
-            select(CollectionItem.collection_id).where(CollectionItem.asset_id == asset_id)
+            select(CollectionItem.collection_id).where(
+                CollectionItem.asset_id == asset_id
+            )
         )
         impacted_collections = [row[0] for row in collection_rows if row[0]]
 
         size_delta = -(asset.size_bytes or 0)
-        self._delete_asset_files(asset)
+        try:
+            await self.db.execute(delete(Asset).where(Asset.id == asset_id))
+            await apply_storage_delta(self.db, self.user_id, size_delta)
+            await audit_collection_quorum(self.db, impacted_collections, None)
 
-        await self.db.execute(delete(Asset).where(Asset.id == asset_id))
-        await apply_storage_delta(self.db, self.user_id, size_delta)
-        await audit_collection_quorum(self.db, impacted_collections, None)
-
-        self.db.add(
-            UserActivityLog(
-                user_id=self.user_id,
-                activity_type="asset_deleted",
-                details={
-                    "asset_id": str(asset_id),
-                    "force": force,
-                    "usage": usage_summary.model_dump(mode="json"),
-                },
+            self.db.add(
+                UserActivityLog(
+                    user_id=self.user_id,
+                    activity_type="asset_deleted",
+                    details={
+                        "asset_id": str(asset_id),
+                        "force": force,
+                        "usage": usage_summary.model_dump(mode="json"),
+                    },
+                )
             )
-        )
-        await self.db.commit()
+
+            await self.db.commit()
+        except Exception:
+            await self.db.rollback()
+            raise
+
+        try:
+            self._delete_asset_files(asset)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning(
+                "Asset %s deleted in DB but cleanup failed: %s", asset_id, exc
+            )
         logger.info("Deleted asset %s", asset_id)
 
     async def _get_asset_record(self, asset_id: UUID) -> Asset:
@@ -272,7 +346,18 @@ class AssetService:
         return asset
 
     def _delete_asset_files(self, asset: Asset) -> None:
-        file_path = Path(asset.storage_path)
+        try:
+            file_path = _require_user_storage_path(
+                asset.storage_path, self.user_id, must_exist=False
+            )
+        except HTTPException as exc:
+            logger.warning(
+                "Skipping file deletion for asset %s due to invalid storage_path: %s",
+                asset.id,
+                exc.detail,
+            )
+            return
+
         info_candidates = set()
         if file_path.suffix:
             info_candidates.add(file_path.with_suffix(file_path.suffix + ".info"))
@@ -288,7 +373,9 @@ class AssetService:
                     info_path.unlink()
                     logger.info("Deleted companion info file: %s", info_path)
                 except Exception as info_err:  # pylint: disable=broad-except
-                    logger.warning("Failed to delete info file %s: %s", info_path, info_err)
+                    logger.warning(
+                        "Failed to delete info file %s: %s", info_path, info_err
+                    )
 
         try:
             thumbnail_url = extract_thumbnail_url(asset)
@@ -300,7 +387,9 @@ class AssetService:
                     thumbnail_path.unlink()
                     logger.info("Deleted thumbnail: %s", thumbnail_path)
         except Exception as thumb_err:  # pylint: disable=broad-except
-            logger.warning("Failed to delete thumbnail for asset %s: %s", asset.id, thumb_err)
+            logger.warning(
+                "Failed to delete thumbnail for asset %s: %s", asset.id, thumb_err
+            )
 
 
 class DownloadTokenService:
@@ -341,14 +430,39 @@ class AssetDownloadService:
         return asset
 
     @staticmethod
-    def ensure_file_exists(asset: Asset) -> Path:
-        file_path = Path(asset.storage_path)
-        if not file_path.exists() or not file_path.is_file():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Asset file missing on disk",
-            )
+    def ensure_file_exists(asset: Asset, user_id: UUID) -> Path:
+        file_path = _require_user_storage_path(
+            asset.storage_path, user_id, must_exist=True
+        )
         return file_path
+
+
+def _require_user_storage_path(
+    raw_path: str, user_id: UUID, *, must_exist: bool
+) -> Path:
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="storage_path is required",
+        )
+
+    candidate = Path(raw_path).expanduser().resolve(strict=False)
+    upload_root = Path(settings.upload_dir).resolve(strict=False)
+    expected_root = (upload_root / str(user_id)).resolve(strict=False)
+
+    if candidate != expected_root and expected_root not in candidate.parents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Asset storage_path must be within the user's upload directory",
+        )
+
+    if must_exist and (not candidate.exists() or not candidate.is_file()):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset file missing on disk",
+        )
+
+    return candidate
 
 
 __all__ = [

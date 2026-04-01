@@ -47,6 +47,12 @@
     "hoursAndMinutes": "{hours}h {minutes}m",
     "unlimited": "Unlimited"
   },
+  "errors": {
+    "title": "Some dashboard data is unavailable",
+    "quotaDescription": "Plan and quota information could not be loaded. Limit indicators may be outdated until the API recovers.",
+    "streamsDescription": "Streams or assets could not be loaded. Widgets and usage values below may be incomplete.",
+    "retry": "Try again"
+  },
   "metadata": {
     "title": "Dashboard",
     "description": "Monitor usage, manage streams, and keep your channel online."

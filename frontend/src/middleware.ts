@@ -1,13 +1,32 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 
 import { defaultLocale, locales } from '@/i18n/config'
+import { getSupabaseConfig } from '@/lib/supabase/config'
 
 const PUBLIC_PATHS = new Set(['/', '/login'])
 const COOKIE_NAME = 'NEXT_LOCALE'
 const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
 
-export function middleware(request: NextRequest) {
+function applyLocale(response: NextResponse, resolvedLocale: string) {
+  response.headers.set('x-next-intl-locale', resolvedLocale)
+  response.cookies.set(COOKIE_NAME, resolvedLocale, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 31536000,
+  })
+  return response
+}
+
+function redirectToLogin(request: NextRequest, resolvedLocale: string) {
+  const loginUrl = request.nextUrl.clone()
+  loginUrl.pathname = '/login'
+  loginUrl.searchParams.set('redirect', request.nextUrl.pathname)
+  return applyLocale(NextResponse.redirect(loginUrl), resolvedLocale)
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Get locale from cookie or use default
@@ -16,18 +35,7 @@ export function middleware(request: NextRequest) {
     ? (localeFromCookie as typeof locales[number])
     : defaultLocale
 
-  // Create response
-  const response = NextResponse.next()
-  
-  // Set locale header for next-intl
-  response.headers.set('x-next-intl-locale', resolvedLocale)
-  
-  // Update cookie
-  response.cookies.set(COOKIE_NAME, resolvedLocale, {
-    path: '/',
-    sameSite: 'lax',
-    maxAge: 31536000, // 1 year
-  })
+  let response = applyLocale(NextResponse.next(), resolvedLocale)
 
   // Skip auth check for public paths or dev bypass
   if (DEV_BYPASS || PUBLIC_PATHS.has(pathname)) {
@@ -37,24 +45,39 @@ export function middleware(request: NextRequest) {
   // Check authentication for dashboard routes
   const isDashboardRoute = pathname.startsWith('/dashboard') || pathname.startsWith('/admin')
 
-  if (isDashboardRoute) {
-    const sessionCookie = request.cookies.get('sb-session')?.value
+  if (!isDashboardRoute) {
+    return response
+  }
 
-    if (sessionCookie !== '1') {
-      const loginUrl = request.nextUrl.clone()
-      loginUrl.pathname = '/login'
-      loginUrl.searchParams.set('redirect', pathname)
+  const { supabaseUrl, supabaseKey } = getSupabaseConfig()
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
+      },
+      setAll(cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) {
+        cookiesToSet.forEach(({ name, value }) => {
+          request.cookies.set(name, value)
+        })
 
-      const redirectResponse = NextResponse.redirect(loginUrl)
-      redirectResponse.headers.set('x-next-intl-locale', resolvedLocale)
-      redirectResponse.cookies.set(COOKIE_NAME, resolvedLocale, {
-        path: '/',
-        sameSite: 'lax',
-        maxAge: 31536000,
-      })
+        response = applyLocale(NextResponse.next(), resolvedLocale)
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options)
+        })
+      },
+    },
+  })
 
-      return redirectResponse
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return redirectToLogin(request, resolvedLocale)
     }
+  } catch {
+    return redirectToLogin(request, resolvedLocale)
   }
 
   return response

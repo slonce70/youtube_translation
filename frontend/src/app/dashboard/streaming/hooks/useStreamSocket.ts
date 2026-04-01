@@ -1,47 +1,102 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Stream } from '@/lib/types'
 import { api } from '@/lib/api'
 
 const RECONNECT_DELAY = 3000
+const API_PORT_FALLBACK = '8000'
+
+function resolveWebSocketUrl(): string | null {
+  if (typeof window === 'undefined') return null
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const configuredApiUrl = (process.env.NEXT_PUBLIC_API_URL || '').trim()
+
+  if (/^https?:\/\//i.test(configuredApiUrl)) {
+    try {
+      const apiUrl = new URL(configuredApiUrl)
+      apiUrl.protocol = protocol
+      apiUrl.pathname = '/api/streams/ws/status'
+      apiUrl.search = ''
+      apiUrl.hash = ''
+      return apiUrl.toString()
+    } catch (error) {
+      console.warn('[ws] Failed to parse NEXT_PUBLIC_API_URL, falling back to host-based URL', error)
+    }
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    const hostname = window.location.hostname
+    const apiPort = API_PORT_FALLBACK
+    return `${protocol}//${hostname}:${apiPort}/api/streams/ws/status`
+  }
+
+  return `${protocol}//${window.location.host}/api/streams/ws/status`
+}
 
 export function useStreamSocket(userId?: string) {
   const queryClient = useQueryClient()
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const reconnectEnabledRef = useRef(false)
+  const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
     if (!userId) return
     if (process.env.NODE_ENV === 'test') return
 
-    const connect = async () => {
-      if (typeof window === 'undefined') return
+    reconnectEnabledRef.current = true
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const host = window.location.host
+    const clearReconnectTimeout = () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
+    }
+
+    const scheduleReconnect = () => {
+      if (!reconnectEnabledRef.current) {
+        return
+      }
+
+      clearReconnectTimeout()
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (!reconnectEnabledRef.current) {
+          return
+        }
+        void connect()
+      }, RECONNECT_DELAY)
+    }
+
+    const connect = async () => {
+      if (typeof window === 'undefined' || !reconnectEnabledRef.current) return
       let wsToken: string | null = null
       try {
         const response = await api.streams.createWsToken()
         wsToken = response.token
       } catch (error) {
         console.warn('[ws] Failed to fetch WebSocket token', error)
-        reconnectTimeoutRef.current = setTimeout(() => {
-          void connect()
-        }, RECONNECT_DELAY)
+        scheduleReconnect()
         return
       }
 
-      // Adjust path if running behind a proxy or directly
-      const wsUrl = `${protocol}//${host}/api/streams/ws/status`
+      const wsUrl = resolveWebSocketUrl()
+      if (!wsUrl) {
+        return
+      }
 
       const ws = new WebSocket(wsUrl)
+      socketRef.current = ws
 
       ws.onopen = () => {
         console.log('Stream WebSocket connected')
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current)
-          reconnectTimeoutRef.current = null
+        if (!reconnectEnabledRef.current) {
+          ws.close()
+          return
         }
+
+        clearReconnectTimeout()
+        setIsConnected(true)
         if (wsToken) {
           ws.send(JSON.stringify({ type: 'auth', token: wsToken }))
         }
@@ -87,32 +142,29 @@ export function useStreamSocket(userId?: string) {
 
       ws.onclose = () => {
         console.log('Stream WebSocket disconnected')
+        setIsConnected(false)
         socketRef.current = null
-        // Attempt reconnect
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect()
-        }, RECONNECT_DELAY)
+        scheduleReconnect()
       }
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error)
         ws.close()
       }
-
-      socketRef.current = ws
     }
 
     void connect()
 
     return () => {
+      reconnectEnabledRef.current = false
+      setIsConnected(false)
+      clearReconnectTimeout()
       if (socketRef.current) {
         socketRef.current.close()
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
+        socketRef.current = null
       }
     }
   }, [userId, queryClient])
 
-  return socketRef.current?.readyState === WebSocket.OPEN
+  return isConnected
 }

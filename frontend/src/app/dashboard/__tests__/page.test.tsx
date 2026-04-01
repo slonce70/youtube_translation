@@ -10,9 +10,6 @@ import type { SubscriptionTierKey } from '@/lib/types'
 
 jest.mock('@/lib/api', () => ({
   api: {
-    metrics: {
-      get: jest.fn(),
-    },
     quota: {
       get: jest.fn(),
     },
@@ -24,6 +21,10 @@ jest.mock('@/lib/api', () => ({
       list: jest.fn(),
     },
   },
+}))
+
+jest.mock('../streaming/hooks/useStreamSocket', () => ({
+  useStreamSocket: () => false,
 }))
 
 const { api } = jest.requireMock('@/lib/api')
@@ -85,11 +86,10 @@ describe('DashboardPage', () => {
   })
 
   it('renders without crashing and requests dashboard data', async () => {
-    api.metrics.get.mockResolvedValue(null)
-
     renderWithProviders(<DashboardPage />)
 
-    await waitFor(() => expect(api.metrics.get).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(api.streams.list).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(api.assets.list).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.getByText('Dashboard')).toBeInTheDocument())
   })
 })
