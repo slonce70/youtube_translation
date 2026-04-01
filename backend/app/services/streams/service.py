@@ -252,18 +252,9 @@ class StreamService:
         if schedule_mode == "schedule":
             from .control import StreamControlService  # local import to avoid cycle
 
-            runtime_status = await StreamControlService(
+            await StreamControlService(
                 self.db, self.user_id
-            ).get_stream_status(stream_id)
-            if runtime_status.is_running or runtime_status.status in {
-                "running",
-                "starting",
-                "stopping",
-            }:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot schedule start while stream is running",
-                )
+            ).ensure_schedule_update_allowed(stream)
 
         if schedule_mode == "schedule":
             stream.scheduled_start_enabled = True

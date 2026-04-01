@@ -93,6 +93,22 @@ class StreamControlService:
         """Hot swap is currently available only for in-process manager runtime."""
         return not (systemd_enabled() or supervisor_enabled())
 
+    async def ensure_schedule_update_allowed(self, stream: Stream) -> None:
+        """Fail closed if managed runtime might still own the stream."""
+        if systemd_enabled():
+            await self._ensure_systemd_schedule_update_allowed(stream)
+            return
+
+        if supervisor_enabled():
+            await self._ensure_supervisor_schedule_update_allowed(stream)
+            return
+
+        if stream.status in {"running", "starting", "stopping"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot schedule start while stream is running",
+            )
+
     async def evaluate_quality(self, stream_id: UUID) -> StreamQualityResponse:
         stream = await load_stream_with_relations(self.db, self.user_id, stream_id)
         if not stream:
@@ -904,6 +920,60 @@ class StreamControlService:
                 status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found"
             )
         return stream
+
+    async def _ensure_supervisor_schedule_update_allowed(self, stream: Stream) -> None:
+        info = await supervisor_program_status(stream.id)
+        raw_state = str(info.get("state") or "").lower()
+
+        if raw_state in {"running", "starting", "stopping"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot schedule start while stream is running",
+            )
+
+        if raw_state in {"supervisor_unavailable", "permission_denied", "unknown"}:
+            if self._stream_may_still_be_live(stream):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Cannot schedule start while runtime liveness cannot be "
+                        "verified"
+                    ),
+                )
+
+    async def _ensure_systemd_schedule_update_allowed(self, stream: Stream) -> None:
+        info = await systemd_unit_status(stream.id)
+        active_state = str(info.get("ActiveState") or "").lower()
+
+        if active_state in {"active", "activating", "deactivating"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot schedule start while stream is running",
+            )
+
+        if not active_state and self._stream_may_still_be_live(stream):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot schedule start while runtime liveness cannot be verified",
+            )
+
+    def _stream_may_still_be_live(self, stream: Stream) -> bool:
+        heartbeat_payload = read_runtime_heartbeat(stream.id)
+        if heartbeat_payload is not None:
+            return True
+
+        started_at = _aware(stream.started_at)
+        stopped_at = _aware(stream.stopped_at)
+        started_without_newer_stop = started_at is not None and (
+            stopped_at is None or started_at > stopped_at
+        )
+
+        return bool(
+            started_without_newer_stop
+            or stream.pid is not None
+            or runtime_lease_is_active(stream)
+            or stream.runtime_owner_id
+        )
 
     @staticmethod
     def _clear_start_schedule(stream: Stream) -> None:
