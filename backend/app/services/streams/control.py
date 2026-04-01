@@ -55,6 +55,7 @@ from .helpers import (
     extract_stream_assets,
     load_stream_with_relations,
     prepare_stream_launch,
+    validate_stream_launch_prerequisites,
 )
 
 
@@ -135,6 +136,13 @@ class StreamControlService:
             )
 
         if systemd_enabled():
+            _, _, log_file = await validate_stream_launch_prerequisites(
+                self.db,
+                self.user_id,
+                stream,
+                quota_evaluator=enforcer,
+                settings_obj=self.settings,
+            )
             if await systemd_is_active(stream_id):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -150,6 +158,7 @@ class StreamControlService:
             stream.started_at = _utcnow()
             stream.stopped_at = None
             stream.error_message = None
+            stream.log_path = str(log_file)
             if reset_restart_policy:
                 clear_stream_runtime_restart_state(stream)
             else:
@@ -161,6 +170,13 @@ class StreamControlService:
             return self._status_payload(stream, True, usage=usage)
 
         if supervisor_enabled():
+            _, _, log_file = await validate_stream_launch_prerequisites(
+                self.db,
+                self.user_id,
+                stream,
+                quota_evaluator=enforcer,
+                settings_obj=self.settings,
+            )
             info = await supervisor_program_status(stream_id)
             if info.get("state") == "RUNNING":
                 raise HTTPException(
@@ -177,6 +193,7 @@ class StreamControlService:
             stream.started_at = _utcnow()
             stream.stopped_at = None
             stream.error_message = None
+            stream.log_path = str(log_file)
             if reset_restart_policy:
                 clear_stream_runtime_restart_state(stream)
             else:
