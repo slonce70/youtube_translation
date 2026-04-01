@@ -11,7 +11,8 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "close": "Close",
-    "save": "Save"
+    "save": "Save",
+    "retry": "Try again"
   },
   "theme": {
     "toggle": "Toggle dark mode",

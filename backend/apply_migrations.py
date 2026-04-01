@@ -48,6 +48,9 @@ MIGRATIONS = [
     'migrations/025_user_profile_timezone.sql',
     'migrations/026_collection_items_updated_at.sql',
     'migrations/027_stream_status_constraint.sql',
+    'migrations/028_stream_scheduler_v1.sql',
+    'migrations/029_asset_optimization_status.sql',
+    'migrations/030_stream_runtime_leases.sql',
 ]
 
 

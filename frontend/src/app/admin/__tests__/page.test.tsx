@@ -37,9 +37,18 @@ function renderAdmin() {
 describe('AdminDashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    api.admin.users.list.mockResolvedValue([])
-    api.admin.streams.listAll.mockResolvedValue([])
-    api.admin.alerts.list.mockResolvedValue([])
+    api.admin.users.list.mockResolvedValue({
+      items: [],
+      summary: { total: 0, active: 0, suspended: 0, paid: 0 },
+    })
+    api.admin.streams.listAll.mockResolvedValue({
+      items: [],
+      summary: { total: 0, running: 0, errors: 0, stopped: 0 },
+    })
+    api.admin.alerts.list.mockResolvedValue({
+      items: [],
+      summary: { total: 0, unresolved: 0, critical: 0, resolved: 0 },
+    })
   })
 
   it('loads admin data without crashing', async () => {

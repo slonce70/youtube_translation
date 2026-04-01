@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { IBM_Plex_Serif, Inter, Manrope } from 'next/font/google'
 import { setRequestLocale, getLocale } from 'next-intl/server'
 import './globals.css'
 import '@uppy/core/css/style.css'
@@ -14,6 +14,15 @@ import { StructuredData } from './structured-data'
 export const dynamic = 'force-dynamic'
 
 const inter = Inter({ subsets: ['latin', 'cyrillic'] })
+const ibmPlexSerif = IBM_Plex_Serif({
+  subsets: ['latin', 'cyrillic'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-display',
+})
+const manrope = Manrope({
+  subsets: ['latin', 'cyrillic'],
+  variable: '--font-tech',
+})
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = (await getLocale()) as Locale
@@ -50,7 +59,7 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className={inter.className} suppressHydrationWarning>
+      <body className={`${inter.className} ${ibmPlexSerif.variable} ${manrope.variable}`} suppressHydrationWarning>
         <Providers locale={locale} messages={messages}>
           {children}
           <Toaster />

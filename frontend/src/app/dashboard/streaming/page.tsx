@@ -164,11 +164,13 @@ export default function StreamingPage() {
     () => (streams ?? []).filter((stream) => stream.status === 'running'),
     [streams],
   )
-  const errorStreams = useMemo(
-    () => (streams ?? []).filter((stream) => stream.status === 'error'),
+  const scheduledRetryStreams = useMemo(
+    () =>
+      (streams ?? []).filter(
+        (stream) => stream.runtime_restart?.enabled && stream.runtime_restart?.state === 'scheduled',
+      ),
     [streams],
   )
-
   const formatLimitValue = (value?: number | null) => (value == null ? '∞' : value.toString())
   const destinationsLimit = quota?.destinations?.limit ?? null
   const concurrentStreamsLimit = quota?.streams?.limit ?? null
@@ -526,13 +528,11 @@ export default function StreamingPage() {
             isDeletePending={deleteStreamMutation.isPending}
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-success-600">
-                    {streams?.filter((s) => s.status === 'running').length || 0}
-                  </p>
+                  <p className="text-3xl font-bold text-success-600">{runningStreams.length}</p>
                   <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                     {tStreaming('streams.stats.active')}
                   </p>
@@ -558,11 +558,22 @@ export default function StreamingPage() {
                     {quotaLoading ? (
                       <Loader2 className="w-5 h-5 animate-spin mx-auto" />
                     ) : (
-                      `${streams?.filter((s) => s.status === 'running').length || 0}/${formatLimitValue(concurrentStreamsLimit)}`
+                      `${runningStreams.length}/${formatLimitValue(concurrentStreamsLimit)}`
                     )}
                   </p>
                   <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                     {tStreaming('streams.stats.concurrent')}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-amber-600">{scheduledRetryStreams.length}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    {tStreaming('streams.stats.autoRetry')}
                   </p>
                 </div>
               </CardContent>

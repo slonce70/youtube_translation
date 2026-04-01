@@ -147,6 +147,13 @@ async def revalidate_asset(asset_id: UUID, user_deps: tuple = Depends(require_us
     return await service.revalidate_asset(asset_id)
 
 
+@router.post("/{asset_id}/optimize", response_model=AssetResponse)
+async def optimize_asset(asset_id: UUID, user_deps: tuple = Depends(require_user)):
+    db, user_id = user_deps
+    service = AssetService(db, user_id)
+    return await service.optimize_asset(asset_id)
+
+
 @router.post("/{asset_id}/download-link", response_model=AssetDownloadLinkResponse)
 async def create_download_link(
     asset_id: UUID,
@@ -165,7 +172,7 @@ async def download_asset_by_token(token: str, db: AsyncSession = Depends(get_db)
     """Serve asset file when provided with a signed token."""
     asset_id, user_id, _ = DownloadTokenService.parse_token(token)
     asset = await AssetDownloadService.resolve_asset(db, asset_id, user_id)
-    file_path = AssetDownloadService.ensure_file_exists(asset)
+    file_path = AssetDownloadService.ensure_file_exists(asset, user_id)
     return FileResponse(file_path, media_type="application/octet-stream", filename=asset.filename)
 
 

@@ -1,13 +1,13 @@
-fastapi==0.115.0
+fastapi==0.128.0
 uvicorn[standard]==0.32.0
 pydantic==2.9.2
 pydantic-settings==2.6.0
-python-multipart==0.0.12
+python-multipart==0.0.18
 aiofiles==24.1.0
 psutil==6.1.0
 httpx==0.27.2
 orjson==3.10.7
-python-jose[cryptography]==3.3.0
+python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
 supabase==2.9.0
 PyJWT==2.9.0
@@ -18,7 +18,7 @@ asyncpg==0.29.0
 alembic==1.14.0
 
 # Security/Encryption
-cryptography==43.0.0
+cryptography==44.0.1
 
 # Monitoring (optional)
 sentry-sdk[fastapi]==2.17.0
@@ -27,6 +27,7 @@ sentry-sdk[fastapi]==2.17.0
 python-json-logger==2.0.7
 starlette-csrf==1.4.5
 supervisor==4.2.5
+setuptools<81
 redis==5.0.6
 
 # Testing

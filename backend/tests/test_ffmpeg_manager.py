@@ -216,7 +216,7 @@ class TestFFmpegStreamManager:
         assert manager._create_system_alert.await_count == 1
 
     def test_build_command_includes_bitrate_limits_for_transcoding(self, tmp_path, monkeypatch):
-        """Ensure explicit bitrate flags are present when transcoding for multiple destinations."""
+        """Ensure explicit bitrate flags are present when source media is not copy-compatible."""
         manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
 
         video_playlist = tmp_path / "video.txt"
@@ -233,8 +233,8 @@ class TestFFmpegStreamManager:
             audio_loop=True,
             needs_video_placeholder=False,
             needs_audio_placeholder=False,
-            video_copy_compatible=True,
-            audio_copy_compatible=True,
+            video_copy_compatible=False,
+            audio_copy_compatible=False,
             video_assets=[],
             audio_assets=[],
         )
@@ -292,6 +292,58 @@ class TestFFmpegStreamManager:
             "rtmp://a.youtube.com/live/primary",
             "rtmp://b.youtube.com/live/backup",
         ]
+
+    def test_build_command_keeps_copy_mode_for_multi_destination_when_compatible(self, tmp_path):
+        """Compatible assets should stay in copy mode even when tee muxer fans out to multiple outputs."""
+        manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
+
+        video_playlist = tmp_path / "video.txt"
+        audio_playlist = tmp_path / "audio.txt"
+        video_playlist.write_text("ffconcat version 1.0\n")
+        audio_playlist.write_text("ffconcat version 1.0\n")
+
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=video_playlist,
+            audio_playlist=audio_playlist,
+            mix_mode="mixed",
+            video_loop=True,
+            audio_loop=True,
+            needs_video_placeholder=False,
+            needs_audio_placeholder=False,
+            video_copy_compatible=True,
+            audio_copy_compatible=True,
+            video_assets=[],
+            audio_assets=[],
+        )
+
+        destinations = [
+            {"url": "rtmp://a.youtube.com/live", "key": "primary"},
+            {"url": "rtmp://b.youtube.com/live", "key": "backup"},
+        ]
+
+        plan = manager._build_command(playlists, destinations)
+        cmd = plan.command
+
+        assert plan.copy_video is True
+        assert plan.copy_audio is True
+        assert plan.multi_destination is True
+        assert "-c:v" in cmd and cmd[cmd.index("-c:v") + 1] == "copy"
+        assert "-c:a" in cmd and cmd[cmd.index("-c:a") + 1] == "copy"
+        assert "-f" in cmd and "tee" in cmd
+        assert "-b:v" not in cmd
+        assert "-b:a" not in cmd
+        assert plan.video_bitrate_kbps is None
+        assert plan.audio_bitrate_kbps is None
+
+    def test_init_defers_missing_configured_ffmpeg_path(self, monkeypatch):
+        """Implicit env/config paths should not crash manager initialization."""
+        monkeypatch.setattr(settings, "ffmpeg_bin", "/nonexistent/custom/ffmpeg")
+        monkeypatch.setattr("app.streaming.ffmpeg_manager.shutil.which", lambda _value: None)
+
+        manager = FFmpegStreamManager()
+
+        assert manager.ffmpeg_bin == "ffmpeg"
 
     def test_build_command_audio_only_injects_video_placeholder(self, tmp_path, monkeypatch):
         """Audio-only streams should generate a color input for video while reusing audio playlist."""
@@ -507,7 +559,7 @@ class TestFFmpegStreamManager:
         assert plan is not None
         assert plan["copy_video"] is False
         assert plan["copy_audio"] is False
-        assert plan["destination_uris"] == ["rtmp://youtube.com/live/stream"]
+        assert plan["destination_uris"] == ["rtmp://youtube.com/live/<redacted>"]
         assert plan["multi_destination"] is False
         assert plan["uses_video_placeholder"] is False
         assert plan["uses_audio_placeholder"] is False

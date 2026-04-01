@@ -6,7 +6,8 @@
     "rateLimited": "Too many requests. Please try again shortly.",
     "passwordTooWeak": "Password must meet the minimum complexity requirements.",
     "missingEmail": "Email address is required to perform this action.",
-    "currentPasswordIncorrect": "Current password is incorrect."
+    "currentPasswordIncorrect": "Current password is incorrect.",
+    "networkUnavailable": "Authentication service is unreachable. Check the Supabase URL or enable DEV auth for local development."
   },
   "boundary": {
     "title": "Something went wrong",

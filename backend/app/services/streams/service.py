@@ -18,6 +18,12 @@ from app.core.collections import (
     validate_collection_assets,
 )
 from app.core.config import settings as default_settings
+from app.core.stream_schedule import (
+    compute_schedule_stop_time,
+    normalize_schedule_repeat,
+    resolve_schedule_timezone,
+    resolve_weekly_weekdays,
+)
 from app.models.database import (
     Asset,
     CollectionItem,
@@ -27,6 +33,7 @@ from app.models.database import (
     Stream,
     StreamAsset,
     StreamDestination,
+    UserProfile,
 )
 from app.schemas.api import (
     StreamCreate,
@@ -142,10 +149,8 @@ class StreamService:
             )
 
         source_type = "playlist" if playlist else "assets"
-        scheduled_start_enabled = stream_data.schedule_mode == "schedule"
-        scheduled_start_time = stream_data.schedule_start_at if scheduled_start_enabled else None
-        scheduled_stop_time = stream_data.schedule_stop_at
-        initial_status = "scheduled" if scheduled_start_enabled else "stopped"
+        schedule_config = await self._build_schedule_config(stream_data)
+        initial_status = "scheduled" if schedule_config["scheduled_start_enabled"] else "stopped"
 
         stream = Stream(
             user_id=self.user_id,
@@ -157,9 +162,14 @@ class StreamService:
             source_type=source_type,
             name=stream_data.name,
             status=initial_status,
-            scheduled_start_enabled=scheduled_start_enabled,
-            scheduled_start_time=scheduled_start_time,
-            scheduled_stop_time=scheduled_stop_time,
+            scheduled_start_enabled=schedule_config["scheduled_start_enabled"],
+            scheduled_start_time=schedule_config["scheduled_start_time"],
+            schedule_timezone=schedule_config["schedule_timezone"],
+            schedule_repeat=schedule_config["schedule_repeat"],
+            schedule_weekdays=schedule_config["schedule_weekdays"],
+            schedule_window_end_time=schedule_config["schedule_window_end_time"],
+            schedule_stop_after_seconds=schedule_config["schedule_stop_after_seconds"],
+            scheduled_stop_time=schedule_config["scheduled_stop_time"],
         )
 
         self.db.add(stream)
@@ -221,6 +231,7 @@ class StreamService:
     async def update_stream_schedule(self, stream_id: UUID, payload: StreamScheduleUpdate) -> Stream:
         stream = await self._get_stream_basic(stream_id)
         schedule_mode = (payload.schedule_mode or "now").lower()
+        schedule_config = await self._build_schedule_config(payload)
 
         if schedule_mode == "schedule" and stream.status in {"running", "starting", "stopping"}:
             raise HTTPException(
@@ -230,19 +241,29 @@ class StreamService:
 
         if schedule_mode == "schedule":
             stream.scheduled_start_enabled = True
-            stream.scheduled_start_time = payload.schedule_start_at
+            stream.scheduled_start_time = schedule_config["scheduled_start_time"]
             stream.scheduled_start_attempted_at = None
+            stream.schedule_timezone = schedule_config["schedule_timezone"]
+            stream.schedule_repeat = schedule_config["schedule_repeat"]
+            stream.schedule_weekdays = schedule_config["schedule_weekdays"]
+            stream.schedule_window_end_time = schedule_config["schedule_window_end_time"]
+            stream.schedule_stop_after_seconds = schedule_config["schedule_stop_after_seconds"]
             if stream.status in {"stopped", "error", "scheduled"}:
                 stream.status = "scheduled"
         else:
             stream.scheduled_start_enabled = False
             stream.scheduled_start_time = None
             stream.scheduled_start_attempted_at = None
+            stream.schedule_timezone = None
+            stream.schedule_repeat = "none"
+            stream.schedule_weekdays = None
+            stream.schedule_window_end_time = None
+            stream.schedule_stop_after_seconds = None
             if stream.status == "scheduled":
                 stream.status = "stopped"
 
-        if payload.schedule_stop_at:
-            stream.scheduled_stop_time = payload.schedule_stop_at
+        if schedule_config["scheduled_stop_time"]:
+            stream.scheduled_stop_time = schedule_config["scheduled_stop_time"]
             stream.scheduled_stop_attempted_at = None
         else:
             stream.scheduled_stop_time = None
@@ -258,6 +279,49 @@ class StreamService:
             )
 
         return updated_stream
+
+    async def _build_schedule_config(self, payload: StreamCreate | StreamScheduleUpdate) -> Dict[str, Any]:
+        schedule_mode = (payload.schedule_mode or "now").lower()
+        scheduled_start_enabled = schedule_mode == "schedule"
+        schedule_repeat = normalize_schedule_repeat(getattr(payload, "schedule_repeat", "none"))
+        explicit_timezone = getattr(payload, "schedule_timezone", None)
+        user_timezone = await self._get_user_timezone() if scheduled_start_enabled and schedule_repeat != "none" else None
+        schedule_timezone = (
+            resolve_schedule_timezone(explicit_timezone, user_timezone)
+            if scheduled_start_enabled and (schedule_repeat != "none" or explicit_timezone or user_timezone)
+            else None
+        )
+        scheduled_start_time = getattr(payload, "schedule_start_at", None) if scheduled_start_enabled else None
+        schedule_weekdays = (
+            resolve_weekly_weekdays(scheduled_start_time, schedule_timezone, getattr(payload, "schedule_weekdays", None))
+            if scheduled_start_enabled and schedule_repeat == "weekly" and scheduled_start_time is not None
+            else None
+        )
+        scheduled_stop_time = compute_schedule_stop_time(
+            scheduled_start_time,
+            explicit_stop_at=getattr(payload, "schedule_stop_at", None),
+            schedule_timezone=schedule_timezone,
+            repeat=schedule_repeat,
+            window_end_time=getattr(payload, "schedule_window_end_time", None),
+            stop_after_seconds=getattr(payload, "schedule_stop_after_seconds", None),
+        )
+
+        return {
+            "scheduled_start_enabled": scheduled_start_enabled,
+            "scheduled_start_time": scheduled_start_time,
+            "schedule_timezone": schedule_timezone,
+            "schedule_repeat": schedule_repeat if scheduled_start_enabled else "none",
+            "schedule_weekdays": schedule_weekdays,
+            "schedule_window_end_time": getattr(payload, "schedule_window_end_time", None) if scheduled_start_enabled else None,
+            "schedule_stop_after_seconds": getattr(payload, "schedule_stop_after_seconds", None) if scheduled_start_enabled else None,
+            "scheduled_stop_time": scheduled_stop_time,
+        }
+
+    async def _get_user_timezone(self) -> Optional[str]:
+        result = await self.db.execute(
+            select(UserProfile.timezone).where(UserProfile.user_id == self.user_id)
+        )
+        return result.scalar_one_or_none()
 
     async def live_update_stream(
         self,
@@ -301,8 +365,15 @@ class StreamService:
             loop_enabled = any(item.loop_mode != "once" for item in normalized_items)
             shuffle_enabled = any(item.loop_mode == "shuffle" for item in normalized_items)
 
+        control = control_service
+        if control is None:
+            from .control import StreamControlService  # local import to avoid cycle
+
+            control = StreamControlService(self.db, self.user_id)
+
         runtime_assets: List[Dict[str, Any]] = []
-        should_hot_swap = not update.restart and stream.status == "running"
+        wants_live_apply = not update.restart and stream.status == "running"
+        should_hot_swap = wants_live_apply and control.supports_hot_swap()
         if should_hot_swap:
             items_with_assets = await self._fetch_collection_items_with_assets(target_collection.id)
             runtime_assets = [
@@ -318,15 +389,9 @@ class StreamService:
                     detail="No assets available for live update",
                 )
 
-        control = control_service
-        if control is None:
-            from .control import StreamControlService  # local import to avoid cycle
-
-            control = StreamControlService(self.db, self.user_id)
-
         if should_hot_swap:
             try:
-                await control.apply_live_collection_update(
+                hot_swap_applied = await control.apply_live_collection_update(
                     stream,
                     update.target,
                     runtime_assets,
@@ -336,8 +401,20 @@ class StreamService:
             except HTTPException:
                 await self.db.rollback()
                 raise
+            if not hot_swap_applied:
+                logger.warning(
+                    "Live update for stream %s could not use hot swap at runtime; falling back to restart",
+                    stream_id,
+                )
 
-        if update.restart:
+        should_restart = update.restart or (wants_live_apply and not should_hot_swap)
+        if wants_live_apply and not should_hot_swap:
+            logger.info(
+                "Applying live update for stream %s via managed-runtime restart fallback",
+                stream_id,
+            )
+
+        if should_restart:
             await control.restart_stream(stream_id, update.target)
 
         await self.db.commit()

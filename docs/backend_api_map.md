@@ -90,4 +90,4 @@ This document summarizes the current FastAPI routing surface for the YouTube Mul
 3. `metrics` залежить від psutil; додавайте його у prod image.
 4. Варто формально опублікувати OpenAPI (`/docs`) у README/ops-нотатках для партнерів.
 
-This mapping satisfies Plan §1.1 (“Карта API и маршрутизация”). Update `plan.md` when subsequent verification steps complete.
+This mapping satisfies the API routing audit baseline. Update this document directly when subsequent verification steps complete.

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users, Search, Filter, Ban, CheckCircle, TrendingUp } from 'lucide-react'
+import { Users, Search, Download, Ban, CheckCircle, TrendingUp } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -46,6 +46,9 @@ export default function UsersManagement() {
     }),
     refetchInterval: 10000,
   })
+
+  const userItems = usersData?.items ?? []
+  const usersSummary = usersData?.summary
 
   useEffect(() => {
     setPage(0)
@@ -119,7 +122,7 @@ export default function UsersManagement() {
 
   const handleApplyTier = (userId: string) => {
     const selectedTier = tierSelections[userId]
-    const user = usersData?.find((u) => u.user_id === userId)
+    const user = userItems.find((item) => item.user_id === userId)
     const currentTier = user?.subscription_tier ?? 'free'
     const newTier = selectedTier ?? currentTier
 
@@ -161,16 +164,53 @@ export default function UsersManagement() {
     }
   }
 
-  const filteredUsers = (usersData || []).filter(user => {
+  const filteredUsers = userItems.filter((user) => {
     const matchesSearch = user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         (user.full_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+      (user.full_name || '').toLowerCase().includes(searchQuery.toLowerCase())
     return matchesSearch
   })
+
+  const handleExport = () => {
+    if (typeof window === 'undefined' || filteredUsers.length === 0) {
+      return
+    }
+
+    const escapeCsv = (value: string | number | null | undefined) => {
+      const normalized = value == null ? '' : String(value)
+      return `"${normalized.replace(/"/g, '""')}"`
+    }
+
+    const rows = [
+      ['email', 'full_name', 'subscription_tier', 'subscription_status', 'is_suspended', 'storage_gb', 'stream_hours', 'created_at', 'last_login_at'],
+      ...filteredUsers.map((user) => [
+        user.email,
+        user.full_name || '',
+        user.subscription_tier,
+        user.subscription_status || '',
+        user.is_suspended ? 'true' : 'false',
+        (user.current_storage_bytes / (1024 ** 3)).toFixed(2),
+        user.total_stream_hours.toFixed(1),
+        user.created_at,
+        user.last_login_at || '',
+      ]),
+    ]
+
+    const csv = rows.map((row) => row.map(escapeCsv).join(',')).join('\n')
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `admin-users-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }
 
   const totalFetched = filteredUsers.length
   const pageStart = totalFetched > 0 ? page * PAGE_SIZE + 1 : 0
   const pageEnd = totalFetched > 0 ? pageStart + totalFetched - 1 : 0
-  const hasNextPage = (usersData?.length ?? 0) === PAGE_SIZE
+  const hasNextPage = userItems.length === PAGE_SIZE
 
   return (
     <div className="space-y-6">
@@ -183,8 +223,8 @@ export default function UsersManagement() {
           </p>
         </div>
         <div className="flex items-center space-x-2">
-          <Button variant="secondary" size="sm">
-            <Filter className="w-4 h-4 mr-2" />
+          <Button variant="secondary" size="sm" onClick={handleExport} disabled={filteredUsers.length === 0}>
+            <Download className="w-4 h-4 mr-2" />
             {t('actions.export')}
           </Button>
         </div>
@@ -195,7 +235,7 @@ export default function UsersManagement() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <p className="text-3xl font-bold">{usersData?.length || 0}</p>
+              <p className="text-3xl font-bold">{usersSummary?.total ?? userItems.length}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{t('stats.total')}</p>
             </div>
           </CardContent>
@@ -204,7 +244,7 @@ export default function UsersManagement() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold text-success-600">
-                {usersData?.filter(u => !u.is_suspended).length || 0}
+                {usersSummary?.active ?? userItems.filter((user) => !user.is_suspended).length}
               </p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{t('stats.active')}</p>
             </div>
@@ -214,7 +254,7 @@ export default function UsersManagement() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold text-error-600">
-                {usersData?.filter(u => u.is_suspended).length || 0}
+                {usersSummary?.suspended ?? userItems.filter((user) => user.is_suspended).length}
               </p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{t('stats.suspended')}</p>
             </div>
@@ -224,7 +264,7 @@ export default function UsersManagement() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold text-primary-600">
-                {usersData?.filter(u => u.subscription_tier !== 'free').length || 0}
+                {usersSummary?.paid ?? userItems.filter((user) => user.subscription_tier !== 'free').length}
               </p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{t('stats.paid')}</p>
             </div>
@@ -374,7 +414,7 @@ export default function UsersManagement() {
                           </span>
                           {user.last_login_at ? (
                             <span>
-                              •
+                              •{' '}
                               {t('list.values.lastLogin', {
                                 time: formatDistanceToNow(new Date(user.last_login_at), {
                                   addSuffix: true,
@@ -388,8 +428,8 @@ export default function UsersManagement() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col space-y-3">
-                        <div className="flex items-center space-x-2">
+                      <div className="flex flex-col space-y-3 sm:min-w-[14rem]">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                           <select
                             className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm"
                             value={selectedTier}
@@ -404,7 +444,7 @@ export default function UsersManagement() {
                           <Button
                             size="sm"
                             variant="primary"
-                            className="flex items-center space-x-2"
+                            className="flex items-center justify-center gap-2"
                             onClick={() => handleApplyTier(user.user_id)}
                             disabled={
                               changeTierMutation.isPending || selectedTier === user.subscription_tier
@@ -419,7 +459,7 @@ export default function UsersManagement() {
                           <Button
                             size="sm"
                             variant="success"
-                            className="flex items-center space-x-2"
+                            className="flex items-center justify-center gap-2"
                             onClick={() => handleUnsuspend(user.user_id)}
                             disabled={unsuspendMutation.isPending}
                           >
@@ -430,7 +470,7 @@ export default function UsersManagement() {
                           <Button
                             size="sm"
                             variant="secondary"
-                            className="flex items-center space-x-2"
+                            className="flex items-center justify-center gap-2"
                             onClick={() => handleSuspend(user.user_id, user.email)}
                             disabled={suspendMutation.isPending}
                           >

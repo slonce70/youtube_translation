@@ -22,6 +22,7 @@ from app.models.database import (
 )
 from app.schemas.api import (
     AssetFolderInfo,
+    AssetOptimizationInfo,
     AssetResponse,
     AssetUsageReference,
     AssetUsageSummary,
@@ -191,6 +192,55 @@ def extract_thumbnail_url(asset: Asset) -> Optional[str]:
     return None
 
 
+def build_asset_optimization_info(asset: Asset) -> AssetOptimizationInfo:
+    recommended_strategy = "copy" if asset.compatible_for_copy else "transcode"
+    raw_status = str(getattr(asset, "optimization_status", "") or "not_requested").strip().lower()
+    status = raw_status if raw_status in {"not_requested", "queued", "processing", "ready", "failed"} else "not_requested"
+    raw_strategy = getattr(asset, "optimization_strategy", None)
+    strategy = str(raw_strategy).strip().lower() if raw_strategy else None
+    if strategy not in {"copy", "transcode"}:
+        strategy = None
+
+    optimized_storage_path = getattr(asset, "optimized_storage_path", None)
+    if status == "ready" and strategy == "copy" and not optimized_storage_path:
+        optimized_storage_path = asset.storage_path
+
+    return AssetOptimizationInfo(
+        status=status,
+        strategy=strategy,
+        optimized_storage_path=optimized_storage_path,
+        error=getattr(asset, "optimization_error", None),
+        updated_at=getattr(asset, "optimization_updated_at", None),
+        recommended_strategy=recommended_strategy,
+        can_stream_from_source=bool(asset.compatible_for_copy),
+    )
+
+
+def serialize_loaded_asset(asset: Asset) -> AssetResponse:
+    """Serialize an already-loaded asset without additional DB lookups."""
+
+    return AssetResponse(
+        id=asset.id,
+        user_id=asset.user_id,
+        filename=asset.filename,
+        storage_path=asset.storage_path,
+        size_bytes=asset.size_bytes,
+        duration_seconds=asset.duration_seconds,
+        meta=asset.meta,
+        asset_type=asset.asset_type,
+        codec_info=asset.codec_info,
+        compatible_for_copy=asset.compatible_for_copy,
+        validation_errors=asset.validation_errors,
+        created_at=asset.created_at,
+        updated_at=asset.updated_at,
+        primary_folder_id=None,
+        folders=[],
+        usage=AssetUsageSummary(),
+        thumbnail_url=extract_thumbnail_url(asset),
+        optimization=build_asset_optimization_info(asset),
+    )
+
+
 async def serialize_assets(
     db: AsyncSession, user_id: UUID, assets: Sequence[Asset]
 ) -> List[AssetResponse]:
@@ -211,26 +261,10 @@ async def serialize_assets(
             streams=stream_usage.get(asset.id, []),
         )
 
-        responses.append(
-            AssetResponse(
-                id=asset.id,
-                user_id=asset.user_id,
-                filename=asset.filename,
-                storage_path=asset.storage_path,
-                size_bytes=asset.size_bytes,
-                duration_seconds=asset.duration_seconds,
-                meta=asset.meta,
-                asset_type=asset.asset_type,
-                codec_info=asset.codec_info,
-                compatible_for_copy=asset.compatible_for_copy,
-                validation_errors=asset.validation_errors,
-                created_at=asset.created_at,
-                updated_at=asset.updated_at,
-                primary_folder_id=primary_map.get(asset.id),
-                folders=folder_map.get(asset.id, []),
-                usage=usage_summary,
-                thumbnail_url=extract_thumbnail_url(asset),
-            )
-        )
+        serialized = serialize_loaded_asset(asset)
+        serialized.primary_folder_id = primary_map.get(asset.id)
+        serialized.folders = folder_map.get(asset.id, [])
+        serialized.usage = usage_summary
+        responses.append(serialized)
 
     return responses

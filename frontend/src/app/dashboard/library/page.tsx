@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Uppy from '@uppy/core'
@@ -190,6 +190,7 @@ export default function LibraryPage() {
   const [assetBeingRenamed, setAssetBeingRenamed] = useState<Asset | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [checkingAssetId, setCheckingAssetId] = useState<string | null>(null)
+  const [optimizingAssetId, setOptimizingAssetId] = useState<string | null>(null)
   const [downloadAssetId, setDownloadAssetId] = useState<string | null>(null)
   const [checkModalAsset, setCheckModalAsset] = useState<Asset | null>(null)
   const [checkModalInfo, setCheckModalInfo] = useState<AssetDisplayInfo | null>(null)
@@ -593,6 +594,16 @@ export default function LibraryPage() {
     },
   })
 
+  const optimizeAssetMutation = useMutation({
+    mutationFn: (assetId: string) => api.assets.optimize(assetId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
+    },
+    onError: (error: Error) => {
+      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
+    },
+  })
+
   const downloadLinkMutation = useMutation({
     mutationFn: (assetId: string) => api.assets.createDownloadLink(assetId),
     onError: (error: Error) => {
@@ -717,7 +728,7 @@ export default function LibraryPage() {
     return map
   }, [folders])
 
-  const renderFolderSelectionTree = (parentId: string | null, depth = 0): JSX.Element[] => {
+  const renderFolderSelectionTree = (parentId: string | null, depth = 0): ReactElement[] => {
     const children = folderChildren.get(parentId) ?? []
     return children.map((folder) => (
       <div key={`move-${folder.id}`}>
@@ -1209,6 +1220,35 @@ export default function LibraryPage() {
       toast.error(libraryToasts('generic.errorWithMessage', { message }))
     } finally {
       setDownloadAssetId(null)
+    }
+  }
+
+  const handleOptimizeAsset = async (asset: Asset) => {
+    if (optimizingAssetId === asset.id) {
+      return
+    }
+    setOptimizingAssetId(asset.id)
+    try {
+      const updated = await optimizeAssetMutation.mutateAsync(asset.id)
+      if (checkModalAsset?.id === updated.id) {
+        setCheckModalAsset(updated)
+        setCheckModalInfo(deriveAssetDisplayInfo(updated))
+      }
+
+      const strategy = updated.optimization.strategy ?? updated.optimization.recommended_strategy
+      const status = updated.optimization.status
+      if (status === 'ready' && strategy === 'copy') {
+        toast.success(libraryToasts('asset.optimizeReady', { name: updated.filename }))
+      } else if (status === 'queued') {
+        toast.success(libraryToasts('asset.optimizeQueued', { name: updated.filename }))
+      } else {
+        toast.success(libraryToasts('asset.updated'))
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : libraryToasts('asset.optimizeFailed')
+      toast.error(libraryToasts('generic.errorWithMessage', { message }))
+    } finally {
+      setOptimizingAssetId(null)
     }
   }
 
@@ -1741,7 +1781,7 @@ export default function LibraryPage() {
                         onMove={() => openMoveModal([asset.id])}
                         onDownload={() => handleDownloadAsset(asset)}
                         onPlaylistAdd={() => handleNotImplemented(tLibrary('assets.menu.items.playlists'))}
-                        onOptimize={() => handleNotImplemented(tLibrary('assets.menu.items.optimize'))}
+                        onOptimize={() => handleOptimizeAsset(asset)}
                         onDragStart={(event) => handleAssetDragStart(event, asset.id)}
                         onDragEnd={handleAssetDragEnd}
                         isDeleting={pendingDeletionIds.has(asset.id)}
@@ -1756,6 +1796,9 @@ export default function LibraryPage() {
                             needsEncoding: tLibrary('assets.badges.needsEncoding'),
                             bitrateOk: tLibrary('assets.badges.bitrateOk'),
                             bitrateCheck: tLibrary('assets.badges.bitrateCheck'),
+                            copyMode: tLibrary('assets.badges.copyMode'),
+                            optimizeQueued: tLibrary('assets.badges.optimizeQueued'),
+                            optimizeFailed: tLibrary('assets.badges.optimizeFailed'),
                           },
                           messages: { incompatibleSummary: tLibrary('assets.messages.incompatibleSummary') },
                           details: {

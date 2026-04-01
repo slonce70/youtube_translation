@@ -2,125 +2,73 @@
 
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-import { Radio, Github, Twitter, Youtube } from 'lucide-react'
+import { ArrowRight, Radio } from 'lucide-react'
+import { Button } from '../ui/Button'
 
-export function Footer() {
+type Props = {
+  onStartStreaming?: () => void | Promise<void>
+}
+
+export function Footer({ onStartStreaming }: Props) {
   const t = useTranslations('landing.footer')
+  const navT = useTranslations('landing.nav')
 
-  const productLinks = ['features', 'pricing', 'docs', 'api']
-  const companyLinks = ['about', 'blog', 'contact', 'support']
-  const legalLinks = ['terms', 'privacy', 'security', 'compliance']
+  const productLinks = [
+    { href: '#features', label: navT('features') },
+    { href: '#how-it-works', label: navT('howItWorks') },
+    { href: '#pricing', label: navT('pricing') },
+    { href: '#benefits', label: navT('benefits') },
+  ]
 
   return (
-    <footer className="bg-slate-950 border-t border-slate-800/50" style={{
-      borderImage: 'linear-gradient(to right, rgba(168, 85, 247, 0.3), rgba(6, 182, 212, 0.3)) 1',
-    }}>
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
-          {/* Brand Column */}
-          <div>
-            <div className="flex items-center space-x-2 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center shadow-glow">
-                <Radio className="w-6 h-6 text-white" />
+    <footer className="px-4 pb-12 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="stream-v3-footer overflow-hidden px-6 py-8 sm:px-8 md:px-10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(94,231,255,0.14),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(255,74,98,0.16),transparent_28%)]" />
+
+          <div className="relative grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+                  <Radio className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <div className="landing-display text-2xl text-white">{t('brand.name')}</div>
+                  <div className="text-sm text-slate-400">{t('brand.tagline')}</div>
+                </div>
               </div>
-              <span className="text-lg font-bold gradient-text">
-                {t('brand.name')}
-              </span>
+
+              <div className="mt-8 flex flex-wrap gap-3">
+                {productLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:border-cyan-300/30 hover:bg-white/10"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
             </div>
-            <p className="text-sm text-slate-400 mb-4">
-              {t('brand.tagline')}
-            </p>
-            <div className="flex items-center space-x-3">
-              <a
-                href="https://youtube.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-gradient-to-br hover:from-primary-500 hover:to-accent-500 flex items-center justify-center transition-all"
+
+            <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-6 backdrop-blur">
+              <div className="text-xs uppercase tracking-[0.22em] text-slate-400">{t('legal.title')}</div>
+              <p className="mt-4 text-sm leading-7 text-slate-300">
+                {t('copyright')}
+              </p>
+              <Button
+                className="mt-6 w-full rounded-2xl border border-white/10 bg-white text-slate-950 hover:bg-slate-100"
+                onClick={() => {
+                  if (onStartStreaming) {
+                    void onStartStreaming()
+                  }
+                }}
               >
-                <Youtube className="w-5 h-5 text-slate-400 hover:text-white" />
-              </a>
-              <a
-                href="https://github.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-gradient-to-br hover:from-primary-500 hover:to-accent-500 flex items-center justify-center transition-all"
-              >
-                <Github className="w-5 h-5 text-slate-400 hover:text-white" />
-              </a>
-              <a
-                href="https://twitter.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-gradient-to-br hover:from-primary-500 hover:to-accent-500 flex items-center justify-center transition-all"
-              >
-                <Twitter className="w-5 h-5 text-slate-400 hover:text-white" />
-              </a>
+                {navT('startStreaming')}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </div>
           </div>
-
-          {/* Product Column */}
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-4">
-              {t('product.title')}
-            </h3>
-            <ul className="space-y-2">
-              {productLinks.map((link) => (
-                <li key={link}>
-                  <Link
-                    href={`#${link}`}
-                    className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
-                  >
-                    {t(`product.${link}`)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Company Column */}
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-4">
-              {t('company.title')}
-            </h3>
-            <ul className="space-y-2">
-              {companyLinks.map((link) => (
-                <li key={link}>
-                  <Link
-                    href={`#${link}`}
-                    className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
-                  >
-                    {t(`company.${link}`)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Legal Column */}
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-4">
-              {t('legal.title')}
-            </h3>
-            <ul className="space-y-2">
-              {legalLinks.map((link) => (
-                <li key={link}>
-                  <Link
-                    href={`#${link}`}
-                    className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
-                  >
-                    {t(`legal.${link}`)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* Copyright */}
-        <div className="pt-8 border-t border-slate-800">
-          <p className="text-center text-xs text-slate-500">
-            {t('copyright')}
-          </p>
         </div>
       </div>
     </footer>

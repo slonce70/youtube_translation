@@ -58,6 +58,8 @@ async def test_create_media_collection_persists_items():
         assert response.name == "Highlights"
         assert len(response.items) == 1
         assert response.items[0].asset_id == asset.id
+        assert response.items[0].asset is not None
+        assert response.items[0].asset.optimization.status == "not_requested"
 
         db_collection = (
             await session.execute(

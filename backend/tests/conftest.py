@@ -76,6 +76,18 @@ async def ensure_subscription_tiers() -> AsyncGenerator[None, None]:
         for statement in alter_statements:
             await session.execute(text(statement))
 
+        stream_alter_statements = [
+            "ALTER TABLE streams ADD COLUMN IF NOT EXISTS runtime_owner_id TEXT",
+            "ALTER TABLE streams ADD COLUMN IF NOT EXISTS runtime_lease_expires_at TIMESTAMPTZ",
+            "ALTER TABLE streams ADD COLUMN IF NOT EXISTS runtime_last_heartbeat_at TIMESTAMPTZ",
+            "ALTER TABLE streams ADD COLUMN IF NOT EXISTS runtime_restart_attempts INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE streams ADD COLUMN IF NOT EXISTS runtime_next_restart_at TIMESTAMPTZ",
+            "ALTER TABLE streams ADD COLUMN IF NOT EXISTS runtime_last_restart_at TIMESTAMPTZ",
+            "ALTER TABLE streams ADD COLUMN IF NOT EXISTS runtime_last_failure_at TIMESTAMPTZ",
+        ]
+        for statement in stream_alter_statements:
+            await session.execute(text(statement))
+
         await session.execute(text(
             "ALTER TABLE subscription_tier_limits ADD CONSTRAINT subscription_tier_limits_tier_check "
             "CHECK (tier IN ('free','fhd_start','fhd_flow','fhd_boost','uhd_start','uhd_flow','uhd_boost'))"
@@ -270,6 +282,24 @@ async def ensure_subscription_tiers() -> AsyncGenerator[None, None]:
                     ALTER TABLE streams
                         ADD CONSTRAINT check_status
                         CHECK (status IN ('stopped', 'starting', 'running', 'error', 'stopping', 'scheduled'));
+                END IF;
+
+                ALTER TABLE streams
+                    ADD COLUMN IF NOT EXISTS schedule_timezone TEXT,
+                    ADD COLUMN IF NOT EXISTS schedule_repeat TEXT NOT NULL DEFAULT 'none',
+                    ADD COLUMN IF NOT EXISTS schedule_weekdays INTEGER[],
+                    ADD COLUMN IF NOT EXISTS schedule_window_end_time TIME,
+                    ADD COLUMN IF NOT EXISTS schedule_stop_after_seconds INTEGER;
+
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint c
+                    WHERE c.conrelid = 'public.streams'::regclass
+                      AND c.conname = 'check_stream_schedule_repeat'
+                ) THEN
+                    ALTER TABLE streams
+                        ADD CONSTRAINT check_stream_schedule_repeat
+                        CHECK (schedule_repeat IN ('none', 'daily', 'weekly'));
                 END IF;
             END $$;
             """

@@ -55,7 +55,9 @@ async def test_supabase_user_cache_reuses_fetch(monkeypatch):
         "sub": "user-123",
         "exp": int(exp.timestamp()),
     }
-    token = jwt.encode(token_payload, settings.supabase_jwt_secret, algorithm=settings.algorithm)
+    token = jwt.encode(
+        token_payload, settings.supabase_jwt_secret, algorithm=settings.algorithm
+    )
     auth_header = f"Bearer {token}"
 
     first_user = await deps.get_current_user(authorization=auth_header)
@@ -96,13 +98,91 @@ async def test_supabase_user_cache_respects_exp(monkeypatch):
         "sub": "user-456",
         "exp": int(exp.timestamp()),
     }
-    token = jwt.encode(token_payload, settings.supabase_jwt_secret, algorithm=settings.algorithm)
+    token = jwt.encode(
+        token_payload, settings.supabase_jwt_secret, algorithm=settings.algorithm
+    )
     auth_header = f"Bearer {token}"
 
     await deps.get_current_user(authorization=auth_header)
     await deps.get_current_user(authorization=auth_header)
 
     assert fetch_calls == 2, "Expiring tokens should not be cached"
+
+
+@pytest.mark.asyncio
+async def test_ensure_user_profile_rejects_email_collision_for_new_subject(db_session):
+    existing_user_id = uuid4()
+    conflicting_user_id = uuid4()
+    email = f"shared-{existing_user_id}@example.test"
+
+    await _ensure_user_profile(
+        db_session,
+        existing_user_id,
+        email,
+        subscription_tier="free",
+        subscription_status="active",
+    )
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        await deps._ensure_user_profile(
+            db_session,
+            {
+                "sub": str(conflicting_user_id),
+                "email": email,
+                "user_metadata": {"full_name": "Conflicting User"},
+            },
+        )
+
+    assert exc.value.status_code == 409
+    assert await db_session.get(UserProfile, conflicting_user_id) is None
+    existing_profile = await db_session.get(UserProfile, existing_user_id)
+    assert existing_profile is not None
+    assert existing_profile.email == email
+
+
+@pytest.mark.asyncio
+async def test_ensure_user_profile_rejects_email_collision_for_existing_subject(
+    db_session,
+):
+    user_a = uuid4()
+    user_b = uuid4()
+    email_a = f"user-a-{user_a}@example.test"
+    email_b = f"user-b-{user_b}@example.test"
+
+    await _ensure_user_profile(
+        db_session,
+        user_a,
+        email_a,
+        subscription_tier="free",
+        subscription_status="active",
+    )
+    await _ensure_user_profile(
+        db_session,
+        user_b,
+        email_b,
+        subscription_tier="free",
+        subscription_status="active",
+    )
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        await deps._ensure_user_profile(
+            db_session,
+            {
+                "sub": str(user_b),
+                "email": email_a,
+                "user_metadata": {"full_name": "User B"},
+            },
+        )
+
+    assert exc.value.status_code == 409
+    profile_a = await db_session.get(UserProfile, user_a)
+    profile_b = await db_session.get(UserProfile, user_b)
+    assert profile_a is not None
+    assert profile_b is not None
+    assert profile_a.email == email_a
+    assert profile_b.email == email_b
 
 
 @pytest.mark.asyncio
@@ -252,7 +332,9 @@ async def test_destinations_are_scoped_per_user(db_session):
     db_session.add_all([dest_a, dest_b])
     await db_session.commit()
 
-    destinations_for_a = await destinations.list_destinations(user_deps=(db_session, user_a))
+    destinations_for_a = await destinations.list_destinations(
+        user_deps=(db_session, user_a)
+    )
     assert len(destinations_for_a) == 1
     assert destinations_for_a[0]["name"] == "A"
 
@@ -292,8 +374,12 @@ async def test_streams_are_scoped_per_user(db_session):
     db_session.add_all([playlist_a, playlist_b])
     await db_session.flush()
 
-    stream_a = Stream(user_id=user_a, playlist_id=playlist_a.id, name="Stream A", status="stopped")
-    stream_b = Stream(user_id=user_b, playlist_id=playlist_b.id, name="Stream B", status="running")
+    stream_a = Stream(
+        user_id=user_a, playlist_id=playlist_a.id, name="Stream A", status="stopped"
+    )
+    stream_b = Stream(
+        user_id=user_b, playlist_id=playlist_b.id, name="Stream B", status="running"
+    )
     db_session.add_all([stream_a, stream_b])
     await db_session.commit()
 
@@ -384,12 +470,16 @@ async def db_session():
     # Ensure schema exists (serialised to avoid concurrent DDL)
     async with _schema_reset_lock:
         async with async_engine.begin() as conn:
-            await conn.execute(text('CREATE SCHEMA IF NOT EXISTS auth'))
-            await conn.execute(text('CREATE SCHEMA IF NOT EXISTS public'))
+            await conn.execute(text("CREATE SCHEMA IF NOT EXISTS auth"))
+            await conn.execute(text("CREATE SCHEMA IF NOT EXISTS public"))
             await conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
-            view_names = ['unresolved_critical_alerts', 'recent_admin_actions', 'recent_user_activity']
+            view_names = [
+                "unresolved_critical_alerts",
+                "recent_admin_actions",
+                "recent_user_activity",
+            ]
             for view in view_names:
-                await conn.execute(text(f'DROP VIEW IF EXISTS {view}'))
+                await conn.execute(text(f"DROP VIEW IF EXISTS {view}"))
             await conn.run_sync(Base.metadata.create_all)
             alter_statements = [
                 "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS price_cents INTEGER DEFAULT 0",
@@ -399,7 +489,7 @@ async def db_session():
                 "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS automation_enabled BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS priority_support_level TEXT",
                 "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS dedicated_manager BOOLEAN DEFAULT FALSE",
-                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS allowed_video_codecs TEXT[]"
+                "ALTER TABLE subscription_tier_limits ADD COLUMN IF NOT EXISTS allowed_video_codecs TEXT[]",
             ]
             for statement in alter_statements:
                 await conn.execute(text(statement))
@@ -439,8 +529,12 @@ async def db_session():
         await session.rollback()
         # Truncate all mutable tables while keeping schema/views intact
         for table in reversed(Base.metadata.sorted_tables):
-            await session.execute(text(f'TRUNCATE TABLE {table.fullname} RESTART IDENTITY CASCADE'))
+            await session.execute(
+                text(f"TRUNCATE TABLE {table.fullname} RESTART IDENTITY CASCADE")
+            )
         await session.commit()
+
+
 async def _ensure_auth_user(session, user_id, email):
     await session.execute(
         text(

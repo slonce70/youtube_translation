@@ -17,7 +17,7 @@ import { BroadcasterLevel } from '@/components/Gamification/BroadcasterLevel'
 import { Progress } from '@/components/ui/Progress'
 import { useDashboardContext } from './dashboard-context'
 import { useStreamSocket } from './streaming/hooks/useStreamSocket'
-import type { MetricsResponse, Stream, Asset, SubscriptionTierKey } from '@/lib/types'
+import type { Stream, Asset, SubscriptionTierKey } from '@/lib/types'
 
 export default function DashboardPage() {
   const queryClient = useQueryClient()
@@ -51,14 +51,6 @@ export default function DashboardPage() {
     }
     return document.visibilityState === 'visible' ? 5000 : false
   }, [isSocketConnected])
-
-  const { data: metrics, isLoading: metricsLoading } = useQuery<MetricsResponse>({
-    queryKey: ['metrics', user?.id],
-    queryFn: api.metrics.get,
-    refetchInterval: computeRefetchInterval,
-    refetchOnWindowFocus: true,
-    enabled: !!user,
-  })
 
   const { data: streams, isLoading: streamsLoading } = useQuery<Stream[]>({
     queryKey: ['streams', user?.id],
@@ -161,7 +153,7 @@ export default function DashboardPage() {
   )
 
   const initialLoading =
-    (!metrics && !streams && !assets && (metricsLoading || streamsLoading || assetsLoading)) ||
+    (!streams && !assets && (streamsLoading || assetsLoading)) ||
     (quotaLoading && !quota)
 
   if (initialLoading) {
@@ -255,7 +247,6 @@ export default function DashboardPage() {
             loading={streamsLoading}
             onRefresh={() => {
               queryClient.invalidateQueries({ queryKey: ['streams'] })
-              queryClient.invalidateQueries({ queryKey: ['metrics'] })
             }}
           />
         </div>

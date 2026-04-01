@@ -9,10 +9,11 @@ import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
 import type { Locale as DateFnsLocale } from 'date-fns'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Badge, type BadgeProps } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
+import { Button, buttonVariants } from '@/components/ui/Button'
 import { api } from '@/lib/api'
 import { useTranslations, useLocale } from 'next-intl'
 import type { SubscriptionTierKey, AdminActionLog } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 const ACTION_FILTERS = ['all', 'suspend_user', 'unsuspend_user', 'change_tier', 'force_stop_stream', 'resolve_alert'] as const
 type ActionFilterValue = (typeof ACTION_FILTERS)[number]
@@ -142,23 +143,26 @@ export default function AdminSettings() {
           <CardContent className="space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-400">{t('shortcuts.description')}</p>
             <div className="space-y-3">
-              <Link href="/admin/users" className="block">
-                <Button variant="secondary" className="w-full flex items-center justify-center gap-2">
-                  <Users className="w-4 h-4" />
-                  {t('shortcuts.users')}
-                </Button>
+              <Link
+                href="/admin/users"
+                className={cn(buttonVariants({ variant: 'secondary' }), 'w-full justify-center gap-2')}
+              >
+                <Users className="w-4 h-4" />
+                {t('shortcuts.users')}
               </Link>
-              <Link href="/admin/streams" className="block">
-                <Button variant="secondary" className="w-full flex items-center justify-center gap-2">
-                  <Radio className="w-4 h-4" />
-                  {t('shortcuts.streams')}
-                </Button>
+              <Link
+                href="/admin/streams"
+                className={cn(buttonVariants({ variant: 'secondary' }), 'w-full justify-center gap-2')}
+              >
+                <Radio className="w-4 h-4" />
+                {t('shortcuts.streams')}
               </Link>
-              <Link href="/admin/alerts" className="block">
-                <Button variant="secondary" className="w-full flex items-center justify-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  {t('shortcuts.alerts')}
-                </Button>
+              <Link
+                href="/admin/alerts"
+                className={cn(buttonVariants({ variant: 'secondary' }), 'w-full justify-center gap-2')}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                {t('shortcuts.alerts')}
               </Link>
             </div>
           </CardContent>

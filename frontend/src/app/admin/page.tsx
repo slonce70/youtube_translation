@@ -8,22 +8,26 @@ import { StatCard } from '@/components/StatCard'
 import { Badge } from '@/components/ui/Badge'
 import { api } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
+import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
+import type { Locale as DateFnsLocale } from 'date-fns'
 import { useTranslations } from 'next-intl'
+import { useLocale } from 'next-intl'
 
 export default function AdminDashboard() {
-  const { data: users, isLoading: usersLoading } = useQuery({
+  const locale = useLocale()
+  const { data: usersData, isLoading: usersLoading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: () => api.admin.users.list({ limit: 1000 }),
     refetchInterval: 30000,
   })
 
-  const { data: streams, isLoading: streamsLoading } = useQuery({
+  const { data: streamsData, isLoading: streamsLoading } = useQuery({
     queryKey: ['admin-streams'],
     queryFn: () => api.admin.streams.listAll({ limit: 1000 }),
     refetchInterval: 30000,
   })
 
-  const { data: alerts, isLoading: alertsLoading } = useQuery({
+  const { data: alertsData, isLoading: alertsLoading } = useQuery({
     queryKey: ['admin-alerts'],
     queryFn: () => api.admin.alerts.list({ resolved: false, limit: 1000 }),
     refetchInterval: 30000,
@@ -33,21 +37,32 @@ export default function AdminDashboard() {
   const tUsers = useTranslations('admin.users')
   const tAlerts = useTranslations('admin.alerts')
 
+  const dateLocales: Record<string, DateFnsLocale> = {
+    en: enUS,
+    ru,
+    uk: ukLocale,
+  }
+  const dateLocale = dateLocales[locale] ?? enUS
+
+  const userItems = usersData?.items ?? []
+  const streamItems = streamsData?.items ?? []
+  const alertItems = alertsData?.items ?? []
+
   const stats = {
-    totalUsers: users?.length ?? 0,
-    activeUsers: users?.filter((u) => !u.is_suspended).length ?? 0,
-    suspendedUsers: users?.filter((u) => u.is_suspended).length ?? 0,
-    totalStreams: streams?.length ?? 0,
-    activeStreams: streams?.filter((s) => s.status === 'running').length ?? 0,
-    errorStreams: streams?.filter((s) => s.status === 'error').length ?? 0,
-    unresolvedAlerts: alerts?.length ?? 0,
-    criticalAlerts: alerts?.filter((a) => a.severity === 'critical').length ?? 0,
-    storageUsed: (users ?? []).reduce((sum, u) => sum + u.current_storage_bytes, 0) / 1024 ** 4,
+    totalUsers: usersData?.summary.total ?? userItems.length,
+    activeUsers: usersData?.summary.active ?? userItems.filter((user) => !user.is_suspended).length,
+    suspendedUsers: usersData?.summary.suspended ?? userItems.filter((user) => user.is_suspended).length,
+    totalStreams: streamsData?.summary.total ?? streamItems.length,
+    activeStreams: streamsData?.summary.running ?? streamItems.filter((stream) => stream.status === 'running').length,
+    errorStreams: streamsData?.summary.errors ?? streamItems.filter((stream) => stream.status === 'error').length,
+    unresolvedAlerts: alertsData?.summary.unresolved ?? alertItems.filter((alert) => !alert.resolved).length,
+    criticalAlerts: alertsData?.summary.critical ?? alertItems.filter((alert) => alert.severity === 'critical').length,
+    storageUsed: userItems.reduce((sum, user) => sum + user.current_storage_bytes, 0) / 1024 ** 4,
     storageTotal: 10,
   }
 
-  const recentUsers = users?.slice(0, 3) ?? []
-  const recentAlerts = alerts?.slice(0, 3) ?? []
+  const recentUsers = userItems.slice(0, 3)
+  const recentAlerts = alertItems.slice(0, 3)
 
   const isLoading = usersLoading || streamsLoading || alertsLoading
 
@@ -226,17 +241,17 @@ export default function AdminDashboard() {
                     key={user.user_id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700"
+                    className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{user.email}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         {tDashboard('recentUsers.signedUp', {
-                          time: formatDistanceToNow(new Date(user.created_at), { addSuffix: true }),
+                          time: formatDistanceToNow(new Date(user.created_at), { addSuffix: true, locale: dateLocale }),
                         })}
                       </p>
                     </div>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary" className="capitalize">
                         {formatTier(user.subscription_tier)}
                       </Badge>
@@ -268,10 +283,10 @@ export default function AdminDashboard() {
                     key={alert.alert_id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700"
+                    className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2 mb-1">
+                      <div className="mb-1 flex items-center gap-2">
                         <AlertTriangle
                           className={`w-4 h-4 ${
                             alert.severity === 'critical' ? 'text-error-600' : 'text-warning-600'
@@ -282,7 +297,7 @@ export default function AdminDashboard() {
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         {tDashboard('recentAlerts.userTime', {
                           user: alert.user_email,
-                          time: formatDistanceToNow(new Date(alert.created_at), { addSuffix: true }),
+                          time: formatDistanceToNow(new Date(alert.created_at), { addSuffix: true, locale: dateLocale }),
                         })}
                       </p>
                     </div>

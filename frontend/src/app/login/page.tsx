@@ -65,6 +65,11 @@ export default function LoginPage() {
     setFeedback(null)
 
     try {
+      if (DEV_BYPASS) {
+        router.replace('/dashboard')
+        return
+      }
+
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({
           email,

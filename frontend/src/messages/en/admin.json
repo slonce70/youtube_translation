@@ -39,6 +39,8 @@
       "title": "Users ({count})",
       "loading": "Loading users...",
       "empty": "No users found",
+      "errorTitle": "Unable to load users",
+      "errorDescription": "The users list could not be loaded. Retry or check the backend logs.",
       "noName": "N/A",
       "badges": {
         "suspended": "Suspended"
@@ -134,6 +136,8 @@
     "list": {
       "loading": "Loading alerts...",
       "empty": "No alerts found",
+      "errorTitle": "Unable to load alerts",
+      "errorDescription": "Alert data is currently unavailable. Retry or check the backend logs.",
       "fields": {
         "type": "Type",
         "user": "User",
@@ -185,6 +189,9 @@
       "status": {
         "all": "All Status",
         "running": "Running",
+        "starting": "Starting",
+        "scheduled": "Scheduled",
+        "stopping": "Stopping",
         "error": "Error",
         "stopped": "Stopped"
       }
@@ -192,6 +199,8 @@
     "list": {
       "loading": "Loading streams...",
       "empty": "No streams found",
+      "errorTitle": "Unable to load streams",
+      "errorDescription": "Stream monitoring data is currently unavailable. Retry or check the backend logs.",
       "fields": {
         "user": "User",
         "playlistId": "Playlist ID",
@@ -201,10 +210,14 @@
       },
       "values": {
         "destinations": "{count} channels",
-        "notStarted": "Not started"
+        "notStarted": "Not started",
+        "unnamed": "Untitled stream"
       },
       "status": {
         "running": "Running",
+        "starting": "Starting",
+        "scheduled": "Scheduled",
+        "stopping": "Stopping",
         "error": "Error",
         "stopped": "Stopped"
       },
@@ -287,13 +300,19 @@
       "title": "Recent Users",
       "loading": "Loading users...",
       "empty": "No users yet",
+      "error": "Recent user activity is currently unavailable.",
       "signedUp": "Signed up {time}"
     },
     "recentAlerts": {
       "title": "Recent Alerts",
       "loading": "Loading alerts...",
       "empty": "No alerts",
+      "error": "Recent alerts could not be loaded.",
       "userTime": "{user} • {time}"
+    },
+    "errors": {
+      "title": "Admin data is unavailable",
+      "description": "Some admin metrics could not be loaded, so the numbers below may be incomplete until the connection recovers."
     },
     "badges": {
       "suspended": "Suspended",
@@ -319,6 +338,8 @@
       "title": "Admin profile",
       "loading": "Loading admin profile...",
       "empty": "Unable to load admin profile.",
+      "errorTitle": "Unable to load admin profile",
+      "errorDescription": "Admin access details are currently unavailable. Retry after the API responds again.",
       "badges": {
         "admin": "Admin"
       },
@@ -361,6 +382,8 @@
       "list": {
         "loading": "Loading audit log...",
         "empty": "No admin actions recorded yet.",
+        "errorTitle": "Unable to load admin action log",
+        "errorDescription": "The audit trail is temporarily unavailable. Retry or check the backend logs.",
         "by": "By {admin}",
         "target": "Target: {target}",
         "targetUnknown": "System",

@@ -17,12 +17,16 @@ import type {
   PlaylistValidationResponse,
   AdminAccessResponse,
   AdminUserListItem,
+  AdminUserListResponse,
   AdminUserDetail,
+  AdminStreamListResponse,
+  AdminAlertListResponse,
   AdminStreamListItem,
   AdminAlertListItem,
   AdminActionLog,
   AssetDownloadLink,
   StreamQualityResponse,
+  StreamWsTokenResponse,
   SubscriptionTierKey,
   QuotaUsageResponse,
   MediaFolder,
@@ -38,6 +42,7 @@ import type {
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api'
+const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
@@ -172,7 +177,7 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
   // This prevents race conditions on initial page load
   await waitForAuth()
   const token = await getAccessToken()
-  if (!token && process.env.NODE_ENV === 'development') {
+  if (!token && process.env.NODE_ENV === 'development' && !DEV_BYPASS) {
     console.warn('[api] Missing Supabase access token for request', normalizedEndpoint)
   }
 
@@ -266,6 +271,7 @@ export const api = {
     update: (id: string, data: Partial<Pick<Asset, 'filename'>>) =>
       apiRequest<Asset>(`/assets/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     revalidate: (id: string) => apiRequest<Asset>(`/assets/${id}/check`, { method: 'POST' }),
+    optimize: (id: string) => apiRequest<Asset>(`/assets/${id}/optimize`, { method: 'POST' }),
     createDownloadLink: (id: string) =>
       apiRequest<AssetDownloadLink>(`/assets/${id}/download-link`, { method: 'POST' }),
     createUploadToken: () =>
@@ -295,6 +301,10 @@ export const api = {
 
   streams: {
     list: () => apiRequest<Stream[]>('/streams/'),
+    createWsToken: () =>
+      apiRequest<StreamWsTokenResponse>('/streams/ws/token', {
+        method: 'POST',
+      }),
     create: (data: CreateStreamPayload) => apiRequest<Stream>('/streams/', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -418,7 +428,7 @@ export const api = {
           delete queryParams.is_suspended
         }
 
-        return apiRequest<AdminUserListItem[]>('/admin/users', { params: queryParams })
+        return apiRequest<AdminUserListResponse>('/admin/users', { params: queryParams })
       },
       get: (userId: string) => apiRequest<AdminUserDetail>(`/admin/users/${userId}`),
       suspend: (userId: string, reason: string) =>
@@ -436,7 +446,7 @@ export const api = {
     },
     streams: {
       listAll: (params?: { status?: string; limit?: number; offset?: number }) =>
-        apiRequest<AdminStreamListItem[]>('/admin/streams/all', { params }),
+        apiRequest<AdminStreamListResponse>('/admin/streams/all', { params }),
       forceStop: (streamId: string) =>
         apiRequest<{ stream_id: string; status: string }>(`/admin/streams/${streamId}/stop`, {
           method: 'POST',
@@ -448,7 +458,7 @@ export const api = {
         resolved?: boolean
         limit?: number
         offset?: number
-      }) => apiRequest<AdminAlertListItem[]>('/admin/alerts', { params }),
+      }) => apiRequest<AdminAlertListResponse>('/admin/alerts', { params }),
       resolve: (alertId: string, resolutionNotes?: string) =>
         apiRequest<AdminAlertListItem>(`/admin/alerts/${alertId}/resolve`, {
           method: 'POST',

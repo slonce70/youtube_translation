@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type Uppy from '@uppy/core'
 import type { UppyFile } from '@uppy/core'
 import MediaInfoFactory, { type MediaInfo } from 'mediainfo.js'
+import mediaInfoWasmUrl from 'mediainfo.js/MediaInfoModule.wasm'
 import { toast } from 'sonner'
 import {
   AlertCircle,
@@ -103,8 +104,6 @@ interface MediaInfoJson {
     track?: Array<Record<string, any>>
   }
 }
-
-const CDN_MEDIINFO_BASE = 'https://cdn.jsdelivr.net/npm/mediainfo.js/dist/'
 
 const VIDEO_EXTENSIONS = new Set([
   'mp4',
@@ -639,11 +638,11 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
     if (!mediaInfoPromiseRef.current) {
       mediaInfoPromiseRef.current = MediaInfoFactory({
         format: 'JSON',
-        locateFile: (path, prefix) => {
+        locateFile: (path) => {
           if (path.endsWith('.wasm')) {
-            return `${CDN_MEDIINFO_BASE}${path}`
+            return mediaInfoWasmUrl
           }
-          return `${prefix}${path}`
+          return path
         },
       })
       mediaInfoPromiseRef.current

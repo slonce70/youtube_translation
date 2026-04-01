@@ -2,70 +2,68 @@
 
 import { motion } from 'framer-motion'
 import { useTranslations } from 'next-intl'
-import { Upload, ListPlus, Play, BarChart3 } from 'lucide-react'
+import { BarChart3, ListPlus, Play, Upload } from 'lucide-react'
 import { SectionContainer } from './SectionContainer'
 
 const steps = [
-  { key: 'upload', icon: Upload, gradient: 'from-purple-500 to-pink-500' },
-  { key: 'playlist', icon: ListPlus, gradient: 'from-cyan-500 to-blue-500' },
-  { key: 'stream', icon: Play, gradient: 'from-emerald-500 to-green-500' },
-  { key: 'monitor', icon: BarChart3, gradient: 'from-amber-500 to-orange-500' },
+  { key: 'upload', icon: Upload, accent: 'from-amber-300/20 to-orange-400/10' },
+  { key: 'playlist', icon: ListPlus, accent: 'from-cyan-300/20 to-teal-400/10' },
+  { key: 'stream', icon: Play, accent: 'from-violet-300/20 to-fuchsia-400/10' },
+  { key: 'monitor', icon: BarChart3, accent: 'from-emerald-300/20 to-teal-300/10' },
 ]
 
 export function HowItWorks() {
   const t = useTranslations('landing.howItWorks')
 
   return (
-    <SectionContainer id="how-it-works" className="bg-slate-50 dark:bg-slate-900/50">
+    <SectionContainer id="how-it-works">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.6 }}
+        className="landing-section-dark landing-noise px-6 py-8 sm:px-8 md:px-10 md:py-10"
       >
-        <h2 className="text-3xl md:text-4xl font-bold gradient-text text-center mb-16">
-          {t('title')}
-        </h2>
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/50 to-transparent" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.16),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.16),transparent_28%)]" />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 relative">
-          <div className="hidden lg:block absolute top-16 left-0 right-0 h-0.5">
-            <div className="h-full w-full bg-gradient-to-r from-purple-500 via-cyan-500 to-amber-500 opacity-30" />
+        <div className="relative">
+          <div className="max-w-3xl">
+            <div className="landing-kicker-dark">
+              <span>{t('eyebrow')}</span>
+            </div>
+            <h2 className="landing-display mt-5 text-4xl text-white md:text-5xl">
+              {t('title')}
+            </h2>
           </div>
 
-          {steps.map((step, index) => {
-            const Icon = step.icon
-            return (
-              <motion.div
-                key={step.key}
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.15 }}
-                whileHover={{ scale: 1.03 }}
-                className="relative"
-              >
-                <div className="card text-center">
-                  <div className="text-6xl font-bold mb-4 bg-gradient-to-r from-purple-600 to-cyan-600 bg-clip-text text-transparent">
-                    {index + 1}
-                  </div>
-
-                  <div className="flex justify-center mb-4">
-                    <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${step.gradient} flex items-center justify-center shadow-lg`}>
-                      <Icon className="w-7 h-7 text-white" />
+          <div className="mt-10 grid gap-5 lg:grid-cols-4">
+            {steps.map((step, index) => {
+              const Icon = step.icon
+              return (
+                <motion.div
+                  key={step.key}
+                  initial={{ opacity: 0, y: 26 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  className="relative"
+                >
+                  <div className={`absolute left-6 right-6 top-8 hidden h-px bg-gradient-to-r ${step.accent} lg:block`} />
+                  <div className="relative h-full rounded-[1.75rem] border border-white/10 bg-white/5 p-6 backdrop-blur">
+                    <div className="flex items-center justify-between">
+                      <div className="landing-display text-5xl text-white/16">{String(index + 1).padStart(2, '0')}</div>
+                      <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                        <Icon className="h-6 w-6 text-white" />
+                      </div>
                     </div>
+                    <h3 className="mt-10 text-2xl font-semibold text-white">{t(`steps.${step.key}.title`)}</h3>
+                    <p className="mt-4 text-sm leading-7 text-slate-300">{t(`steps.${step.key}.description`)}</p>
                   </div>
-
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">
-                    {t(`steps.${step.key}.title`)}
-                  </h3>
-
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    {t(`steps.${step.key}.description`)}
-                  </p>
-                </div>
-              </motion.div>
-            )
-          })}
+                </motion.div>
+              )
+            })}
+          </div>
         </div>
       </motion.div>
     </SectionContainer>

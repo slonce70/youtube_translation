@@ -1,20 +1,21 @@
-import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
+import type { Session, SupabaseClient } from '@supabase/supabase-js'
 
 const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
+const useBypassClient = DEV_BYPASS || !isSupabaseConfigured
 
 if (!isSupabaseConfigured && !DEV_BYPASS) {
   throw new Error('Missing Supabase environment variables')
 }
 
-const projectRef = isSupabaseConfigured
+const projectRef = !useBypassClient && isSupabaseConfigured
   ? new URL(supabaseUrl as string).host.split('.')[0]
   : 'dev-auth'
 const SUPABASE_STORAGE_KEY = `sb-${projectRef}-auth-token`
 
-const SESSION_COOKIE_NAME = 'sb-session'
 let cachedSession: Session | null = null
 
 // Auth ready state management to prevent race conditions
@@ -41,40 +42,28 @@ const createBypassClient = (): SupabaseClient => {
   } as unknown as SupabaseClient
 }
 
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl as string, supabaseAnonKey as string, {
+export const supabase = useBypassClient
+  ? createBypassClient()
+  : createBrowserClient(supabaseUrl as string, supabaseAnonKey as string, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
       },
     })
-  : createBypassClient()
 
-function setAuthCookies(session: Session | null) {
-  if (DEV_BYPASS) return
+function clearLegacyAuthCookies() {
   if (typeof document === 'undefined') return
 
-  // Позначаємо наявність активної сесії без збереження чутливих токенів у cookies
-  const expire = session?.expires_at
-    ? new Date(session.expires_at * 1000)
-    : new Date(Date.now() + 60 * 60 * 1000)
-
-  if (session?.access_token) {
-    document.cookie = `${SESSION_COOKIE_NAME}=1; Path=/; Expires=${expire.toUTCString()}; SameSite=Strict`
-  } else {
-    document.cookie = `${SESSION_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`
-  }
-
-  // Скидаємо застарілі cookies з токенами, якщо вони залишились
+  document.cookie = 'sb-session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict'
   document.cookie = `sb-access-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`
   document.cookie = `sb-refresh-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`
 }
 
-if (isSupabaseConfigured) {
+if (!useBypassClient && isSupabaseConfigured) {
   // Initialize auth and mark as ready
   supabase.auth.getSession().then(({ data }) => {
-    setAuthCookies(data.session ?? null)
+    clearLegacyAuthCookies()
     cachedSession = data.session ?? null
 
     // Mark auth as ready after initial session load
@@ -85,7 +74,7 @@ if (isSupabaseConfigured) {
   })
 
   supabase.auth.onAuthStateChange((_event, session) => {
-    setAuthCookies(session)
+    clearLegacyAuthCookies()
     cachedSession = session ?? null
 
     // Ensure auth is marked ready on any state change
@@ -185,7 +174,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     }
 
     cachedSession = data.session ?? null
-    setAuthCookies(data.session ?? null)
+    clearLegacyAuthCookies()
     return data.session?.access_token ?? null
   } catch (error) {
     console.warn('[supabase] Failed to refresh session', error)
@@ -204,7 +193,7 @@ export async function clearAuthSession(): Promise<void> {
     console.warn('[supabase] Failed to sign out', error)
   } finally {
     cachedSession = null
-    setAuthCookies(null)
+    clearLegacyAuthCookies()
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(SUPABASE_STORAGE_KEY)
     }

@@ -2,16 +2,46 @@
 
 import { motion } from 'framer-motion'
 import { useTranslations } from 'next-intl'
-import { Radio, TvMinimal, Gauge, Zap, Shield, Upload } from 'lucide-react'
+import { Gauge, Radio, Shield, TvMinimal, Upload, Zap } from 'lucide-react'
 import { SectionContainer } from './SectionContainer'
 
 const features = [
-  { key: 'streaming', icon: Radio, gradient: 'from-purple-500 to-pink-500' },
-  { key: 'multiChannel', icon: TvMinimal, gradient: 'from-cyan-500 to-blue-500' },
-  { key: 'quota', icon: Gauge, gradient: 'from-emerald-500 to-green-500' },
-  { key: 'quality', icon: Zap, gradient: 'from-amber-500 to-orange-500' },
-  { key: 'schedule', icon: Shield, gradient: 'from-violet-500 to-purple-500' },
-  { key: 'uploads', icon: Upload, gradient: 'from-rose-500 to-pink-500' },
+  {
+    key: 'streaming',
+    icon: Radio,
+    accent: 'bg-amber-200 text-amber-900',
+    cardClass: 'md:col-span-2 bg-[linear-gradient(135deg,rgba(255,248,236,0.92),rgba(255,255,255,0.78))]',
+  },
+  {
+    key: 'multiChannel',
+    icon: TvMinimal,
+    accent: 'bg-cyan-100 text-cyan-900',
+    cardClass: 'bg-white/80',
+  },
+  {
+    key: 'quota',
+    icon: Gauge,
+    accent: 'bg-slate-900 text-cyan-200',
+    cardClass: 'bg-slate-950 text-slate-50',
+  },
+  {
+    key: 'quality',
+    icon: Zap,
+    accent: 'bg-violet-100 text-violet-900',
+    cardClass: 'bg-white/80',
+  },
+  {
+    key: 'schedule',
+    icon: Shield,
+    accent: 'bg-emerald-100 text-emerald-900',
+    cardClass: 'bg-[linear-gradient(135deg,rgba(240,253,250,0.85),rgba(255,255,255,0.78))]',
+  },
+  {
+    key: 'uploads',
+    icon: Upload,
+    accent: 'bg-rose-100 text-rose-900',
+    cardClass: 'bg-white/80',
+  },
 ]
 
 export function FeaturesGrid() {
@@ -24,42 +54,54 @@ export function FeaturesGrid() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.6 }}
+        className="space-y-10"
       >
-        <h2 className="text-3xl md:text-4xl font-bold gradient-text text-center mb-12">
-          {t('title')}
-        </h2>
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="landing-kicker">
+              <span>{t('eyebrow')}</span>
+            </div>
+            <h2 className="landing-display mt-5 max-w-3xl text-4xl text-slate-950 md:text-5xl">
+              <span className="landing-gradient-text">{t('title')}</span>
+            </h2>
+          </div>
+          <div className="max-w-xl text-base leading-7 text-slate-600">
+            {t('intro')}
+          </div>
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {features.map((feature, index) => {
             const Icon = feature.icon
+            const isDark = feature.key === 'quota'
+
             return (
-              <motion.div
+              <motion.article
                 key={feature.key}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 24 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                whileHover={{ scale: 1.02, y: -4 }}
-                className="card relative overflow-hidden group"
+                transition={{ duration: 0.45, delay: index * 0.08 }}
+                whileHover={{ y: -6 }}
+                className={`landing-panel landing-noise relative overflow-hidden p-6 ${feature.cardClass} ${
+                  isDark ? 'border-white/10 shadow-[0_28px_70px_-40px_rgba(8,15,29,0.9)]' : ''
+                }`}
               >
-                <div className={`absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 opacity-10`}>
-                  <div className={`w-full h-full rounded-full bg-gradient-to-br ${feature.gradient}`} />
-                </div>
-
+                <div className="absolute right-0 top-0 h-24 w-24 translate-x-6 -translate-y-6 rounded-full bg-white/35 blur-2xl" />
                 <div className="relative">
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center shadow-lg mb-4 group-hover:shadow-xl transition-shadow`}>
-                    <Icon className="w-6 h-6 text-white" />
+                  <div className={`inline-flex rounded-2xl p-3 ${feature.accent}`}>
+                    <Icon className="h-6 w-6" />
                   </div>
 
-                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
+                  <h3 className={`mt-6 text-2xl font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>
                     {t(`items.${feature.key}.title`)}
                   </h3>
 
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                  <p className={`mt-4 text-sm leading-7 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                     {t(`items.${feature.key}.description`)}
                   </p>
                 </div>
-              </motion.div>
+              </motion.article>
             )
           })}
         </div>

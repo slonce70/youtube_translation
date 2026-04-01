@@ -110,7 +110,8 @@
         "liveDuration": "Длительность эфира",
         "totalDuration": "Всего в эфире",
         "quotaRemaining": "Остаток дневного лимита",
-        "scheduledStart": "Запланировано"
+        "scheduledStart": "Запланировано",
+        "autoRetry": "Автоперезапуск"
       },
       "destinations": {
         "none": "Канал не выбран"
@@ -134,7 +135,17 @@
       "stats": {
         "active": "Активные трансляции",
         "total": "Всего трансляций",
-        "concurrent": "Параллельный лимит"
+        "concurrent": "Параллельный лимит",
+        "autoRetry": "Ждут retry"
+      },
+      "retry": {
+        "attempt": "Попытка {current} из {max}",
+        "scheduled": "Автоперезапуск запланирован",
+        "nextRestart": "Следующий запуск {value}",
+        "lastRestartLabel": "Последний retry",
+        "lastRestart": "Перезапущено {value}",
+        "lastFailure": "Последний сбой {value}",
+        "exhausted": "Лимит автоперезапусков исчерпан после {count} попыток"
       },
       "form": {
         "title": "Создать трансляцию",

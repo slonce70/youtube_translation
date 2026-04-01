@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import re
+import secrets
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from threading import RLock
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple, cast
 from uuid import UUID, uuid5, NAMESPACE_DNS
 
 import httpx
@@ -164,8 +165,12 @@ async def _fetch_supabase_user(token: str):
                 _SUPABASE_AUTH_MAX_ATTEMPTS,
                 exc,
             )
-        except Exception as exc:  # pragma: no cover - unexpected errors bubble immediately
-            logger.error("Supabase auth request failed with unexpected error", exc_info=exc)
+        except (
+            Exception
+        ) as exc:  # pragma: no cover - unexpected errors bubble immediately
+            logger.error(
+                "Supabase auth request failed with unexpected error", exc_info=exc
+            )
             raise
 
         if attempt < _SUPABASE_AUTH_MAX_ATTEMPTS:
@@ -175,6 +180,7 @@ async def _fetch_supabase_user(token: str):
     assert last_error is not None  # for mypy
     raise last_error
 
+
 def _dev_user_payload() -> Optional[dict]:
     if not settings.enable_dev_auth:
         return None
@@ -183,7 +189,9 @@ def _dev_user_payload() -> Optional[dict]:
     raw_user_id = settings.dev_user_id
 
     try:
-        user_uuid = UUID(str(raw_user_id)) if raw_user_id else uuid5(NAMESPACE_DNS, email)
+        user_uuid = (
+            UUID(str(raw_user_id)) if raw_user_id else uuid5(NAMESPACE_DNS, email)
+        )
     except (ValueError, TypeError):
         user_uuid = uuid5(NAMESPACE_DNS, email)
 
@@ -196,9 +204,7 @@ def _dev_user_payload() -> Optional[dict]:
     return payload
 
 
-async def get_current_user(
-    authorization: Optional[str] = Header(None)
-) -> dict:
+async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     """
     Get current user from Supabase JWT token with expiration check.
 
@@ -207,7 +213,7 @@ async def get_current_user(
 
     Returns:
         User dict with 'sub' (user_id) and other user info
-        
+
     Raises:
         HTTPException: If token is invalid or missing
     """
@@ -229,17 +235,20 @@ async def get_current_user(
             detail="Missing authorization header",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not authorization.startswith("Bearer "):
-        logger.debug("Auth request with invalid Authorization header format: %s", authorization[:20])
+        logger.debug(
+            "Auth request with invalid Authorization header format: %s",
+            authorization[:20],
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authorization header format",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = authorization.replace("Bearer ", "")
-    
+
     try:
         # First, decode and verify JWT locally with expiration check
         try:
@@ -296,7 +305,9 @@ async def get_current_user(
             logger.info("Supabase rejected token: user not found or session invalid")
             dev_payload = _dev_user_payload()
             if dev_payload:
-                logger.warning("Falling back to dev auth payload after Supabase rejection")
+                logger.warning(
+                    "Falling back to dev auth payload after Supabase rejection"
+                )
                 return dev_payload
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -308,14 +319,14 @@ async def get_current_user(
             "sub": user.user.id,
             "email": user.user.email,
             "user_metadata": user.user.user_metadata,
-            "exp": exp
+            "exp": exp,
         }
 
         _set_cached_user(token, user_payload, exp)
 
         # Return user dict with 'sub' for user_id (standard JWT claim)
         return user_payload
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -329,6 +340,7 @@ async def get_current_user(
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
 
 async def _ensure_user_profile(
     db: AsyncSession,
@@ -352,16 +364,16 @@ async def _ensure_user_profile(
             detail="Invalid user identifier in token",
         )
 
-    result = await db.execute(
-        select(UserProfile).where(UserProfile.user_id == user_id)
-    )
+    result = await db.execute(select(UserProfile).where(UserProfile.user_id == user_id))
     profile = result.scalar_one_or_none()
 
     email = user_payload.get("email")
     metadata = user_payload.get("user_metadata") or {}
     full_name = metadata.get("full_name") or metadata.get("name")
     # Optional timezone passed from client (IANA format, e.g. Europe/Kyiv)
-    user_timezone = client_timezone.strip() if isinstance(client_timezone, str) else None
+    user_timezone = (
+        client_timezone.strip() if isinstance(client_timezone, str) else None
+    )
     if user_timezone:
         timezone_pattern = r"[A-Za-z0-9_+\\/\\-]+"
         if len(user_timezone) > 64 or not re.fullmatch(timezone_pattern, user_timezone):
@@ -369,45 +381,55 @@ async def _ensure_user_profile(
 
     if profile is None and email:
         existing_by_email = await db.execute(
-            select(UserProfile)
-            .where(UserProfile.email == email)
-            .order_by(UserProfile.created_at.desc())
+            select(UserProfile.user_id).where(UserProfile.email == email)
         )
-        existing_profile = existing_by_email.scalar_one_or_none()
-        if existing_profile:
-            logger.info(
-                "Reusing existing profile %s for Supabase user %s (email %s)",
-                existing_profile.user_id,
+        conflicting_user_id = existing_by_email.scalar_one_or_none()
+        if conflicting_user_id and conflicting_user_id != user_id:
+            logger.warning(
+                "Identity conflict while provisioning profile: token sub=%s attempted to claim email %s owned by %s",
                 user_id,
                 email,
+                conflicting_user_id,
             )
-            updated = False
-            if full_name and existing_profile.full_name != full_name:
-                existing_profile.full_name = full_name
-                updated = True
-            if user_timezone and getattr(existing_profile, "timezone", None) != user_timezone:
-                existing_profile.timezone = user_timezone
-                updated = True
-            if updated:
-                await db.commit()
-            return existing_profile.user_id
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Authentication identity conflict",
+            )
 
     if profile:
         updated = False
         if email and profile.email != email:
+            existing_by_email = await db.execute(
+                select(UserProfile.user_id).where(
+                    UserProfile.email == email,
+                    UserProfile.user_id != user_id,
+                )
+            )
+            conflicting_user_id = existing_by_email.scalar_one_or_none()
+            if conflicting_user_id:
+                logger.warning(
+                    "Identity conflict while updating profile %s: email %s already belongs to %s",
+                    user_id,
+                    email,
+                    conflicting_user_id,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Authentication identity conflict",
+                )
             profile.email = email
             updated = True
         if full_name and profile.full_name != full_name:
             profile.full_name = full_name
             updated = True
         if user_timezone and getattr(profile, "timezone", None) != user_timezone:
-            profile.timezone = user_timezone
+            cast(Any, profile).timezone = user_timezone
             updated = True
 
         if updated:
             await db.commit()
 
-        return profile.user_id
+        return user_id
 
     # Профиль отсутствует — создаём с минимально необходимыми полями
     if not email:
@@ -417,10 +439,11 @@ async def _ensure_user_profile(
         user_id=user_id,
         email=email,
         full_name=full_name,
-        timezone=user_timezone,
         subscription_tier="free",
         subscription_status="active",
     )
+    if user_timezone:
+        cast(Any, new_profile).timezone = user_timezone
 
     db.add(new_profile)
 
@@ -434,28 +457,42 @@ async def _ensure_user_profile(
         )
         existing_profile = existing_result.scalar_one_or_none()
         if existing_profile:
-            return existing_profile.user_id
+            return user_id
+        if email:
+            email_owner_result = await db.execute(
+                select(UserProfile.user_id).where(UserProfile.email == email)
+            )
+            conflicting_user_id = email_owner_result.scalar_one_or_none()
+            if conflicting_user_id and conflicting_user_id != user_id:
+                logger.warning(
+                    "Identity conflict after IntegrityError: token sub=%s attempted to claim email %s owned by %s",
+                    user_id,
+                    email,
+                    conflicting_user_id,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Authentication identity conflict",
+                )
         # Если профиль всё же отсутствует, пробрасываем ошибку для диагностики
         raise
     except Exception:
         await db.rollback()
         raise
 
-    return new_profile.user_id
+    return user_id
 
 
-async def get_current_user_id(
-    authorization: Optional[str] = Header(None)
-) -> str:
+async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
     """
     Get current user ID from Supabase JWT token.
-    
+
     Args:
         authorization: Bearer token from Authorization header
-        
+
     Returns:
         User ID (UUID string)
-        
+
     Raises:
         HTTPException: If token is invalid or missing
     """
@@ -464,7 +501,7 @@ async def get_current_user_id(
 
 
 async def get_current_user_optional(
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
 ) -> Optional[str]:
     """
     Get current user ID if authenticated, None otherwise.
@@ -472,7 +509,7 @@ async def get_current_user_optional(
     """
     if not authorization or not authorization.startswith("Bearer "):
         return None
-    
+
     try:
         return await get_current_user_id(authorization)
     except HTTPException:
@@ -484,34 +521,41 @@ async def require_metrics_access(
     metrics_token: Optional[str] = Header(default=None, alias="X-Metrics-Token"),
 ) -> dict:
     """
-    Allow access to metrics endpoints via either:
-    - A shared metrics token (X-Metrics-Token or Bearer token), or
-    - A valid Supabase JWT (Authorization: Bearer <token>).
+    Allow access to metrics endpoints only with a shared metrics token.
     """
-    if settings.metrics_access_token:
-        if metrics_token == settings.metrics_access_token:
-            return {"token": "metrics"}
-        if authorization and authorization.startswith("Bearer "):
-            raw_token = authorization.replace("Bearer ", "")
-            if raw_token == settings.metrics_access_token:
-                return {"token": "metrics"}
+    configured_token = settings.metrics_access_token
+    authorization_value = authorization if isinstance(authorization, str) else None
+    metrics_token_value = metrics_token if isinstance(metrics_token, str) else None
 
-    if authorization:
-        return await get_current_user(authorization)
+    if not configured_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Metrics access token is not configured",
+        )
+
+    if metrics_token_value and secrets.compare_digest(
+        metrics_token_value, configured_token
+    ):
+        return {"token": "metrics"}
+
+    if authorization_value and authorization_value.startswith("Bearer "):
+        raw_token = authorization_value.replace("Bearer ", "")
+        if secrets.compare_digest(raw_token, configured_token):
+            return {"token": "metrics"}
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Missing authorization header",
+        detail="Invalid metrics credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
 
 class UserDependency:
     """Dependency class for getting current user with database session"""
-    
+
     def __init__(self, required: bool = True):
         self.required = required
-    
+
     async def __call__(
         self,
         db: AsyncSession = Depends(get_db),
@@ -520,7 +564,7 @@ class UserDependency:
     ) -> tuple[AsyncSession, Optional[str]]:
         """
         Get database session and current user ID.
-        
+
         Returns:
             Tuple of (db_session, user_id)
         """

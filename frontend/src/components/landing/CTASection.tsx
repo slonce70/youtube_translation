@@ -2,9 +2,8 @@
 
 import { motion } from 'framer-motion'
 import { useTranslations } from 'next-intl'
-import { CheckCircle, Database, X } from 'lucide-react'
+import { ArrowRight, CheckCircle, Database, ShieldCheck } from 'lucide-react'
 import { Button } from '../ui/Button'
-import { AnimatedBackground } from './AnimatedBackground'
 
 type Props = {
   onStartStreaming?: () => void | Promise<void>
@@ -13,52 +12,63 @@ type Props = {
 export function CTASection({ onStartStreaming }: Props) {
   const t = useTranslations('landing.cta')
 
-  return (
-    <section className="relative overflow-hidden py-24">
-      <AnimatedBackground />
+  const trustIndicators = [
+    { key: 'noCard', icon: CheckCircle },
+    { key: 'freeStorage', icon: Database },
+    { key: 'cancelAnytime', icon: ShieldCheck },
+  ]
 
-      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+  return (
+    <section className="px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center max-w-4xl mx-auto"
+          className="landing-section-dark landing-noise overflow-hidden px-6 py-10 sm:px-8 md:px-10 md:py-12"
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-600 via-purple-500 to-cyan-500 dark:from-purple-400 dark:via-purple-400 dark:to-cyan-400">
-              {t('title')}
-            </span>
-          </h2>
-
-          <p className="text-lg md:text-xl text-slate-600 dark:text-slate-300 mb-10">
-            {t('subtitle')}
-          </p>
-
-          <Button
-            size="lg"
-            className="shadow-glow-lg text-lg py-6 px-10"
-            onClick={() => {
-              if (onStartStreaming) {
-                void onStartStreaming()
-              }
-            }}
-          >
-            {t('button')}
-          </Button>
-
-          <div className="flex flex-wrap items-center justify-center gap-6 mt-10">
-            <div className="flex items-center space-x-2 text-sm text-slate-600 dark:text-slate-400">
-              <CheckCircle className="w-5 h-5 text-success-500" />
-              <span>{t('trustIndicators.noCard')}</span>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.18),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.18),transparent_28%)]" />
+          <div className="relative grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+            <div className="max-w-2xl">
+              <div className="landing-kicker-dark">
+                <span>{t('eyebrow')}</span>
+              </div>
+              <h2 className="landing-display mt-6 text-4xl text-white md:text-6xl">
+                {t('title')}
+              </h2>
+              <p className="mt-5 max-w-xl text-lg leading-8 text-slate-300">{t('subtitle')}</p>
             </div>
-            <div className="flex items-center space-x-2 text-sm text-slate-600 dark:text-slate-400">
-              <Database className="w-5 h-5 text-primary-500" />
-              <span>{t('trustIndicators.freeStorage')}</span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm text-slate-600 dark:text-slate-400">
-              <X className="w-5 h-5 text-accent-500" />
-              <span>{t('trustIndicators.cancelAnytime')}</span>
+
+            <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-6 backdrop-blur">
+              <div className="text-xs uppercase tracking-[0.22em] text-slate-400">{t('panelLabel')}</div>
+              <div className="mt-4 text-2xl font-semibold text-white">
+                {t('note')}
+              </div>
+              <Button
+                size="lg"
+                className="mt-6 w-full rounded-2xl border border-white/10 bg-white px-7 py-4 text-base text-slate-950 shadow-[0_22px_44px_-24px_rgba(255,255,255,0.24)] hover:bg-slate-100"
+                onClick={() => {
+                  if (onStartStreaming) {
+                    void onStartStreaming()
+                  }
+                }}
+              >
+                {t('button')}
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+
+              <div className="mt-6 space-y-3">
+                {trustIndicators.map((indicator) => {
+                  const Icon = indicator.icon
+                  return (
+                    <div key={indicator.key} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                      <Icon className="mt-0.5 h-5 w-5 text-cyan-300" />
+                      <span className="text-sm leading-6 text-slate-200">{t(`trustIndicators.${indicator.key}`)}</span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </motion.div>

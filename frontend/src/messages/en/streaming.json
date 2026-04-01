@@ -110,7 +110,8 @@
         "liveDuration": "Live duration",
         "totalDuration": "Total streamed",
         "quotaRemaining": "Daily quota remaining",
-        "scheduledStart": "Scheduled start"
+        "scheduledStart": "Scheduled start",
+        "autoRetry": "Auto-restart"
       },
       "destinations": {
         "none": "No destinations configured"
@@ -134,7 +135,17 @@
       "stats": {
         "active": "Active Streams",
         "total": "Total Streams",
-        "concurrent": "Concurrent Limit"
+        "concurrent": "Concurrent Limit",
+        "autoRetry": "Waiting for retry"
+      },
+      "retry": {
+        "attempt": "Attempt {current} of {max}",
+        "scheduled": "Auto-restart scheduled",
+        "nextRestart": "Next restart {value}",
+        "lastRestartLabel": "Last retry",
+        "lastRestart": "Restarted {value}",
+        "lastFailure": "Last failure {value}",
+        "exhausted": "Auto-restart budget exhausted after {count} attempts"
       },
       "form": {
         "title": "Create Stream",

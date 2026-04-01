@@ -26,6 +26,9 @@ class VideoValidator:
     MAX_GOP_SIZE = 120  # 4 seconds at 30fps
     RECOMMENDED_GOP_SIZE = 60  # 2 seconds at 30fps
     MAX_KEYFRAME_INTERVAL_SECONDS = 4.0
+    MISSING_FFPROBE_MESSAGE = (
+        "ffprobe binary not found. Install FFmpeg or set FFMPEG_BIN/FFPROBE_BIN in .env"
+    )
 
     BITRATE_GUIDANCE = [
         {
@@ -119,26 +122,9 @@ class VideoValidator:
     ]
 
     def __init__(self, ffprobe_bin: Optional[str] = None):
-        if ffprobe_bin:
-            candidate = Path(ffprobe_bin)
-            if not candidate.exists():
-                raise FileNotFoundError(f"ffprobe binary not found: {ffprobe_bin}")
-            self.ffprobe_bin = str(candidate)
-            return
-
-        default_candidate = Path(settings.ffprobe_bin)
-        if default_candidate.exists():
-            self.ffprobe_bin = str(default_candidate)
-            return
-
-        detected = shutil.which("ffprobe")
-        if detected:
-            logger.info("Using ffprobe binary at %s", detected)
-            self.ffprobe_bin = detected
-            return
-
-        raise FileNotFoundError(
-            "ffprobe binary not found. Install FFmpeg or set FFMPEG_BIN/FFPROBE_BIN in .env"
+        self.ffprobe_bin = self._resolve_ffprobe_bin(
+            ffprobe_bin or settings.ffprobe_bin,
+            allow_deferred=ffprobe_bin is None,
         )
 
     async def validate_file(self, file_path: Path) -> Dict[str, Any]:
@@ -167,12 +153,42 @@ class VideoValidator:
             }
         except Exception as exc:  # pylint: disable=broad-except
             logger.error("Error validating file %s: %s", file_path, exc)
+            error_message = str(exc)
+            if isinstance(exc, FileNotFoundError):
+                error_message = self.MISSING_FFPROBE_MESSAGE
             return {
                 "compatible_for_copy": False,
                 "meta": {},
-                "validation_errors": [str(exc)],
+                "validation_errors": [error_message],
                 "keyframe_stats": None,
             }
+
+    @classmethod
+    def _resolve_ffprobe_bin(cls, candidate: str, *, allow_deferred: bool) -> str:
+        """Resolve FFprobe from config/PATH while preserving dry-run behavior."""
+        provided_path = Path(candidate)
+        if provided_path.exists():
+            return str(provided_path)
+
+        detected = shutil.which(candidate) if candidate else None
+        if detected:
+            logger.info("Using ffprobe binary at %s", detected)
+            return detected
+
+        fallback = shutil.which("ffprobe")
+        if fallback:
+            logger.info("Detected ffprobe binary via PATH at %s", fallback)
+            return fallback
+
+        if allow_deferred:
+            deferred_candidate = provided_path.name or "ffprobe"
+            logger.warning(
+                "ffprobe binary %s not found during initialization; deferring resolution until execution time",
+                candidate,
+            )
+            return deferred_candidate
+
+        raise FileNotFoundError(f"ffprobe binary not found: {candidate}")
 
     async def _get_metadata(self, file_path: Path) -> Dict[str, Any]:
         """Get video metadata using ffprobe"""

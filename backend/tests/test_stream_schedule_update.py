@@ -1,6 +1,7 @@
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 
@@ -84,6 +85,51 @@ async def test_update_stream_schedule_clears_start_when_now():
         assert updated.scheduled_start_enabled is False
         assert updated.scheduled_start_time is None
         assert updated.status == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_update_stream_schedule_sets_recurring_timezone_and_window_defaults():
+    user_id = uuid4()
+    zone = ZoneInfo("Europe/Kyiv")
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@schedule-recurring.test",
+            subscription_tier="free",
+            timezone="Europe/Kyiv",
+        )
+        session.add(profile)
+
+        stream = Stream(
+            user_id=user_id,
+            source_type="playlist",
+            mix_mode="video_only",
+            status="stopped",
+        )
+        session.add(stream)
+        await session.commit()
+
+        service = StreamService(session, user_id)
+        local_start = datetime(2026, 4, 6, 17, 30, tzinfo=zone)
+        start_at = local_start.astimezone(timezone.utc).replace(microsecond=0)
+
+        payload = StreamScheduleUpdate(
+            schedule_mode="schedule",
+            schedule_start_at=start_at,
+            schedule_repeat="weekly",
+            schedule_window_end_time=time(18, 0),
+            schedule_stop_after_seconds=7200,
+        )
+
+        updated = await service.update_stream_schedule(stream.id, payload)
+
+        assert updated.schedule_timezone == "Europe/Kyiv"
+        assert updated.schedule_repeat == "weekly"
+        assert updated.schedule_weekdays == [0]
+        assert updated.schedule_window_end_time == time(18, 0)
+        assert updated.schedule_stop_after_seconds == 7200
+        assert updated.scheduled_stop_time == datetime(2026, 4, 6, 15, 0, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio

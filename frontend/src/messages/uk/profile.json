@@ -15,7 +15,7 @@
   "passwordForm": {
     "title": "Оновлення пароля",
     "currentLabel": "Поточний пароль",
-    "currentPlaceholder": "Додаткова перевірка",
+    "currentPlaceholder": "Потрібен для підтвердження зміни пароля",
     "newLabel": "Новий пароль",
     "newPlaceholder": "Щонайменше 8 символів",
     "confirmLabel": "Підтвердіть пароль",
@@ -28,6 +28,7 @@
     "profileUpdateError": "Не вдалося оновити профіль",
     "passwordUpdated": "Пароль оновлено",
     "passwordUpdateError": "Не вдалося змінити пароль",
+    "currentRequired": "Введіть поточний пароль, щоб змінити його",
     "passwordTooShort": "Пароль має містити щонайменше 8 символів",
     "passwordMismatch": "Паролі не збігаються",
     "missingEmail": "В акаунті відсутня електронна адреса",

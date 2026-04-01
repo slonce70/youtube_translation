@@ -15,7 +15,7 @@
   "passwordForm": {
     "title": "Update password",
     "currentLabel": "Current password",
-    "currentPlaceholder": "Optional re-auth",
+    "currentPlaceholder": "Required to confirm password change",
     "newLabel": "New password",
     "newPlaceholder": "At least 8 characters",
     "confirmLabel": "Confirm password",
@@ -28,6 +28,7 @@
     "profileUpdateError": "Unable to update profile",
     "passwordUpdated": "Password updated",
     "passwordUpdateError": "Unable to change password",
+    "currentRequired": "Enter your current password to change it",
     "passwordTooShort": "Password must be at least 8 characters long",
     "passwordMismatch": "Passwords do not match",
     "missingEmail": "Missing email on account",

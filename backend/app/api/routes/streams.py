@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, HTTPException  # noqa: F401
+from fastapi import APIRouter, Depends, Query, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_user
@@ -19,11 +21,15 @@ from app.schemas.api import (
     StreamQueueAppend,
     StreamQueueResponse,
     StreamScheduleUpdate,
+    StreamWsTokenResponse,
 )
 from app.services.streams import StreamControlService, StreamService
+from app.services.streams.websocket import stream_ws_manager
+from app.services.streams.ws_tokens import generate_ws_token, verify_ws_token
 from app.streaming.ffmpeg_manager import ffmpeg_manager  # noqa: F401 - compatibility for tests
 
 router = APIRouter()
+WS_STATUS_POLL_SECONDS = 3
 
 
 def _build_services(db: AsyncSession, user_id: UUID):
@@ -51,6 +57,57 @@ async def create_stream(stream_data: StreamCreate, user_deps: tuple = Depends(re
     db, user_id = user_deps
     service, _ = _build_services(db, user_id)
     return await service.create_stream(stream_data)
+
+
+@router.post("/ws/token", response_model=StreamWsTokenResponse)
+async def create_stream_ws_token(user_deps: tuple = Depends(require_user)):
+    _, user_id = user_deps
+    token, expires_at = generate_ws_token(user_id)
+    return StreamWsTokenResponse(token=token, expires_at=expires_at)
+
+
+@router.websocket("/ws/status")
+async def stream_status_websocket(websocket: WebSocket):
+    await websocket.accept()
+
+    connected = False
+    user_id: str | None = None
+    try:
+        auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+        try:
+            payload = json.loads(auth_message)
+        except json.JSONDecodeError:
+            await websocket.close(code=1003, reason="Expected JSON auth payload")
+            return
+
+        token = payload.get("token") if isinstance(payload, dict) else None
+        if not token:
+            await websocket.close(code=1008, reason="Missing WebSocket token")
+            return
+
+        user_id = str(verify_ws_token(token))
+        await stream_ws_manager.connect(websocket, user_id)
+        connected = True
+
+        while True:
+            try:
+                snapshot = stream_ws_manager.snapshot_for_user(
+                    user_id,
+                    ffmpeg_manager.get_all_streams(),
+                )
+                await websocket.send_text(json.dumps({"type": "stream_update", "payload": snapshot}))
+                await asyncio.sleep(WS_STATUS_POLL_SECONDS)
+            except WebSocketDisconnect:
+                break
+            except RuntimeError:
+                break
+    except asyncio.TimeoutError:
+        await websocket.close(code=1008, reason="WebSocket auth timeout")
+    except HTTPException:
+        await websocket.close(code=1008, reason="Invalid WebSocket token")
+    finally:
+        if connected:
+            stream_ws_manager.disconnect(websocket)
 
 
 @router.patch("/{stream_id}", response_model=StreamResponse)

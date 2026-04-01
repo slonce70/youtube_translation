@@ -10,6 +10,15 @@ const baseAsset: Asset = {
   compatible_for_copy: true,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
+  optimization: {
+    status: 'not_requested',
+    strategy: null,
+    optimized_storage_path: null,
+    error: null,
+    updated_at: null,
+    recommended_strategy: 'copy',
+    can_stream_from_source: true,
+  },
 }
 
 const buildAsset = (overrides: Partial<Asset>): Asset => ({

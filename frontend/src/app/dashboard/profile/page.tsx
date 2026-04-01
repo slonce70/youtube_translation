@@ -63,6 +63,10 @@ export default function ProfilePage() {
   const handlePasswordSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!user) return
+    if (!currentPassword) {
+      toast.error(toasts('currentRequired'))
+      return
+    }
     if (!newPassword || newPassword.length < 8) {
       toast.error(toasts('passwordTooShort'))
       return
@@ -80,15 +84,13 @@ export default function ProfilePage() {
         throw new Error('Missing email on account')
       }
 
-      if (currentPassword) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password: currentPassword,
-        })
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      })
 
-        if (signInError) {
-          throw new Error('Current password is incorrect')
-        }
+      if (signInError) {
+        throw new Error('Current password is incorrect')
       }
 
       const { error } = await supabase.auth.updateUser({ password: newPassword })

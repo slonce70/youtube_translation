@@ -25,6 +25,7 @@ from app.schemas.api import (
     MediaCollectionResponse,
     MediaCollectionUpdate,
 )
+from app.services.assets.serializers import serialize_loaded_asset
 
 logger = logging.getLogger(__name__)
 
@@ -263,9 +264,8 @@ class MediaCollectionService:
                 
                 # Only include asset if it's already loaded (not lazy)
                 if hasattr(item, '__dict__') and 'asset' in item.__dict__:
-                    from app.schemas.api import AssetResponse
                     if item.asset is not None:
-                        item_data["asset"] = AssetResponse.model_validate(item.asset, from_attributes=True)
+                        item_data["asset"] = serialize_loaded_asset(item.asset)
                 
                 response_items.append(CollectionItemResponse(**item_data))
         else:

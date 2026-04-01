@@ -1,4 +1,4 @@
-.PHONY: help install install-backend install-frontend backend-venv dev test lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate
+.PHONY: help install install-backend install-frontend backend-venv dev dev-bootstrap dev-bootstrap-v2 dev-bootstrap-down dev-bootstrap-logs dev-bootstrap-v2-logs test test-backend-preflight lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate verify-v0
 
 # Colors for output
 BLUE := \033[0;34m
@@ -12,13 +12,18 @@ BACKEND_VENV := $(BACKEND_DIR)/.venv
 PY311 := $(shell command -v python3.11 || command -v python3)
 BACKEND_PY := $(BACKEND_VENV)/bin/python
 BACKEND_PIP := $(BACKEND_VENV)/bin/pip
+DOCKER_COMPOSE := docker compose -f docker/docker-compose.yml
 
-$(BACKEND_VENV)/bin/python:
-	@echo "$(BLUE)Creating backend virtualenv with $(PY311)...$(NC)"
-	cd $(BACKEND_DIR) && $(PY311) -m venv .venv
-
-backend-venv: $(BACKEND_VENV)/bin/python ## Ensure backend virtualenv exists
-	@:
+backend-venv: ## Ensure backend virtualenv exists
+	@if [ ! -x "$(BACKEND_PY)" ]; then \
+		echo "$(BLUE)Creating backend virtualenv with $(PY311)...$(NC)"; \
+		rm -rf "$(BACKEND_VENV)"; \
+		cd "$(BACKEND_DIR)" && "$(PY311)" -m venv .venv; \
+	fi
+	@if [ ! -x "$(BACKEND_PY)" ]; then \
+		echo "Failed to bootstrap backend virtualenv at $(BACKEND_VENV)" >&2; \
+		exit 1; \
+	fi
 
 help: ## Show this help message
 	@echo "$(BLUE)YouTube Multi-Channel Streaming Platform - Make Commands$(NC)"
@@ -63,6 +68,27 @@ dev: ## Start all services (local only)
 
 dev-local: dev ## Start all services (local only)
 
+dev-bootstrap: ## Start base services for hybrid local dev (postgres, redis, tusd, runner)
+	@echo "$(BLUE)Starting hybrid dev base services via Docker Compose...$(NC)"
+	docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner
+	@echo "$(GREEN)✓ Base services ready$(NC)"
+
+dev-bootstrap-v2: ## Start base services plus optional MediaMTX relay/metrics layer
+	@echo "$(BLUE)Starting hybrid dev v2 base services via Docker Compose...$(NC)"
+	docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner mediamtx
+	@echo "$(GREEN)✓ V2 base services ready$(NC)"
+
+dev-bootstrap-down: ## Stop hybrid local dev base services
+	@echo "$(BLUE)Stopping hybrid dev base services...$(NC)"
+	docker compose -f docker/docker-compose.yml stop mediamtx runner tusd redis postgres
+	@echo "$(GREEN)✓ Base services stopped$(NC)"
+
+dev-bootstrap-logs: ## Tail logs for hybrid local dev base services
+	docker compose -f docker/docker-compose.yml logs -f postgres redis tusd runner
+
+dev-bootstrap-v2-logs: ## Tail logs for hybrid local dev v2 services
+	docker compose -f docker/docker-compose.yml logs -f postgres redis tusd runner mediamtx
+
 dev-backend: ## Start backend only
 	@echo "$(BLUE)Starting backend at http://localhost:8000...$(NC)"
 	./start-backend.sh
@@ -79,20 +105,40 @@ dev-tusd: ## Start tusd only
 # Testing
 # ==========================================
 
-test: backend-venv ## Run all tests
-	@echo "$(BLUE)Running backend tests...$(NC)"
-	cd backend && FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest -v
+test: test-backend ## Run all tests
 	@echo "$(BLUE)Running frontend tests...$(NC)"
 	cd frontend && CI=1 npm test
 	@echo "$(GREEN)✓ All tests passed$(NC)"
 
-test-backend: backend-venv ## Run backend tests
-	@echo "$(BLUE)Running backend tests...$(NC)"
-	cd backend && FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest -v
+test-backend-preflight: backend-venv ## Ensure local services needed by backend tests are available
+	@echo "$(BLUE)Ensuring postgres and redis are running for backend tests...$(NC)"
+	@if ! command -v docker >/dev/null 2>&1; then \
+		echo "Docker is required for the canonical backend test path." >&2; \
+		exit 1; \
+	fi
+	@$(DOCKER_COMPOSE) up -d postgres redis >/dev/null
+	@for service in youtube-streaming-postgres youtube-streaming-redis; do \
+		status="starting"; \
+		for _ in $$(seq 1 30); do \
+			status=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $$service 2>/dev/null || echo missing); \
+			if [ "$$status" = "healthy" ] || [ "$$status" = "running" ]; then \
+				break; \
+			fi; \
+			sleep 2; \
+		done; \
+		if [ "$$status" != "healthy" ] && [ "$$status" != "running" ]; then \
+			echo "Service $$service is not ready (status=$$status)" >&2; \
+			exit 1; \
+		fi; \
+	done
 
-test-backend-coverage: backend-venv ## Run backend tests with coverage
+test-backend: test-backend-preflight ## Run backend tests
+	@echo "$(BLUE)Running backend tests...$(NC)"
+	cd backend && PYTHONDONTWRITEBYTECODE=1 FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest --import-mode=importlib -v
+
+test-backend-coverage: test-backend-preflight ## Run backend tests with coverage
 	@echo "$(BLUE)Running backend tests with coverage...$(NC)"
-	cd backend && FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest --cov=app --cov-report=html --cov-report=term
+	cd backend && PYTHONDONTWRITEBYTECODE=1 FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest --import-mode=importlib --cov=app --cov-report=html --cov-report=term
 
 test-frontend: ## Run frontend tests
 	@echo "$(BLUE)Running frontend tests...$(NC)"
@@ -106,7 +152,7 @@ test-admin: ## Run admin tests (requires RUN_ADMIN_TESTS=1)
 # Code Quality
 # ==========================================
 
-lint: ## Run linters for backend and frontend
+lint: ## Run default linters for backend and frontend (Black opt-in via RUN_BLACK=1)
 	$(MAKE) lint-backend
 	$(MAKE) lint-frontend
 	@echo "$(GREEN)✓ All linting passed$(NC)"
@@ -136,7 +182,7 @@ lint-fix: backend-venv ## Fix linting issues automatically
 	cd frontend && npm run lint:fix
 	@echo "$(GREEN)✓ Code formatting completed$(NC)"
 
-type-check: backend-venv ## Run type checking
+type-check: backend-venv ## Run default type checking (backend mypy opt-in via RUN_MYPY=1)
 	@echo "$(BLUE)Type checking backend...$(NC)"
 	@if [ "$${RUN_MYPY:-0}" = "1" ]; then \
 		cd backend && $(BACKEND_PY) -m mypy app/; \
@@ -146,6 +192,18 @@ type-check: backend-venv ## Run type checking
 	@echo "$(BLUE)Type checking frontend...$(NC)"
 	cd frontend && npm run type-check
 	@echo "$(GREEN)✓ Type checking passed$(NC)"
+
+verify-v0: backend-venv ## Run the strict V0 stabilization gate
+	@echo "$(BLUE)Running strict V0 verification gate...$(NC)"
+	$(MAKE) lint RUN_BLACK=1
+	$(MAKE) type-check RUN_MYPY=1
+	$(MAKE) i18n-check
+	$(MAKE) test
+	@echo "$(BLUE)Building frontend production bundle...$(NC)"
+	cd frontend && npm run build
+	@echo "$(BLUE)Running frontend Playwright smoke/e2e...$(NC)"
+	cd frontend && npm run test:e2e
+	@echo "$(GREEN)✓ V0 verification gate passed$(NC)"
 
 # ==========================================
 # Database
