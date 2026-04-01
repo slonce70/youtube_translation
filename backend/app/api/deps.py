@@ -36,6 +36,12 @@ if settings.supabase_url and supabase_auth_key:
                 "Supabase init failed, continuing with dev auth enabled",
                 exc_info=exc,
             )
+        elif settings.environment in {"development", "test"}:
+            logger.warning(
+                "Supabase init failed in %s environment; deferring auth failures to request time",
+                settings.environment,
+                exc_info=exc,
+            )
         else:
             raise
 elif settings.enable_dev_auth:
