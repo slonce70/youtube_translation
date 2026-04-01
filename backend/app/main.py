@@ -171,7 +171,6 @@ async def startup_event():
     # Start periodic cleanup task for rate limiter
     schedule_background_task(cleanup_rate_limiter())
     schedule_background_task(cleanup_ffmpeg_streams())
-    schedule_background_task(broadcast_stream_updates())
     schedule_background_task(scheduled_stream_launcher())
 
     # Start periodic stream status sync (only in supervisor/systemd mode)
