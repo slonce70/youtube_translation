@@ -2,12 +2,13 @@ import { createBrowserClient } from '@supabase/ssr'
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
 
 const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
+const IS_TEST = process.env.NODE_ENV === 'test'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
-const useBypassClient = DEV_BYPASS || !isSupabaseConfigured
+const useBypassClient = DEV_BYPASS || IS_TEST || !isSupabaseConfigured
 
-if (!isSupabaseConfigured && !DEV_BYPASS) {
+if (!isSupabaseConfigured && !DEV_BYPASS && !IS_TEST) {
   throw new Error('Missing Supabase environment variables')
 }
 
