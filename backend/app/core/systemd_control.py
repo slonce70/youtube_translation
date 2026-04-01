@@ -26,7 +26,7 @@ async def _run_systemctl(*args: str) -> Tuple[int, str, str]:
         stderr=PIPE,
     )
     stdout, stderr = await process.communicate()
-    return process.returncode, stdout.decode().strip(), stderr.decode().strip()
+    return (process.returncode or 1), stdout.decode().strip(), stderr.decode().strip()
 
 
 def _build_error(action: str, unit: str, stdout: str, stderr: str) -> RuntimeError:

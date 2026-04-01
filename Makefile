@@ -185,7 +185,7 @@ lint-fix: backend-venv ## Fix linting issues automatically
 type-check: backend-venv ## Run default type checking (backend mypy opt-in via RUN_MYPY=1)
 	@echo "$(BLUE)Type checking backend...$(NC)"
 	@if [ "$${RUN_MYPY:-0}" = "1" ]; then \
-		cd backend && $(BACKEND_PY) -m mypy app/; \
+		cd backend && $(BACKEND_PY) -m mypy --config-file mypy.ini; \
 	else \
 		echo "$(BLUE)Skipping mypy (set RUN_MYPY=1 to enable)$(NC)"; \
 	fi
