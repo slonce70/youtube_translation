@@ -99,7 +99,11 @@ async def _run_supervisorctl(*args: str) -> Tuple[int, str, str]:
         stderr=PIPE,
     )
     stdout, stderr = await process.communicate()
-    return (process.returncode or 1), stdout.decode().strip(), stderr.decode().strip()
+    return (
+        process.returncode if process.returncode is not None else 1,
+        stdout.decode().strip(),
+        stderr.decode().strip(),
+    )
 
 
 def _build_error(action: str, program: str, stdout: str, stderr: str) -> RuntimeError:
