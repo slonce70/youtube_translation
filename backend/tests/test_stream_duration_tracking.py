@@ -9,6 +9,7 @@ import app.cli.run_stream as run_stream_cli
 import app.services.streams.control as streams_control
 from app.core.config import settings
 from app.core.database import async_session_maker
+from app.core.stream_runtime_heartbeat import write_runtime_heartbeat
 from app.core.quota import QuotaEnforcer
 from app.models.database import Stream, UserProfile
 from app.services.streams.control import StreamControlService
@@ -180,6 +181,146 @@ async def test_scheduled_stream_status_stays_scheduled_when_supervisor_has_not_s
         assert status.status == "scheduled"
         assert status.is_running is False
         assert status.error_message is None
+
+
+@pytest.mark.asyncio
+async def test_supervisor_status_repairs_lease_and_clears_retry_metadata_from_fresh_heartbeat(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    user_id = uuid4()
+    started_at = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"status-heartbeat-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=uuid4(),
+            user_id=user_id,
+            name="running-supervisor",
+            status="running",
+            started_at=started_at,
+            runtime_restart_attempts=2,
+            runtime_last_restart_at=started_at + timedelta(minutes=5),
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+        monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+        monkeypatch.setattr(
+            streams_control.default_settings,
+            "stream_runtime_restart_reset_after_seconds",
+            60,
+        )
+
+        async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {"state": "RUNNING", "details": "pid 321"}
+
+        monkeypatch.setattr(
+            streams_control, "supervisor_program_status", fake_program_status
+        )
+
+        write_runtime_heartbeat(stream.id, runner_pid=321)
+
+        service = StreamControlService(session, user_id)
+        status = await service.get_stream_status(stream.id)
+        await session.refresh(stream)
+
+        assert status.status == "running"
+        assert status.runtime_restart.attempts == 0
+        assert status.runtime_restart.state == "idle"
+        assert stream.runtime_owner_id == streams_control.default_settings.stream_runtime_node_id
+        assert stream.runtime_lease_expires_at is not None
+        assert stream.runtime_restart_attempts == 0
+
+
+@pytest.mark.asyncio
+async def test_supervisor_status_fails_closed_when_heartbeat_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    user_id = uuid4()
+    started_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"stale-heartbeat-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=uuid4(),
+            user_id=user_id,
+            name="ghost-running-supervisor",
+            status="running",
+            started_at=started_at,
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+        monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+        monkeypatch.setattr(
+            streams_control.default_settings,
+            "stream_runtime_auto_restart_enabled",
+            True,
+        )
+        monkeypatch.setattr(
+            streams_control.default_settings,
+            "stream_runtime_heartbeat_ttl_seconds",
+            15,
+        )
+        monkeypatch.setattr(
+            streams_control.default_settings,
+            "stream_runtime_restart_backoff_seconds",
+            0,
+        )
+        monkeypatch.setattr(
+            streams_control.default_settings,
+            "stream_runtime_restart_backoff_max_seconds",
+            0,
+        )
+        monkeypatch.setattr(
+            streams_control.default_settings,
+            "stream_runtime_restart_jitter_seconds",
+            0,
+        )
+
+        async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {"state": "RUNNING", "details": "pid 654"}
+
+        monkeypatch.setattr(
+            streams_control, "supervisor_program_status", fake_program_status
+        )
+
+        write_runtime_heartbeat(
+            stream.id,
+            runner_pid=654,
+            now=datetime.now(timezone.utc) - timedelta(seconds=60),
+            ttl_seconds=5,
+        )
+
+        service = StreamControlService(session, user_id)
+        status = await service.get_stream_status(stream.id)
+        await session.refresh(stream)
+
+        assert status.status == "error"
+        assert status.is_running is False
+        assert status.error_message is not None
+        assert "heartbeat expired" in status.error_message
+        assert status.runtime_restart.attempts == 1
+        assert status.runtime_restart.state == "scheduled"
+        assert stream.status == "error"
+        assert stream.runtime_restart_attempts == 1
+        assert stream.runtime_next_restart_at is not None
 
 
 @pytest.mark.asyncio
