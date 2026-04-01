@@ -3,11 +3,13 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from httpx import AsyncClient
 
 import app.api.routes.destinations as destinations_routes
 import app.services.streams.control as streams_control
 from app.core.database import async_session_maker
 from app.core.security import mask_stream_key
+from app.main import app
 from app.models.database import Asset, Destination, Stream, StreamAsset, StreamDestination, UserProfile
 from app.schemas.api import DestinationCreate
 from app.services.streams.control import StreamControlService
@@ -205,6 +207,45 @@ async def test_quality_and_supervisor_start_reject_incompatible_copy_first_media
         assert exc_info.value.status_code == 422
         assert exc_info.value.detail["error"] == "quality_rejected"
         assert exc_info.value.detail["violations"][0]["code"] == "incompatible_codecs"
+
+
+@pytest.mark.asyncio
+async def test_http_start_route_rejects_incompatible_media_for_dev_auth_user(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    user_id, stream_id = await _create_stream_fixture(
+        tmp_path,
+        asset_copy_ready=False,
+        validation_errors=["Direct copy is not safe"],
+    )
+
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+    monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+    monkeypatch.setattr(streams_control.default_settings, "enable_dev_auth", True)
+    monkeypatch.setattr(streams_control.default_settings, "dev_user_id", str(user_id))
+    monkeypatch.setattr(
+        streams_control.default_settings,
+        "dev_user_email",
+        f"{user_id}@stream-safety.test",
+    )
+
+    async def fake_supervisor_program_status(_stream_id):
+        return {"state": "STOPPED"}
+
+    async def fake_supervisor_start_program(_stream_id):
+        raise AssertionError("supervisor start should not be called for incompatible media")
+
+    monkeypatch.setattr(streams_control, "supervisor_program_status", fake_supervisor_program_status)
+    monkeypatch.setattr(streams_control, "supervisor_start_program", fake_supervisor_start_program)
+
+    async with AsyncClient(app=app, base_url="http://testserver") as client:
+        response = await client.post(f"/api/streams/{stream_id}/start")
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["error"] == "quality_rejected"
+    assert response.json()["detail"]["violations"][0]["code"] == "incompatible_codecs"
 
 
 @pytest.mark.asyncio

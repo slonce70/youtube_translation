@@ -153,9 +153,7 @@ def setup_logging(level: str = "INFO", json_output: bool = True):
     # Set formatter
     formatter: logging.Formatter
     if json_output:
-        formatter = CustomJsonFormatter(
-            "%(timestamp)s %(level)s %(name)s %(message)s"
-        )
+        formatter = CustomJsonFormatter("%(timestamp)s %(level)s %(name)s %(message)s")
     else:
         formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

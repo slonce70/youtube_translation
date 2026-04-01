@@ -256,9 +256,7 @@ class Settings(BaseSettings):
 
     @field_validator("download_token_secret")
     @classmethod
-    def validate_download_token_secret(
-        cls, value: str, info: ValidationInfo
-    ) -> str:
+    def validate_download_token_secret(cls, value: str, info: ValidationInfo) -> str:
         environment = (info.data or {}).get("environment", "development")
         if environment != "development" and value == "change_this_download_secret":
             raise ValueError("DOWNLOAD_TOKEN_SECRET must be configured")
