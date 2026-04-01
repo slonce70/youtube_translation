@@ -1,0 +1,22 @@
+{
+  "featureId": "runtime-reconcile-and-recovery-hardening",
+  "reviewedAt": "2026-04-01T15:34:12.250309+00:00",
+  "commitId": "54e2eef",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature improves stale-heartbeat handling and runtime status repair, but the new supervisor status path can cancel its own scheduled recovery on the very next status poll.",
+    "issues": [
+      {
+        "file": "backend/app/services/streams/control.py",
+        "line": 628,
+        "severity": "blocking",
+        "description": "When `get_stream_status()` sees a running/starting stream transition to `STOPPED`/`EXITED`, it schedules an auto-restart by flipping the record to `error`. But a later status poll against the same still-stopped supervisor program takes the `previous_status == \"error\"` branch at lines 628-664, rewrites the stream to `stopped`, and leaves `runtime_next_restart_at` populated. `restart_due_streams()` only dispatches rows where `Stream.status == \"error\"` (`backend/app/core/stream_reconciler.py:526-527`), so the queued recovery is silently orphaned and the stream never restarts. This is user-reachable because the streaming UI polls `/api/streams/{id}/status` every 5s for error streams (`frontend/src/app/dashboard/streaming/page.tsx:110`)."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Fail: repeated supervisor status reads can downgrade an auto-restart candidate from `error` to `stopped`, which removes it from the restart dispatcher query and breaks the promised recoverable post-failure state."
+}
