@@ -1,7 +1,7 @@
 import socket
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator, FieldValidationInfo, model_validator
+from pydantic import ValidationInfo, field_validator, model_validator
 from typing import List, Optional, Union
 from urllib.parse import urlparse, urlunparse, quote, unquote, parse_qsl, urlencode
 
@@ -151,7 +151,7 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def validate_database_url(cls, v: str, info: FieldValidationInfo) -> str:
+    def validate_database_url(cls, v: str, info: ValidationInfo) -> str:
         """Validate DATABASE_URL to ensure it's compatible with asyncpg."""
         if ":6543/" in v:
             raise ValueError(
@@ -245,7 +245,7 @@ class Settings(BaseSettings):
 
     @field_validator("encryption_salt")
     @classmethod
-    def validate_encryption_salt(cls, value: str, info: FieldValidationInfo) -> str:
+    def validate_encryption_salt(cls, value: str, info: ValidationInfo) -> str:
         environment = (info.data or {}).get("environment", "development")
         if (
             environment != "development"
@@ -257,7 +257,7 @@ class Settings(BaseSettings):
     @field_validator("download_token_secret")
     @classmethod
     def validate_download_token_secret(
-        cls, value: str, info: FieldValidationInfo
+        cls, value: str, info: ValidationInfo
     ) -> str:
         environment = (info.data or {}).get("environment", "development")
         if environment != "development" and value == "change_this_download_secret":
@@ -266,7 +266,7 @@ class Settings(BaseSettings):
 
     @field_validator("enable_dev_auth")
     @classmethod
-    def validate_dev_auth(cls, value: bool, info: FieldValidationInfo) -> bool:
+    def validate_dev_auth(cls, value: bool, info: ValidationInfo) -> bool:
         environment = (info.data or {}).get("environment", "development")
         if value and environment != "development":
             raise ValueError("ENABLE_DEV_AUTH is only allowed in development")
@@ -274,7 +274,7 @@ class Settings(BaseSettings):
 
     @field_validator("upload_token_secret")
     @classmethod
-    def validate_upload_token_secret(cls, value: str, info: FieldValidationInfo) -> str:
+    def validate_upload_token_secret(cls, value: str, info: ValidationInfo) -> str:
         environment = (info.data or {}).get("environment", "development")
         if environment != "development" and value == "change_this_upload_secret":
             raise ValueError("UPLOAD_TOKEN_SECRET must be configured")
@@ -302,11 +302,12 @@ class Settings(BaseSettings):
     )
     @classmethod
     def validate_stream_runtime_heartbeat_seconds(
-        cls, value: int, info: FieldValidationInfo
+        cls, value: int, info: ValidationInfo
     ) -> int:
+        field_name = info.field_name or "stream runtime value"
         minimum = (
             0
-            if info.field_name
+            if field_name
             in {
                 "stream_runtime_restart_max_attempts",
                 "stream_runtime_restart_backoff_seconds",
@@ -318,7 +319,7 @@ class Settings(BaseSettings):
         )
         if int(value) < minimum:
             qualifier = "at least 0" if minimum == 0 else "at least 1 second"
-            raise ValueError(f"{info.field_name.upper()} must be {qualifier}")
+            raise ValueError(f"{field_name.upper()} must be {qualifier}")
         return int(value)
 
     @model_validator(mode="after")
@@ -389,4 +390,4 @@ class Settings(BaseSettings):
         return value
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]

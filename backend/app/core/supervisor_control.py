@@ -99,7 +99,7 @@ async def _run_supervisorctl(*args: str) -> Tuple[int, str, str]:
         stderr=PIPE,
     )
     stdout, stderr = await process.communicate()
-    return process.returncode, stdout.decode().strip(), stderr.decode().strip()
+    return (process.returncode or 1), stdout.decode().strip(), stderr.decode().strip()
 
 
 def _build_error(action: str, program: str, stdout: str, stderr: str) -> RuntimeError:
@@ -231,12 +231,12 @@ async def remove_program(stream_id: UUID) -> None:
     await _reread()
 
 
-async def is_running(stream_id: UUID) -> bool:
+async def is_running(stream_id: UUID | str) -> bool:
     status = await program_status(stream_id)
     return status.get("state") == "RUNNING"
 
 
-async def program_status(stream_id: UUID) -> Dict[str, str]:
+async def program_status(stream_id: UUID | str) -> Dict[str, str]:
     program = program_name(stream_id)
     code, out, err = await _run_supervisorctl("status", program)
     if code != 0:

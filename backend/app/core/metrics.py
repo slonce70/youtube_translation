@@ -10,11 +10,11 @@ Provides metrics for:
 Can be integrated with Prometheus, Grafana, or other monitoring systems.
 """
 
-import time
 import logging
-from typing import Dict, Optional
-from threading import RLock
+import time
 from enum import Enum
+from threading import RLock
+from typing import Any, Dict, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class Counter(Metric):
         self, name: str, description: str, labels: Optional[Dict[str, str]] = None
     ):
         super().__init__(name, description, labels)
-        self.value = 0
+        self.value = 0.0
         self.lock = RLock()
 
     def inc(self, amount: float = 1.0):
@@ -62,7 +62,7 @@ class Counter(Metric):
     def reset(self):
         """Reset counter (for testing)"""
         with self.lock:
-            self.value = 0
+            self.value = 0.0
 
 
 class Gauge(Metric):
@@ -72,7 +72,7 @@ class Gauge(Metric):
         self, name: str, description: str, labels: Optional[Dict[str, str]] = None
     ):
         super().__init__(name, description, labels)
-        self.value = 0
+        self.value = 0.0
         self.lock = RLock()
 
     def set(self, value: float):
@@ -103,8 +103,8 @@ class Histogram(Metric):
         self, name: str, description: str, labels: Optional[Dict[str, str]] = None
     ):
         super().__init__(name, description, labels)
-        self.values = []
-        self.sum = 0
+        self.values: list[float] = []
+        self.sum = 0.0
         self.count = 0
         self.lock = RLock()
 
@@ -149,7 +149,7 @@ class MetricsRegistry:
             key = self._make_key(name, labels)
             if key not in self.metrics:
                 self.metrics[key] = Counter(name, description, labels)
-            return self.metrics[key]
+            return cast(Counter, self.metrics[key])
 
     def gauge(
         self, name: str, description: str, labels: Optional[Dict[str, str]] = None
@@ -159,7 +159,7 @@ class MetricsRegistry:
             key = self._make_key(name, labels)
             if key not in self.metrics:
                 self.metrics[key] = Gauge(name, description, labels)
-            return self.metrics[key]
+            return cast(Gauge, self.metrics[key])
 
     def histogram(
         self, name: str, description: str, labels: Optional[Dict[str, str]] = None
@@ -169,7 +169,7 @@ class MetricsRegistry:
             key = self._make_key(name, labels)
             if key not in self.metrics:
                 self.metrics[key] = Histogram(name, description, labels)
-            return self.metrics[key]
+            return cast(Histogram, self.metrics[key])
 
     def _make_key(self, name: str, labels: Optional[Dict[str, str]]) -> str:
         """Create unique key for metric"""
@@ -185,7 +185,7 @@ class MetricsRegistry:
 
     def export_prometheus(self) -> str:
         """Export metrics in Prometheus format"""
-        lines = []
+        lines: list[str] = []
         with self.lock:
             for key, metric in self.metrics.items():
                 # Add help and type
@@ -325,7 +325,7 @@ def update_storage_used(bytes_used: int):
     AppMetrics.storage_used.set(bytes_used)
 
 
-def get_metrics_summary() -> Dict[str, any]:
+def get_metrics_summary() -> Dict[str, Any]:
     """Get summary of all metrics"""
     return {
         "streams": {
