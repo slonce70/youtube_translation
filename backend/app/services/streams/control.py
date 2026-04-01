@@ -14,7 +14,10 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings as default_settings
-from app.core.quota import QuotaEnforcer as DefaultQuotaEnforcer
+from app.core.quota import (
+    QuotaEnforcer as DefaultQuotaEnforcer,
+    missing_tier_limits_detail,
+)
 from app.core.stream_runtime_lease import (
     claim_stream_runtime_lease,
     clear_stream_runtime_lease,
@@ -122,15 +125,25 @@ class StreamControlService:
         preserve_schedule: bool = False,
         reset_restart_policy: bool = True,
     ) -> StreamStatus:
-        await self._acquire_user_start_lock()
-        enforcer = self.quota_cls(self.db, self.user_id)
-        await enforcer.check_concurrent_streams()
-
         stream = await load_stream_with_relations(self.db, self.user_id, stream_id)
         if not stream:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found"
             )
+
+        already_running = await self.get_stream_status(stream_id)
+        if already_running.is_running:
+            return already_running
+
+        await self._acquire_user_start_lock()
+        stream = await load_stream_with_relations(self.db, self.user_id, stream_id)
+        if not stream:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found"
+            )
+
+        enforcer = self.quota_cls(self.db, self.user_id)
+        await enforcer.check_concurrent_streams()
 
         lease = await claim_stream_runtime_lease(
             self.db,
@@ -813,7 +826,15 @@ class StreamControlService:
         candidate = enforcer or self.quota_cls(self.db, self.user_id)
         try:
             return await candidate.get_daily_streaming_usage()
-        except HTTPException:
+        except HTTPException as exc:
+            if (
+                exc.status_code == status.HTTP_400_BAD_REQUEST
+                and exc.detail
+                == missing_tier_limits_detail(
+                    getattr(candidate._profile, "subscription_tier", None)
+                )
+            ):
+                return {}
             raise
         except Exception:
             return {}

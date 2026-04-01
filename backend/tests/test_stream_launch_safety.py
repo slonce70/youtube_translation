@@ -10,7 +10,14 @@ import app.services.streams.control as streams_control
 from app.core.database import async_session_maker
 from app.core.security import mask_stream_key
 from app.main import app
-from app.models.database import Asset, Destination, Stream, StreamAsset, StreamDestination, UserProfile
+from app.models.database import (
+    Asset,
+    Destination,
+    Stream,
+    StreamAsset,
+    StreamDestination,
+    UserProfile,
+)
 from app.schemas.api import DestinationCreate
 from app.services.streams.control import StreamControlService
 
@@ -39,6 +46,8 @@ async def _create_stream_fixture(
     destination_enabled: bool = True,
     asset_copy_ready: bool = True,
     validation_errors: list[str] | None = None,
+    subscription_tier: str = "free",
+    stream_status: str = "stopped",
 ) -> tuple:
     user_id = uuid4()
 
@@ -47,7 +56,7 @@ async def _create_stream_fixture(
             UserProfile(
                 user_id=user_id,
                 email=f"{user_id}@stream-safety.test",
-                subscription_tier="free",
+                subscription_tier=subscription_tier,
                 subscription_status="active",
             )
         )
@@ -68,7 +77,7 @@ async def _create_stream_fixture(
         stream = Stream(
             user_id=user_id,
             name="Safety stream",
-            status="stopped",
+            status=stream_status,
             source_type="assets",
             mix_mode="video_only",
         )
@@ -116,9 +125,15 @@ async def test_destination_responses_only_expose_masked_keys() -> None:
             enabled=True,
         )
 
-        created = await destinations_routes.create_destination(payload, user_deps=(session, user_id))
-        listed = await destinations_routes.list_destinations(user_deps=(session, user_id))
-        fetched = await destinations_routes.get_destination(created["id"], user_deps=(session, user_id))
+        created = await destinations_routes.create_destination(
+            payload, user_deps=(session, user_id)
+        )
+        listed = await destinations_routes.list_destinations(
+            user_deps=(session, user_id)
+        )
+        fetched = await destinations_routes.get_destination(
+            created["id"], user_deps=(session, user_id)
+        )
 
         expected_mask = mask_stream_key(raw_stream_key)
         assert created["stream_key_masked"] == expected_mask
@@ -151,10 +166,16 @@ async def test_supervisor_start_fails_closed_when_all_destinations_disabled(
         return {"state": "STOPPED"}
 
     async def fake_supervisor_start_program(_stream_id):
-        raise AssertionError("supervisor start should not be called for disabled destinations")
+        raise AssertionError(
+            "supervisor start should not be called for disabled destinations"
+        )
 
-    monkeypatch.setattr(streams_control, "supervisor_program_status", fake_supervisor_program_status)
-    monkeypatch.setattr(streams_control, "supervisor_start_program", fake_supervisor_start_program)
+    monkeypatch.setattr(
+        streams_control, "supervisor_program_status", fake_supervisor_program_status
+    )
+    monkeypatch.setattr(
+        streams_control, "supervisor_start_program", fake_supervisor_start_program
+    )
 
     async with async_session_maker() as session:
         service = StreamControlService(session, user_id)
@@ -189,17 +210,25 @@ async def test_quality_and_supervisor_start_reject_incompatible_copy_first_media
         return {"state": "STOPPED"}
 
     async def fake_supervisor_start_program(_stream_id):
-        raise AssertionError("supervisor start should not be called for incompatible media")
+        raise AssertionError(
+            "supervisor start should not be called for incompatible media"
+        )
 
-    monkeypatch.setattr(streams_control, "supervisor_program_status", fake_supervisor_program_status)
-    monkeypatch.setattr(streams_control, "supervisor_start_program", fake_supervisor_start_program)
+    monkeypatch.setattr(
+        streams_control, "supervisor_program_status", fake_supervisor_program_status
+    )
+    monkeypatch.setattr(
+        streams_control, "supervisor_start_program", fake_supervisor_start_program
+    )
 
     async with async_session_maker() as session:
         service = StreamControlService(session, user_id)
 
         quality = await service.evaluate_quality(stream_id)
         assert quality.ok is False
-        assert {violation.code for violation in quality.violations} == {"incompatible_codecs"}
+        assert {violation.code for violation in quality.violations} == {
+            "incompatible_codecs"
+        }
 
         with pytest.raises(HTTPException) as exc_info:
             await service.start_stream(stream_id)
@@ -235,10 +264,16 @@ async def test_http_start_route_rejects_incompatible_media_for_dev_auth_user(
         return {"state": "STOPPED"}
 
     async def fake_supervisor_start_program(_stream_id):
-        raise AssertionError("supervisor start should not be called for incompatible media")
+        raise AssertionError(
+            "supervisor start should not be called for incompatible media"
+        )
 
-    monkeypatch.setattr(streams_control, "supervisor_program_status", fake_supervisor_program_status)
-    monkeypatch.setattr(streams_control, "supervisor_start_program", fake_supervisor_start_program)
+    monkeypatch.setattr(
+        streams_control, "supervisor_program_status", fake_supervisor_program_status
+    )
+    monkeypatch.setattr(
+        streams_control, "supervisor_start_program", fake_supervisor_start_program
+    )
 
     async with AsyncClient(app=app, base_url="http://testserver") as client:
         response = await client.post(f"/api/streams/{stream_id}/start")
@@ -246,6 +281,79 @@ async def test_http_start_route_rejects_incompatible_media_for_dev_auth_user(
     assert response.status_code == 422
     assert response.json()["detail"]["error"] == "quality_rejected"
     assert response.json()["detail"]["violations"][0]["code"] == "incompatible_codecs"
+
+
+@pytest.mark.asyncio
+async def test_http_quality_route_fails_closed_when_tier_limits_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    user_id, stream_id = await _create_stream_fixture(
+        tmp_path,
+        subscription_tier="missing-tier",
+    )
+
+    monkeypatch.setattr(streams_control.default_settings, "enable_dev_auth", True)
+    monkeypatch.setattr(streams_control.default_settings, "dev_user_id", str(user_id))
+    monkeypatch.setattr(
+        streams_control.default_settings,
+        "dev_user_email",
+        f"{user_id}@stream-safety.test",
+    )
+
+    async with AsyncClient(app=app, base_url="http://testserver") as client:
+        response = await client.get(f"/api/streams/{stream_id}/quality")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "error": "tier_limits_unavailable",
+        "tier": "missing-tier",
+        "message": (
+            "Subscription tier limits are unavailable for this account. "
+            "Streaming quality and launch checks cannot proceed until tier metadata is restored."
+        ),
+    }
+
+
+@pytest.mark.asyncio
+async def test_start_returns_authoritative_running_status_before_prerequisite_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    user_id, stream_id = await _create_stream_fixture(
+        tmp_path,
+        destination_enabled=False,
+        subscription_tier="missing-tier",
+        stream_status="running",
+    )
+
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+
+    async def fake_supervisor_program_status(_stream_id):
+        return {"state": "RUNNING"}
+
+    async def fail_validation(*args, **kwargs):
+        raise AssertionError("launch prerequisites should not run for repeated starts")
+
+    monkeypatch.setattr(
+        streams_control,
+        "supervisor_program_status",
+        fake_supervisor_program_status,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "validate_stream_launch_prerequisites",
+        fail_validation,
+    )
+
+    async with async_session_maker() as session:
+        service = StreamControlService(session, user_id)
+        status_payload = await service.start_stream(stream_id)
+
+    assert status_payload.is_running is True
+    assert status_payload.status == "running"
+    assert status_payload.id == stream_id
 
 
 @pytest.mark.asyncio
