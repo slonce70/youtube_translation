@@ -226,6 +226,35 @@ async def prepare_stream_launch(
     quota_evaluator,
     settings_obj=default_settings,
 ) -> Tuple[PlaylistFileSet, List[Dict[str, str]], Path]:
+    selection, destinations, log_file = await validate_stream_launch_prerequisites(
+        db,
+        user_id,
+        stream,
+        quota_evaluator=quota_evaluator,
+        settings_obj=settings_obj,
+    )
+
+    builder = PlaylistBuilder()
+    stream_dir = Path(settings_obj.stream_dir) / str(stream.id)
+    playlists = builder.prepare_stream_playlists(
+        stream_id=str(stream.id),
+        stream_dir=stream_dir,
+        video_assets=selection.video_assets,
+        audio_assets=selection.audio_assets,
+        mix_mode=selection.mix_mode,
+    )
+
+    return playlists, destinations, log_file
+
+
+async def validate_stream_launch_prerequisites(
+    db: AsyncSession,
+    user_id: UUID,
+    stream: Stream,
+    *,
+    quota_evaluator,
+    settings_obj=default_settings,
+) -> Tuple[StreamAssetSelection, List[Dict[str, str]], Path]:
     selection = extract_stream_assets(stream)
     quality = await quota_evaluator.evaluate_stream_quality(
         selection.video_assets,
@@ -258,19 +287,10 @@ async def prepare_stream_launch(
             detail={"error": "Playlist assets are incompatible", "issues": compatibility_issues},
         )
 
-    builder = PlaylistBuilder()
     stream_dir = Path(settings_obj.stream_dir) / str(stream.id)
     stream_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = Path(stream.log_path) if stream.log_path else stream_dir / "stream.log"
-    playlists = builder.prepare_stream_playlists(
-        stream_id=str(stream.id),
-        stream_dir=stream_dir,
-        video_assets=selection.video_assets,
-        audio_assets=selection.audio_assets,
-        mix_mode=selection.mix_mode,
-    )
-
     destinations = gather_stream_destinations(stream)
     if not destinations:
         raise HTTPException(
@@ -278,7 +298,7 @@ async def prepare_stream_launch(
             detail="No enabled destinations found",
         )
 
-    return playlists, destinations, log_file
+    return selection, destinations, log_file
 
 
 async def fetch_destinations(db: AsyncSession, user_id: UUID, destination_ids: List[UUID]) -> List[Destination]:
@@ -307,6 +327,7 @@ __all__ = [
     "extract_stream_assets",
     "gather_stream_destinations",
     "prepare_stream_launch",
+    "validate_stream_launch_prerequisites",
     "fetch_destinations",
     "build_asset_payload",
 ]
