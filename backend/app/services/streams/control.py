@@ -492,21 +492,32 @@ class StreamControlService:
                 "unknown": stream.status,
                 "not_found": "stopped",
             }
-            normalized_status = supervisor_status_map.get(
-                raw_state,
-                (
-                    stream.status
-                    if stream.status
-                    in {
-                        "stopped",
-                        "starting",
-                        "running",
-                        "error",
-                        "stopping",
-                        "scheduled",
-                    }
-                    else "stopped"
-                ),
+            preserve_scheduled = stream.status == "scheduled" and raw_state in {
+                "",
+                "unknown",
+                "not_found",
+                "stopped",
+                "exited",
+            }
+            normalized_status = (
+                "scheduled"
+                if preserve_scheduled
+                else supervisor_status_map.get(
+                    raw_state,
+                    (
+                        stream.status
+                        if stream.status
+                        in {
+                            "stopped",
+                            "starting",
+                            "running",
+                            "error",
+                            "stopping",
+                            "scheduled",
+                        }
+                        else "stopped"
+                    ),
+                )
             )
 
             running = normalized_status == "running"
@@ -534,7 +545,11 @@ class StreamControlService:
 
                 await self.db.commit()
 
-            error_message = info.get("error") or stream.error_message
+            error_message = (
+                None
+                if preserve_scheduled
+                else (info.get("error") or stream.error_message)
+            )
             usage = await self._get_usage_snapshot()
             return self._status_payload(
                 stream,

@@ -65,7 +65,19 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
 
             if stream_info:
                 exit_code = stream_info.get("last_exit_code")
-                if exit_code is not None and exit_code != 0:
+                manual_stop = bool(stream_info.get("manual_stop"))
+                quota_stop = stream_info.get("quota_stop") or {}
+                quota_message = quota_stop.get("message")
+
+                if manual_stop:
+                    db_stream.status = "stopped"
+                    db_stream.error_message = (
+                        str(quota_message)[:500] if quota_message else None
+                    )
+                    LOGGER.info(
+                        "Stream %s stopped cleanly after managed stop", stream.id
+                    )
+                elif exit_code is not None and exit_code != 0:
                     # Stream failed
                     db_stream.status = "error"
                     error_msg = f"FFmpeg exited with code {exit_code}"

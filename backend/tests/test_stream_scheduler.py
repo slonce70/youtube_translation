@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, time, timedelta, timezone
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -10,7 +11,11 @@ from app.core.stream_schedule import (
     compute_schedule_stop_time,
 )
 from app.models.database import Stream, UserProfile
-from app.services.streams.scheduler import launch_due_streams
+from app.services.streams.scheduler import (
+    launch_due_streams,
+    scheduled_stream_launcher,
+    stop_due_streams,
+)
 
 
 @pytest.mark.asyncio
@@ -142,3 +147,91 @@ def test_compute_schedule_stop_time_prefers_earliest_constraint():
     )
 
     assert stop_at == datetime(2026, 4, 6, 15, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_stop_due_streams_stops_running_streams(monkeypatch):
+    user_id = uuid4()
+    stop_at = (datetime.now(timezone.utc) - timedelta(minutes=1)).replace(microsecond=0)
+
+    async with async_session_maker() as session:
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"{user_id}@scheduler-stop.test",
+                subscription_tier="free",
+            )
+        )
+        stream = Stream(
+            user_id=user_id,
+            source_type="playlist",
+            mix_mode="video_only",
+            status="running",
+            scheduled_start_enabled=True,
+            scheduled_start_time=(datetime.now(timezone.utc) + timedelta(days=1)).replace(
+                microsecond=0
+            ),
+            schedule_repeat="daily",
+            schedule_timezone="UTC",
+            scheduled_stop_time=stop_at,
+        )
+        session.add(stream)
+        await session.commit()
+
+        async def fake_stop(self, stream_id):
+            scheduled_stream = await self._get_stream_basic(stream_id)
+            scheduled_stream.status = "stopped"
+            scheduled_stream.stopped_at = datetime.now(timezone.utc).replace(
+                microsecond=0
+            )
+            return None
+
+        monkeypatch.setattr(
+            "app.services.streams.scheduler.StreamControlService.stop_stream", fake_stop
+        )
+
+        stopped = await stop_due_streams(session)
+        await session.refresh(stream)
+
+        assert stopped == 1
+        assert stream.status == "stopped"
+        assert stream.scheduled_start_enabled is True
+        assert stream.scheduled_start_time is not None
+        assert stream.scheduled_stop_time is None
+        assert stream.scheduled_stop_attempted_at is None
+
+
+@pytest.mark.asyncio
+async def test_scheduled_stream_launcher_processes_before_sleep(monkeypatch):
+    calls: list[str] = []
+
+    class DummySession:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def fake_launch(_session):
+        calls.append("launch")
+        return 0
+
+    async def fake_stop(_session):
+        calls.append("stop")
+        return 0
+
+    async def fake_sleep(_interval):
+        calls.append("sleep")
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(
+        "app.services.streams.scheduler.launch_due_streams", fake_launch
+    )
+    monkeypatch.setattr("app.services.streams.scheduler.stop_due_streams", fake_stop)
+    monkeypatch.setattr("app.core.database.async_session_maker", lambda: DummySession())
+    monkeypatch.setattr("app.services.streams.scheduler.asyncio.sleep", fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await scheduled_stream_launcher()
+
+    assert calls[:2] == ["launch", "stop"]
