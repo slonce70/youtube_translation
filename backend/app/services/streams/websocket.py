@@ -6,41 +6,50 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
+
 class StreamWebSocketManager:
     """
     Manages WebSocket connections for real-time stream status updates.
     """
+
     def __init__(self):
         self.active_connections: List[Tuple[WebSocket, str]] = []
         self._broadcast_task: asyncio.Task | None = None
 
     async def connect(self, websocket: WebSocket, user_id: str):
         self.active_connections.append((websocket, user_id))
-        logger.info(f"WebSocket client connected. Total: {len(self.active_connections)}")
+        logger.info(
+            f"WebSocket client connected. Total: {len(self.active_connections)}"
+        )
 
     def disconnect(self, websocket: WebSocket):
         for entry in list(self.active_connections):
             if entry[0] is websocket:
                 self.active_connections.remove(entry)
-                logger.info(f"WebSocket client disconnected. Total: {len(self.active_connections)}")
+                logger.info(
+                    f"WebSocket client disconnected. Total: {len(self.active_connections)}"
+                )
                 return
 
     async def broadcast(self, message: Dict[str, Any]):
         if not self.active_connections:
             return
-            
+
         disconnected: List[Tuple[WebSocket, str]] = []
 
         for connection, user_id in self.active_connections:
             try:
                 payload = message
-                if message.get("type") == "stream_update" and isinstance(message.get("payload"), dict):
+                if message.get("type") == "stream_update" and isinstance(
+                    message.get("payload"), dict
+                ):
                     filtered = {
                         stream_id: self._sanitize_stream_info(info)
                         for stream_id, info in message["payload"].items()
                         if info
                         and isinstance(info, dict)
-                        and (info.get("metadata") or {}).get("user_id") == user_id
+                        and str((info.get("metadata") or {}).get("user_id"))
+                        == str(user_id)
                     }
                     payload = {"type": "stream_update", "payload": filtered}
 
@@ -72,7 +81,9 @@ class StreamWebSocketManager:
                 sanitized[key] = info[key]
         return sanitized
 
-    def snapshot_for_user(self, user_id: str, active_streams: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    def snapshot_for_user(
+        self, user_id: str, active_streams: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
         """Build a sanitized active-stream snapshot for a single user."""
         filtered: Dict[str, Dict[str, Any]] = {}
         for stream_id, info in active_streams.items():
@@ -83,6 +94,7 @@ class StreamWebSocketManager:
                 continue
             filtered[stream_id] = self._sanitize_stream_info(info)
         return filtered
+
 
 # Global instance
 stream_ws_manager = StreamWebSocketManager()
