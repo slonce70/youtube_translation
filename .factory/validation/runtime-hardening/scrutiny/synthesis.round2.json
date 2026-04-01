@@ -1,0 +1,52 @@
+{
+  "milestone": "runtime-hardening",
+  "round": 2,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "make test",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "RUN_MYPY=1 make type-check",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "RUN_BLACK=1 make lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 2,
+    "failed": 1,
+    "failedFeatures": [
+      "runtime-scheduler-window-and-live-reschedule-fixes"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "runtime-scheduler-window-and-live-reschedule-fixes",
+      "severity": "blocking",
+      "description": "The overdue one-shot launch gap is fixed, but live-reschedule protection still falls back to stale DB status when supervisor runtime inspection is unavailable. `get_stream_status()` collapses `SUPERVISOR_UNAVAILABLE`/`PERMISSION_DENIED` back to the persisted row, so `update_stream_schedule()` can still accept a future schedule for an actually live stream if the DB status is stale `stopped`."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented the local runner unhealthy-state caused by stale supervisor program configs pointing at missing host log directories in `.factory/library/environment.md` so validators can recognize it as a bootstrap cleanup issue.",
+      "sourceFeature": "runtime-scheduler-window-and-live-reschedule-fixes"
+    }
+  ],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [
+    {
+      "observation": "Mission/shared-state docs still do not mention that DEV auth falls back to a built-in default identity when `DEV_USER_EMAIL` and `DEV_USER_ID` are unset, so workers keep rediscovering the effective local auth identity during API verification.",
+      "reason": "already-documented in `.factory/library/environment.md` during round 1"
+    }
+  ],
+  "previousRound": ".factory/validation/runtime-hardening/scrutiny/synthesis.round1.json"
+}
