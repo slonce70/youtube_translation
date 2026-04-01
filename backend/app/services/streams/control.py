@@ -71,6 +71,11 @@ from .helpers import (
 )
 
 
+def _is_removed_process_group_error(exc: RuntimeError) -> bool:
+    message = " ".join(str(exc).split()).lower()
+    return "removed process group" in message or "no such process" in message
+
+
 class StreamControlService:
     """Coordinates FFmpeg/systemd/supervisor interactions for streams."""
 
@@ -462,10 +467,11 @@ class StreamControlService:
                 try:
                     await supervisor_stop_program(stream.id)
                 except RuntimeError as err:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=str(err),
-                    ) from err
+                    if not _is_removed_process_group_error(err):
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=str(err),
+                        ) from err
             try:
                 await supervisor_remove_program(stream.id)
             except RuntimeError as err:
@@ -889,10 +895,11 @@ class StreamControlService:
                 try:
                     await supervisor_stop_program(stream.id)
                 except RuntimeError as err:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=str(err),
-                    ) from err
+                    if not _is_removed_process_group_error(err):
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=str(err),
+                        ) from err
             try:
                 await supervisor_remove_program(stream.id)
             except RuntimeError as err:
