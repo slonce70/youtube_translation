@@ -8,7 +8,6 @@ from fastapi import HTTPException
 from app.core.database import async_session_maker
 from app.models.database import Asset, Destination, Stream, UserProfile
 from app.schemas.api import StreamCreate, StreamScheduleUpdate
-from app.services.streams.control import StreamControlService
 from app.services.streams.service import StreamService
 
 
@@ -272,19 +271,16 @@ async def test_update_stream_schedule_blocks_real_live_reschedule_when_db_status
         session.add(stream)
         await session.commit()
 
-        async def fake_get_stream_status(self, stream_id):
-            assert stream_id == stream.id
+        monkeypatch.setattr("app.services.streams.control.supervisor_enabled", lambda: True)
+        monkeypatch.setattr("app.services.streams.control.systemd_enabled", lambda: False)
 
-            class Status:
-                is_running = True
-                status = "running"
-
-            return Status()
+        async def fake_supervisor_program_status(_stream_id):
+            assert _stream_id == stream.id
+            return {"state": "RUNNING"}
 
         monkeypatch.setattr(
-            StreamControlService,
-            "get_stream_status",
-            fake_get_stream_status,
+            "app.services.streams.control.supervisor_program_status",
+            fake_supervisor_program_status,
         )
 
         service = StreamService(session, user_id)
@@ -301,3 +297,122 @@ async def test_update_stream_schedule_blocks_real_live_reschedule_when_db_status
 
         assert exc.value.status_code == 400
         assert exc.value.detail == "Cannot schedule start while stream is running"
+
+
+@pytest.mark.asyncio
+async def test_update_stream_schedule_fails_closed_when_supervisor_liveness_is_unavailable(
+    monkeypatch,
+):
+    user_id = uuid4()
+    started_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).replace(
+        microsecond=0
+    )
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@schedule-supervisor-unavailable.test",
+            subscription_tier="free",
+        )
+        session.add(profile)
+
+        stream = Stream(
+            user_id=user_id,
+            source_type="playlist",
+            mix_mode="video_only",
+            status="stopped",
+            started_at=started_at,
+        )
+        session.add(stream)
+        await session.commit()
+
+        monkeypatch.setattr("app.services.streams.control.supervisor_enabled", lambda: True)
+        monkeypatch.setattr("app.services.streams.control.systemd_enabled", lambda: False)
+
+        async def fake_supervisor_program_status(_stream_id):
+            assert _stream_id == stream.id
+            return {
+                "state": "SUPERVISOR_UNAVAILABLE",
+                "error": "supervisorctl socket unavailable",
+            }
+
+        monkeypatch.setattr(
+            "app.services.streams.control.supervisor_program_status",
+            fake_supervisor_program_status,
+        )
+
+        service = StreamService(session, user_id)
+        payload = StreamScheduleUpdate(
+            schedule_mode="schedule",
+            schedule_start_at=(datetime.now(timezone.utc) + timedelta(hours=1)).replace(
+                microsecond=0
+            ),
+            schedule_stop_at=None,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await service.update_stream_schedule(stream.id, payload)
+
+        assert exc.value.status_code == 400
+        assert (
+            exc.value.detail
+            == "Cannot schedule start while runtime liveness cannot be verified"
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_stream_schedule_fails_closed_when_systemd_liveness_is_unavailable(
+    monkeypatch,
+):
+    user_id = uuid4()
+    started_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).replace(
+        microsecond=0
+    )
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@schedule-systemd-unavailable.test",
+            subscription_tier="free",
+        )
+        session.add(profile)
+
+        stream = Stream(
+            user_id=user_id,
+            source_type="playlist",
+            mix_mode="video_only",
+            status="stopped",
+            started_at=started_at,
+        )
+        session.add(stream)
+        await session.commit()
+
+        monkeypatch.setattr("app.services.streams.control.supervisor_enabled", lambda: False)
+        monkeypatch.setattr("app.services.streams.control.systemd_enabled", lambda: True)
+
+        async def fake_systemd_unit_status(_stream_id):
+            assert _stream_id == stream.id
+            return {}
+
+        monkeypatch.setattr(
+            "app.services.streams.control.systemd_unit_status",
+            fake_systemd_unit_status,
+        )
+
+        service = StreamService(session, user_id)
+        payload = StreamScheduleUpdate(
+            schedule_mode="schedule",
+            schedule_start_at=(datetime.now(timezone.utc) + timedelta(hours=1)).replace(
+                microsecond=0
+            ),
+            schedule_stop_at=None,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await service.update_stream_schedule(stream.id, payload)
+
+        assert exc.value.status_code == 400
+        assert (
+            exc.value.detail
+            == "Cannot schedule start while runtime liveness cannot be verified"
+        )
