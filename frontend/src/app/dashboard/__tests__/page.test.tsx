@@ -8,6 +8,13 @@ import { PLAN_DETAILS } from '@/lib/plans'
 import enMessages from '@/messages/en'
 import type { SubscriptionTierKey } from '@/lib/types'
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+  }),
+  useParams: () => ({}),
+}))
+
 jest.mock('@/lib/api', () => ({
   api: {
     quota: {
