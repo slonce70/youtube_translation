@@ -1,0 +1,33 @@
+{
+  "featureId": "runtime-scheduler-window-and-live-reschedule-fixes",
+  "reviewedAt": "2026-04-01T16:22:14.902906+00:00",
+  "commitId": "4997a5a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix commit correctly closes the overdue one-shot launch gap and adds focused regressions for that path, but the live-reschedule guard still is not fail-closed in degraded supervisor mode. `update_stream_schedule()` now calls `get_stream_status()`, yet the supervisor status path still collapses inspection failures back to the persisted DB status, so a stale `stopped` row can still accept a future schedule when the runtime is actually live but supervisorctl cannot be queried.",
+    "issues": [
+      {
+        "file": "backend/app/services/streams/control.py",
+        "line": 514,
+        "severity": "blocking",
+        "description": "This fix still does not fully resolve the original blocking live-reschedule failure. `backend/app/core/supervisor_control.py:255-263` returns synthetic states like `SUPERVISOR_UNAVAILABLE` and `PERMISSION_DENIED` when runtime inspection fails, but `get_stream_status()` does not map those states and instead falls back to `stream.status` via the default branch at `control.py:538-549`. `StreamService.update_stream_schedule()` then trusts that fallback at `backend/app/services/streams/service.py:252-266`, so a stream whose DB row is stale `stopped` can still be rescheduled while the real supervisor-managed process is live whenever supervisorctl is unavailable. The scheduling guard should fail closed when runtime liveness cannot be determined instead of reusing the stored DB status."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Mission/shared-state docs still do not mention that DEV auth falls back to a built-in default identity when `DEV_USER_EMAIL` and `DEV_USER_ID` are unset, so workers keep rediscovering the effective local auth identity during API verification.",
+      "evidence": "The fix transcript skeleton shows the worker grepping auth config and then reading `backend/app/api/deps.py`; the fallback remains implemented at `backend/app/api/deps.py:190-198` (`settings.dev_user_email or \"dev@example.com\"`)."
+    },
+    {
+      "area": "services",
+      "observation": "Shared-state docs still do not record the known local runner unhealthy-state caused by stale supervisor program configs pointing at missing log directories, even though the mission baseline depends on the runner service.",
+      "evidence": "The fix handoff's `discoveredIssues` notes that the local runner container stayed unhealthy because stale supervisor configs referenced missing host log paths, while `.factory/services.yaml:32-37` only documents `runner` start/stop/healthcheck commands and no known recovery note."
+    }
+  ],
+  "addressesFailureFrom": "/Users/trend/Documents/Work/youtube_translation/.factory/validation/runtime-hardening/scrutiny/reviews/runtime-scheduler-and-quota-stop-hardening.json",
+  "summary": "Review failed. The overdue one-shot scheduler bug is fixed, but the live-reschedule protection still falls back to stale DB status when supervisor runtime inspection is unavailable, so the original blocking scheduling failure is only partially addressed."
+}

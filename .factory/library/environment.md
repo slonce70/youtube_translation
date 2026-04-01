@@ -53,4 +53,5 @@ If missing, workers may create them from examples, but must never commit secrets
 ## Known local gotchas
 - Port `3000` is occupied by another project; mission work must use `3100` for frontend flows and Playwright.
 - Host `ffmpeg` is not installed in this environment; local production-like runtime validation should rely on the Docker runner path or backend test stub where appropriate.
+- The local runner can report unhealthy if stale supervisor program configs still reference missing host log directories; treat repeated runner healthcheck or `/api/streams/{id}/status` supervisor socket/log-path noise as a bootstrap cleanup issue, not a product-level runtime regression.
 - `.gitignore` already excludes `backend/.env` and `frontend/.env.local`; keep it that way.
