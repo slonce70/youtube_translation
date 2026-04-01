@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import shlex
 import sys
 from asyncio.subprocess import PIPE
@@ -16,6 +17,7 @@ from app.core.stream_runtime_heartbeat import clear_runtime_heartbeat
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
+DOCKER_BACKEND_ROOT = Path("/app")
 
 
 def supervisor_enabled() -> bool:
@@ -70,6 +72,23 @@ def _supervisor_conf() -> Path:
     return _resolve_path(settings.supervisor_conf_path)
 
 
+def _using_host_docker_supervisor() -> bool:
+    return _supervisor_conf().name == "supervisord.host-docker.conf"
+
+
+def _runtime_visible_path(path: Path) -> Path:
+    if not _using_host_docker_supervisor():
+        return path
+
+    try:
+        relative = path.relative_to(BACKEND_ROOT)
+    except ValueError:
+        if path.is_absolute():
+            return path
+        return DOCKER_BACKEND_ROOT / path
+    return DOCKER_BACKEND_ROOT / relative
+
+
 def _program_config_path(stream_id: UUID | str) -> Path:
     return _config_dir() / f"{program_name(stream_id)}.ini"
 
@@ -80,6 +99,14 @@ def _supervisorctl_command() -> Tuple[str, ...]:
         raise RuntimeError("SUPERVISOR_CTL_PATH is empty")
 
     if raw_path == "supervisorctl":
+        sibling = Path(sys.executable).with_name("supervisorctl")
+        if sibling.exists():
+            return (str(sibling),)
+
+        discovered = shutil.which("supervisorctl")
+        if discovered:
+            return (discovered,)
+
         return (sys.executable, "-m", "supervisor.supervisorctl")
 
     if " " in raw_path:
@@ -118,9 +145,13 @@ async def _write_program_config(stream_id: UUID) -> Path:
     log_dir.mkdir(parents=True, exist_ok=True)
 
     program = program_name(stream_id)
-    stdout_log = log_dir / f"{program}.log"
-    stderr_log = log_dir / f"{program}.err"
-    command = f"{sys.executable} -m app.cli.run_stream {stream_id}"
+    runtime_root = (
+        DOCKER_BACKEND_ROOT if _using_host_docker_supervisor() else BACKEND_ROOT
+    )
+    runtime_python = "python" if _using_host_docker_supervisor() else sys.executable
+    stdout_log = _runtime_visible_path(log_dir / f"{program}.log")
+    stderr_log = _runtime_visible_path(log_dir / f"{program}.err")
+    command = f"{runtime_python} -m app.cli.run_stream {stream_id}"
 
     config_text = """
 [program:{program}]
@@ -135,11 +166,11 @@ stderr_logfile={stderr}
 environment=PYTHONPATH="{py_path}"
 """.strip().format(
         program=program,
-        directory=BACKEND_ROOT,
+        directory=runtime_root,
         command=command,
         stdout=stdout_log,
         stderr=stderr_log,
-        py_path=BACKEND_ROOT,
+        py_path=runtime_root,
     )
 
     cfg_path.write_text(config_text + "\n")
@@ -193,7 +224,13 @@ async def start_program(stream_id: UUID) -> None:
 async def stop_program(stream_id: UUID) -> None:
     program = program_name(stream_id)
     code, out, err = await _run_supervisorctl("stop", program)
-    if code != 0 and "NOT_RUNNING" not in (out + err):
+    combined = f"{out}\n{err}".lower()
+    benign = (
+        "not_running" in combined
+        or "removed process group" in combined
+        or "no such process" in combined
+    )
+    if code != 0 and not benign:
         raise _build_error("stop", program, out, err)
 
 
