@@ -19,7 +19,9 @@ from app.models.database import (
 logger = logging.getLogger(__name__)
 
 
-async def apply_storage_delta(db: AsyncSession, user_id: UUID, delta_bytes: int) -> None:
+async def apply_storage_delta(
+    db: AsyncSession, user_id: UUID, delta_bytes: int
+) -> None:
     if not delta_bytes:
         return
 
@@ -86,4 +88,3 @@ async def audit_collection_quorum(
             },
         )
         db.add(alert)
-

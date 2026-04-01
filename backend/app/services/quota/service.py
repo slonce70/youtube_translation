@@ -38,13 +38,18 @@ class QuotaService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def check_quota_internal(self, raw_body: bytes, signature: Optional[str]) -> QuotaCheckResponse:
+    async def check_quota_internal(
+        self, raw_body: bytes, signature: Optional[str]
+    ) -> QuotaCheckResponse:
         """Validate tusd hook payload and answer whether upload is permitted."""
 
         global _warned_missing_secret
 
         if not raw_body:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Request body is required")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Request body is required",
+            )
 
         secret = settings.tusd_hmac_secret
         if secret:
@@ -53,19 +58,30 @@ class QuotaService:
                     "tusd_hmac_missing",
                     tags={"component": "tusd", "event": "hmac_missing"},
                 )
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing tusd signature")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Missing tusd signature",
+                )
 
-            expected_signature = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+            expected_signature = hmac.new(
+                secret.encode("utf-8"), raw_body, hashlib.sha256
+            ).hexdigest()
             if not hmac.compare_digest(expected_signature, signature):
                 capture_alert(
                     "tusd_hmac_invalid",
                     tags={"component": "tusd", "event": "hmac_invalid"},
                 )
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid tusd signature")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Invalid tusd signature",
+                )
         else:
             environment = settings.environment.lower()
             if environment in {"production", "staging"}:
-                logger.error("TUSD_HMAC_SECRET must be configured for environment '%s'", settings.environment)
+                logger.error(
+                    "TUSD_HMAC_SECRET must be configured for environment '%s'",
+                    settings.environment,
+                )
                 capture_alert(
                     "tusd_hmac_secret_missing",
                     level="error",
@@ -76,13 +92,17 @@ class QuotaService:
                     detail="Quota service misconfigured",
                 )
             if not _warned_missing_secret:
-                logger.warning("TUSD_HMAC_SECRET is not configured; accepting unsigned quota checks")
+                logger.warning(
+                    "TUSD_HMAC_SECRET is not configured; accepting unsigned quota checks"
+                )
                 _warned_missing_secret = True
 
         try:
             payload = QuotaCheckRequest.model_validate_json(raw_body)
         except ValidationError as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()
+            ) from exc
 
         profile = await self._get_or_create_profile(payload.user_id)
         if not profile:
@@ -96,7 +116,9 @@ class QuotaService:
 
         limits = await self._get_limits(profile.subscription_tier)
         current_storage = profile.current_storage_bytes or 0
-        max_storage_bytes = limits.storage_gb * 1024**3 if limits.storage_gb else float("inf")
+        max_storage_bytes = (
+            limits.storage_gb * 1024**3 if limits.storage_gb else float("inf")
+        )
 
         if current_storage + payload.file_size > max_storage_bytes:
             used_gb = current_storage / (1024**3)
@@ -159,7 +181,9 @@ class QuotaService:
     async def get_user_quota(self, user_id: UUID) -> QuotaUsageResponse:
         profile = await self._get_profile(user_id)
         if not profile:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found"
+            )
 
         limits = await self._get_limits(profile.subscription_tier)
 
@@ -168,17 +192,25 @@ class QuotaService:
         storage_limit = limits.storage_gb
         storage_percent = (storage_gb / storage_limit * 100) if storage_limit else 0
 
-        active_streams_count = await self._count_streams(user_id, ["running", "starting"])
+        active_streams_count = await self._count_streams(
+            user_id, ["running", "starting"]
+        )
         streams_limit = limits.max_concurrent_streams
-        streams_percent = (active_streams_count / streams_limit * 100) if streams_limit else 0
+        streams_percent = (
+            (active_streams_count / streams_limit * 100) if streams_limit else 0
+        )
 
         destinations_count = await self._count_records(Destination, user_id)
         destinations_limit = limits.max_destinations
-        destinations_percent = (destinations_count / destinations_limit * 100) if destinations_limit else 0
+        destinations_percent = (
+            (destinations_count / destinations_limit * 100) if destinations_limit else 0
+        )
 
         playlists_count = await self._count_records(Playlist, user_id)
         playlists_limit = limits.max_playlists
-        playlists_percent = (playlists_count / playlists_limit * 100) if playlists_limit else 0
+        playlists_percent = (
+            (playlists_count / playlists_limit * 100) if playlists_limit else 0
+        )
 
         assets_count = await self._count_records(Asset, user_id)
         assets_limit = limits.max_assets
@@ -237,7 +269,9 @@ class QuotaService:
         )
 
     async def _get_profile(self, user_id: UUID) -> Optional[UserProfile]:
-        result = await self.db.execute(select(UserProfile).where(UserProfile.user_id == user_id))
+        result = await self.db.execute(
+            select(UserProfile).where(UserProfile.user_id == user_id)
+        )
         return result.scalar_one_or_none()
 
     async def _get_or_create_profile(self, user_id: UUID) -> Optional[UserProfile]:
@@ -270,19 +304,28 @@ class QuotaService:
             return profile
 
     async def _get_limits(self, tier: str) -> SubscriptionTierLimits:
-        result = await self.db.execute(select(SubscriptionTierLimits).where(SubscriptionTierLimits.tier == tier))
+        result = await self.db.execute(
+            select(SubscriptionTierLimits).where(SubscriptionTierLimits.tier == tier)
+        )
         limits = result.scalar_one_or_none()
         if not limits:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid subscription tier: {tier}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid subscription tier: {tier}",
+            )
         return limits
 
     async def _count_records(self, model, user_id: UUID) -> int:
-        result = await self.db.execute(select(func.count(model.id)).where(model.user_id == user_id))
+        result = await self.db.execute(
+            select(func.count(model.id)).where(model.user_id == user_id)
+        )
         return result.scalar() or 0
 
     async def _count_streams(self, user_id: UUID, statuses: list[str]) -> int:
         result = await self.db.execute(
-            select(func.count(Stream.id)).where(Stream.user_id == user_id, Stream.status.in_(statuses))
+            select(func.count(Stream.id)).where(
+                Stream.user_id == user_id, Stream.status.in_(statuses)
+            )
         )
         return result.scalar() or 0
 

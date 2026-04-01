@@ -14,7 +14,12 @@ from sqlalchemy.orm import selectinload
 
 from app.core.quota import QuotaEnforcer
 from app.models.database import Asset, Playlist, PlaylistItem, Stream
-from app.schemas.api import PlaylistCreate, PlaylistItemResponse, PlaylistResponse, PlaylistUpdate
+from app.schemas.api import (
+    PlaylistCreate,
+    PlaylistItemResponse,
+    PlaylistResponse,
+    PlaylistUpdate,
+)
 from app.streaming.playlist_builder import PlaylistBuilder
 
 logger = logging.getLogger(__name__)
@@ -72,13 +77,19 @@ class PlaylistService:
     async def get_playlist(self, playlist_id: UUID) -> PlaylistResponse:
         playlist = await self._load_playlist(playlist_id, include_items=True)
         if not playlist:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found"
+            )
         return self._to_response(playlist)
 
-    async def update_playlist(self, playlist_id: UUID, payload: PlaylistUpdate) -> PlaylistResponse:
+    async def update_playlist(
+        self, playlist_id: UUID, payload: PlaylistUpdate
+    ) -> PlaylistResponse:
         playlist = await self._load_playlist(playlist_id, include_items=True)
         if not playlist:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found"
+            )
 
         if payload.name is not None:
             playlist.name = payload.name
@@ -93,14 +104,21 @@ class PlaylistService:
             return self._to_response(playlist)
         except IntegrityError as exc:
             await self.db.rollback()
-            logger.warning("Playlist update conflict for user %s: %s", self.user_id, exc)
+            logger.warning(
+                "Playlist update conflict for user %s: %s", self.user_id, exc
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Playlist update violates constraints",
             ) from exc
         except Exception as exc:  # pragma: no cover
             await self.db.rollback()
-            logger.exception("Error updating playlist %s for user %s: %s", playlist_id, self.user_id, exc)
+            logger.exception(
+                "Error updating playlist %s for user %s: %s",
+                playlist_id,
+                self.user_id,
+                exc,
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update playlist",
@@ -109,9 +127,13 @@ class PlaylistService:
     async def delete_playlist(self, playlist_id: UUID) -> None:
         playlist = await self._load_playlist(playlist_id, include_items=False)
         if not playlist:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found"
+            )
 
-        in_use_query = select(Stream.id).where(Stream.playlist_id == playlist_id, Stream.user_id == self.user_id)
+        in_use_query = select(Stream.id).where(
+            Stream.playlist_id == playlist_id, Stream.user_id == self.user_id
+        )
         in_use_result = await self.db.execute(in_use_query.limit(1))
         if in_use_result.scalar_one_or_none():
             raise HTTPException(
@@ -124,9 +146,13 @@ class PlaylistService:
         logger.info("Deleted playlist %s", playlist_id)
 
     async def validate_playlist(self, playlist_id: UUID) -> dict:
-        playlist = await self._load_playlist(playlist_id, include_items=True, with_assets=True)
+        playlist = await self._load_playlist(
+            playlist_id, include_items=True, with_assets=True
+        )
         if not playlist:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found"
+            )
 
         assets_data = [
             {
@@ -162,7 +188,9 @@ class PlaylistService:
             self.db.add(playlist_item)
 
     async def _get_asset(self, asset_id: UUID) -> Optional[Asset]:
-        result = await self.db.execute(select(Asset).where(Asset.id == asset_id, Asset.user_id == self.user_id))
+        result = await self.db.execute(
+            select(Asset).where(Asset.id == asset_id, Asset.user_id == self.user_id)
+        )
         return result.scalar_one_or_none()
 
     async def _load_playlist(
@@ -171,7 +199,9 @@ class PlaylistService:
         include_items: bool,
         with_assets: bool = False,
     ) -> Optional[Playlist]:
-        query = select(Playlist).where(Playlist.id == playlist_id, Playlist.user_id == self.user_id)
+        query = select(Playlist).where(
+            Playlist.id == playlist_id, Playlist.user_id == self.user_id
+        )
         if include_items:
             option = selectinload(Playlist.items)
             if with_assets:
@@ -191,5 +221,8 @@ class PlaylistService:
             loop=playlist.loop,
             created_at=playlist.created_at,
             updated_at=playlist.updated_at,
-            items=[PlaylistItemResponse.model_validate(item, from_attributes=True) for item in items],
+            items=[
+                PlaylistItemResponse.model_validate(item, from_attributes=True)
+                for item in items
+            ],
         )

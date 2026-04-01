@@ -76,7 +76,9 @@ class SlotQueue:
             self.queue.append(_clone_asset(asset))
             await self._maybe_fill_empty_slot()
 
-    async def replace(self, assets: List[Dict[str, Any]], *, loop: bool, shuffle: bool) -> Tuple[List[Optional[Dict[str, Any]]], List[Dict[str, Any]]]:
+    async def replace(
+        self, assets: List[Dict[str, Any]], *, loop: bool, shuffle: bool
+    ) -> Tuple[List[Optional[Dict[str, Any]]], List[Dict[str, Any]]]:
         async with self.lock:
             self.loop_enabled = loop
             self.shuffle_enabled = shuffle
@@ -89,7 +91,9 @@ class SlotQueue:
                 await self._assign_slot(index, slot_path, asset)
                 assigned_assets.append(_clone_asset(asset) if asset else None)
 
-            self.assigned = {index: assigned_assets[index] for index in range(len(self.slot_paths))}
+            self.assigned = {
+                index: assigned_assets[index] for index in range(len(self.slot_paths))
+            }
             self.queue = deque(normalized_assets)
 
             if self.playhead_index >= len(self.slot_paths) and self.slot_paths:
@@ -105,7 +109,9 @@ class SlotQueue:
                 asset = self.queue.popleft()
                 await self._assign_slot(index, slot_path, asset)
 
-    async def _assign_slot(self, index: int, slot_path: Path, asset: Optional[Dict[str, Any]]) -> None:
+    async def _assign_slot(
+        self, index: int, slot_path: Path, asset: Optional[Dict[str, Any]]
+    ) -> None:
         from .playlist_builder import PlaylistBuilder  # Local import to avoid cycle
 
         PlaylistBuilder._assign_slot_file(slot_path, asset)  # type: ignore[attr-defined]
@@ -121,7 +127,9 @@ class SlotQueue:
                 await asyncio.sleep(0.2)
                 async with self.lock:
                     last_index = self.playhead_index
-                    self.playhead_index = (self.playhead_index + 1) % len(self.slot_paths)
+                    self.playhead_index = (self.playhead_index + 1) % len(
+                        self.slot_paths
+                    )
                     await self._advance_slot(last_index)
         except asyncio.CancelledError:
             pass
@@ -182,13 +190,17 @@ class StreamHotSwapState:
             await queue.start()
 
     async def shutdown(self) -> None:
-        await asyncio.gather(*(queue.stop() for queue in self.queues.values()), return_exceptions=True)
+        await asyncio.gather(
+            *(queue.stop() for queue in self.queues.values()), return_exceptions=True
+        )
         self.queues.clear()
 
     async def enqueue_asset(self, target: str, asset: Dict[str, Any]) -> None:
         queue = self.queues.get(target)
         if not queue:
-            raise ValueError(f"Target '{target}' queue not available for stream {self.stream_id}")
+            raise ValueError(
+                f"Target '{target}' queue not available for stream {self.stream_id}"
+            )
         await queue.enqueue(asset)
 
     async def replace_queue(
@@ -201,9 +213,13 @@ class StreamHotSwapState:
     ) -> None:
         queue = self.queues.get(target)
         if not queue:
-            raise ValueError(f"Target '{target}' queue not available for stream {self.stream_id}")
+            raise ValueError(
+                f"Target '{target}' queue not available for stream {self.stream_id}"
+            )
 
-        assigned_assets, pending_assets = await queue.replace(assets, loop=loop, shuffle=shuffle)
+        assigned_assets, pending_assets = await queue.replace(
+            assets, loop=loop, shuffle=shuffle
+        )
 
         if not self.queue_state_path:
             return
@@ -249,7 +265,9 @@ class StreamHotSwapManager:
         self._states: Dict[str, StreamHotSwapState] = {}
         self._lock = asyncio.Lock()
 
-    async def register_stream(self, stream_id: str, playlist_set: PlaylistFileSet) -> None:
+    async def register_stream(
+        self, stream_id: str, playlist_set: PlaylistFileSet
+    ) -> None:
         async with self._lock:
             state = StreamHotSwapState(stream_id, playlist_set)
             await state.initialize()
@@ -261,7 +279,9 @@ class StreamHotSwapManager:
         if state:
             await state.shutdown()
 
-    async def enqueue_asset(self, stream_id: str, target: str, asset: Dict[str, Any]) -> None:
+    async def enqueue_asset(
+        self, stream_id: str, target: str, asset: Dict[str, Any]
+    ) -> None:
         async with self._lock:
             state = self._states.get(stream_id)
         if not state:

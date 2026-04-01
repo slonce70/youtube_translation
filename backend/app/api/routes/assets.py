@@ -23,12 +23,17 @@ from app.schemas.api import (
 )
 from app.services.assets import AssetService, AssetUploadService, UploadTokenService
 from app.services.assets.service import AssetDownloadService, DownloadTokenService
-from app.services.assets.utils import infer_asset_type, normalize_asset_type  # noqa: F401
+from app.services.assets import utils as asset_utils
+
+infer_asset_type = asset_utils.infer_asset_type
+normalize_asset_type = asset_utils.normalize_asset_type
 
 logger = logging.getLogger(__name__)
 _warned_missing_tusd_secret = False
 
 router = APIRouter()
+
+
 def _verify_tusd_signature(raw_body: bytes, signature: Optional[str]) -> None:
     """Validate incoming tusd webhook signatures."""
 
@@ -44,7 +49,9 @@ def _verify_tusd_signature(raw_body: bytes, signature: Optional[str]) -> None:
                 detail="Upload hook misconfigured",
             )
         if not _warned_missing_tusd_secret:
-            logger.warning("TUSD_HMAC_SECRET not configured; accepting unsigned tusd hooks")
+            logger.warning(
+                "TUSD_HMAC_SECRET not configured; accepting unsigned tusd hooks"
+            )
             _warned_missing_tusd_secret = True
         return
 
@@ -54,7 +61,9 @@ def _verify_tusd_signature(raw_body: bytes, signature: Optional[str]) -> None:
             detail="Missing tusd signature",
         )
 
-    expected_signature = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    expected_signature = hmac.new(
+        secret.encode("utf-8"), raw_body, hashlib.sha256
+    ).hexdigest()
     if not hmac.compare_digest(expected_signature, signature):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -64,8 +73,12 @@ def _verify_tusd_signature(raw_body: bytes, signature: Optional[str]) -> None:
 
 @router.get("/", response_model=List[AssetResponse])
 async def list_assets(
-    asset_type: Optional[str] = Query(None, description="Filter by asset type: video | audio"),
-    folder_id: Optional[UUID] = Query(None, description="Filter by folder ID and descendants"),
+    asset_type: Optional[str] = Query(
+        None, description="Filter by asset type: video | audio"
+    ),
+    folder_id: Optional[UUID] = Query(
+        None, description="Filter by folder ID and descendants"
+    ),
     user_deps: tuple = Depends(require_user),
 ):
     """List assets for current user."""
@@ -75,7 +88,9 @@ async def list_assets(
 
 
 @router.post("/", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
-async def create_asset(asset_data: AssetCreate, user_deps: tuple = Depends(require_user)):
+async def create_asset(
+    asset_data: AssetCreate, user_deps: tuple = Depends(require_user)
+):
     """Persist a new asset record (post-upload)."""
     db, user_id = user_deps
     service = AssetService(db, user_id)
@@ -164,7 +179,9 @@ async def create_download_link(
     service = AssetService(db, user_id)
     token, expires_at = await service.create_download_token(asset_id)
     download_url = request.url_for("download_asset_by_token", token=token)
-    return AssetDownloadLinkResponse(download_url=str(download_url), expires_at=expires_at)
+    return AssetDownloadLinkResponse(
+        download_url=str(download_url), expires_at=expires_at
+    )
 
 
 @router.get("/download/{token}", name="download_asset_by_token")
@@ -173,7 +190,9 @@ async def download_asset_by_token(token: str, db: AsyncSession = Depends(get_db)
     asset_id, user_id, _ = DownloadTokenService.parse_token(token)
     asset = await AssetDownloadService.resolve_asset(db, asset_id, user_id)
     file_path = AssetDownloadService.ensure_file_exists(asset, user_id)
-    return FileResponse(file_path, media_type="application/octet-stream", filename=asset.filename)
+    return FileResponse(
+        file_path, media_type="application/octet-stream", filename=asset.filename
+    )
 
 
 @router.get("/{asset_id}", response_model=AssetResponse)
@@ -194,5 +213,7 @@ async def delete_asset(
 ):
     db, user_id = user_deps
     service = AssetService(db, user_id)
-    force_value = force if isinstance(force, bool) else bool(getattr(force, "default", False))
+    force_value = (
+        force if isinstance(force, bool) else bool(getattr(force, "default", False))
+    )
     await service.delete_asset(asset_id, force_value)

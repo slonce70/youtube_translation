@@ -17,11 +17,20 @@ from app.core.config import settings
 from app.core.database import async_session_maker
 from app.core.logging_config import setup_logging
 from app.core.quota import QuotaEnforcer
-from app.core.stream_runtime_heartbeat import clear_runtime_heartbeat, write_runtime_heartbeat
-from app.core.stream_runtime_lease import release_stream_runtime_lease, renew_stream_runtime_lease
+from app.core.stream_runtime_heartbeat import (
+    clear_runtime_heartbeat,
+    write_runtime_heartbeat,
+)
+from app.core.stream_runtime_lease import (
+    release_stream_runtime_lease,
+    renew_stream_runtime_lease,
+)
 from app.models.database import Stream
 from app.streaming.ffmpeg_manager import ffmpeg_manager
-from app.services.streams.helpers import load_stream_with_relations, prepare_stream_launch
+from app.services.streams.helpers import (
+    load_stream_with_relations,
+    prepare_stream_launch,
+)
 
 LOGGER = logging.getLogger("app.cli.run_stream")
 CURRENT_STREAM_ID: Optional[str] = None
@@ -50,10 +59,10 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
             if not db_stream:
                 LOGGER.warning("Stream %s not found in DB after exit", stream.id)
                 return
-            
+
             # Check if manager has info about exit
             stream_info = ffmpeg_manager.get_stream_info(str(stream.id))
-            
+
             if stream_info:
                 exit_code = stream_info.get("last_exit_code")
                 if exit_code is not None and exit_code != 0:
@@ -63,9 +72,13 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
                     if stream_info.get("recent_errors"):
                         last_errors = list(stream_info["recent_errors"])[-3:]
                         if last_errors:
-                            error_msg += f". Last errors: {'; '.join(last_errors[:100])}"
+                            error_msg += (
+                                f". Last errors: {'; '.join(last_errors[:100])}"
+                            )
                     db_stream.error_message = error_msg
-                    LOGGER.error("Stream %s failed with exit code %s", stream.id, exit_code)
+                    LOGGER.error(
+                        "Stream %s failed with exit code %s", stream.id, exit_code
+                    )
                 else:
                     # Stream exited normally
                     db_stream.status = "stopped"
@@ -76,23 +89,29 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
                 db_stream.status = "stopped"
                 db_stream.error_message = None
                 LOGGER.info("Stream %s stopped (no manager info)", stream.id)
-            
+
             # Update timestamps
             db_stream.stopped_at = datetime.utcnow()
             db_stream.pid = None
             db_stream.runtime_owner_id = None
             db_stream.runtime_lease_expires_at = None
             db_stream.runtime_last_heartbeat_at = None
-            
+
             await db.commit()
-            LOGGER.info("Updated stream %s status in DB to %s", stream.id, db_stream.status)
-            
+            LOGGER.info(
+                "Updated stream %s status in DB to %s", stream.id, db_stream.status
+            )
+
     except Exception as exc:
-        LOGGER.exception("Failed to update stream %s status after exit: %s", stream.id, exc)
+        LOGGER.exception(
+            "Failed to update stream %s status after exit: %s", stream.id, exc
+        )
 
 
 async def _heartbeat_loop(stream_id: str) -> None:
-    interval = max(int(getattr(settings, "stream_runtime_heartbeat_interval_seconds", 10)), 1)
+    interval = max(
+        int(getattr(settings, "stream_runtime_heartbeat_interval_seconds", 10)), 1
+    )
     runner_pid = os.getpid()
 
     while True:
@@ -173,7 +192,9 @@ async def _start_stream(stream_id: UUID, wait: bool = True) -> None:
         )
 
         CURRENT_STREAM_ID = str(stream.id)
-        LOGGER.info("Starting FFmpeg stream %s as standalone process", CURRENT_STREAM_ID)
+        LOGGER.info(
+            "Starting FFmpeg stream %s as standalone process", CURRENT_STREAM_ID
+        )
         success = await ffmpeg_manager.start_stream(
             CURRENT_STREAM_ID,
             playlists,
@@ -213,20 +234,28 @@ async def _start_stream(stream_id: UUID, wait: bool = True) -> None:
 
 async def _handle_signal(sig: signal.Signals) -> None:
     if CURRENT_STREAM_ID:
-        LOGGER.warning("Signal %s received. Stopping stream %s", sig.name, CURRENT_STREAM_ID)
+        LOGGER.warning(
+            "Signal %s received. Stopping stream %s", sig.name, CURRENT_STREAM_ID
+        )
         try:
             await ffmpeg_manager.stop_stream(CURRENT_STREAM_ID)
         except Exception as exc:  # pylint: disable=broad-except
-            LOGGER.error("Failed to stop stream %s gracefully: %s", CURRENT_STREAM_ID, exc)
+            LOGGER.error(
+                "Failed to stop stream %s gracefully: %s", CURRENT_STREAM_ID, exc
+            )
 
 
 def _install_signal_handlers() -> None:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(_handle_signal(s)))
+            loop.add_signal_handler(
+                sig, lambda s=sig: asyncio.create_task(_handle_signal(s))
+            )
         except NotImplementedError:  # pragma: no cover - Windows fallback
-            signal.signal(sig, lambda *_args, s=sig: asyncio.create_task(_handle_signal(s)))
+            signal.signal(
+                sig, lambda *_args, s=sig: asyncio.create_task(_handle_signal(s))
+            )
 
 
 def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:

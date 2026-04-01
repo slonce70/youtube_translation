@@ -36,7 +36,9 @@ class AssetUploadService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def handle_upload_complete(self, upload_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_upload_complete(
+        self, upload_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         event_block = upload_data.get("Event") or {}
         event_type = upload_data.get("Type") or event_block.get("Type")
         upload_meta = upload_data.get("Upload") or event_block.get("Upload") or {}
@@ -61,7 +63,9 @@ class AssetUploadService:
             or {}
         )
 
-        file_path = await self._resolve_file_path(storage_payload, upload_meta, upload_id)
+        file_path = await self._resolve_file_path(
+            storage_payload, upload_meta, upload_id
+        )
         if not file_path:
             logger.error(
                 "Upload file not found after retries: id=%s storage=%s",
@@ -96,7 +100,9 @@ class AssetUploadService:
             meta = validation_result.get("meta", {})
             stream_info = validator.get_stream_info(meta)
 
-        meta_payload = self._extract_meta_payload(upload_data, upload_meta, storage_payload)
+        meta_payload = self._extract_meta_payload(
+            upload_data, upload_meta, storage_payload
+        )
         asset_owner_id = self._resolve_asset_owner(meta_payload, upload_id)
         self._ensure_user_directory(asset_owner_id, file_path)
 
@@ -195,7 +201,9 @@ class AssetUploadService:
         await apply_storage_delta(self.db, asset_owner_id, size_bytes)
         await self.db.commit()
         await self.db.refresh(asset)
-        logger.info("Created asset %s from tusd webhook for user %s", asset.id, asset_owner_id)
+        logger.info(
+            "Created asset %s from tusd webhook for user %s", asset.id, asset_owner_id
+        )
 
         if resolved_asset_type == "video":
             await self._generate_thumbnail(asset, file_path)
@@ -234,21 +242,26 @@ class AssetUploadService:
                 candidate = Path(path_value)
                 return candidate if candidate.exists() else None
 
-            raw_path = storage_payload.get("Path") if isinstance(storage_payload, dict) else None
+            raw_path = (
+                storage_payload.get("Path")
+                if isinstance(storage_payload, dict)
+                else None
+            )
             file_candidate = resolve_path(raw_path)
 
             if not file_candidate or not file_candidate.is_file():
                 info_path_value = (
-                    storage_payload.get("InfoPath") if isinstance(storage_payload, dict) else None
+                    storage_payload.get("InfoPath")
+                    if isinstance(storage_payload, dict)
+                    else None
                 )
                 info_path = resolve_path(info_path_value)
                 if info_path and info_path.is_file():
                     try:
                         info_data = json.loads(info_path.read_text(encoding="utf-8"))
-                        raw_storage_path = (
-                            info_data.get("Storage", {}).get("Path")
-                            or info_data.get("storage", {}).get("path")
-                        )
+                        raw_storage_path = info_data.get("Storage", {}).get(
+                            "Path"
+                        ) or info_data.get("storage", {}).get("path")
                         candidate = resolve_path(raw_storage_path)
                         if candidate and candidate.is_file():
                             file_candidate = candidate
@@ -257,14 +270,20 @@ class AssetUploadService:
                             if fallback.exists():
                                 file_candidate = fallback
                     except Exception as info_error:  # pylint: disable=broad-except
-                        logger.warning("Failed to parse tusd info file %s: %s", info_path, info_error)
+                        logger.warning(
+                            "Failed to parse tusd info file %s: %s",
+                            info_path,
+                            info_error,
+                        )
 
             if (not file_candidate or not file_candidate.is_file()) and upload_id:
                 fallback = Path(settings.upload_dir) / upload_id
                 if fallback.exists():
                     file_candidate = fallback
 
-            return file_candidate if file_candidate and file_candidate.is_file() else None
+            return (
+                file_candidate if file_candidate and file_candidate.is_file() else None
+            )
 
         for _ in range(6):
             candidate = await resolve()
@@ -303,7 +322,11 @@ class AssetUploadService:
         )
 
         if not meta_payload:
-            info_path_value = storage_payload.get("InfoPath") if isinstance(storage_payload, dict) else None
+            info_path_value = (
+                storage_payload.get("InfoPath")
+                if isinstance(storage_payload, dict)
+                else None
+            )
             if info_path_value:
                 info_file = Path(info_path_value)
                 if info_file.exists():
@@ -318,10 +341,14 @@ class AssetUploadService:
                         )
         project_id_raw = meta_payload.get("project_id")
         if project_id_raw:
-            logger.info("Ignoring legacy project_id %s in tusd metadata", project_id_raw)
+            logger.info(
+                "Ignoring legacy project_id %s in tusd metadata", project_id_raw
+            )
         return meta_payload
 
-    def _resolve_asset_owner(self, meta_payload: Dict[str, Any], upload_id: Optional[str]) -> UUID:
+    def _resolve_asset_owner(
+        self, meta_payload: Dict[str, Any], upload_id: Optional[str]
+    ) -> UUID:
         token = meta_payload.get("upload_token")
         if not token:
             logger.error("Missing upload token for tusd upload %s", upload_id)
@@ -335,7 +362,9 @@ class AssetUploadService:
         except HTTPException:
             raise
         except Exception as exc:  # pragma: no cover - defensive
-            logger.exception("Unexpected error verifying upload token for %s", upload_id)
+            logger.exception(
+                "Unexpected error verifying upload token for %s", upload_id
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid upload token",
@@ -350,7 +379,11 @@ class AssetUploadService:
                 owner_id,
             )
         elif not user_id_raw:
-            logger.info("Upload %s omitted user_id metadata; token resolved %s", upload_id, owner_id)
+            logger.info(
+                "Upload %s omitted user_id metadata; token resolved %s",
+                upload_id,
+                owner_id,
+            )
 
         return owner_id
 

@@ -494,10 +494,19 @@ class StreamControlService:
             }
             normalized_status = supervisor_status_map.get(
                 raw_state,
-                stream.status
-                if stream.status
-                in {"stopped", "starting", "running", "error", "stopping", "scheduled"}
-                else "stopped",
+                (
+                    stream.status
+                    if stream.status
+                    in {
+                        "stopped",
+                        "starting",
+                        "running",
+                        "error",
+                        "stopping",
+                        "scheduled",
+                    }
+                    else "stopped"
+                ),
             )
 
             running = normalized_status == "running"

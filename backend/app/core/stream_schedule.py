@@ -53,7 +53,9 @@ def normalize_schedule_weekdays(value: Optional[Iterable[int]]) -> Optional[list
     if not normalized:
         return None
     if any(day < 0 or day > 6 for day in normalized):
-        raise ValueError("schedule_weekdays values must be between 0 (Monday) and 6 (Sunday)")
+        raise ValueError(
+            "schedule_weekdays values must be between 0 (Monday) and 6 (Sunday)"
+        )
     return normalized
 
 
@@ -99,7 +101,9 @@ def compute_next_repeating_start(
     local_time = local_start.timetz().replace(tzinfo=None)
 
     if normalized_repeat == "daily":
-        next_local = _localize_wall_time(local_start.date() + timedelta(days=1), local_time, zone)
+        next_local = _localize_wall_time(
+            local_start.date() + timedelta(days=1), local_time, zone
+        )
         return next_local.astimezone(timezone.utc)
 
     weekday_set = resolve_weekly_weekdays(start_at, schedule_timezone, weekdays)
@@ -172,7 +176,11 @@ def _localize_wall_time(local_date: date, local_time: time, zone: ZoneInfo) -> d
     if not fallback_candidates:
         return naive.replace(tzinfo=zone)
 
-    future_candidates = [candidate for candidate in fallback_candidates if candidate.replace(tzinfo=None) >= naive]
+    future_candidates = [
+        candidate
+        for candidate in fallback_candidates
+        if candidate.replace(tzinfo=None) >= naive
+    ]
     if future_candidates:
         return min(future_candidates, key=lambda item: item.replace(tzinfo=None))
 

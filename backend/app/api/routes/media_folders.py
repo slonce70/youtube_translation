@@ -30,7 +30,9 @@ def _get_service(user_deps: tuple) -> MediaFolderService:
 async def list_media_folders(
     parent_id: Optional[UUID] = Query(None, description="Filter by parent folder ID"),
     is_root: Optional[bool] = Query(None, description="Filter by root folders"),
-    search: Optional[str] = Query(None, min_length=1, description="Case-insensitive name filter"),
+    search: Optional[str] = Query(
+        None, min_length=1, description="Case-insensitive name filter"
+    ),
     user_deps: tuple = Depends(require_user),
 ):
     """Return folders for the current user."""
@@ -39,7 +41,9 @@ async def list_media_folders(
     return await service.list_folders(parent_id, is_root, search)
 
 
-@router.post("/", response_model=MediaFolderResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/", response_model=MediaFolderResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_media_folder(
     folder_data: MediaFolderCreate,
     user_deps: tuple = Depends(require_user),
@@ -89,7 +93,9 @@ async def add_asset_to_folder(
     return await service.add_asset_to_folder(folder_id, asset_id)
 
 
-@router.delete("/{folder_id}/assets/{asset_id:uuid}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{folder_id}/assets/{asset_id:uuid}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def remove_asset_from_folder(
     folder_id: UUID,
     asset_id: UUID,

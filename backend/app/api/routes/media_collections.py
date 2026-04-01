@@ -37,7 +37,9 @@ async def list_media_collections(
     return await service.list_collections(collection_type, is_active, include_items)
 
 
-@router.post("/", response_model=MediaCollectionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/", response_model=MediaCollectionResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_media_collection(
     collection_data: MediaCollectionCreate,
     user_deps: tuple = Depends(require_user),
@@ -93,4 +95,3 @@ async def delete_media_collection(
 
     service = _get_service(user_deps)
     await service.delete_collection(collection_id)
-

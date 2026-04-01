@@ -52,7 +52,9 @@ class AdminService:
         self.admin_user_id = admin_user_id
 
     async def get_admin_access(self) -> AdminAccessResponse:
-        profile = await self._get_user_profile(self.admin_user_id, not_found_message="Admin profile not found")
+        profile = await self._get_user_profile(
+            self.admin_user_id, not_found_message="Admin profile not found"
+        )
         return AdminAccessResponse(
             user_id=profile.user_id,
             email=profile.email,
@@ -81,19 +83,27 @@ class AdminService:
             query = select(UserProfile)
 
             if tier:
-                summary_query = summary_query.where(UserProfile.subscription_tier == tier)
+                summary_query = summary_query.where(
+                    UserProfile.subscription_tier == tier
+                )
                 query = query.where(UserProfile.subscription_tier == tier)
             if status_filter:
-                summary_query = summary_query.where(UserProfile.subscription_status == status_filter)
+                summary_query = summary_query.where(
+                    UserProfile.subscription_status == status_filter
+                )
                 query = query.where(UserProfile.subscription_status == status_filter)
             if suspended_filter is not None:
-                summary_query = summary_query.where(UserProfile.is_suspended == suspended_filter)
+                summary_query = summary_query.where(
+                    UserProfile.is_suspended == suspended_filter
+                )
                 query = query.where(UserProfile.is_suspended == suspended_filter)
 
             summary_result = await self.db.execute(summary_query)
             total, active, suspended, paid = summary_result.one()
 
-            query = query.order_by(desc(UserProfile.created_at)).limit(limit).offset(offset)
+            query = (
+                query.order_by(desc(UserProfile.created_at)).limit(limit).offset(offset)
+            )
 
             result = await self.db.execute(query)
             users = result.scalars().all()
@@ -120,7 +130,7 @@ class AdminService:
                     active=int(active or 0),
                     suspended=int(suspended or 0),
                     paid=int(paid or 0),
-                )
+                ),
             )
         except Exception as exc:
             logger.exception("Error listing users: %s", exc)
@@ -192,7 +202,10 @@ class AdminService:
 
             await self.db.execute(
                 update(Stream)
-                .where(Stream.user_id == user_id, Stream.status.in_(["running", "starting"]))
+                .where(
+                    Stream.user_id == user_id,
+                    Stream.status.in_(["running", "starting"]),
+                )
                 .values(status="stopped")
             )
 
@@ -247,7 +260,9 @@ class AdminService:
             profile = await self._get_user_profile(user_id)
 
             tier_result = await self.db.execute(
-                select(SubscriptionTierLimits).where(SubscriptionTierLimits.tier == payload.new_tier)
+                select(SubscriptionTierLimits).where(
+                    SubscriptionTierLimits.tier == payload.new_tier
+                )
             )
             tier = tier_result.scalar_one_or_none()
             if not tier:
@@ -271,7 +286,9 @@ class AdminService:
                     "old_tier": old_tier,
                     "new_tier": payload.new_tier,
                     "reason": payload.reason,
-                    "previous_started_at": previous_started_at.isoformat() if previous_started_at else None,
+                    "previous_started_at": (
+                        previous_started_at.isoformat() if previous_started_at else None
+                    ),
                 },
                 reason=payload.reason,
             )
@@ -309,20 +326,17 @@ class AdminService:
                 func.sum(case((Stream.status == "error", 1), else_=0)),
                 func.sum(case((Stream.status == "stopped", 1), else_=0)),
             )
-            query = (
-                select(
-                    Stream.id,
-                    Stream.user_id,
-                    UserProfile.email,
-                    Stream.name,
-                    Stream.status,
-                    Stream.playlist_id,
-                    Stream.source_type,
-                    Stream.started_at,
-                    Stream.created_at,
-                )
-                .join(UserProfile, Stream.user_id == UserProfile.user_id)
-            )
+            query = select(
+                Stream.id,
+                Stream.user_id,
+                UserProfile.email,
+                Stream.name,
+                Stream.status,
+                Stream.playlist_id,
+                Stream.source_type,
+                Stream.started_at,
+                Stream.created_at,
+            ).join(UserProfile, Stream.user_id == UserProfile.user_id)
 
             if status_filter:
                 summary_query = summary_query.where(Stream.status == status_filter)
@@ -340,11 +354,15 @@ class AdminService:
             destination_counts = {}
             if stream_ids:
                 dest_result = await self.db.execute(
-                    select(StreamDestination.stream_id, func.count(StreamDestination.id))
+                    select(
+                        StreamDestination.stream_id, func.count(StreamDestination.id)
+                    )
                     .where(StreamDestination.stream_id.in_(stream_ids))
                     .group_by(StreamDestination.stream_id)
                 )
-                destination_counts = {stream_id: count for stream_id, count in dest_result.all()}
+                destination_counts = {
+                    stream_id: count for stream_id, count in dest_result.all()
+                }
 
             return StreamListResponse(
                 items=[
@@ -367,7 +385,7 @@ class AdminService:
                     running=int(running or 0),
                     errors=int(errors or 0),
                     stopped=int(stopped or 0),
-                )
+                ),
             )
         except Exception as exc:
             logger.exception("Error listing streams: %s", exc)
@@ -378,10 +396,14 @@ class AdminService:
 
     async def force_stop_stream(self, stream_id: UUID) -> dict:
         try:
-            stream_result = await self.db.execute(select(Stream).where(Stream.id == stream_id))
+            stream_result = await self.db.execute(
+                select(Stream).where(Stream.id == stream_id)
+            )
             stream = stream_result.scalar_one_or_none()
             if not stream:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found"
+                )
 
             control = StreamControlService(self.db, stream.user_id)
             status_payload = await control.stop_stream(stream_id)
@@ -393,7 +415,9 @@ class AdminService:
             )
 
             await self.db.commit()
-            logger.info("Stream %s force stopped by admin %s", stream_id, self.admin_user_id)
+            logger.info(
+                "Stream %s force stopped by admin %s", stream_id, self.admin_user_id
+            )
             return {"stream_id": str(stream_id), "status": status_payload.status}
         except HTTPException:
             await self.db.rollback()
@@ -418,24 +442,30 @@ class AdminService:
             summary_query = select(
                 func.count(SystemAlert.id),
                 func.sum(case((SystemAlert.resolved.is_(False), 1), else_=0)),
-                func.sum(case(((SystemAlert.severity == "critical") & (SystemAlert.resolved.is_(False)), 1), else_=0)),
+                func.sum(
+                    case(
+                        (
+                            (SystemAlert.severity == "critical")
+                            & (SystemAlert.resolved.is_(False)),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
                 func.sum(case((SystemAlert.resolved.is_(True), 1), else_=0)),
             )
-            query = (
-                select(
-                    SystemAlert.id,
-                    SystemAlert.user_id,
-                    UserProfile.email,
-                    SystemAlert.alert_type,
-                    SystemAlert.severity,
-                    SystemAlert.message,
-                    SystemAlert.resolved,
-                    SystemAlert.created_at,
-                    SystemAlert.resolved_at,
-                    SystemAlert.resolved_by,
-                )
-                .join(UserProfile, SystemAlert.user_id == UserProfile.user_id)
-            )
+            query = select(
+                SystemAlert.id,
+                SystemAlert.user_id,
+                UserProfile.email,
+                SystemAlert.alert_type,
+                SystemAlert.severity,
+                SystemAlert.message,
+                SystemAlert.resolved,
+                SystemAlert.created_at,
+                SystemAlert.resolved_at,
+                SystemAlert.resolved_by,
+            ).join(UserProfile, SystemAlert.user_id == UserProfile.user_id)
 
             if resolved is not None:
                 summary_query = summary_query.where(SystemAlert.resolved == resolved)
@@ -444,13 +474,17 @@ class AdminService:
                 summary_query = summary_query.where(SystemAlert.severity == severity)
                 query = query.where(SystemAlert.severity == severity)
             if alert_type:
-                summary_query = summary_query.where(SystemAlert.alert_type == alert_type)
+                summary_query = summary_query.where(
+                    SystemAlert.alert_type == alert_type
+                )
                 query = query.where(SystemAlert.alert_type == alert_type)
 
             summary_result = await self.db.execute(summary_query)
             total, unresolved, critical, resolved_count = summary_result.one()
 
-            query = query.order_by(desc(SystemAlert.created_at)).limit(limit).offset(offset)
+            query = (
+                query.order_by(desc(SystemAlert.created_at)).limit(limit).offset(offset)
+            )
 
             result = await self.db.execute(query)
             rows = result.all()
@@ -475,7 +509,7 @@ class AdminService:
                     unresolved=int(unresolved or 0),
                     critical=int(critical or 0),
                     resolved=int(resolved_count or 0),
-                )
+                ),
             )
         except Exception as exc:
             logger.exception("Error listing alerts: %s", exc)
@@ -484,12 +518,18 @@ class AdminService:
                 detail=f"Failed to list alerts: {exc}",
             ) from exc
 
-    async def resolve_alert(self, alert_id: UUID, payload: ResolveAlertRequest) -> AlertListItem:
+    async def resolve_alert(
+        self, alert_id: UUID, payload: ResolveAlertRequest
+    ) -> AlertListItem:
         try:
-            result = await self.db.execute(select(SystemAlert).where(SystemAlert.id == alert_id))
+            result = await self.db.execute(
+                select(SystemAlert).where(SystemAlert.id == alert_id)
+            )
             alert = result.scalar_one_or_none()
             if not alert:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found"
+                )
 
             alert.resolved = True
             alert.resolved_at = datetime.utcnow()
@@ -515,7 +555,9 @@ class AdminService:
             user_email = None
             if alert.user_id:
                 email_result = await self.db.execute(
-                    select(UserProfile.email).where(UserProfile.user_id == alert.user_id)
+                    select(UserProfile.email).where(
+                        UserProfile.user_id == alert.user_id
+                    )
                 )
                 user_email = email_result.scalar_one_or_none()
 
@@ -547,24 +589,23 @@ class AdminService:
         self, action_type: Optional[str], limit: int, offset: int
     ) -> List[AdminActionLog]:
         try:
-            query = (
-                select(
-                    AdminAction.id,
-                    AdminAction.admin_user_id,
-                    UserProfile.email,
-                    AdminAction.action_type,
-                    AdminAction.target_user_id,
-                    AdminAction.reason,
-                    AdminAction.details,
-                    AdminAction.created_at,
-                )
-                .join(UserProfile, AdminAction.admin_user_id == UserProfile.user_id)
-            )
+            query = select(
+                AdminAction.id,
+                AdminAction.admin_user_id,
+                UserProfile.email,
+                AdminAction.action_type,
+                AdminAction.target_user_id,
+                AdminAction.reason,
+                AdminAction.details,
+                AdminAction.created_at,
+            ).join(UserProfile, AdminAction.admin_user_id == UserProfile.user_id)
 
             if action_type:
                 query = query.where(AdminAction.action_type == action_type)
 
-            query = query.order_by(desc(AdminAction.created_at)).limit(limit).offset(offset)
+            query = (
+                query.order_by(desc(AdminAction.created_at)).limit(limit).offset(offset)
+            )
 
             result = await self.db.execute(query)
             rows = result.all()
@@ -577,9 +618,13 @@ class AdminService:
                 if target_user_id:
                     if target_user_id not in target_email_cache:
                         target_result = await self.db.execute(
-                            select(UserProfile.email).where(UserProfile.user_id == target_user_id)
+                            select(UserProfile.email).where(
+                                UserProfile.user_id == target_user_id
+                            )
                         )
-                        target_email_cache[target_user_id] = target_result.scalar_one_or_none()
+                        target_email_cache[target_user_id] = (
+                            target_result.scalar_one_or_none()
+                        )
                     target_email = target_email_cache[target_user_id]
 
                 actions.append(
@@ -607,10 +652,14 @@ class AdminService:
     async def _get_user_profile(
         self, user_id: UUID, not_found_message: str = "User not found"
     ) -> UserProfile:
-        result = await self.db.execute(select(UserProfile).where(UserProfile.user_id == user_id))
+        result = await self.db.execute(
+            select(UserProfile).where(UserProfile.user_id == user_id)
+        )
         profile = result.scalar_one_or_none()
         if not profile:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found_message)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=not_found_message
+            )
         return profile
 
     async def _count_records(self, model, user_id: UUID) -> int:
@@ -645,7 +694,9 @@ class AdminService:
             )
             self.db.add(action)
             await self.db.flush()
-            logger.info("Admin action logged: %s by %s", action_type, self.admin_user_id)
+            logger.info(
+                "Admin action logged: %s by %s", action_type, self.admin_user_id
+            )
         except Exception as exc:
             logger.error("Failed to log admin action %s: %s", action_type, exc)
             # Don't fail the main operation if logging fails

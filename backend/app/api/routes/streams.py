@@ -5,7 +5,14 @@ import json
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    Query,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_user
@@ -26,7 +33,9 @@ from app.schemas.api import (
 from app.services.streams import StreamControlService, StreamService
 from app.services.streams.websocket import stream_ws_manager
 from app.services.streams.ws_tokens import generate_ws_token, verify_ws_token
-from app.streaming.ffmpeg_manager import ffmpeg_manager  # noqa: F401 - compatibility for tests
+from app.streaming.ffmpeg_manager import (
+    ffmpeg_manager,
+)  # noqa: F401 - compatibility for tests
 
 router = APIRouter()
 WS_STATUS_POLL_SECONDS = 3
@@ -53,7 +62,9 @@ async def list_streams(user_deps: tuple = Depends(require_user)):
 
 
 @router.post("/", response_model=StreamResponse, status_code=201)
-async def create_stream(stream_data: StreamCreate, user_deps: tuple = Depends(require_user)):
+async def create_stream(
+    stream_data: StreamCreate, user_deps: tuple = Depends(require_user)
+):
     db, user_id = user_deps
     service, _ = _build_services(db, user_id)
     return await service.create_stream(stream_data)
@@ -95,7 +106,9 @@ async def stream_status_websocket(websocket: WebSocket):
                     user_id,
                     ffmpeg_manager.get_all_streams(),
                 )
-                await websocket.send_text(json.dumps({"type": "stream_update", "payload": snapshot}))
+                await websocket.send_text(
+                    json.dumps({"type": "stream_update", "payload": snapshot})
+                )
                 await asyncio.sleep(WS_STATUS_POLL_SECONDS)
             except WebSocketDisconnect:
                 break
@@ -175,7 +188,9 @@ async def get_stream_status(stream_id: UUID, user_deps: tuple = Depends(require_
 @router.get("/{stream_id}/logs", response_model=StreamLogsResponse)
 async def get_stream_logs(
     stream_id: UUID,
-    lines: int = Query(default=100, ge=1, le=10_000, description="Number of log lines (1-10000)"),
+    lines: int = Query(
+        default=100, ge=1, le=10_000, description="Number of log lines (1-10000)"
+    ),
     mode: str = Query(
         default="important",
         description="Log mode: important (filtered) or raw (all lines)",

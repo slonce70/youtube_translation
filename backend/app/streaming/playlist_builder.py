@@ -42,9 +42,13 @@ class PlaylistBuilder:
     """Builds FFmpeg concat demuxer playlist files"""
 
     def __init__(self, streams_dir: Optional[Union[Path, str]] = None):
-        self.streams_dir = Path(streams_dir) if streams_dir else Path(settings.stream_dir)
+        self.streams_dir = (
+            Path(streams_dir) if streams_dir else Path(settings.stream_dir)
+        )
 
-    async def build_playlist(self, playlist_id: str, assets: List[Dict[str, Any]]) -> Path:
+    async def build_playlist(
+        self, playlist_id: str, assets: List[Dict[str, Any]]
+    ) -> Path:
         """Create a playlist file for the provided assets inside the configured streams directory."""
 
         if not assets:
@@ -115,38 +119,50 @@ class PlaylistBuilder:
         queue_state_file: Optional[Path] = None
 
         if normalized_video:
-            video_playlist_path, video_slots, queue_state_file = self._build_dynamic_playlist(
-                stream_dir=stream_dir,
-                assets=normalized_video,
-                mix_mode=normalized_mode,
-                target="video",
-                stream_id=stream_id,
-                loop=video_loop,
-                shuffle=video_shuffle,
+            video_playlist_path, video_slots, queue_state_file = (
+                self._build_dynamic_playlist(
+                    stream_dir=stream_dir,
+                    assets=normalized_video,
+                    mix_mode=normalized_mode,
+                    target="video",
+                    stream_id=stream_id,
+                    loop=video_loop,
+                    shuffle=video_shuffle,
+                )
             )
 
         audio_playlist_path: Optional[Path] = None
         if normalized_audio:
-            audio_playlist_path, audio_slots, queue_state_file = self._build_dynamic_playlist(
-                stream_dir=stream_dir,
-                assets=normalized_audio,
-                mix_mode=normalized_mode,
-                target="audio",
-                stream_id=stream_id,
-                loop=audio_loop,
-                shuffle=audio_shuffle,
-                queue_state_path=queue_state_file,
+            audio_playlist_path, audio_slots, queue_state_file = (
+                self._build_dynamic_playlist(
+                    stream_dir=stream_dir,
+                    assets=normalized_audio,
+                    mix_mode=normalized_mode,
+                    target="audio",
+                    stream_id=stream_id,
+                    loop=audio_loop,
+                    shuffle=audio_shuffle,
+                    queue_state_path=queue_state_file,
+                )
             )
 
         video_copy_compatible = bool(normalized_video) and all(
             asset.get("compatible_for_copy") is True for asset in normalized_video
         )
         audio_copy_compatible = self._audio_assets_compatible(normalized_audio)
-        video_has_audio = any((asset.get("meta") or {}).get("audio") for asset in normalized_video)
-        video_audio_copy_compatible = video_has_audio and self._audio_assets_compatible(normalized_video)
+        video_has_audio = any(
+            (asset.get("meta") or {}).get("audio") for asset in normalized_video
+        )
+        video_audio_copy_compatible = video_has_audio and self._audio_assets_compatible(
+            normalized_video
+        )
 
-        needs_video_placeholder = needs_video_placeholder or (normalized_mode == "audio_only")
-        needs_audio_placeholder = (normalized_mode == "video_only" and not video_has_audio)
+        needs_video_placeholder = needs_video_placeholder or (
+            normalized_mode == "audio_only"
+        )
+        needs_audio_placeholder = (
+            normalized_mode == "video_only" and not video_has_audio
+        )
 
         return PlaylistFileSet(
             stream_dir=stream_dir,
@@ -179,17 +195,19 @@ class PlaylistBuilder:
                 raise ValueError("Asset entry missing 'path'")
 
             file_path = Path(str(raw_path)).expanduser().resolve()
-            
+
             # Verify file exists before adding to playlist
             if not file_path.exists():
                 asset_id = entry.get("asset_id", "unknown")
                 filename = entry.get("filename", str(file_path))
-                logger.error(f"Asset file does not exist: {file_path} (asset_id={asset_id}, filename={filename})")
+                logger.error(
+                    f"Asset file does not exist: {file_path} (asset_id={asset_id}, filename={filename})"
+                )
                 raise FileNotFoundError(
                     f"Asset file not found: {filename}. The file may have been moved or deleted. "
                     f"Please re-upload this asset before streaming."
                 )
-            
+
             entry["path"] = str(file_path)
 
             loop_mode = self._sanitize_loop_mode(entry.get("loop_mode"))
@@ -251,7 +269,9 @@ class PlaylistBuilder:
         slot_dir.mkdir(parents=True, exist_ok=True)
 
         slot_count = max(2, min(4, len(assets))) if assets else 2
-        slot_paths: List[Path] = [slot_dir / f"{target}_slot_{index:02d}.media" for index in range(slot_count)]
+        slot_paths: List[Path] = [
+            slot_dir / f"{target}_slot_{index:02d}.media" for index in range(slot_count)
+        ]
 
         playlist_path = stream_dir / f"{target}.ffconcat"
         self._write_slot_playlist(playlist_path, slot_paths)
@@ -281,11 +301,13 @@ class PlaylistBuilder:
         }
 
         self._write_queue_state(queue_state_path, queue_state)
-        
+
         # Rebuild playlist with only valid slots
         self._write_slot_playlist(playlist_path, valid_slot_paths)
-        
-        logger.debug(f"Dynamic playlist for {target} has {len(valid_slot_paths)} valid slots (skipped {len(slot_paths) - len(valid_slot_paths)} empty)")
+
+        logger.debug(
+            f"Dynamic playlist for {target} has {len(valid_slot_paths)} valid slots (skipped {len(slot_paths) - len(valid_slot_paths)} empty)"
+        )
 
         return playlist_path, valid_slot_paths, queue_state_path
 
@@ -319,7 +341,9 @@ class PlaylistBuilder:
             pass
 
         if not asset:
-            logger.warning(f"No asset provided for slot {slot_path}, skipping slot creation")
+            logger.warning(
+                f"No asset provided for slot {slot_path}, skipping slot creation"
+            )
             return False
 
         source_path = Path(str(asset.get("path")))
@@ -345,6 +369,7 @@ class PlaylistBuilder:
                 temp_path.hardlink_to(source_path)
             except (OSError, AttributeError):
                 import shutil
+
                 shutil.copy2(source_path, temp_path)
 
         temp_path.replace(slot_path)
@@ -366,7 +391,9 @@ class PlaylistBuilder:
     def _write_queue_state(state_path: Path, state: Dict[str, Any]) -> None:
         import json
 
-        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        state_path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
     @staticmethod
     def _seed_from_components(stream_id: str, suffix: str) -> int:
@@ -383,14 +410,14 @@ class PlaylistBuilder:
     ) -> Path:
         """
         Build concat demuxer playlist file for FFmpeg.
-        
+
         Args:
             assets: List of asset dicts with 'path' key
             output_file: Path where to save playlist.txt
             loop: Whether to enable infinite loop (currently not used to avoid descriptor leak)
             shuffle: Whether to shuffle assets before writing playlist
             seed: Optional deterministic seed for shuffle order
-            
+
         Returns:
             Path to created playlist file
         """
@@ -414,16 +441,18 @@ class PlaylistBuilder:
                     escaped = resolved_path.as_posix().replace("'", "\\'")
                     # Write absolute path
                     f.write(f"file '{escaped}'\n")
-            
+
             logger.info(f"Created playlist file: {output_file}")
             return output_file
-            
+
         except Exception as e:
             logger.error(f"Error building playlist file: {e}")
             raise
 
     @staticmethod
-    def validate_playlist_assets(assets: List[Dict]) -> Tuple[bool, List[Dict[str, Any]]]:
+    def validate_playlist_assets(
+        assets: List[Dict],
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
         """
         Validate that all assets in playlist have compatible parameters.
 
@@ -432,10 +461,10 @@ class PlaylistBuilder:
         - Same audio codec and parameters
         - Same resolution
         - Same frame rate
-        
+
         Args:
             assets: List of asset dicts with 'meta' key containing stream info
-            
+
         Returns:
             Tuple of (is_valid, issues). Issues is a list of dicts with details.
         """
@@ -514,9 +543,7 @@ class PlaylistBuilder:
                         asset,
                     )
                 elif video_codec != VideoValidator.REQUIRED_VIDEO_CODEC:
-                    codec_message = (
-                        f"Video codec must be {VideoValidator.REQUIRED_VIDEO_CODEC.upper()} for direct streaming."
-                    )
+                    codec_message = f"Video codec must be {VideoValidator.REQUIRED_VIDEO_CODEC.upper()} for direct streaming."
                     add_issue(
                         "video_codec_invalid",
                         codec_message,
@@ -588,7 +615,9 @@ class PlaylistBuilder:
                     )
 
         if issues:
-            logger.warning("Playlist compatibility validation issues detected: %s", issues)
+            logger.warning(
+                "Playlist compatibility validation issues detected: %s", issues
+            )
             return False, issues
 
         if len(assets) == 1:
@@ -633,10 +662,9 @@ class PlaylistBuilder:
                     found=video.get("codec"),
                 )
 
-            if (
-                video.get("width") != first_video.get("width")
-                or video.get("height") != first_video.get("height")
-            ):
+            if video.get("width") != first_video.get("width") or video.get(
+                "height"
+            ) != first_video.get("height"):
                 logger.error("Incompatible resolutions in playlist")
                 add_issue(
                     "resolution_mismatch",
@@ -701,7 +729,9 @@ class PlaylistBuilder:
         return is_valid, issues
 
     @staticmethod
-    def validate_audio_playlist_assets(assets: List[Dict]) -> Tuple[bool, List[Dict[str, Any]]]:
+    def validate_audio_playlist_assets(
+        assets: List[Dict],
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
         """Validate that audio-only assets are ready for direct streaming."""
 
         issues: List[Dict[str, Any]] = []
@@ -727,7 +757,12 @@ class PlaylistBuilder:
             issues.append(entry)
 
         if not assets:
-            add_issue("empty_playlist", "Audio playlist must contain at least one asset.", 0, {})
+            add_issue(
+                "empty_playlist",
+                "Audio playlist must contain at least one asset.",
+                0,
+                {},
+            )
             return False, issues
 
         allowed_sample_rates = {44100, 48000}
@@ -737,7 +772,12 @@ class PlaylistBuilder:
             audio = meta.get("audio") or {}
 
             if not audio:
-                add_issue("missing_audio_metadata", "Audio metadata is required for streaming.", index, asset)
+                add_issue(
+                    "missing_audio_metadata",
+                    "Audio metadata is required for streaming.",
+                    index,
+                    asset,
+                )
                 continue
 
             codec = str(audio.get("codec") or "").lower()
@@ -755,12 +795,19 @@ class PlaylistBuilder:
 
             sample_rate_raw = audio.get("sample_rate")
             try:
-                sample_rate = int(sample_rate_raw) if sample_rate_raw is not None else None
+                sample_rate = (
+                    int(sample_rate_raw) if sample_rate_raw is not None else None
+                )
             except (TypeError, ValueError):
                 sample_rate = None
 
             if sample_rate is None:
-                add_issue("audio_sample_rate_missing", "Audio sample rate metadata is missing.", index, asset)
+                add_issue(
+                    "audio_sample_rate_missing",
+                    "Audio sample rate metadata is missing.",
+                    index,
+                    asset,
+                )
             elif sample_rate not in allowed_sample_rates:
                 add_issue(
                     "audio_sample_rate_mismatch",
@@ -779,59 +826,62 @@ class PlaylistBuilder:
 
     @staticmethod
     async def combine_to_transport_stream(
-        assets: List[Dict],
-        output_file: Path
+        assets: List[Dict], output_file: Path
     ) -> Path:
         """
         Combine multiple compatible MP4 files into single MPEG-TS file without transcoding.
         This allows using -stream_loop -1 for infinite playback.
-        
+
         Args:
             assets: List of asset dicts
             output_file: Path for output .ts file
-            
+
         Returns:
             Path to created .ts file
         """
         import asyncio
-        
+
         try:
             # Create temporary playlist
             temp_playlist = output_file.parent / f"{output_file.stem}_temp.txt"
             PlaylistBuilder.build_playlist_file(assets, temp_playlist, loop=False)
-            
+
             # Combine using FFmpeg
             cmd = [
                 settings.ffmpeg_bin,
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(temp_playlist),
-                "-c", "copy",
-                "-bsf:v", "h264_mp4toannexb",  # Convert to Annex B format
-                "-f", "mpegts",
-                str(output_file)
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(temp_playlist),
+                "-c",
+                "copy",
+                "-bsf:v",
+                "h264_mp4toannexb",  # Convert to Annex B format
+                "-f",
+                "mpegts",
+                str(output_file),
             ]
-            
+
             logger.info(f"Combining assets to transport stream: {output_file}")
-            
+
             process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            
+
             stdout, stderr = await process.communicate()
-            
+
             if process.returncode != 0:
                 logger.error(f"Failed to combine files: {stderr.decode()}")
                 raise RuntimeError("FFmpeg combination failed")
-            
+
             # Cleanup temp playlist
             temp_playlist.unlink(missing_ok=True)
-            
+
             logger.info(f"Successfully created transport stream: {output_file}")
             return output_file
-            
+
         except Exception as e:
             logger.error(f"Error combining to transport stream: {e}")
             raise

@@ -53,7 +53,9 @@ def _redact_rtmp_uri(uri: str) -> str:
         segments[-1] = "<redacted>"
     redacted_path = "/".join(segments)
 
-    return urlunsplit((parts.scheme, parts.netloc, redacted_path, parts.query, parts.fragment))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, redacted_path, parts.query, parts.fragment)
+    )
 
 
 def _redact_rtmp_text(value: str) -> str:
@@ -67,8 +69,6 @@ def _redact_rtmp_text(value: str) -> str:
 
 
 @dataclass
-
-
 class FFmpegCommandPlan:
     """Structured summary of the FFmpeg command and encoding decisions."""
 
@@ -98,7 +98,9 @@ class FFmpegCommandPlan:
             "audio_bitrate_kbps": self.audio_bitrate_kbps,
             "uses_video_placeholder": self.uses_video_placeholder,
             "uses_audio_placeholder": self.uses_audio_placeholder,
-            "destination_uris": [_redact_rtmp_uri(uri) for uri in self.destination_uris],
+            "destination_uris": [
+                _redact_rtmp_uri(uri) for uri in self.destination_uris
+            ],
             "keyframe_interval_seconds": self.keyframe_interval_seconds,
             "keyframe_gop_frames": self.keyframe_gop_frames,
         }
@@ -124,7 +126,9 @@ class FFmpegStreamManager:
 
         self._monitor_tasks[stream_id] = task
 
-        def _cleanup(completed: asyncio.Task, *, tracked_stream: str = stream_id) -> None:
+        def _cleanup(
+            completed: asyncio.Task, *, tracked_stream: str = stream_id
+        ) -> None:
             stored = self._monitor_tasks.get(tracked_stream)
             if stored is completed:
                 self._monitor_tasks.pop(tracked_stream, None)
@@ -204,7 +208,9 @@ class FFmpegStreamManager:
                 if stored is task:
                     self._monitor_tasks.pop(stream_id, None)
 
-    def _normalize_playlists(self, playlists: Union[PlaylistFileSet, Path, str]) -> PlaylistFileSet:
+    def _normalize_playlists(
+        self, playlists: Union[PlaylistFileSet, Path, str]
+    ) -> PlaylistFileSet:
         """Accept legacy playlist inputs by wrapping them in PlaylistFileSet."""
 
         if isinstance(playlists, PlaylistFileSet):
@@ -242,7 +248,7 @@ class FFmpegStreamManager:
     ) -> bool:
         """
         Start streaming to multiple YouTube channels using FFmpeg tee muxer.
-        
+
         Args:
             stream_id: Unique stream identifier
             playlists: Prepared playlist artifacts for video/audio inputs
@@ -250,7 +256,7 @@ class FFmpegStreamManager:
             log_file: Optional path to log file
             metadata: Optional extra context (user_id, stream metadata) for monitoring
             restart: Internal flag used when auto-restarting a failed stream
-            
+
         Returns:
             True if stream started successfully
         """
@@ -285,13 +291,15 @@ class FFmpegStreamManager:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                preexec_fn=None  # Don't change process group
+                preexec_fn=None,  # Don't change process group
             )
 
             # Store process and metadata
             existing_info = self.stream_info.get(stream_id, {}) if restart else {}
             recent_errors = existing_info.get("recent_errors") if restart else None
-            combined_metadata = dict(existing_info.get("metadata", {})) if restart else {}
+            combined_metadata = (
+                dict(existing_info.get("metadata", {})) if restart else {}
+            )
 
             if metadata:
                 combined_metadata.update(metadata)
@@ -304,9 +312,15 @@ class FFmpegStreamManager:
                 "log_file": str(log_file) if log_file else None,
                 "playlists": replace(normalized_playlists),
                 "destinations": [dict(dest) for dest in destinations],
-                "restart_attempts": existing_info.get("restart_attempts", 0) if restart else 0,
+                "restart_attempts": (
+                    existing_info.get("restart_attempts", 0) if restart else 0
+                ),
                 "metadata": combined_metadata,
-                "recent_errors": recent_errors if recent_errors is not None else deque(maxlen=settings.ffmpeg_error_history_size),
+                "recent_errors": (
+                    recent_errors
+                    if recent_errors is not None
+                    else deque(maxlen=settings.ffmpeg_error_history_size)
+                ),
                 "mix_mode": normalized_playlists.mix_mode,
                 "ffmpeg_plan": plan.telemetry(),
             }
@@ -317,8 +331,10 @@ class FFmpegStreamManager:
             try:
                 await hot_swap_manager.register_stream(stream_id, normalized_playlists)
             except Exception:
-                logger.exception("Failed to initialize hot swap manager for stream %s", stream_id)
-            
+                logger.exception(
+                    "Failed to initialize hot swap manager for stream %s", stream_id
+                )
+
             # Monitor process in background and handle logs
             monitor_task = asyncio.create_task(
                 self._monitor_process(stream_id, process, log_file)
@@ -334,11 +350,11 @@ class FFmpegStreamManager:
     async def stop_stream(self, stream_id: str, timeout: int = 10) -> bool:
         """
         Stop a running stream gracefully with proper cleanup.
-        
+
         Args:
             stream_id: Stream identifier
             timeout: Timeout in seconds for graceful shutdown
-            
+
         Returns:
             True if stream stopped successfully
         """
@@ -418,7 +434,9 @@ class FFmpegStreamManager:
 
         existing_info = self.stream_info.get(stream_id, {})
         stored_destinations = existing_info.get("destinations") or []
-        resolved_destinations = destinations or [dict(dest) for dest in stored_destinations]
+        resolved_destinations = destinations or [
+            dict(dest) for dest in stored_destinations
+        ]
 
         if not resolved_destinations:
             raise ValueError("Destinations are required to restart a stream")
@@ -439,7 +457,10 @@ class FFmpegStreamManager:
         if stream_id in self.active_streams:
             stop_ok = await self.stop_stream(stream_id)
             if not stop_ok:
-                logger.warning("Stream %s was not running during restart; starting fresh", stream_id)
+                logger.warning(
+                    "Stream %s was not running during restart; starting fresh",
+                    stream_id,
+                )
 
         return await self.start_stream(
             stream_id=stream_id,
@@ -454,7 +475,7 @@ class FFmpegStreamManager:
         """Check if stream is currently running"""
         if stream_id not in self.active_streams:
             return False
-        
+
         process = self.active_streams[stream_id]
         return process.returncode is None
 
@@ -462,14 +483,14 @@ class FFmpegStreamManager:
         """Get information about a running stream"""
         if stream_id not in self.stream_info:
             return None
-        
+
         info = self.stream_info[stream_id].copy()
         info["is_running"] = self.is_running(stream_id)
-        
+
         if info["is_running"] and "started_at" in info:
             uptime = (datetime.utcnow() - info["started_at"]).total_seconds()
             info["uptime_seconds"] = int(uptime)
-        
+
         return info
 
     def get_all_streams(self) -> Dict[str, Dict]:
@@ -493,9 +514,7 @@ class FFmpegStreamManager:
             await asyncio.sleep(max(poll_interval, 0.1))
 
     def _build_command(
-        self,
-        playlists: PlaylistFileSet,
-        destinations: List[Dict[str, str]]
+        self, playlists: PlaylistFileSet, destinations: List[Dict[str, str]]
     ) -> FFmpegCommandPlan:
         """Build FFmpeg command for streaming across supported modes."""
 
@@ -525,7 +544,9 @@ class FFmpegStreamManager:
         cmd: List[str] = [self.ffmpeg_bin, "-hide_banner", "-nostats"]
         input_sections: List[Dict[str, Any]] = []
 
-        def add_input(args: List[str], *, provides_video: bool, provides_audio: bool) -> int:
+        def add_input(
+            args: List[str], *, provides_video: bool, provides_audio: bool
+        ) -> int:
             index = len(input_sections)
             input_sections.append(
                 {
@@ -550,13 +571,20 @@ class FFmpegStreamManager:
                 audio_args: List[str] = []
                 if playlists.audio_loop:
                     audio_args.extend(["-stream_loop", "-1"])
-                audio_args.extend([
-                    "-re",
-                    "-f", "concat",
-                    "-safe", "0",
-                    "-i", str(playlists.audio_playlist),
-                ])
-                audio_input_idx = add_input(audio_args, provides_video=False, provides_audio=True)
+                audio_args.extend(
+                    [
+                        "-re",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(playlists.audio_playlist),
+                    ]
+                )
+                audio_input_idx = add_input(
+                    audio_args, provides_video=False, provides_audio=True
+                )
             else:
                 audio_input_idx = add_input(
                     self._build_audio_placeholder_args(),
@@ -576,13 +604,20 @@ class FFmpegStreamManager:
                 video_args: List[str] = []
                 if playlists.video_loop:
                     video_args.extend(["-stream_loop", "-1"])
-                video_args.extend([
-                    "-re",
-                    "-f", "concat",
-                    "-safe", "0",
-                    "-i", str(playlists.video_playlist),
-                ])
-                video_input_idx = add_input(video_args, provides_video=True, provides_audio=True)
+                video_args.extend(
+                    [
+                        "-re",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(playlists.video_playlist),
+                    ]
+                )
+                video_input_idx = add_input(
+                    video_args, provides_video=True, provides_audio=True
+                )
             elif playlists.needs_video_placeholder:
                 video_input_idx = add_input(
                     self._build_video_placeholder_args(playlists),
@@ -610,13 +645,20 @@ class FFmpegStreamManager:
                 audio_args = []
                 if playlists.audio_loop:
                     audio_args.extend(["-stream_loop", "-1"])
-                audio_args.extend([
-                    "-re",
-                    "-f", "concat",
-                    "-safe", "0",
-                    "-i", str(playlists.audio_playlist),
-                ])
-                audio_input_idx = add_input(audio_args, provides_video=False, provides_audio=True)
+                audio_args.extend(
+                    [
+                        "-re",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(playlists.audio_playlist),
+                    ]
+                )
+                audio_input_idx = add_input(
+                    audio_args, provides_video=False, provides_audio=True
+                )
             elif playlists.mix_mode == "mixed":
                 raise ValueError("Mixed streams require an audio playlist")
             else:
@@ -646,27 +688,48 @@ class FFmpegStreamManager:
         if copy_video:
             cmd.extend(["-c:v", "copy", "-bsf:v", "h264_mp4toannexb", "-tag:v", "7"])
         else:
-            video_bitrate = max(int(getattr(settings, "ffmpeg_video_bitrate_kbps", 6000)), 1000)
-            video_maxrate = max(int(getattr(settings, "ffmpeg_video_maxrate_kbps", video_bitrate)), video_bitrate)
-            video_bufsize = max(int(getattr(settings, "ffmpeg_video_bufsize_kbps", video_maxrate * 2)), video_maxrate)
+            video_bitrate = max(
+                int(getattr(settings, "ffmpeg_video_bitrate_kbps", 6000)), 1000
+            )
+            video_maxrate = max(
+                int(getattr(settings, "ffmpeg_video_maxrate_kbps", video_bitrate)),
+                video_bitrate,
+            )
+            video_bufsize = max(
+                int(getattr(settings, "ffmpeg_video_bufsize_kbps", video_maxrate * 2)),
+                video_maxrate,
+            )
 
-            keyframe_gop_frames, keyframe_interval_seconds = self._select_keyframe_settings(playlists)
+            keyframe_gop_frames, keyframe_interval_seconds = (
+                self._select_keyframe_settings(playlists)
+            )
             gop_value = max(1, keyframe_gop_frames)
             keyframe_expr = f"expr:gte(t,n_forced*{keyframe_interval_seconds:.3f})"
 
             cmd.extend(
                 [
-                    "-c:v", "libx264",
-                    "-preset", "veryfast",
-                    "-pix_fmt", "yuv420p",
-                    "-profile:v", "high",
-                    "-g", str(gop_value),
-                    "-keyint_min", str(gop_value),
-                    "-sc_threshold", "0",
-                    "-b:v", f"{video_bitrate}k",
-                    "-maxrate", f"{video_maxrate}k",
-                    "-bufsize", f"{video_bufsize}k",
-                    "-tune", "zerolatency",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-profile:v",
+                    "high",
+                    "-g",
+                    str(gop_value),
+                    "-keyint_min",
+                    str(gop_value),
+                    "-sc_threshold",
+                    "0",
+                    "-b:v",
+                    f"{video_bitrate}k",
+                    "-maxrate",
+                    f"{video_maxrate}k",
+                    "-bufsize",
+                    f"{video_bufsize}k",
+                    "-tune",
+                    "zerolatency",
                     "-force_key_frames",
                     keyframe_expr,
                 ]
@@ -681,8 +744,12 @@ class FFmpegStreamManager:
             cmd.extend(["-c:a", "copy", "-tag:a", "10"])
         else:
             sample_rate = getattr(settings, "placeholder_audio_sample_rate", 44100)
-            audio_bitrate = max(int(getattr(settings, "ffmpeg_audio_bitrate_kbps", 160)), 64)
-            cmd.extend(["-c:a", "aac", "-ar", str(sample_rate), "-b:a", f"{audio_bitrate}k"])
+            audio_bitrate = max(
+                int(getattr(settings, "ffmpeg_audio_bitrate_kbps", 160)), 64
+            )
+            cmd.extend(
+                ["-c:a", "aac", "-ar", str(sample_rate), "-b:a", f"{audio_bitrate}k"]
+            )
         audio_bitrate_value = audio_bitrate if not copy_audio else None
 
         if len(normalized_destinations) == 1:
@@ -696,7 +763,8 @@ class FFmpegStreamManager:
                 uri = dest["uri"]
                 destination_uris.append(uri)
                 tee_outputs.append(
-                    "[select='v\\:0,a\\:0':f=fifo:fifo_format=flv:attempt_recovery=1:recovery_wait_time=5]" + uri
+                    "[select='v\\:0,a\\:0':f=fifo:fifo_format=flv:attempt_recovery=1:recovery_wait_time=5]"
+                    + uri
                 )
 
             cmd.extend(["-f", "tee", "|".join(tee_outputs)])
@@ -710,8 +778,10 @@ class FFmpegStreamManager:
             video_maxrate_kbps=video_maxrate_value,
             video_bufsize_kbps=video_bufsize_value,
             audio_bitrate_kbps=audio_bitrate_value,
-            uses_video_placeholder=playlists.needs_video_placeholder and playlists.video_playlist is None,
-            uses_audio_placeholder=playlists.needs_audio_placeholder and playlists.audio_playlist is None,
+            uses_video_placeholder=playlists.needs_video_placeholder
+            and playlists.video_playlist is None,
+            uses_audio_placeholder=playlists.needs_audio_placeholder
+            and playlists.audio_playlist is None,
             destination_uris=destination_uris,
             keyframe_interval_seconds=keyframe_interval_seconds,
             keyframe_gop_frames=keyframe_gop_frames,
@@ -752,7 +822,9 @@ class FFmpegStreamManager:
 
         return None
 
-    def _select_keyframe_settings(self, playlists: PlaylistFileSet) -> Tuple[int, float]:
+    def _select_keyframe_settings(
+        self, playlists: PlaylistFileSet
+    ) -> Tuple[int, float]:
         fps_candidates: List[float] = []
 
         for asset in playlists.video_assets:
@@ -773,13 +845,20 @@ class FFmpegStreamManager:
 
         fps_value = max(min(fps_value, 120.0), 1.0)
 
-        configured_interval = getattr(settings, "ffmpeg_keyframe_interval_seconds", DEFAULT_KEYFRAME_INTERVAL_SECONDS)
+        configured_interval = getattr(
+            settings,
+            "ffmpeg_keyframe_interval_seconds",
+            DEFAULT_KEYFRAME_INTERVAL_SECONDS,
+        )
         try:
             configured_interval = float(configured_interval)
         except (TypeError, ValueError):  # pragma: no cover - fallback to default
             configured_interval = DEFAULT_KEYFRAME_INTERVAL_SECONDS
 
-        interval_seconds = max(min(configured_interval, MAX_KEYFRAME_INTERVAL_SECONDS), MIN_KEYFRAME_INTERVAL_SECONDS)
+        interval_seconds = max(
+            min(configured_interval, MAX_KEYFRAME_INTERVAL_SECONDS),
+            MIN_KEYFRAME_INTERVAL_SECONDS,
+        )
         gop_frames = max(1, int(round(fps_value * interval_seconds)))
 
         return gop_frames, interval_seconds
@@ -791,7 +870,8 @@ class FFmpegStreamManager:
             if candidate.exists():
                 return ["-loop", "1", "-i", str(candidate)]
             logger.warning(
-                "Video placeholder file %s not found; falling back to generated color", candidate
+                "Video placeholder file %s not found; falling back to generated color",
+                candidate,
             )
 
         resolution = getattr(settings, "placeholder_video_resolution", "1280x720")
@@ -830,7 +910,7 @@ class FFmpegStreamManager:
         self,
         stream_id: str,
         process: asyncio.subprocess.Process,
-        log_file: Optional[Path]
+        log_file: Optional[Path],
     ):
         """Monitor FFmpeg process, write logs, and cleanup on exit"""
         try:
@@ -847,7 +927,9 @@ class FFmpegStreamManager:
                     self._enforce_runtime_limit(stream_id, process)
                 )
             except Exception:  # pragma: no cover - defensive logging
-                logger.exception("Failed to start quota monitor for stream %s", stream_id)
+                logger.exception(
+                    "Failed to start quota monitor for stream %s", stream_id
+                )
 
             returncode = await self._await_process_exit(stream_id, process)
 
@@ -888,7 +970,9 @@ class FFmpegStreamManager:
                 else:
                     logger.info(f"Stream {stream_id} exited normally")
 
-                await self._finalize_stream_success(stream_id, manual_stop, quota_context)
+                await self._finalize_stream_success(
+                    stream_id, manual_stop, quota_context
+                )
 
                 async with self._cleanup_lock:
                     self.active_streams.pop(stream_id, None)
@@ -953,7 +1037,9 @@ class FFmpegStreamManager:
             started_at = started_at_info
             if started_at.tzinfo is None:
                 started_at = started_at.replace(tzinfo=timezone.utc)
-            duration_seconds = max((datetime.now(timezone.utc) - started_at).total_seconds(), 0.0)
+            duration_seconds = max(
+                (datetime.now(timezone.utc) - started_at).total_seconds(), 0.0
+            )
 
         recent_errors_store = info.get("recent_errors")
         if isinstance(recent_errors_store, deque):
@@ -970,7 +1056,9 @@ class FFmpegStreamManager:
         try:
             stream_uuid = UUID(str(stream_id))
         except ValueError:
-            logger.debug("Stream ID %s is not a UUID; skipping DB failure update", stream_id)
+            logger.debug(
+                "Stream ID %s is not a UUID; skipping DB failure update", stream_id
+            )
 
         if recent_errors:
             logger.error(
@@ -1001,8 +1089,10 @@ class FFmpegStreamManager:
 
             try:
                 base_backoff = max(settings.ffmpeg_restart_backoff_seconds, 0)
-                max_backoff = max(settings.ffmpeg_restart_backoff_max_seconds, base_backoff)
-                backoff = min(base_backoff * (2 ** attempts), max_backoff)
+                max_backoff = max(
+                    settings.ffmpeg_restart_backoff_max_seconds, base_backoff
+                )
+                backoff = min(base_backoff * (2**attempts), max_backoff)
                 if backoff:
                     await asyncio.sleep(backoff)
             except Exception:
@@ -1014,9 +1104,15 @@ class FFmpegStreamManager:
             if playlists_snapshot and destinations:
                 try:
                     missing_files: List[str] = []
-                    if playlists_snapshot.video_playlist and not Path(playlists_snapshot.video_playlist).exists():
+                    if (
+                        playlists_snapshot.video_playlist
+                        and not Path(playlists_snapshot.video_playlist).exists()
+                    ):
                         missing_files.append(str(playlists_snapshot.video_playlist))
-                    if playlists_snapshot.audio_playlist and not Path(playlists_snapshot.audio_playlist).exists():
+                    if (
+                        playlists_snapshot.audio_playlist
+                        and not Path(playlists_snapshot.audio_playlist).exists()
+                    ):
                         missing_files.append(str(playlists_snapshot.audio_playlist))
 
                     if missing_files:
@@ -1044,7 +1140,9 @@ class FFmpegStreamManager:
                             return
                         logger.error("Auto restart failed for stream %s", stream_id)
                 except Exception as exc:
-                    logger.exception("Failed to auto restart stream %s: %s", stream_id, exc)
+                    logger.exception(
+                        "Failed to auto restart stream %s: %s", stream_id, exc
+                    )
             else:
                 logger.error("Missing restart metadata for stream %s", stream_id)
 
@@ -1153,9 +1251,7 @@ class FFmpegStreamManager:
             except asyncio.CancelledError:
                 raise
             except Exception:  # pragma: no cover - defensive logging
-                logger.exception(
-                    "Quota monitor sleep failed for stream %s", stream_id
-                )
+                logger.exception("Quota monitor sleep failed for stream %s", stream_id)
                 await asyncio.sleep(poll_interval)
 
     async def _fetch_daily_usage(self, user_id: UUID) -> Optional[Dict[str, Any]]:
@@ -1211,7 +1307,9 @@ class FFmpegStreamManager:
         try:
             stream_uuid = UUID(str(stream_id))
         except ValueError:
-            logger.debug("Stream ID %s is not a UUID; storing alert without FK", stream_id)
+            logger.debug(
+                "Stream ID %s is not a UUID; storing alert without FK", stream_id
+            )
 
         alert = SystemAlert(
             alert_type="stream_failure",
@@ -1231,9 +1329,15 @@ class FFmpegStreamManager:
             async with get_db_context() as session:
                 session.add(alert)
         except SQLAlchemyError as exc:
-            logger.exception("Failed to persist FFmpeg alert for stream %s: %s", stream_id, exc)
+            logger.exception(
+                "Failed to persist FFmpeg alert for stream %s: %s", stream_id, exc
+            )
         except Exception as exc:
-            logger.exception("Unexpected error while persisting alert for stream %s: %s", stream_id, exc)
+            logger.exception(
+                "Unexpected error while persisting alert for stream %s: %s",
+                stream_id,
+                exc,
+            )
         else:
             logger.info(
                 "Created %s alert for stream %s (attempt %s)",
@@ -1301,17 +1405,16 @@ class FFmpegStreamManager:
             )
 
     async def _write_logs_to_file(
-        self,
-        stream_id: str,
-        process: asyncio.subprocess.Process,
-        log_file: Path
+        self, stream_id: str, process: asyncio.subprocess.Process, log_file: Path
     ):
         """Write process output to log file safely using async file operations"""
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
 
             max_bytes = max(int(getattr(settings, "stream_log_max_bytes", 0) or 0), 0)
-            max_backups = max(int(getattr(settings, "stream_log_max_backups", 0) or 0), 0)
+            max_backups = max(
+                int(getattr(settings, "stream_log_max_backups", 0) or 0), 0
+            )
             bytes_written = log_file.stat().st_size if log_file.exists() else 0
 
             async def _open_log():
@@ -1376,7 +1479,7 @@ class FFmpegStreamManager:
             for stream_id, process in list(self.active_streams.items()):
                 if process.returncode is not None:
                     dead_streams.append(stream_id)
-            
+
             for stream_id in dead_streams:
                 logger.info(f"Cleaning up dead stream {stream_id}")
                 self.active_streams.pop(stream_id, None)
@@ -1387,7 +1490,9 @@ class FFmpegStreamManager:
     def _cleanup_stale_stream_info_locked(self, *, max_age_seconds: int = 3600) -> None:
         """Remove cached stream info for stopped streams older than the allowed age."""
 
-        cutoff_utc = (datetime.utcnow() - timedelta(seconds=max_age_seconds)).replace(tzinfo=timezone.utc)
+        cutoff_utc = (datetime.utcnow() - timedelta(seconds=max_age_seconds)).replace(
+            tzinfo=timezone.utc
+        )
         stale_streams: List[str] = []
 
         for stream_id, info in list(self.stream_info.items()):
@@ -1426,7 +1531,9 @@ class FFmpegStreamManager:
         try:
             stream_uuid = UUID(str(stream_id))
         except ValueError:
-            logger.debug("Stream ID %s не є UUID — пропускаємо фіналізацію в БД", stream_id)
+            logger.debug(
+                "Stream ID %s не є UUID — пропускаємо фіналізацію в БД", stream_id
+            )
             track_stream_stop(duration_seconds)
             return
 
@@ -1447,7 +1554,9 @@ class FFmpegStreamManager:
                         elapsed = (now - started_aware).total_seconds()
                         if elapsed > 0:
                             duration_seconds = elapsed
-                            stream.total_duration_seconds = (stream.total_duration_seconds or 0.0) + elapsed
+                            stream.total_duration_seconds = (
+                                stream.total_duration_seconds or 0.0
+                            ) + elapsed
 
                     stream.pid = None
                     stream.stopped_at = now
@@ -1459,12 +1568,15 @@ class FFmpegStreamManager:
                         stream.status = "stopped"
 
         except SQLAlchemyError as exc:
-            logger.exception("Помилка БД під час фіналізації stream %s: %s", stream_id, exc)
+            logger.exception(
+                "Помилка БД під час фіналізації stream %s: %s", stream_id, exc
+            )
         except Exception as exc:
-            logger.exception("Неочікувана помилка під час фіналізації stream %s: %s", stream_id, exc)
+            logger.exception(
+                "Неочікувана помилка під час фіналізації stream %s: %s", stream_id, exc
+            )
         finally:
             track_stream_stop(duration_seconds)
-
 
     @staticmethod
     def _resolve_ffmpeg_bin(candidate: str, *, allow_deferred: bool) -> str:
@@ -1483,7 +1595,11 @@ class FFmpegStreamManager:
             logger.info("Detected FFmpeg binary via PATH at %s", fallback)
             return fallback
 
-        bare_candidate = bool(candidate) and provided_path.name == candidate and not provided_path.is_absolute()
+        bare_candidate = (
+            bool(candidate)
+            and provided_path.name == candidate
+            and not provided_path.is_absolute()
+        )
 
         if allow_deferred or bare_candidate:
             deferred_candidate = provided_path.name or "ffmpeg"

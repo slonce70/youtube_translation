@@ -120,7 +120,9 @@ def _sync_runtime_lease_from_heartbeat(stream: Stream) -> None:
     if updated_at is None or expires_at is None:
         return
 
-    if stream.runtime_owner_id == owner_id and runtime_lease_is_active(stream, now=updated_at):
+    if stream.runtime_owner_id == owner_id and runtime_lease_is_active(
+        stream, now=updated_at
+    ):
         return
 
     sync_stream_runtime_lease(
@@ -170,10 +172,10 @@ def _schedule_runtime_restart(
 async def reconcile_streams(db: AsyncSession) -> dict:
     """
     Sync database stream status with actual supervisor/systemd state.
-    
+
     This function is called on backend startup to ensure that streams marked
     as "running" in the database are actually running in supervisor/systemd.
-    
+
     Returns:
         dict: Summary of reconciliation (confirmed_running, stopped, errors)
     """
@@ -230,7 +232,11 @@ async def reconcile_streams(db: AsyncSession) -> dict:
                 continue
 
             if normalized == "starting":
-                logger.info("Stream %s still starting; leaving status=%s", stream_id, stream.status)
+                logger.info(
+                    "Stream %s still starting; leaving status=%s",
+                    stream_id,
+                    stream.status,
+                )
                 stats["streams_checked"].append(
                     {
                         "id": str(stream_id),
@@ -244,7 +250,11 @@ async def reconcile_streams(db: AsyncSession) -> dict:
             if normalized == "running":
                 heartbeat_reason = _stale_runtime_heartbeat_reason(stream_id)
                 if heartbeat_reason:
-                    logger.warning("✗ Stream %s runner heartbeat is stale: %s", stream_id, heartbeat_reason)
+                    logger.warning(
+                        "✗ Stream %s runner heartbeat is stale: %s",
+                        stream_id,
+                        heartbeat_reason,
+                    )
                     action = _schedule_runtime_restart(stream, reason=heartbeat_reason)
                     stats["errors"] += 1
                     stats["streams_checked"].append(
@@ -298,7 +308,9 @@ async def reconcile_streams(db: AsyncSession) -> dict:
             if stream.status in {"running", "starting"}:
                 action = _schedule_runtime_restart(
                     stream,
-                    reason=_unexpected_runtime_failure_reason(state=state, detail=reason_detail),
+                    reason=_unexpected_runtime_failure_reason(
+                        state=state, detail=reason_detail
+                    ),
                 )
                 stats["errors"] += 1
                 stats["streams_checked"].append(
@@ -341,11 +353,13 @@ async def reconcile_streams(db: AsyncSession) -> dict:
         except Exception as e:
             logger.exception(f"Error reconciling stream {stream.id}: {e}")
             stats["errors"] += 1
-            stats["streams_checked"].append({
-                "id": str(stream.id),
-                "status": "error",
-                "error": str(e),
-            })
+            stats["streams_checked"].append(
+                {
+                    "id": str(stream.id),
+                    "status": "error",
+                    "error": str(e),
+                }
+            )
 
     await db.commit()
 
@@ -366,7 +380,7 @@ async def reconcile_streams(db: AsyncSession) -> dict:
 async def _check_stream_status(stream_id: UUID) -> dict:
     """
     Check actual stream status in supervisor or systemd.
-    
+
     Returns:
         dict: Status info with 'is_running' boolean and 'state' string
     """
@@ -414,14 +428,16 @@ async def _check_stream_status(stream_id: UUID) -> dict:
 async def periodic_reconciliation(db: AsyncSession) -> None:
     """
     Lightweight periodic check to sync stream statuses.
-    
+
     This is less aggressive than full reconciliation and only updates
     statuses that have drifted from reality.
     """
     if not (supervisor_enabled() or systemd_enabled()):
         return
 
-    result = await db.execute(select(Stream).where(Stream.status.in_(["running", "starting", "stopping"])))
+    result = await db.execute(
+        select(Stream).where(Stream.status.in_(["running", "starting", "stopping"]))
+    )
     streams = result.scalars().all()
 
     for stream in streams:
@@ -468,7 +484,10 @@ async def periodic_reconciliation(db: AsyncSession) -> None:
                 reset_stream_runtime_restart_state_if_healthy(stream)
                 continue
 
-            if normalized in {"stopped", "error"} and stream.status in {"running", "starting"}:
+            if normalized in {"stopped", "error"} and stream.status in {
+                "running",
+                "starting",
+            }:
                 _schedule_runtime_restart(
                     stream,
                     reason=_unexpected_runtime_failure_reason(
@@ -581,7 +600,9 @@ async def _cleanup_supervisor_artifacts(db: AsyncSession) -> None:
             await supervisor_remove_program(stream_uuid)
             removed += 1
         except Exception as exc:  # pylint: disable=broad-except
-            logger.warning("Failed to remove supervisor program %s: %s", program_name, exc)
+            logger.warning(
+                "Failed to remove supervisor program %s: %s", program_name, exc
+            )
             ini_path.unlink(missing_ok=True)
         else:
             if log_dir.exists():
