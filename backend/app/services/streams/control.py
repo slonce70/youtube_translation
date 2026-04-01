@@ -484,9 +484,17 @@ class StreamControlService:
             active_state = info.get("ActiveState", stream.status)
             uptime_seconds = _uptime_seconds(stream) if is_running else 0
             usage = await self._get_usage_snapshot()
+            preserve_restart_queue = (
+                not is_running
+                and stream.status == "error"
+                and _has_pending_runtime_restart(stream)
+            )
             status_override = (
                 stream.status
-                if (stream.status == "scheduled" and not is_running)
+                if (
+                    (stream.status == "scheduled" and not is_running)
+                    or preserve_restart_queue
+                )
                 else active_state
             )
             return self._status_payload(
@@ -522,24 +530,33 @@ class StreamControlService:
                 "stopped",
                 "exited",
             }
+            preserve_restart_queue = (
+                stream.status == "error"
+                and _has_pending_runtime_restart(stream)
+                and raw_state in {"", "unknown", "not_found", "stopped", "exited"}
+            )
             normalized_status = (
                 "scheduled"
                 if preserve_scheduled
-                else supervisor_status_map.get(
-                    raw_state,
-                    (
-                        stream.status
-                        if stream.status
-                        in {
-                            "stopped",
-                            "starting",
-                            "running",
-                            "error",
-                            "stopping",
-                            "scheduled",
-                        }
-                        else "stopped"
-                    ),
+                else (
+                    "error"
+                    if preserve_restart_queue
+                    else supervisor_status_map.get(
+                        raw_state,
+                        (
+                            stream.status
+                            if stream.status
+                            in {
+                                "stopped",
+                                "starting",
+                                "running",
+                                "error",
+                                "stopping",
+                                "scheduled",
+                            }
+                            else "stopped"
+                        ),
+                    )
                 )
             )
 
@@ -696,6 +713,8 @@ class StreamControlService:
                 if preserve_scheduled
                 else (info.get("error") or stream.error_message)
             )
+            if preserve_restart_queue:
+                error_message = stream.error_message
             usage = await self._get_usage_snapshot()
             return self._status_payload(
                 stream,
@@ -995,6 +1014,10 @@ def _uptime_seconds(stream: Stream) -> int:
     if not start:
         return 0
     return max(0, int((_utcnow() - start).total_seconds()))
+
+
+def _has_pending_runtime_restart(stream: Stream) -> bool:
+    return _aware(stream.runtime_next_restart_at) is not None
 
 
 __all__ = ["StreamControlService"]

@@ -60,12 +60,16 @@ async def test_daily_usage_snapshot_includes_running_stream() -> None:
 
         expected_used = 1800 + 600  # seconds (30 minutes + 10 minutes)
         assert usage["used_seconds"] == pytest.approx(expected_used, abs=3.0)
-        assert usage["remaining_seconds"] == pytest.approx((8 * 3600) - expected_used, abs=3.0)
+        assert usage["remaining_seconds"] == pytest.approx(
+            (8 * 3600) - expected_used, abs=3.0
+        )
         assert usage["limit_reached"] is False
 
 
 @pytest.mark.asyncio
-async def test_stream_status_reports_live_and_total_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_stream_status_reports_live_and_total_duration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     user_id = uuid4()
     now = datetime.now(timezone.utc)
 
@@ -212,7 +216,9 @@ async def test_supervisor_status_repairs_lease_and_clears_retry_metadata_from_fr
 
         monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
         monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+        monkeypatch.setattr(
+            streams_control.default_settings, "stream_dir", str(tmp_path)
+        )
         monkeypatch.setattr(
             streams_control.default_settings,
             "stream_runtime_restart_reset_after_seconds",
@@ -235,7 +241,10 @@ async def test_supervisor_status_repairs_lease_and_clears_retry_metadata_from_fr
         assert status.status == "running"
         assert status.runtime_restart.attempts == 0
         assert status.runtime_restart.state == "idle"
-        assert stream.runtime_owner_id == streams_control.default_settings.stream_runtime_node_id
+        assert (
+            stream.runtime_owner_id
+            == streams_control.default_settings.stream_runtime_node_id
+        )
         assert stream.runtime_lease_expires_at is not None
         assert stream.runtime_restart_attempts == 0
 
@@ -267,7 +276,9 @@ async def test_supervisor_status_fails_closed_when_heartbeat_is_stale(
 
         monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
         monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+        monkeypatch.setattr(
+            streams_control.default_settings, "stream_dir", str(tmp_path)
+        )
         monkeypatch.setattr(
             streams_control.default_settings,
             "stream_runtime_auto_restart_enabled",
@@ -324,7 +335,58 @@ async def test_supervisor_status_fails_closed_when_heartbeat_is_stale(
 
 
 @pytest.mark.asyncio
-async def test_enforce_runtime_limit_stops_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_supervisor_status_preserves_queued_runtime_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    next_restart_at = datetime.now(timezone.utc) + timedelta(minutes=1)
+    queued_error = "Runtime state EXITED: process exited unexpectedly."
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"queued-restart-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=uuid4(),
+            user_id=user_id,
+            name="queued-restart",
+            status="error",
+            error_message=queued_error,
+            runtime_restart_attempts=1,
+            runtime_next_restart_at=next_restart_at,
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+
+        async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {"state": "NOT_FOUND", "error": "supervisor reports no process"}
+
+        monkeypatch.setattr(
+            streams_control, "supervisor_program_status", fake_program_status
+        )
+
+        service = StreamControlService(session, user_id)
+        status = await service.get_stream_status(stream.id)
+        await session.refresh(stream)
+
+        assert status.status == "error"
+        assert status.is_running is False
+        assert status.error_message == queued_error
+        assert status.runtime_restart.state == "scheduled"
+        assert stream.status == "error"
+        assert stream.runtime_next_restart_at == next_restart_at
+
+
+@pytest.mark.asyncio
+async def test_enforce_runtime_limit_stops_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     manager = FFmpegStreamManager("echo")
     stream_id = str(uuid4())
     user_id = uuid4()
@@ -389,7 +451,9 @@ async def test_runner_exit_preserves_quota_stop_state(
         session.add_all([profile, stream])
         await session.commit()
 
-        quota_message = "Daily streaming limit reached (8h). Stream stopped automatically."
+        quota_message = (
+            "Daily streaming limit reached (8h). Stream stopped automatically."
+        )
         monkeypatch.setattr(
             run_stream_cli.ffmpeg_manager,
             "get_stream_info",
