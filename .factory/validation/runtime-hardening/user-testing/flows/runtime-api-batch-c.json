@@ -1,0 +1,139 @@
+{
+  "groupId": "runtime-api-batch-c",
+  "testedAt": "2026-04-01T17:50:25.973295+00:00",
+  "isolation": {
+    "missionDir": "~/.factory/missions/cd16c8b1-cdd0-4a16-94cf-f28a2114f609",
+    "primaryApiBaseUrl": "http://127.0.0.1:8000",
+    "primaryDevUser": "dev@example.com",
+    "seedLabel": "ut-runtime-20260401165636",
+    "scheduledRunStreamId": "3bf5eac0-f63b-455f-ae74-c50e0792d8dd",
+    "scheduledRunDueAt": "2026-04-01T17:29:54.539058Z",
+    "quotaStreamId": "bb27906b-4210-479a-b15e-bc82e621ee97",
+    "enabledDestinationId": "e4f3b13e-6648-42c0-ac4a-253533d2fd7a",
+    "copyAssetId": "2bd124ad-28cb-4cf2-9278-7b8a1a8594f1"
+  },
+  "toolsUsed": [
+    "curl",
+    "python3",
+    "docker exec supervisorctl",
+    "docker logs"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-STREAM-014",
+      "title": "Scheduled streams actually start and stop at their due time",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Observe the originally seeded due window for stream 3bf5eac0-f63b-455f-ae74-c50e0792d8dd via backend logs",
+          "expected": "The scheduled stream auto-starts around 2026-04-01T17:29:54Z and later stops at its computed boundary",
+          "observed": "At 17:30:00Z the scheduler logged 'Scheduled start failed ... available', and at 17:31:01Z it cleared the expired one-shot schedule window without ever reaching a live state."
+        },
+        {
+          "action": "Prepare the same stream for a near-future retest by adding/stopping its supervisor program and clearing stale runtime_owner_id/lease fields",
+          "expected": "Stream can be rescheduled on the same record and remain non-running before the new due time",
+          "observed": "supervisorctl add/stop left the program known as STOPPED; direct DB cleanup was required because the failed original run left runtime_owner_id=7895ea191d0a and stale lease/heartbeat fields that blocked schedule updates."
+        },
+        {
+          "action": "PATCH /api/streams/3bf5eac0-f63b-455f-ae74-c50e0792d8dd with a fresh one-shot schedule (start 17:40:25Z, stop_after 20s), then poll /status before, across, and after the stop boundary",
+          "expected": "Status stays scheduled before due, flips to running when due, then returns to stopped near 17:40:45Z",
+          "observed": "Status stayed scheduled for the entire poll window from 13s before due to 61s after due. Backend logs later showed another 'Scheduled start failed ... available' at 17:40:34Z and then 'Cleared expired one-shot schedule window' at 17:41:34Z."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "Scheduler log at 17:30:00Z -> Scheduled start failed ... available; PATCH /api/streams/{id} reschedule -> 200 scheduled_start_time=2026-04-01T17:40:25Z scheduled_stop_time=2026-04-01T17:40:45Z; repeated GET /status samples remained scheduled; scheduler log at 17:40:34Z -> Scheduled start failed ... available; 17:41:34Z -> Cleared expired one-shot schedule window.",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-014-original-scheduler-log.txt",
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-014-prep-reset.json",
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-014-program-prepare.json",
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-014-reschedule-response.json",
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-014-status-poll.ndjson",
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-014-backend-log-after-retest.txt"
+        ]
+      },
+      "issues": "The scheduled stream never auto-started on the real user surface. Both the original seeded due window and the same-record retest failed closed with the known supervisor 'available' error, so the stream never reached a running state and therefore never exercised an automatic stop boundary."
+    },
+    {
+      "id": "VAL-STREAM-015",
+      "title": "Daily streaming-hour exhaustion stops a live stream fail-closed",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Seed the main user's effective daily limit to 1 hour and backfill the assigned scheduled stream with 3367.057378s of historical usage so the account begins at ~98% of quota",
+          "expected": "GET /api/quota reflects a deterministic near-limit state before launch",
+          "observed": "GET /api/quota reported streaming_hours.used=0.98, limit=1, percent=98.0 with quotaStream remaining_daily_seconds=60 before launch."
+        },
+        {
+          "action": "Pre-add the quota stream supervisor program, then POST /api/streams/bb27906b-4210-479a-b15e-bc82e621ee97/start",
+          "expected": "API start succeeds and the live stream can be observed crossing the last minute of quota",
+          "observed": "API start still returned HTTP 500 with the long supervisor 'available' list even after supervisorctl add/stop on the assigned program."
+        },
+        {
+          "action": "Manual continuation only after recording the API failure: start the same assigned program with supervisorctl start and poll /status plus logs while remaining_daily_seconds approaches zero",
+          "expected": "Runtime stops fail-closed at zero remaining time, and authoritative status surfaces a stopped/error quota state",
+          "observed": "Manual supervisor start reached RUNNING and /status counted down 46 -> 36 -> 25 -> 14 -> 3 remaining seconds. Around the 60s mark the process exited with 'Exiting normally, received signal 2.' in raw logs, but supervisor immediately restarted it (pid 1281 -> 1309 -> 1331), /status stayed running, remaining_daily_seconds reset to ~57, and quota_limit_reached never became true."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": null,
+        "network": "GET /api/quota after seeding -> used=0.98h limit=1h; POST /api/streams/{quota}/start -> 500 available list; manual supervisorctl start -> RUNNING; GET /status samples showed remaining_daily_seconds 46,36,25,14,3 then pid reset/restart with remaining_daily_seconds back to 57/46/36/15/4/58; raw logs contained repeated 'Exiting normally, received signal 2.' while status never converged to stopped/error quota state.",
+        "artifacts": [
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-015-run.json",
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-015-status-poll.ndjson",
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-015-manual-run.json",
+          "runtime-hardening/runtime-api-batch-c/VAL-STREAM-015-manual-status-poll.ndjson"
+        ]
+      },
+      "issues": "The API start path failed with the same supervisor available-list 500, and manual continuation showed quota exhaustion is not fail-closed: the runtime receives SIGINT near the limit but supervisor autorestarts the stream, resetting the remaining-quota countdown instead of leaving the stream stopped/error with quota exhaustion surfaced authoritatively."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The batch began at 2026-04-01T17:30:38Z, 44 seconds after the seeded scheduled due time, so the original VAL-STREAM-014 pre-due preparation window had already elapsed.",
+      "resolved": true,
+      "resolution": "Captured the original scheduler failure from backend logs, then reused the same assigned stream record for a near-future retest to keep the assertion honest.",
+      "affectedAssertions": [
+        "VAL-STREAM-014"
+      ]
+    },
+    {
+      "description": "Calling app.core.supervisor_control._write_program_config() from the host wrote host-local paths into the mounted supervisor config, causing runner-side supervisorctl reread/update failures (CANT_REREAD) until the config was rewritten with /app paths.",
+      "resolved": true,
+      "resolution": "Recorded the bad reread output, then rewrote the assigned stream configs to container-valid /app paths before continuing runtime validation.",
+      "affectedAssertions": [
+        "VAL-STREAM-014",
+        "VAL-STREAM-015"
+      ]
+    },
+    {
+      "description": "supervisorctl add autostarted the assigned programs immediately, so I had to stop them and clear stale runtime_owner/lease fields before using the same stream records for schedule/quota testing.",
+      "resolved": true,
+      "resolution": "Stopped the added programs immediately and reset only the assigned stream records back to a clean stopped state before continuing.",
+      "affectedAssertions": [
+        "VAL-STREAM-014",
+        "VAL-STREAM-015"
+      ]
+    },
+    {
+      "description": "Even after pre-adding the quota stream program, POST /api/streams/{id}/start still failed with the supervisor available-list 500, so manual supervisorctl start was required only to continue observing post-launch quota behavior.",
+      "resolved": true,
+      "resolution": "Recorded the failing API response in evidence, then used supervisorctl start on the same assigned stream to verify whether quota exhaustion stopped the runtime fail-closed.",
+      "affectedAssertions": [
+        "VAL-STREAM-015"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "The seeded VAL-STREAM-014 due window had already been reached before this subagent started, so the original due-time preparation could only be assessed retrospectively from logs rather than by intervening before the first scheduler attempt.",
+      "affectedAssertions": [
+        "VAL-STREAM-014"
+      ],
+      "quickFixAttempted": "Captured the original scheduler failure/expiry log and reran the assertion on the same assigned stream record with a fresh near-future schedule."
+    }
+  ],
+  "summary": "Tested 2 assertions: 0 passed, 2 failed. VAL-STREAM-014 never auto-started on either the original or rescheduled due window, and VAL-STREAM-015 failed both because API start returned the supervisor available-list 500 and because manual continuation showed quota-triggered SIGINTs are followed by supervisor auto-restarts instead of a fail-closed stopped/error state."
+}
