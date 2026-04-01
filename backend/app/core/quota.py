@@ -65,6 +65,18 @@ class QuotaExceededError(HTTPException):
         super().__init__(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=detail)
 
 
+def missing_tier_limits_detail(tier: Optional[str]) -> Dict[str, Any]:
+    normalized_tier = tier or "unknown"
+    return {
+        "error": "tier_limits_unavailable",
+        "tier": normalized_tier,
+        "message": (
+            "Subscription tier limits are unavailable for this account. "
+            "Streaming quality and launch checks cannot proceed until tier metadata is restored."
+        ),
+    }
+
+
 class QuotaEnforcer:
     """
     Service for checking and enforcing quota limits.
@@ -105,8 +117,8 @@ class QuotaEnforcer:
 
             if not self._limits:
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Invalid subscription tier: {self._profile.subscription_tier}",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=missing_tier_limits_detail(self._profile.subscription_tier),
                 )
 
     async def check_suspended(self):

@@ -1,5 +1,7 @@
-import pytest
 from uuid import uuid4
+
+import pytest
+from fastapi import HTTPException
 
 from app.core.database import async_session_maker
 from app.core.quota import QuotaEnforcer
@@ -128,3 +130,52 @@ async def test_audio_only_quality_detects_mismatched_codec():
         codes = {violation["code"] for violation in result["violations"]}
         assert "audio_codec_not_allowed" in codes
         assert "audio_sample_rate_low" in codes
+
+
+@pytest.mark.asyncio
+async def test_audio_quality_missing_tier_metadata_fails_closed() -> None:
+    user_id = uuid4()
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@audio-quality.test",
+            subscription_tier="missing-tier",
+            subscription_status="active",
+        )
+        session.add(profile)
+        await session.commit()
+
+        enforcer = QuotaEnforcer(session, user_id)
+        audio_assets = [
+            {
+                "asset_id": uuid4(),
+                "filename": "ambient.m4a",
+                "meta": {
+                    "audio": {
+                        "codec": "aac",
+                        "sample_rate": 48_000,
+                        "bitrate": 192_000,
+                        "channels": 2,
+                    },
+                    "bitrate": 192_000,
+                },
+            }
+        ]
+
+        with pytest.raises(HTTPException) as exc_info:
+            await enforcer.evaluate_stream_quality(
+                [],
+                audio_assets=audio_assets,
+                mix_mode="audio_only",
+            )
+
+        error = exc_info.value
+        assert error.status_code == 400
+        assert error.detail == {
+            "error": "tier_limits_unavailable",
+            "tier": "missing-tier",
+            "message": (
+                "Subscription tier limits are unavailable for this account. "
+                "Streaming quality and launch checks cannot proceed until tier metadata is restored."
+            ),
+        }
