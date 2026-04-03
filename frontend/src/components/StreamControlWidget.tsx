@@ -16,7 +16,7 @@ import type { Stream, StreamStatusResponse } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useDashboardContext } from '@/app/dashboard/dashboard-context'
 import { formatRelativeDateTime } from '@/lib/dates'
-import { deriveStreamState } from '@/lib/stream-state'
+import { deriveStreamState, getStreamPriority } from '@/lib/stream-state'
 
 interface StreamControlWidgetProps {
   streams?: Stream[]
@@ -60,17 +60,10 @@ export function StreamControlWidget({
           stream,
           derived: deriveStreamState(stream, liveStatusMap?.get(stream.id)),
         }))
-        .sort((a, b) => {
-          const score = (item: { derived: ReturnType<typeof deriveStreamState> }) => {
-            if (item.derived.isRunning) return 3
-            if (item.derived.requiresAttention) return 2
-            if (item.derived.derivedStatus === 'scheduled') return 1
-            return 0
-          }
-          return score(b) - score(a)
-        }),
+        .sort((a, b) => getStreamPriority(b.derived) - getStreamPriority(a.derived)),
     [liveStatusMap, streams]
   )
+  const hasAttentionStreams = activeStreams.some(({ derived }) => derived.requiresAttention)
 
   const header = (
     <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -105,7 +98,7 @@ export function StreamControlWidget({
               <div key={index} className="h-14 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse" />
             ))}
           </div>
-        ) : !activeStreams || activeStreams.length === 0 ? (
+        ) : activeStreams.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <div className="p-3 rounded-full bg-slate-100 dark:bg-slate-800 mb-3">
               <Radio className="h-6 w-6 text-slate-500" />
@@ -204,7 +197,7 @@ export function StreamControlWidget({
               </Link>
             )}
 
-            {(activeStreams ?? []).some(({ derived }) => derived.requiresAttention) && (
+            {hasAttentionStreams && (
               <div className="flex items-center space-x-2 rounded-lg bg-error-50 dark:bg-error-900/20 px-3 py-2 text-xs text-error-600 dark:text-error-400">
                 <AlertTriangle className="h-4 w-4" />
                 <span>{t('labels.attention')}</span>

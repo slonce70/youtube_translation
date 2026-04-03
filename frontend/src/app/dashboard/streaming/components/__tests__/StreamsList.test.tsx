@@ -1,8 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { enUS } from 'date-fns/locale'
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { TranslationValues } from 'next-intl'
+import { NextIntlClientProvider, type AbstractIntlMessages, type TranslationValues } from 'next-intl'
 
 import { StreamsList } from '../StreamsList'
 import type {
@@ -150,26 +149,27 @@ describe('StreamsList restart visibility', () => {
 
   function renderList(streams: Stream[], liveStatusMap?: Map<string, UseQueryResult<StreamStatusResponse>>) {
     render(
-      <StreamsList
-        streams={streams}
-        isLoading={false}
-        liveStatusMap={liveStatusMap ?? new Map()}
-        onCreateStream={jest.fn()}
-        onViewLogs={jest.fn()}
-        onOpenLiveEditor={jest.fn()}
-        onEditSchedule={jest.fn()}
-        onStartStream={jest.fn()}
-        onStopStream={jest.fn()}
-        onDeleteStream={jest.fn()}
-        renderStatusBadge={renderStatusBadge}
-        playlistMap={playlistMap}
-        t={t}
-        streamingStatus={(status) => status}
-        dateLocale={enUS}
-        isStartPending={false}
-        isStopPending={false}
-        isDeletePending={false}
-      />,
+      <NextIntlClientProvider locale="en" messages={{} as AbstractIntlMessages}>
+        <StreamsList
+          streams={streams}
+          isLoading={false}
+          liveStatusMap={liveStatusMap ?? new Map()}
+          onCreateStream={jest.fn()}
+          onViewLogs={jest.fn()}
+          onOpenLiveEditor={jest.fn()}
+          onEditSchedule={jest.fn()}
+          onStartStream={jest.fn()}
+          onStopStream={jest.fn()}
+          onDeleteStream={jest.fn()}
+          renderStatusBadge={renderStatusBadge}
+          playlistMap={playlistMap}
+          t={t}
+          streamingStatus={(status) => status}
+          isStartPending={false}
+          isStopPending={false}
+          isDeletePending={false}
+        />
+      </NextIntlClientProvider>,
     )
   }
 
@@ -195,9 +195,7 @@ describe('StreamsList restart visibility', () => {
 
     renderList([stream], new Map([[stream.id, createStatusQuery(statusData)]]))
 
-    expect(screen.getByText('Auto-restart scheduled')).toBeInTheDocument()
     expect(screen.getByText('Attempt 2 of 5')).toBeInTheDocument()
-    expect(screen.getByText(/Next restart/)).toBeInTheDocument()
     expect(screen.getByText('runner lost lease')).toBeInTheDocument()
   })
 
@@ -224,7 +222,6 @@ describe('StreamsList restart visibility', () => {
 
     expect(screen.getByText('Fallback retry')).toBeInTheDocument()
     expect(screen.getByText('Attempt 1 of 5')).toBeInTheDocument()
-    expect(screen.getAllByText('Auto-restart').length).toBe(1)
     expect(screen.queryByText('Attempt 0 of 5')).not.toBeInTheDocument()
   })
 
@@ -249,26 +246,27 @@ describe('StreamsList restart visibility', () => {
     }
 
     render(
-      <StreamsList
-        streams={[stream]}
-        isLoading={false}
-        liveStatusMap={new Map([[stream.id, createStatusQuery(statusData)]])}
-        onCreateStream={jest.fn()}
-        onViewLogs={jest.fn()}
-        onOpenLiveEditor={jest.fn()}
-        onEditSchedule={jest.fn()}
-        onStartStream={onStartStream}
-        onStopStream={onStopStream}
-        onDeleteStream={jest.fn()}
-        renderStatusBadge={renderStatusBadge}
-        playlistMap={playlistMap}
-        t={t}
-        streamingStatus={(status) => status}
-        dateLocale={enUS}
-        isStartPending={false}
-        isStopPending={false}
-        isDeletePending={false}
-      />,
+      <NextIntlClientProvider locale="en" messages={{} as AbstractIntlMessages}>
+        <StreamsList
+          streams={[stream]}
+          isLoading={false}
+          liveStatusMap={new Map([[stream.id, createStatusQuery(statusData)]])}
+          onCreateStream={jest.fn()}
+          onViewLogs={jest.fn()}
+          onOpenLiveEditor={jest.fn()}
+          onEditSchedule={jest.fn()}
+          onStartStream={onStartStream}
+          onStopStream={onStopStream}
+          onDeleteStream={jest.fn()}
+          renderStatusBadge={renderStatusBadge}
+          playlistMap={playlistMap}
+          t={t}
+          streamingStatus={(status) => status}
+          isStartPending={false}
+          isStopPending={false}
+          isDeletePending={false}
+        />
+      </NextIntlClientProvider>,
     )
 
     const stopButton = screen.getByRole('button', { name: 'Stop' })

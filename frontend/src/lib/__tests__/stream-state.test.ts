@@ -1,5 +1,5 @@
 import type { Stream, StreamRuntimeRestartInfo, StreamStatusResponse } from '../types'
-import { deriveDashboardNextAction, deriveStreamState } from '../stream-state'
+import { deriveDashboardNextAction, deriveStreamState, type StreamStatusQuery } from '../stream-state'
 
 function createRestartInfo(overrides: Partial<StreamRuntimeRestartInfo> = {}): StreamRuntimeRestartInfo {
   return {
@@ -124,5 +124,46 @@ describe('deriveDashboardNextAction', () => {
         streams: [],
       }),
     ).toEqual({ key: 'create', href: '/dashboard/streaming' })
+  })
+
+  it('guides configured accounts with stopped streams back to the operator surface', () => {
+    expect(
+      deriveDashboardNextAction({
+        assetCount: 2,
+        destinationCount: 1,
+        streams: [createStream({ status: 'stopped' })],
+      }),
+    ).toEqual({ key: 'resume', href: '/dashboard/streaming' })
+  })
+
+  it('prefers live status truth over stale stream list state for next action', () => {
+    const stream = createStream({ status: 'stopped' })
+    const liveStatusMap = new Map<string, StreamStatusQuery>([
+      [
+        stream.id,
+        {
+          data: {
+            id: stream.id,
+            status: 'running',
+            is_running: true,
+            live_duration_seconds: 45,
+            total_duration_seconds: 45,
+            runtime_restart: createRestartInfo(),
+          } satisfies StreamStatusResponse,
+          dataUpdatedAt: Date.now(),
+          isError: false,
+          isFetching: false,
+        },
+      ],
+    ])
+
+    expect(
+      deriveDashboardNextAction({
+        assetCount: 2,
+        destinationCount: 1,
+        streams: [stream],
+        liveStatusMap,
+      }),
+    ).toEqual({ key: 'live', href: '/dashboard/streaming' })
   })
 })

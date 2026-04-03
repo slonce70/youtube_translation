@@ -31,6 +31,13 @@ export type DerivedStreamState = {
   requiresAttention: boolean
 }
 
+export function getStreamPriority(state: Pick<DerivedStreamState, 'isRunning' | 'requiresAttention' | 'derivedStatus'>): number {
+  if (state.isRunning) return 3
+  if (state.requiresAttention) return 2
+  if (state.derivedStatus === 'scheduled') return 1
+  return 0
+}
+
 export function deriveStreamState(
   stream: Stream,
   statusQuery?: StreamStatusQuery,
@@ -126,7 +133,7 @@ export function deriveStreamState(
 }
 
 export type DashboardNextAction = {
-  key: 'upload' | 'connect' | 'create' | 'live' | 'attention'
+  key: 'upload' | 'connect' | 'create' | 'resume' | 'live' | 'attention'
   href: string
 }
 
@@ -151,6 +158,10 @@ export function deriveDashboardNextAction({
     return { key: 'connect', href: '/dashboard/streaming' }
   }
 
+  if (streams.length === 0) {
+    return { key: 'create', href: '/dashboard/streaming' }
+  }
+
   const derivedStreams = streams.map((stream) =>
     deriveStreamState(stream, liveStatusMap?.get(stream.id), nowMs),
   )
@@ -163,9 +174,5 @@ export function deriveDashboardNextAction({
     return { key: 'live', href: '/dashboard/streaming' }
   }
 
-  if (streams.length <= 0) {
-    return { key: 'create', href: '/dashboard/streaming' }
-  }
-
-  return { key: 'live', href: '/dashboard/streaming' }
+  return { key: 'resume', href: '/dashboard/streaming' }
 }

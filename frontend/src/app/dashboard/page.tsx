@@ -19,7 +19,7 @@ import { useDashboardContext } from './dashboard-context'
 import { useStreamSocket } from './streaming/hooks/useStreamSocket'
 import type { Stream, Asset, SubscriptionTierKey } from '@/lib/types'
 import { useStreamStatusMap } from './streaming/hooks/useStreamStatusMap'
-import { deriveDashboardNextAction, deriveStreamState } from '@/lib/stream-state'
+import { deriveDashboardNextAction, deriveStreamState, getStreamPriority } from '@/lib/stream-state'
 
 export default function DashboardPage() {
   const queryClient = useQueryClient()
@@ -73,15 +73,7 @@ export default function DashboardPage() {
           stream,
           derived: deriveStreamState(stream, liveStatusMap.get(stream.id)),
         }))
-        .sort((a, b) => {
-          const score = (item: { derived: ReturnType<typeof deriveStreamState> }) => {
-            if (item.derived.isRunning) return 3
-            if (item.derived.requiresAttention) return 2
-            if (item.derived.derivedStatus === 'scheduled') return 1
-            return 0
-          }
-          return score(b) - score(a)
-        }),
+        .sort((a, b) => getStreamPriority(b.derived) - getStreamPriority(a.derived)),
     [liveStatusMap, streams],
   )
 
@@ -178,6 +170,16 @@ export default function DashboardPage() {
           secondary: dashboard('hero.attention.secondary'),
           primaryHref: '/dashboard/streaming',
           secondaryHref: '/dashboard/plans',
+        }
+      case 'resume':
+        return {
+          badge: dashboard('hero.badges.live'),
+          title: dashboard('hero.resume.title'),
+          description: dashboard('hero.resume.description'),
+          primary: dashboard('hero.resume.primary'),
+          secondary: dashboard('hero.resume.secondary'),
+          primaryHref: '/dashboard/streaming',
+          secondaryHref: '/dashboard/library?tab=assets',
         }
       default:
         return {
