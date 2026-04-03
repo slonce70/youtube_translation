@@ -130,12 +130,13 @@ echo "🧭 Canonical hybrid local boot: 'make dev-bootstrap' -> './start-backend
 echo ""
 
 # Создаем папки рядом с backend
-mkdir -p "${BACKEND_DIR}/uploads" "${BACKEND_DIR}/streams" "${BACKEND_DIR}/logs" "${BACKEND_DIR}/supervisord/logs" "${BACKEND_DIR}/supervisord/programs"
+mkdir -p "${BACKEND_DIR}/uploads" "${BACKEND_DIR}/streams" "${BACKEND_DIR}/logs" "${BACKEND_DIR}/supervisord/logs" "${BACKEND_DIR}/supervisord/programs" "${BACKEND_DIR}/supervisord/invalid-programs"
 
 # Значения по умолчанию для путей, если не переопределены в .env
 export UPLOAD_DIR="${UPLOAD_DIR:-${BACKEND_DIR}/uploads}"
 export STREAM_DIR="${STREAM_DIR:-${BACKEND_DIR}/streams}"
 export LOG_DIR="${LOG_DIR:-${BACKEND_DIR}/logs}"
+export SUPERVISOR_INVALID_DIR="${SUPERVISOR_INVALID_DIR:-${BACKEND_DIR}/supervisord/invalid-programs}"
 
 SUPERVISOR_CONF_SETTING="${SUPERVISOR_CONF_PATH:-supervisord.conf}"
 case "${SUPERVISOR_CONF_SETTING}" in
@@ -159,6 +160,26 @@ else
 fi
 
 if [ "${REQUESTED_RUNTIME_MODE}" = "supervisor" ]; then
+    if [ "${SUPERVISOR_CONF_PATH}" = "${BACKEND_DIR}/supervisord.conf" ]; then
+        for config_path in "${BACKEND_DIR}/supervisord/programs"/*.ini; do
+            [ -e "${config_path}" ] || continue
+
+            if awk -F= '
+                $1 == "directory" && $2 == "/app" { invalid = 1 }
+                $1 == "environment" && $2 ~ /PYTHONPATH="\/app"/ { invalid = 1 }
+                $1 == "stdout_logfile" || $1 == "stderr_logfile" {
+                    if ($2 ~ "^/app/") {
+                        invalid = 1
+                    }
+                }
+                END { exit invalid ? 0 : 1 }
+            ' "${config_path}"; then
+                echo "🧹 Quarantining incompatible local supervisor config: ${config_path}"
+                mv "${config_path}" "${SUPERVISOR_INVALID_DIR}/$(basename "${config_path}")"
+            fi
+        done
+    fi
+
     if [ "${SUPERVISOR_CONF_SETTING}" = "supervisord.conf" ] \
         && [ -f "${DOCKER_SUPERVISOR_CONF_PATH}" ] \
         && command -v docker >/dev/null 2>&1; then

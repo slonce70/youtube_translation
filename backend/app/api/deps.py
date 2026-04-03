@@ -3,7 +3,7 @@ import logging
 import re
 import secrets
 from collections import OrderedDict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from threading import RLock
 from typing import Any, Optional, Tuple, cast
 from uuid import UUID, uuid5, NAMESPACE_DNS
@@ -70,7 +70,7 @@ def _get_cached_user(token: str) -> Optional[dict]:
     if not _cache_enabled():
         return None
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with _cache_lock:
         entry = _user_cache.get(token)
         if not entry:
@@ -100,12 +100,12 @@ def _set_cached_user(token: str, payload: dict, exp: Optional[int]) -> None:
     if ttl_seconds == 0:
         return
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expiry_candidates = [now + timedelta(seconds=ttl_seconds)]
 
     if isinstance(exp, (int, float)):
         try:
-            expiry_candidates.append(datetime.utcfromtimestamp(exp))
+            expiry_candidates.append(datetime.fromtimestamp(exp, tz=timezone.utc))
         except (ValueError, OSError):
             logger.debug(
                 "Invalid exp claim while caching Supabase user; ignoring exp override"
@@ -270,7 +270,9 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
             )
 
             exp = payload.get("exp")
-            if exp and datetime.utcfromtimestamp(exp) < datetime.utcnow():
+            if exp and datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(
+                timezone.utc
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Token has expired",

@@ -6,7 +6,7 @@ import logging
 import os
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Tuple
 from uuid import UUID
 
@@ -37,6 +37,10 @@ from app.services.streams.helpers import (
 LOGGER = logging.getLogger("app.cli.run_stream")
 CURRENT_STREAM_ID: Optional[str] = None
 CURRENT_HEARTBEAT_TASK: Optional[asyncio.Task] = None
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 async def _load_stream_with_relations(db, stream_id: UUID) -> Tuple[Stream, UUID]:
@@ -105,7 +109,7 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
                 LOGGER.info("Stream %s stopped (no manager info)", stream.id)
 
             # Update timestamps
-            db_stream.stopped_at = datetime.utcnow()
+            db_stream.stopped_at = _utcnow()
             db_stream.pid = None
             clear_stream_runtime_lease(db_stream)
             clear_stream_runtime_restart_state(db_stream)
@@ -224,7 +228,7 @@ async def _start_stream(stream_id: UUID, wait: bool = True) -> None:
             raise RuntimeError("Failed to start FFmpeg process")
 
         stream.status = "running"
-        stream.started_at = datetime.utcnow()
+        stream.started_at = _utcnow()
         stream.stopped_at = None
         stream.error_message = None
         info = ffmpeg_manager.get_stream_info(CURRENT_STREAM_ID) or {}

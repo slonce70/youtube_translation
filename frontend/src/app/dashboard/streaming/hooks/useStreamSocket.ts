@@ -116,20 +116,12 @@ export function useStreamSocket(userId?: string) {
               return oldStreams.map((stream) => {
                 const update = activeStreamsMap[stream.id]
                 if (update) {
-                  // Update runtime status based on WS data
-                  // If WS says it's running, set to 'running'
-                  // If WS has no info but DB said 'running', it might have stopped or WS is partial
-                  // For now, let's just update if we have data
                   return {
                     ...stream,
-                    status: update.is_running ? 'running' : (stream.status === 'running' ? 'stopped' : stream.status),
+                    status: update.is_running ? 'running' : 'stopped',
                     uptime_seconds: update.uptime_seconds ?? stream.uptime_seconds,
                     started_at: update.started_at ?? stream.started_at,
                   }
-                }
-                // If stream is running in DB but missing from active_streams, it likely stopped
-                if (stream.status === 'running' && !activeStreamsMap[stream.id]) {
-                   return { ...stream, status: 'stopped' }
                 }
                 return stream
               })

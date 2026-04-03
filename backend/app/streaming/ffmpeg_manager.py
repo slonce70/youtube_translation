@@ -37,6 +37,10 @@ MAX_KEYFRAME_INTERVAL_SECONDS = 4.0
 _RTMP_URL_PATTERN = re.compile(r"rtmps?://[^\s'\"|]+", re.IGNORECASE)
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _redact_rtmp_uri(uri: str) -> str:
     try:
         parts = urlsplit(uri)
@@ -319,7 +323,7 @@ class FFmpegStreamManager:
 
             self.active_streams[stream_id] = process
             self.stream_info[stream_id] = {
-                "started_at": datetime.utcnow(),
+                "started_at": _utcnow(),
                 "pid": process.pid,
                 "destinations_count": len(destinations),
                 "log_file": str(log_file) if log_file else None,
@@ -501,8 +505,12 @@ class FFmpegStreamManager:
         info["is_running"] = self.is_running(stream_id)
 
         if info["is_running"] and "started_at" in info:
-            uptime = (datetime.utcnow() - info["started_at"]).total_seconds()
-            info["uptime_seconds"] = int(uptime)
+            started_at = info["started_at"]
+            if isinstance(started_at, datetime):
+                if started_at.tzinfo is None:
+                    started_at = started_at.replace(tzinfo=timezone.utc)
+                uptime = (_utcnow() - started_at).total_seconds()
+                info["uptime_seconds"] = int(uptime)
 
         return info
 
@@ -966,7 +974,7 @@ class FFmpegStreamManager:
             info = self.stream_info.get(stream_id)
             if info is not None:
                 info["last_exit_code"] = returncode
-                info["last_finished_at"] = datetime.utcnow()
+                info["last_finished_at"] = _utcnow()
                 manual_stop = bool(info.get("manual_stop"))
                 quota_context = info.get("quota_stop")
             else:
@@ -1095,7 +1103,7 @@ class FFmpegStreamManager:
 
         if will_restart:
             info["restart_attempts"] = attempts + 1
-            info["last_failure_at"] = datetime.utcnow()
+            info["last_failure_at"] = _utcnow()
             playlists_snapshot: Optional[PlaylistFileSet] = info.get("playlists")
             destinations = info.get("destinations")
             log_file = info.get("log_file")
@@ -1460,7 +1468,7 @@ class FFmpegStreamManager:
                             recent_errors = info.get("recent_errors")
                             if isinstance(recent_errors, deque):
                                 recent_errors.append(decoded)
-                                info["last_error_at"] = datetime.utcnow()
+                                info["last_error_at"] = _utcnow()
             finally:
                 await f.flush()
                 await f.close()
@@ -1503,9 +1511,7 @@ class FFmpegStreamManager:
     def _cleanup_stale_stream_info_locked(self, *, max_age_seconds: int = 3600) -> None:
         """Remove cached stream info for stopped streams older than the allowed age."""
 
-        cutoff_utc = (datetime.utcnow() - timedelta(seconds=max_age_seconds)).replace(
-            tzinfo=timezone.utc
-        )
+        cutoff_utc = _utcnow() - timedelta(seconds=max_age_seconds)
         stale_streams: List[str] = []
 
         for stream_id, info in list(self.stream_info.items()):

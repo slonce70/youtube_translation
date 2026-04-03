@@ -12,7 +12,7 @@ import logging
 import sys
 import re
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 from pythonjsonlogger import jsonlogger
 
@@ -98,7 +98,7 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
         super(CustomJsonFormatter, self).add_fields(log_record, record, message_dict)
 
         # Add timestamp
-        log_record["timestamp"] = datetime.utcnow().isoformat()
+        log_record["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         # Add log level
         log_record["level"] = record.levelname

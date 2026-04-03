@@ -44,6 +44,10 @@ from app.services.streams import StreamControlService
 logger = logging.getLogger(__name__)
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class AdminService:
     """Encapsulates all admin-oriented operations."""
 
@@ -274,7 +278,7 @@ class AdminService:
             old_tier = profile.subscription_tier
             previous_started_at = profile.subscription_started_at
             profile.subscription_tier = payload.new_tier
-            profile.subscription_started_at = datetime.now(timezone.utc)
+            profile.subscription_started_at = _utcnow()
             profile.subscription_expires_at = None
             if profile.subscription_status != "active":
                 profile.subscription_status = "active"
@@ -532,7 +536,7 @@ class AdminService:
                 )
 
             alert.resolved = True
-            alert.resolved_at = datetime.utcnow()
+            alert.resolved_at = _utcnow()
             alert.resolved_by = self.admin_user_id
             details = alert.details or {}
             if payload.resolution_notes:

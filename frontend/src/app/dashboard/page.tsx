@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const queryClient = useQueryClient()
   const { user, quota, quotaLoading, currentTier, planDetail } = useDashboardContext()
   const dashboard = useTranslations('dashboard')
-  const isSocketConnected = useStreamSocket(user?.id)
+  useStreamSocket(user?.id)
 
   const formatHoursLabel = useCallback((hours: number) => {
     if (!Number.isFinite(hours)) {
@@ -41,21 +41,10 @@ export default function DashboardPage() {
       : dashboard('timeFormat.hours', { hours: wholeHours })
   }, [dashboard])
 
-  const computeRefetchInterval = useCallback(() => {
-    if (typeof document === 'undefined') {
-      return false
-    }
-    // If socket is connected, we don't need aggressive polling
-    if (isSocketConnected) {
-      return false
-    }
-    return document.visibilityState === 'visible' ? 5000 : false
-  }, [isSocketConnected])
-
   const { data: streams, isLoading: streamsLoading } = useQuery<Stream[]>({
     queryKey: ['streams', user?.id],
     queryFn: api.streams.list,
-    refetchInterval: computeRefetchInterval,
+    refetchInterval: typeof document !== 'undefined' && document.visibilityState === 'visible' ? 5000 : false,
     refetchOnWindowFocus: true,
     enabled: !!user,
   })

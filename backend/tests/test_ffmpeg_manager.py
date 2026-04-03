@@ -92,6 +92,25 @@ class TestFFmpegStreamManager:
         info = manager.get_stream_info("nonexistent-stream")
         assert info is None
 
+    def test_get_stream_info_calculates_uptime_for_aware_start(self):
+        """Running streams with aware UTC timestamps should expose uptime seconds."""
+        manager = FFmpegStreamManager()
+        process = MagicMock()
+        process.returncode = None
+
+        stream_id = "aware-stream"
+        manager.active_streams[stream_id] = process
+        manager.stream_info[stream_id] = {
+            "started_at": datetime.now(timezone.utc) - timedelta(seconds=5),
+            "pid": 4321,
+        }
+
+        info = manager.get_stream_info(stream_id)
+
+        assert info is not None
+        assert info["is_running"] is True
+        assert info["uptime_seconds"] >= 5
+
     @pytest.mark.asyncio
     async def test_stop_all_streams_cleanup(self):
         """Test that stop_all_streams properly cleans up all streams"""

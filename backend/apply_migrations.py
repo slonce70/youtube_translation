@@ -238,13 +238,17 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     status['012'] = result.scalar()
 
     # Check subscription tiers populated with pricing (migration 013)
-    query = text("""
-        SELECT COUNT(*) = 7
-        FROM subscription_tier_limits
-        WHERE tier IN ('free', 'fhd_start', 'fhd_flow', 'fhd_boost', 'uhd_start', 'uhd_flow', 'uhd_boost')
-    """)
-    result = await conn.execute(query)
-    tiers_seeded = result.scalar()
+    tier_limits_exists = await check_table_exists(conn, 'subscription_tier_limits')
+    if tier_limits_exists:
+        query = text("""
+            SELECT COUNT(*) = 7
+            FROM subscription_tier_limits
+            WHERE tier IN ('free', 'fhd_start', 'fhd_flow', 'fhd_boost', 'uhd_start', 'uhd_flow', 'uhd_boost')
+        """)
+        result = await conn.execute(query)
+        tiers_seeded = result.scalar()
+    else:
+        tiers_seeded = False
     query = text("""
         SELECT COUNT(*) = 1
         FROM information_schema.columns
@@ -1071,6 +1075,15 @@ async def main():
     )
     
     async with engine.begin() as conn:
+        # Fresh local databases need the bootstrap schema before status detection.
+        if not await check_table_exists(conn, 'user_profiles'):
+            print("\n🧱 Bootstrapping local initial schema...")
+            success = await apply_migration(conn, 'migrations/000_local_initial_schema.sql')
+            if not success:
+                print("\n❌ Local bootstrap failed! Rolling back...")
+                await conn.rollback()
+                return
+
         # Check current migration status
         print("\n📊 Checking current migration status...")
         status = await get_migration_status(conn)
