@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { enUS } from 'date-fns/locale'
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -226,5 +226,58 @@ describe('StreamsList restart visibility', () => {
     expect(screen.getByText('Attempt 1 of 5')).toBeInTheDocument()
     expect(screen.getAllByText('Auto-restart').length).toBe(1)
     expect(screen.queryByText('Attempt 0 of 5')).not.toBeInTheDocument()
+  })
+
+  it('uses live running status for the action button when the list is stale', () => {
+    const onStartStream = jest.fn()
+    const onStopStream = jest.fn()
+    const stream = createStream({
+      id: 'stream-live',
+      status: 'stopped',
+      name: 'Live stream',
+      error_message: null,
+      runtime_restart: createRestartInfo(),
+    })
+    const statusData: StreamStatusResponse = {
+      id: stream.id,
+      status: 'running',
+      is_running: true,
+      error_message: null,
+      live_duration_seconds: 12,
+      total_duration_seconds: 12,
+      runtime_restart: createRestartInfo(),
+    }
+
+    render(
+      <StreamsList
+        streams={[stream]}
+        isLoading={false}
+        liveStatusMap={new Map([[stream.id, createStatusQuery(statusData)]])}
+        onCreateStream={jest.fn()}
+        onViewLogs={jest.fn()}
+        onOpenLiveEditor={jest.fn()}
+        onEditSchedule={jest.fn()}
+        onStartStream={onStartStream}
+        onStopStream={onStopStream}
+        onDeleteStream={jest.fn()}
+        renderStatusBadge={renderStatusBadge}
+        playlistMap={playlistMap}
+        t={t}
+        streamingStatus={(status) => status}
+        dateLocale={enUS}
+        isStartPending={false}
+        isStopPending={false}
+        isDeletePending={false}
+      />,
+    )
+
+    const stopButton = screen.getByRole('button', { name: 'Stop' })
+    expect(stopButton).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument()
+
+    fireEvent.click(stopButton)
+
+    expect(onStopStream).toHaveBeenCalledWith(stream.id)
+    expect(onStartStream).not.toHaveBeenCalled()
   })
 })

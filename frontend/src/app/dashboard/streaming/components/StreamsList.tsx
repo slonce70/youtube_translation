@@ -370,7 +370,7 @@ export function StreamsList({
                         <Clock3 className="w-4 h-4 mr-2" />
                         {t('streams.buttons.schedule')}
                       </Button>
-                      {stream.status === 'running' ? (
+                      {isRunning ? (
                         <Button
                           size="sm"
                           variant="secondary"
@@ -390,7 +390,7 @@ export function StreamsList({
                             <Play className="w-4 h-4 mr-2" />
                             {t('streams.buttons.start')}
                           </Button>
-                          {stream.status === 'scheduled' && stream.scheduled_start_enabled && (
+                          {derivedStatus === 'scheduled' && stream.scheduled_start_enabled && (
                             <Button
                               size="sm"
                               variant="secondary"

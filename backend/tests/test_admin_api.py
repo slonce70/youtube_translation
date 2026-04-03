@@ -11,7 +11,7 @@ if os.environ.get("RUN_ADMIN_TESTS", "").lower() not in {"1", "true", "yes"}:
     pytest.skip("Skipping admin API integration tests in shared database", allow_module_level=True)
 
 from uuid import uuid4, UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select, text
 
 from app.models.database import (
@@ -482,7 +482,7 @@ class TestSystemAlerts:
         
         # Resolve alert
         alert.resolved = True
-        alert.resolved_at = datetime.utcnow()
+        alert.resolved_at = datetime.now(timezone.utc)
         alert.resolved_by = admin_id
         alert.details['resolution_notes'] = "User upgraded to Pro"
         
