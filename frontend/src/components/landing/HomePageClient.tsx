@@ -381,46 +381,6 @@ export function HomePageClient() {
                     </div>
                   </div>
 
-                  <div className="stream-v3-stage-bottom">
-                    <div className="stream-v3-stage-panel stream-v3-route-card">
-                      <div className="stream-v3-route-card__top">
-                        <div>
-                          <div className="stream-v3-stage-label">{stageCopy.mainDestinationLabel}</div>
-                          <strong>{stageCopy.mainDestinationValue}</strong>
-                        </div>
-                        <span>{stageCopy.statusHealthy}</span>
-                      </div>
-
-                      <div className="stream-v3-route-card__meta">
-                        <div>
-                          <span className="stream-v3-stage-label">{stageCopy.fallbackLabel}</span>
-                          <strong>{stageCopy.fallbackValue}</strong>
-                        </div>
-                        <div>
-                          <span className="stream-v3-stage-label">{stageCopy.restartLabel}</span>
-                          <strong>{stageCopy.restartValue}</strong>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="stream-v3-stage-panel stream-v3-mini-card stream-v3-mini-card--channels">
-                      <div className="stream-v3-stage-label">{heroT('panel.channelsLabel')}</div>
-                      <div className="stream-v3-routing-list">
-                        <span>
-                          <strong>{heroT('panel.channels.music.name')}</strong>
-                          <em>{heroT('panel.channels.music.state')}</em>
-                        </span>
-                        <span>
-                          <strong>{heroT('panel.channels.podcast.name')}</strong>
-                          <em>{heroT('panel.channels.podcast.state')}</em>
-                        </span>
-                        <span>
-                          <strong>{heroT('panel.channels.live.name')}</strong>
-                          <em>{heroT('panel.channels.live.state')}</em>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>

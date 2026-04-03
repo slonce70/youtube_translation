@@ -549,7 +549,7 @@
 
   .stream-v3-stage {
     position: relative;
-    min-height: 670px;
+    min-height: 540px;
     transform-style: preserve-3d;
     transform:
       rotateX(var(--stream-v3-stage-rotate-x))
@@ -721,6 +721,7 @@
   .stream-v3-stage-visual {
     border-radius: 1.55rem;
     padding: 1rem 0.95rem 0.85rem;
+    overflow: hidden;
   }
 
   .stream-v3-bars {
@@ -1053,7 +1054,7 @@
 
     .stream-v3-stage {
       width: 100%;
-      min-height: 720px;
+      min-height: 580px;
       margin: 0;
     }
 
@@ -1084,7 +1085,7 @@
     }
 
     .stream-v3-stage {
-      min-height: 560px;
+      min-height: 500px;
     }
 
     .stream-v3-stage-header {
@@ -1136,17 +1137,16 @@
       border-radius: 1.5rem;
     }
 
-    .stream-v3-stage-bottom,
     .stream-v3-route-card__meta {
       grid-template-columns: 1fr;
     }
 
     .stream-v3-stage {
-      min-height: 760px;
+      min-height: 500px;
     }
 
     .stream-v3-stage-main {
-      inset: 14% 4% 7% 4%;
+      inset: 14% 4% 6% 4%;
       padding: 0.9rem;
       gap: 0.8rem;
     }
@@ -1181,9 +1181,20 @@
       padding: 0.9rem;
     }
 
+    .stream-v3-stage-visual {
+      min-height: 132px;
+      display: flex;
+      align-items: flex-end;
+    }
+
+    .stream-v3-stage-bottom {
+      display: none;
+    }
+
     .stream-v3-bars {
-      min-height: 84px;
+      min-height: 108px;
       gap: 0.22rem;
+      width: 100%;
     }
 
     .stream-v3-pill-row {
