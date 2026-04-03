@@ -163,7 +163,7 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     container_name: youtube-streaming-runner
-    entrypoint: ["supervisord", "-c", "/app/supervisord.conf", "-n"]
+    entrypoint: ["/app/scripts/start-runner.sh"]
     ports:
       - "127.0.0.1:9001:9001"
     volumes:

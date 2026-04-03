@@ -18,9 +18,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app ./app
+COPY scripts ./scripts
 
 # Create directories for uploads and streams
 RUN mkdir -p /app/uploads /app/streams /app/logs
+RUN chmod +x /app/scripts/start-runner.sh
 
 # Expose port
 EXPOSE 8000

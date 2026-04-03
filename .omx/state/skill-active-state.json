@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "active": true,
+  "skill": "plan",
+  "keyword": "$plan",
+  "phase": "planning",
+  "activated_at": "2026-04-03T14:29:31.046Z",
+  "updated_at": "2026-04-03T14:36:59.043Z",
+  "source": "keyword-detector",
+  "session_id": "",
+  "thread_id": "019d53bf-6196-7332-abd6-47de9aab2cef",
+  "turn_id": "019d53bf-b3fc-7462-9b89-707fae82b537",
+  "iteration": 5,
+  "last_turn_at": "2026-04-03T15:13:17.016Z"
+}
