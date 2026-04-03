@@ -1,4 +1,5 @@
 services:
+  # Supported tranche-one topology keeps backend, tusd, runner, and uploads on the same host.
   # PostgreSQL
   postgres:
     image: postgres:16

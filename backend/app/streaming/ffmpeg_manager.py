@@ -70,6 +70,15 @@ def _redact_rtmp_text(value: str) -> str:
     return _RTMP_URL_PATTERN.sub(_replace, value)
 
 
+def _build_tee_destination(uri: str) -> str:
+    tee_fail_policy = settings.ffmpeg_tee_onfail_policy
+    return (
+        "[select='v\\:0,a\\:0':"
+        f"onfail={tee_fail_policy}:"
+        "f=fifo:fifo_format=flv:attempt_recovery=1:recovery_wait_time=5]" + uri
+    )
+
+
 @dataclass
 class FFmpegCommandPlan:
     """Structured summary of the FFmpeg command and encoding decisions."""
@@ -87,6 +96,7 @@ class FFmpegCommandPlan:
     destination_uris: List[str]
     keyframe_interval_seconds: Optional[float] = None
     keyframe_gop_frames: Optional[int] = None
+    tee_onfail_policy: Optional[str] = None
 
     def telemetry(self) -> Dict[str, Any]:
         """Return a sanitized dictionary for logging or in-memory state."""
@@ -105,6 +115,7 @@ class FFmpegCommandPlan:
             ],
             "keyframe_interval_seconds": self.keyframe_interval_seconds,
             "keyframe_gop_frames": self.keyframe_gop_frames,
+            "tee_onfail_policy": self.tee_onfail_policy,
         }
 
 
@@ -758,18 +769,17 @@ class FFmpegStreamManager:
             target = normalized_destinations[0]["uri"]
             cmd.extend(["-f", "flv", target])
             destination_uris = [target]
+            tee_onfail_policy = None
         else:
             tee_outputs = []
             destination_uris = []
             for dest in normalized_destinations:
                 uri = dest["uri"]
                 destination_uris.append(uri)
-                tee_outputs.append(
-                    "[select='v\\:0,a\\:0':f=fifo:fifo_format=flv:attempt_recovery=1:recovery_wait_time=5]"
-                    + uri
-                )
+                tee_outputs.append(_build_tee_destination(uri))
 
             cmd.extend(["-f", "tee", "|".join(tee_outputs)])
+            tee_onfail_policy = settings.ffmpeg_tee_onfail_policy
 
         return FFmpegCommandPlan(
             command=cmd,
@@ -787,6 +797,7 @@ class FFmpegStreamManager:
             destination_uris=destination_uris,
             keyframe_interval_seconds=keyframe_interval_seconds,
             keyframe_gop_frames=keyframe_gop_frames,
+            tee_onfail_policy=tee_onfail_policy,
         )
 
     @staticmethod
