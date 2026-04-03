@@ -2,10 +2,8 @@
 
 import { useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { UseQueryResult } from '@tanstack/react-query'
 import { useLocale, useTranslations } from 'next-intl'
-import { formatDistanceToNow } from 'date-fns'
-import type { Locale as DateFnsLocale } from 'date-fns'
-import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
 import { motion } from 'framer-motion'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
@@ -14,12 +12,15 @@ import { Radio, Play, Square, Loader2, AlertTriangle, ArrowUpRight } from 'lucid
 import Link from 'next/link'
 
 import { api } from '@/lib/api'
-import type { Stream } from '@/lib/types'
+import type { Stream, StreamStatusResponse } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useDashboardContext } from '@/app/dashboard/dashboard-context'
+import { formatRelativeDateTime } from '@/lib/dates'
+import { deriveStreamState } from '@/lib/stream-state'
 
 interface StreamControlWidgetProps {
   streams?: Stream[]
+  liveStatusMap?: Map<string, UseQueryResult<StreamStatusResponse>>
   loading?: boolean
 }
 
@@ -31,18 +32,16 @@ const statusBadges: Record<string, 'secondary' | 'error'> = {
   error: 'error',
 }
 
-const dateLocales: Record<string, DateFnsLocale> = {
-  en: enUS,
-  ru,
-  uk: ukLocale,
-}
-
-export function StreamControlWidget({ streams, loading, onRefresh }: StreamControlWidgetProps & { onRefresh?: () => void }) {
+export function StreamControlWidget({
+  streams,
+  liveStatusMap,
+  loading,
+  onRefresh,
+}: StreamControlWidgetProps & { onRefresh?: () => void }) {
   const queryClient = useQueryClient()
   const { user } = useDashboardContext()
   const t = useTranslations('dashboard.streamControl')
   const locale = useLocale()
-  const dateLocale = dateLocales[locale] ?? enUS
 
   const startMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.start(streamId),
@@ -55,8 +54,22 @@ export function StreamControlWidget({ streams, loading, onRefresh }: StreamContr
   })
 
   const activeStreams = useMemo(
-    () => (streams ?? []).sort((a, b) => (b.status === 'running' ? 1 : 0) - (a.status === 'running' ? 1 : 0)),
-    [streams]
+    () =>
+      (streams ?? [])
+        .map((stream) => ({
+          stream,
+          derived: deriveStreamState(stream, liveStatusMap?.get(stream.id)),
+        }))
+        .sort((a, b) => {
+          const score = (item: { derived: ReturnType<typeof deriveStreamState> }) => {
+            if (item.derived.isRunning) return 3
+            if (item.derived.requiresAttention) return 2
+            if (item.derived.derivedStatus === 'scheduled') return 1
+            return 0
+          }
+          return score(b) - score(a)
+        }),
+    [liveStatusMap, streams]
   )
 
   const header = (
@@ -108,21 +121,22 @@ export function StreamControlWidget({ streams, loading, onRefresh }: StreamContr
           </div>
         ) : (
           <div className="space-y-3">
-            {activeStreams.slice(0, 3).map((stream, index) => {
-              const badgeVariant = statusBadges[stream.status] ?? 'secondary'
-              const statusLabel = stream.status in statusBadges ? t(`status.${stream.status}`) : stream.status
+            {activeStreams.slice(0, 3).map(({ stream, derived }, index) => {
+              const badgeVariant = statusBadges[derived.derivedStatus] ?? 'secondary'
+              const statusLabel =
+                derived.derivedStatus in statusBadges ? t(`status.${derived.derivedStatus}`) : derived.derivedStatus
               const isMutating =
                 (startMutation.isPending && startMutation.variables === stream.id) ||
                 (stopMutation.isPending && stopMutation.variables === stream.id)
               const anyPending = startMutation.isPending || stopMutation.isPending
-              const isRunning = stream.status === 'running'
-              const startedAt = stream.started_at ? new Date(stream.started_at) : null
-              const relativeTime = startedAt
-                ? formatDistanceToNow(startedAt, { addSuffix: true, locale: dateLocale })
+              const relativeTime = stream.started_at
+                ? formatRelativeDateTime(stream.started_at, locale)
                 : null
-              const startedLabel = relativeTime
+              const startedLabel = derived.isRunning && relativeTime
                 ? t('labels.liveSince', { time: relativeTime })
-                : t('labels.idle')
+                : derived.requiresAttention
+                  ? t('labels.attention')
+                  : t('labels.idle')
 
               return (
                 <motion.div
@@ -149,16 +163,22 @@ export function StreamControlWidget({ streams, loading, onRefresh }: StreamContr
 
                   <div className="flex items-center space-x-3">
                     <Badge variant={badgeVariant}>{statusLabel}</Badge>
+                    {derived.statusUnavailable && (
+                      <span className="inline-flex items-center space-x-1 text-xs text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <span>{t('labels.unavailable')}</span>
+                      </span>
+                    )}
                     <Button
                       size="sm"
-                      variant={isRunning ? 'secondary' : 'primary'}
-                      onClick={() => (isRunning ? stopMutation.mutate(stream.id) : startMutation.mutate(stream.id))}
-                      disabled={anyPending}
+                      variant={derived.isRunning ? 'secondary' : 'primary'}
+                      onClick={() => (derived.isRunning ? stopMutation.mutate(stream.id) : startMutation.mutate(stream.id))}
+                      disabled={anyPending || derived.primaryAction === 'pending'}
                       className="flex items-center"
                     >
                       {isMutating ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : isRunning ? (
+                      ) : derived.isRunning ? (
                         <>
                           <Square className="mr-2 h-3.5 w-3.5" />
                           {t('buttons.stop')}
@@ -184,7 +204,7 @@ export function StreamControlWidget({ streams, loading, onRefresh }: StreamContr
               </Link>
             )}
 
-            {(activeStreams ?? []).some((stream) => stream.status === 'error') && (
+            {(activeStreams ?? []).some(({ derived }) => derived.requiresAttention) && (
               <div className="flex items-center space-x-2 rounded-lg bg-error-50 dark:bg-error-900/20 px-3 py-2 text-xs text-error-600 dark:text-error-400">
                 <AlertTriangle className="h-4 w-4" />
                 <span>{t('labels.attention')}</span>
