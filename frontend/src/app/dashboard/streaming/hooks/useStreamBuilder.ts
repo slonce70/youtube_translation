@@ -16,17 +16,21 @@ import type {
 } from '@/lib/types'
 
 import {
+  BUILDER_STEPS,
   createDefaultEditorState,
   DEFAULT_SCHEDULE_STATE,
   deriveEditorStateFromCollection,
+  hasEditorSelection,
+  type BuilderStep,
   type CollectionEditorState,
   type ScheduleState,
+  validateBuilderState,
 } from '../builder-helpers'
 import { useDashboardContext } from '@/app/dashboard/dashboard-context'
 
 type Translator = (key: string, values?: TranslationValues) => string
 
-export type BuilderTab = 'video' | 'audio' | 'destinations' | 'schedule'
+export type BuilderTab = BuilderStep
 
 export type StreamFormState = {
   name: string
@@ -70,7 +74,7 @@ export const useStreamBuilder = ({
     name: '',
     destination_ids: enabledDestinations.length > 0 ? [enabledDestinations[0].id] : [],
   }))
-  const [activeBuilderTab, setActiveBuilderTab] = useState<BuilderTab>('video')
+  const [activeBuilderTab, setActiveBuilderTab] = useState<BuilderTab>('content')
   const [mixMode, setMixMode] = useState<'video_only' | 'mixed'>('mixed')
   const [videoEditor, setVideoEditor] = useState<CollectionEditorState>(createDefaultEditorState())
   const [audioEditor, setAudioEditor] = useState<CollectionEditorState>(
@@ -106,10 +110,7 @@ export const useStreamBuilder = ({
   const concurrentStreamsLimit = quota?.streams?.limit ?? null
   const planQualityLimits = quota?.quality
 
-  const builderTabsList: BuilderTab[] = useMemo(
-    () => ['video', 'audio', 'destinations', 'schedule'],
-    [],
-  )
+  const builderTabsList: BuilderTab[] = useMemo(() => [...BUILDER_STEPS], [])
   const currentTabIndex = builderTabsList.indexOf(activeBuilderTab)
   const isFinalTab = currentTabIndex === builderTabsList.length - 1
 
@@ -152,6 +153,7 @@ export const useStreamBuilder = ({
           ...prev,
           items: [...prev.items, { asset_id: assetId }],
           mode: prev.mode === 'existing' ? 'custom' : prev.mode,
+          selectedCollectionId: prev.mode === 'existing' ? null : prev.selectedCollectionId,
         }
       })
     },
@@ -163,6 +165,8 @@ export const useStreamBuilder = ({
       updateEditor(target, (prev) => ({
         ...prev,
         items: prev.items.filter((item) => item.asset_id !== assetId),
+        mode: prev.mode === 'existing' ? 'custom' : prev.mode,
+        selectedCollectionId: prev.mode === 'existing' ? null : prev.selectedCollectionId,
       }))
     },
     [updateEditor],
@@ -175,7 +179,12 @@ export const useStreamBuilder = ({
         const items = [...prev.items]
         const [moved] = items.splice(fromIndex, 1)
         items.splice(Math.max(0, Math.min(items.length, toIndex)), 0, moved)
-        return { ...prev, items }
+        return {
+          ...prev,
+          items,
+          mode: prev.mode === 'existing' ? 'custom' : prev.mode,
+          selectedCollectionId: prev.mode === 'existing' ? null : prev.selectedCollectionId,
+        }
       })
     },
     [updateEditor],
@@ -255,11 +264,6 @@ export const useStreamBuilder = ({
     )
   }, [])
 
-  const editorHasSelection = useCallback(
-    (editor: CollectionEditorState) => Boolean(editor.selectedCollectionId) || editor.items.length > 0,
-    [],
-  )
-
   const loopModeForEditor = useCallback((editor: CollectionEditorState): LoopMode => {
     if (editor.shuffle) return 'shuffle'
     if (editor.loop) return 'loop'
@@ -306,7 +310,7 @@ export const useStreamBuilder = ({
     setScheduleState(DEFAULT_SCHEDULE_STATE)
     setMixMode('mixed')
     setDragState(null)
-    setActiveBuilderTab('video')
+    setActiveBuilderTab('content')
   }, [enabledDestinations])
 
   const createStreamMutation = useMutation({
@@ -322,28 +326,17 @@ export const useStreamBuilder = ({
   })
 
   const handleBuilderSubmit = useCallback(async () => {
-    const hasVideoSelection = editorHasSelection(videoEditor)
-    if (!hasVideoSelection) {
-      toast.error(streamingToasts('errors.selectBackground'))
-      setActiveBuilderTab('video')
-      return
-    }
+    const validation = validateBuilderState({
+      hasVideoSelection: hasEditorSelection(videoEditor),
+      audioEnabled,
+      hasAudioSelection: hasEditorSelection(audioEditor),
+      selectedDestinationCount: streamForm.destination_ids.length,
+      scheduleState,
+    })
 
-    if (audioEnabled && !editorHasSelection(audioEditor)) {
-      toast.error(streamingToasts('errors.selectAudio'))
-      setActiveBuilderTab('audio')
-      return
-    }
-
-    if (streamForm.destination_ids.length === 0) {
-      toast.error(streamingToasts('errors.selectDestination'))
-      setActiveBuilderTab('destinations')
-      return
-    }
-
-    if (scheduleState.startMode === 'schedule' && !scheduleState.startAt) {
-      toast.error(streamingToasts('errors.scheduleTime'))
-      setActiveBuilderTab('schedule')
+    if (validation) {
+      toast.error(streamingToasts(validation.errorKey))
+      setActiveBuilderTab(validation.step)
       return
     }
 
@@ -352,24 +345,6 @@ export const useStreamBuilder = ({
         ? new Date(scheduleState.startAt).toISOString()
         : undefined
     const stopAtIso = scheduleState.stopAt ? new Date(scheduleState.stopAt).toISOString() : undefined
-
-    if (scheduleState.stopAt) {
-      const stopAt = new Date(scheduleState.stopAt)
-      const now = new Date()
-      if (Number.isNaN(stopAt.getTime()) || stopAt <= now) {
-        toast.error(streamingToasts('errors.scheduleStopTime'))
-        setActiveBuilderTab('schedule')
-        return
-      }
-      if (scheduleState.startMode === 'schedule' && scheduleState.startAt) {
-        const startAt = new Date(scheduleState.startAt)
-        if (stopAt <= startAt) {
-          toast.error(streamingToasts('errors.scheduleStopAfterStart'))
-          setActiveBuilderTab('schedule')
-          return
-        }
-      }
-    }
 
     const createdCollectionTracker = {
       video: null as string | null,
@@ -438,7 +413,6 @@ export const useStreamBuilder = ({
   }, [
     audioEditor,
     audioEnabled,
-    editorHasSelection,
     persistEditorAsCollection,
     queryClient,
     scheduleState,

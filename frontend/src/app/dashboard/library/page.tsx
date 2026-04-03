@@ -1496,7 +1496,18 @@ export default function LibraryPage() {
   // Calculate stats
   const totalAssets = visibleAssets.length
   const totalPlaylists = playlists?.length || 0
-  const totalStorage = visibleAssets.reduce((sum, asset) => sum + asset.size_bytes, 0)
+  const librarySummary = useMemo(() => {
+    const readyCount = visibleAssets.reduce((count, asset) => {
+      const info = deriveAssetDisplayInfo(asset)
+      return info.warnings.length === 0 && info.issues.length === 0 ? count + 1 : count
+    }, 0)
+
+    return {
+      readyCount,
+      attentionCount: Math.max(visibleAssets.length - readyCount, 0),
+      folderCount: currentFolders.length,
+    }
+  }, [currentFolders.length, visibleAssets])
 
   if (!user) {
     return <LoadingState text={tLibrary('loading')} />
@@ -1537,6 +1548,60 @@ export default function LibraryPage() {
               onNavigate={handleFolderSelect}
               onDrop={handleFolderDrop}
             />
+
+            <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    {tLibrary('summary.title')}
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {tLibrary('summary.subtitle')}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={openCreateFolderModal}
+                    className="gap-2"
+                  >
+                    <FolderPlus className="w-4 h-4" />
+                    {tFolders('create')}
+                  </Button>
+                  <Button size="sm" onClick={() => setIsUploadOpen(true)} className="gap-2">
+                    <Plus className="w-4 h-4" />
+                    {tLibrary('assets.upload')}
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+                  <p className="text-2xl font-semibold text-slate-900 dark:text-white">
+                    {librarySummary.readyCount}
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {tLibrary('summary.ready')}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+                  <p className="text-2xl font-semibold text-slate-900 dark:text-white">
+                    {librarySummary.attentionCount}
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {tLibrary('summary.attention')}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+                  <p className="text-2xl font-semibold text-slate-900 dark:text-white">
+                    {librarySummary.folderCount}
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {tLibrary('summary.folders')}
+                  </p>
+                </div>
+              </div>
+            </div>
 
             {/* Header with Actions */}
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1644,19 +1709,6 @@ export default function LibraryPage() {
                     onClick={() => setWarningsOnly((prev) => !prev)}
                   >
                     {tLibrary('assets.quickFilters.warnings')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={openCreateFolderModal}
-                    className="gap-2"
-                  >
-                    <FolderPlus className="w-4 h-4" />
-                    {tFolders('create')}
-                  </Button>
-                  <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
-                    <Plus className="w-4 h-4" />
-                    {tLibrary('assets.upload')}
                   </Button>
                 </div>
               </div>
@@ -2092,36 +2144,6 @@ export default function LibraryPage() {
           </div>
         </TabsContent>
       </Tabs>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-3xl font-bold gradient-text">{totalAssets}</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tLibrary('stats.videos')}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-3xl font-bold gradient-text">{totalPlaylists}</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tLibrary('stats.playlists')}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-3xl font-bold gradient-text">{formatBytes(totalStorage)}</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{tLibrary('stats.storage')}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Upload Modal */}
       <UploadModal

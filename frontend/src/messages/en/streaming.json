@@ -227,16 +227,21 @@
       "builder": {
         "subtitle": "Set up your video playlist, audio bed, and destinations before going live.",
         "tabs": {
-          "video": "Video playlist",
-          "audio": "Audio playlist",
-          "timeline": "Timeline",
-          "destinations": "Destinations",
-          "schedule": "Schedule & loop"
+          "content": "Content",
+          "channels": "Channels",
+          "schedule": "Schedule",
+          "review": "Review & Launch"
+        },
+        "content": {
+          "title": "Choose the content that should keep this stream live.",
+          "subtitle": "Start with the video loop, add audio only if you need it, then open advanced editing for fine-tuning.",
+          "advancedTitle": "Advanced timeline",
+          "advancedDescription": "Reorder the final playback lanes without leaving the guided flow."
         },
         "timeline": {
           "title": "Studio timeline",
           "subtitle": "Visual overview of your stream content",
-          "hint": "Drag and drop assets from the Video/Audio tabs to populate this timeline.",
+          "hint": "Use the content queues to populate and reorder this timeline.",
           "videoLane": "Video timeline",
           "audioLane": "Audio timeline",
           "emptyLane": "No items yet"
@@ -290,7 +295,8 @@
           "enableHint": "Enable channel to select"
         },
         "schedule": {
-          "title": "Start time",
+          "title": "Schedule your stream",
+          "subtitle": "Choose when the stream starts, how long it runs, and the playback mix.",
           "timezoneHint": "Times are shown in {timezone}",
           "startNow": "Start now",
           "startLater": "Schedule",
@@ -322,6 +328,35 @@
             "video": "Video: H.264 (yuv420p)",
             "audio": "Audio: AAC"
           }
+        },
+        "review": {
+          "title": "Review & Launch",
+          "subtitle": "Check the final setup before we create the stream.",
+          "contentTitle": "Content setup",
+          "streamNamed": "Stream name: {name}",
+          "streamUntitled": "Stream name: {fallback}",
+          "videoSaved": "Video: saved collection",
+          "videoCount": "Video assets: {count}",
+          "audioSaved": "Audio: saved playlist",
+          "audioCount": "Audio tracks: {count}",
+          "audioDisabled": "Audio disabled",
+          "timelineCustomized": "Timeline was customised",
+          "timelineDefault": "Using the default playback order",
+          "editContent": "Edit content",
+          "channelsTitle": "Selected channels",
+          "channelsCount": "{count, plural, one {# channel selected} other {# channels selected}}",
+          "channelsNone": "No channels selected yet",
+          "editChannels": "Edit channels",
+          "scheduleTitle": "Schedule & playback",
+          "startNow": "Starts immediately",
+          "startLaterValue": "Starts: {value}",
+          "notScheduled": "Choose a start time",
+          "stopAtValue": "Stops: {value}",
+          "stopOpenEnded": "No stop time set",
+          "loopEnabled": "Loop stream enabled",
+          "loopDisabled": "Loop stream disabled",
+          "volumeMix": "Volumes: video {video}% · audio {audio}%",
+          "editSchedule": "Edit schedule"
         },
         "actions": {
           "cancel": "Cancel",
