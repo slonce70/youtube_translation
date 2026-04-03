@@ -68,6 +68,36 @@ tool_is_available() {
     command -v "${candidate}" >/dev/null 2>&1
 }
 
+resolve_media_tool_bin() {
+    local configured="${1:-}"
+    local fallback_name="${2:-}"
+    local resolved=""
+
+    if [ -n "${configured}" ] && tool_is_available "${configured}"; then
+        echo "${configured}"
+        return
+    fi
+
+    if [ -n "${fallback_name}" ] && command -v "${fallback_name}" >/dev/null 2>&1; then
+        resolved="$(command -v "${fallback_name}")"
+        echo "${resolved}"
+        return
+    fi
+
+    if [ -n "${configured}" ]; then
+        echo "${configured}"
+        return
+    fi
+
+    echo "${fallback_name}"
+}
+
+supervisor_pid_is_valid() {
+    local candidate="${1:-}"
+
+    [[ "${candidate}" =~ ^[0-9]+$ ]] && [ "${candidate}" -gt 0 ]
+}
+
 echo "🚀 Starting Backend..."
 echo "📍 API will be at: http://localhost:${API_PORT}"
 echo "❤️  Health: http://localhost:${API_PORT}/health"
@@ -120,6 +150,11 @@ if [ "${REQUESTED_RUNTIME_MODE}" = "supervisor" ]; then
         RUNNING_PID=$("${SUPERVISOR_CTL_BIN}" -c "${SUPERVISOR_CONF_PATH}" pid 2>/dev/null | tr -d '[:space:]' || true)
     fi
 
+    if [ -n "${RUNNING_PID}" ] && ! supervisor_pid_is_valid "${RUNNING_PID}"; then
+        echo "⚠️  Ігнорую невалідну відповідь supervisorctl pid: ${RUNNING_PID}"
+        RUNNING_PID=""
+    fi
+
     if [ -n "${RUNNING_PID}" ] && [ "${RUNNING_PID}" != "unknown" ]; then
         echo "♻️  Використовую вже запущений supervisor endpoint (PID: ${RUNNING_PID}) через ${SUPERVISOR_CONF_PATH}."
         export STREAM_RUNTIME_MODE="supervisor"
@@ -149,8 +184,25 @@ fi
 echo "✅ Effective stream runtime: ${STREAM_RUNTIME_MODE:-manager}"
 
 FFMPEG_CANDIDATE="${FFMPEG_BIN:-ffmpeg}"
-if ! tool_is_available "${FFMPEG_CANDIDATE}"; then
-    echo "⚠️  FFmpeg не знайдено (${FFMPEG_CANDIDATE}). Для rehearsal стрімів задайте коректний FFMPEG_BIN або встановіть ffmpeg."
+FFPROBE_CANDIDATE="${FFPROBE_BIN:-ffprobe}"
+FFMPEG_RESOLVED="$(resolve_media_tool_bin "${FFMPEG_CANDIDATE}" "ffmpeg")"
+FFPROBE_RESOLVED="$(resolve_media_tool_bin "${FFPROBE_CANDIDATE}" "ffprobe")"
+
+if [ "${FFMPEG_RESOLVED}" != "${FFMPEG_CANDIDATE}" ]; then
+    echo "🎞️  Використовую FFMPEG_BIN=${FFMPEG_RESOLVED} замість ${FFMPEG_CANDIDATE}"
+fi
+if [ "${FFPROBE_RESOLVED}" != "${FFPROBE_CANDIDATE}" ]; then
+    echo "🎛️  Використовую FFPROBE_BIN=${FFPROBE_RESOLVED} замість ${FFPROBE_CANDIDATE}"
+fi
+
+export FFMPEG_BIN="${FFMPEG_RESOLVED}"
+export FFPROBE_BIN="${FFPROBE_RESOLVED}"
+
+if ! tool_is_available "${FFMPEG_BIN}"; then
+    echo "⚠️  FFmpeg не знайдено (${FFMPEG_BIN}). Для rehearsal стрімів задайте коректний FFMPEG_BIN або встановіть ffmpeg."
+fi
+if ! tool_is_available "${FFPROBE_BIN}"; then
+    echo "⚠️  ffprobe не знайдено (${FFPROBE_BIN}). Metadata validation та media smoke можуть бути недоступні без FFPROBE_BIN."
 fi
 
 if [ "${ENABLE_DEV_AUTH:-false}" != "true" ] && [ -z "${SUPABASE_URL:-}" ]; then

@@ -164,3 +164,17 @@ def test_supervisorctl_command_prefers_sibling_binary(
     monkeypatch.setattr(supervisor_control.shutil, "which", lambda _name: None)
 
     assert supervisor_control._supervisorctl_command() == (str(fake_supervisorctl),)
+
+
+def test_strip_supervisor_warnings_removes_pkg_resources_noise() -> None:
+    noisy_output = "\n".join(
+        [
+            "/tmp/site-packages/supervisor/options.py:13: UserWarning: pkg_resources is deprecated as an API.",
+            "  import pkg_resources",
+            "stream_123 FATAL Exited too quickly (process log may have details)",
+        ]
+    )
+
+    assert supervisor_control._strip_supervisor_warnings(noisy_output) == (
+        "stream_123 FATAL Exited too quickly (process log may have details)"
+    )

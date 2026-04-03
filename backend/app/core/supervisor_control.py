@@ -18,6 +18,10 @@ from app.core.stream_runtime_heartbeat import clear_runtime_heartbeat
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_BACKEND_ROOT = Path("/app")
+_SUPERVISOR_WARNING_SNIPPETS = (
+    "pkg_resources is deprecated as an API",
+    "import pkg_resources",
+)
 
 
 def supervisor_enabled() -> bool:
@@ -128,14 +132,26 @@ async def _run_supervisorctl(*args: str) -> Tuple[int, str, str]:
     stdout, stderr = await process.communicate()
     return (
         process.returncode if process.returncode is not None else 1,
-        stdout.decode().strip(),
-        stderr.decode().strip(),
+        _strip_supervisor_warnings(stdout.decode()),
+        _strip_supervisor_warnings(stderr.decode()),
     )
 
 
 def _build_error(action: str, program: str, stdout: str, stderr: str) -> RuntimeError:
     message = stderr or stdout or f"supervisorctl {action} {program} failed"
     return RuntimeError(message)
+
+
+def _strip_supervisor_warnings(output: str) -> str:
+    if not output:
+        return ""
+
+    filtered_lines = [
+        line
+        for line in output.splitlines()
+        if not any(snippet in line for snippet in _SUPERVISOR_WARNING_SNIPPETS)
+    ]
+    return "\n".join(filtered_lines).strip()
 
 
 async def _write_program_config(stream_id: UUID) -> Path:
