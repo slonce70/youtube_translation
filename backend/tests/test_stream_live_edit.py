@@ -36,9 +36,18 @@ def _asset_meta(codec: str = "h264", audio_codec: str = "aac"):
     }
 
 
+def _prepare_user_upload_dir(root: Path, user_id) -> Path:
+    user_dir = root / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    return user_dir
+
+
 @pytest.mark.asyncio
-async def test_live_edit_updates_video_collection_and_restarts_stream(monkeypatch, tmp_path):
+async def test_live_edit_updates_video_collection_and_restarts_stream(
+    monkeypatch, tmp_path
+):
     user_id = uuid4()
+    upload_root = tmp_path / "uploads"
 
     mock_restart = AsyncMock(return_value=True)
     monkeypatch.setattr(streams_routes.ffmpeg_manager, "restart_stream", mock_restart)
@@ -61,9 +70,12 @@ async def test_live_edit_updates_video_collection_and_restarts_stream(monkeypatc
     )
 
     monkeypatch.setattr(streams_routes.settings, "stream_dir", str(tmp_path))
+    monkeypatch.setattr(streams_routes.settings, "upload_dir", str(upload_root))
 
     async with async_session_maker() as session:
-        check = await session.execute(text("SELECT to_regclass('public.media_collections')"))
+        check = await session.execute(
+            text("SELECT to_regclass('public.media_collections')")
+        )
         if not check.scalar():
             pytest.skip("media_collections table not available in this test DB")
         profile = UserProfile(
@@ -72,11 +84,12 @@ async def test_live_edit_updates_video_collection_and_restarts_stream(monkeypatc
             subscription_tier="free",
         )
         session.add(profile)
+        user_upload_dir = _prepare_user_upload_dir(upload_root, user_id)
 
         asset_a = Asset(
             user_id=user_id,
             filename="a.mp4",
-            storage_path=str(Path(tmp_path) / "a.mp4"),
+            storage_path=str(user_upload_dir / "a.mp4"),
             size_bytes=1024,
             asset_type="video",
             meta=_asset_meta(),
@@ -86,7 +99,7 @@ async def test_live_edit_updates_video_collection_and_restarts_stream(monkeypatc
         asset_b = Asset(
             user_id=user_id,
             filename="b.mp4",
-            storage_path=str(Path(tmp_path) / "b.mp4"),
+            storage_path=str(user_upload_dir / "b.mp4"),
             size_bytes=2048,
             asset_type="video",
             meta=_asset_meta(),
@@ -96,8 +109,7 @@ async def test_live_edit_updates_video_collection_and_restarts_stream(monkeypatc
         session.add_all([asset_a, asset_b])
 
         for filename in ("a.mp4", "b.mp4"):
-            file_path = Path(tmp_path) / filename
-            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path = user_upload_dir / filename
             file_path.touch(exist_ok=True)
 
         collection = MediaCollection(
@@ -184,19 +196,27 @@ async def test_live_edit_updates_video_collection_and_restarts_stream(monkeypatc
 @pytest.mark.asyncio
 async def test_live_edit_updates_without_restart_uses_hot_swap(monkeypatch, tmp_path):
     user_id = uuid4()
+    upload_root = tmp_path / "uploads"
 
     mock_restart = AsyncMock(return_value=True)
     monkeypatch.setattr(streams_routes.ffmpeg_manager, "restart_stream", mock_restart)
 
-    monkeypatch.setattr(streams_routes.ffmpeg_manager, "is_running", lambda stream_id: True)
+    monkeypatch.setattr(
+        streams_routes.ffmpeg_manager, "is_running", lambda stream_id: True
+    )
 
     mock_replace_queue = AsyncMock()
-    monkeypatch.setattr(streams_control.hot_swap_manager, "replace_queue", mock_replace_queue)
+    monkeypatch.setattr(
+        streams_control.hot_swap_manager, "replace_queue", mock_replace_queue
+    )
 
     monkeypatch.setattr(streams_routes.settings, "stream_dir", str(tmp_path))
+    monkeypatch.setattr(streams_routes.settings, "upload_dir", str(upload_root))
 
     async with async_session_maker() as session:
-        check = await session.execute(text("SELECT to_regclass('public.media_collections')"))
+        check = await session.execute(
+            text("SELECT to_regclass('public.media_collections')")
+        )
         if not check.scalar():
             pytest.skip("media_collections table not available in this test DB")
 
@@ -206,11 +226,12 @@ async def test_live_edit_updates_without_restart_uses_hot_swap(monkeypatch, tmp_
             subscription_tier="free",
         )
         session.add(profile)
+        user_upload_dir = _prepare_user_upload_dir(upload_root, user_id)
 
         asset_a = Asset(
             user_id=user_id,
             filename="a.mp4",
-            storage_path=str(Path(tmp_path) / "a.mp4"),
+            storage_path=str(user_upload_dir / "a.mp4"),
             size_bytes=1024,
             asset_type="video",
             meta=_asset_meta(),
@@ -220,7 +241,7 @@ async def test_live_edit_updates_without_restart_uses_hot_swap(monkeypatch, tmp_
         asset_b = Asset(
             user_id=user_id,
             filename="b.mp4",
-            storage_path=str(Path(tmp_path) / "b.mp4"),
+            storage_path=str(user_upload_dir / "b.mp4"),
             size_bytes=2048,
             asset_type="video",
             meta=_asset_meta(),
@@ -230,8 +251,7 @@ async def test_live_edit_updates_without_restart_uses_hot_swap(monkeypatch, tmp_
         session.add_all([asset_a, asset_b])
 
         for filename in ("a.mp4", "b.mp4"):
-            file_path = Path(tmp_path) / filename
-            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path = user_upload_dir / filename
             file_path.touch(exist_ok=True)
 
         collection = MediaCollection(
@@ -292,8 +312,12 @@ async def test_live_edit_updates_without_restart_uses_hot_swap(monkeypatch, tmp_
             target="video",
             restart=False,
             items=[
-                CollectionItemCreate(asset_id=asset_b.id, position=0, loop_mode="shuffle"),
-                CollectionItemCreate(asset_id=asset_a.id, position=1, loop_mode="shuffle"),
+                CollectionItemCreate(
+                    asset_id=asset_b.id, position=0, loop_mode="shuffle"
+                ),
+                CollectionItemCreate(
+                    asset_id=asset_a.id, position=1, loop_mode="shuffle"
+                ),
             ],
         )
 
@@ -316,19 +340,29 @@ async def test_live_edit_updates_without_restart_uses_hot_swap(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
-async def test_live_edit_without_restart_falls_back_to_managed_runtime_restart(monkeypatch, tmp_path):
+async def test_live_edit_without_restart_falls_back_to_managed_runtime_restart(
+    monkeypatch, tmp_path
+):
     user_id = uuid4()
+    upload_root = tmp_path / "uploads"
 
     mock_replace_queue = AsyncMock()
     mock_supervisor_restart = AsyncMock()
-    monkeypatch.setattr(streams_control.hot_swap_manager, "replace_queue", mock_replace_queue)
+    monkeypatch.setattr(
+        streams_control.hot_swap_manager, "replace_queue", mock_replace_queue
+    )
     monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-    monkeypatch.setattr(streams_control, "supervisor_restart_program", mock_supervisor_restart)
+    monkeypatch.setattr(
+        streams_control, "supervisor_restart_program", mock_supervisor_restart
+    )
     monkeypatch.setattr(streams_routes.settings, "stream_dir", str(tmp_path))
+    monkeypatch.setattr(streams_routes.settings, "upload_dir", str(upload_root))
 
     async with async_session_maker() as session:
-        check = await session.execute(text("SELECT to_regclass('public.media_collections')"))
+        check = await session.execute(
+            text("SELECT to_regclass('public.media_collections')")
+        )
         if not check.scalar():
             pytest.skip("media_collections table not available in this test DB")
 
@@ -338,11 +372,12 @@ async def test_live_edit_without_restart_falls_back_to_managed_runtime_restart(m
             subscription_tier="free",
         )
         session.add(profile)
+        user_upload_dir = _prepare_user_upload_dir(upload_root, user_id)
 
         asset_a = Asset(
             user_id=user_id,
             filename="a.mp4",
-            storage_path=str(Path(tmp_path) / "a.mp4"),
+            storage_path=str(user_upload_dir / "a.mp4"),
             size_bytes=1024,
             asset_type="video",
             meta=_asset_meta(),
@@ -352,7 +387,7 @@ async def test_live_edit_without_restart_falls_back_to_managed_runtime_restart(m
         asset_b = Asset(
             user_id=user_id,
             filename="b.mp4",
-            storage_path=str(Path(tmp_path) / "b.mp4"),
+            storage_path=str(user_upload_dir / "b.mp4"),
             size_bytes=2048,
             asset_type="video",
             meta=_asset_meta(),
@@ -362,8 +397,7 @@ async def test_live_edit_without_restart_falls_back_to_managed_runtime_restart(m
         session.add_all([asset_a, asset_b])
 
         for filename in ("a.mp4", "b.mp4"):
-            file_path = Path(tmp_path) / filename
-            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path = user_upload_dir / filename
             file_path.touch(exist_ok=True)
 
         collection = MediaCollection(
@@ -443,10 +477,14 @@ async def test_live_edit_without_restart_falls_back_to_managed_runtime_restart(m
 @pytest.mark.asyncio
 async def test_live_edit_rejects_invalid_asset_type(monkeypatch, tmp_path):
     user_id = uuid4()
+    upload_root = tmp_path / "uploads"
     monkeypatch.setattr(streams_routes.settings, "stream_dir", str(tmp_path))
+    monkeypatch.setattr(streams_routes.settings, "upload_dir", str(upload_root))
 
     async with async_session_maker() as session:
-        check = await session.execute(text("SELECT to_regclass('public.media_collections')"))
+        check = await session.execute(
+            text("SELECT to_regclass('public.media_collections')")
+        )
         if not check.scalar():
             pytest.skip("media_collections table not available in this test DB")
         profile = UserProfile(
@@ -455,11 +493,12 @@ async def test_live_edit_rejects_invalid_asset_type(monkeypatch, tmp_path):
             subscription_tier="free",
         )
         session.add(profile)
+        user_upload_dir = _prepare_user_upload_dir(upload_root, user_id)
 
         video_asset = Asset(
             user_id=user_id,
             filename="video.mp4",
-            storage_path=str(Path(tmp_path) / "video.mp4"),
+            storage_path=str(user_upload_dir / "video.mp4"),
             size_bytes=1024,
             asset_type="video",
             meta=_asset_meta(),
@@ -469,7 +508,7 @@ async def test_live_edit_rejects_invalid_asset_type(monkeypatch, tmp_path):
         audio_asset = Asset(
             user_id=user_id,
             filename="song.mp3",
-            storage_path=str(Path(tmp_path) / "song.mp3"),
+            storage_path=str(user_upload_dir / "song.mp3"),
             size_bytes=512,
             asset_type="audio",
             meta=_asset_meta(),
@@ -477,6 +516,9 @@ async def test_live_edit_rejects_invalid_asset_type(monkeypatch, tmp_path):
             validation_errors=[],
         )
         session.add_all([video_asset, audio_asset])
+
+        for filename in ("video.mp4", "song.mp3"):
+            (user_upload_dir / filename).touch(exist_ok=True)
 
         collection = MediaCollection(
             user_id=user_id,
@@ -509,7 +551,9 @@ async def test_live_edit_rejects_invalid_asset_type(monkeypatch, tmp_path):
         payload = StreamLiveUpdateRequest(
             target="video",
             items=[
-                CollectionItemCreate(asset_id=audio_asset.id, position=0, loop_mode="loop"),
+                CollectionItemCreate(
+                    asset_id=audio_asset.id, position=0, loop_mode="loop"
+                ),
             ],
         )
 

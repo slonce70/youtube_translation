@@ -134,11 +134,17 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      args:
+        DEV_API_PROXY_TARGET: http://backend:8000
+        ENABLE_API_PROXY: "1"
     container_name: youtube-streaming-frontend
     ports:
       - "3000:3000"
     env_file:
       - ../frontend/.env.local
+    environment:
+      - DEV_API_PROXY_TARGET=http://backend:8000
+      - ENABLE_API_PROXY=1
     restart: unless-stopped
     networks:
       - app-network

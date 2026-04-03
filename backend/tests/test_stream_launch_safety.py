@@ -7,6 +7,7 @@ from httpx import AsyncClient
 
 import app.api.routes.destinations as destinations_routes
 import app.services.streams.control as streams_control
+from app.core.config import settings
 from app.core.database import async_session_maker
 from app.core.security import mask_stream_key
 from app.main import app
@@ -61,7 +62,9 @@ async def _create_stream_fixture(
             )
         )
 
-        asset_path = tmp_path / f"{user_id}.mp4"
+        asset_dir = Path(settings.upload_dir) / str(user_id)
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        asset_path = asset_dir / f"{user_id}.mp4"
         asset_path.touch()
 
         asset = Asset(
@@ -153,6 +156,9 @@ async def test_supervisor_start_fails_closed_when_all_destinations_disabled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
     user_id, stream_id = await _create_stream_fixture(
         tmp_path,
         destination_enabled=False,
@@ -196,6 +202,9 @@ async def test_quality_and_supervisor_start_reject_incompatible_copy_first_media
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
     user_id, stream_id = await _create_stream_fixture(
         tmp_path,
         asset_copy_ready=False,
@@ -243,6 +252,9 @@ async def test_http_start_route_rejects_incompatible_media_for_dev_auth_user(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
     user_id, stream_id = await _create_stream_fixture(
         tmp_path,
         asset_copy_ready=False,
@@ -288,6 +300,9 @@ async def test_http_quality_route_fails_closed_when_tier_limits_are_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
     user_id, stream_id = await _create_stream_fixture(
         tmp_path,
         subscription_tier="missing-tier",
@@ -320,6 +335,9 @@ async def test_start_returns_authoritative_running_status_before_prerequisite_er
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
     user_id, stream_id = await _create_stream_fixture(
         tmp_path,
         destination_enabled=False,

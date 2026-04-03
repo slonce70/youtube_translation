@@ -20,6 +20,7 @@ from app.schemas.api import (
     PlaylistResponse,
     PlaylistUpdate,
 )
+from app.services.assets.storage import resolve_asset_local_path
 from app.streaming.playlist_builder import PlaylistBuilder
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,13 @@ class PlaylistService:
 
         assets_data = [
             {
-                "path": item.asset.storage_path,
+                "path": str(
+                    resolve_asset_local_path(
+                        item.asset,
+                        self.user_id,
+                        must_exist=True,
+                    ).resolve()
+                ),
                 "meta": item.asset.meta,
                 "asset_id": str(item.asset.id),
                 "filename": item.asset.filename,

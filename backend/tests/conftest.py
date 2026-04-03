@@ -103,6 +103,13 @@ async def ensure_subscription_tiers() -> AsyncGenerator[None, None]:
         for statement in stream_alter_statements:
             await session.execute(text(statement))
 
+        asset_alter_statements = [
+            "ALTER TABLE assets ADD COLUMN IF NOT EXISTS storage_backend TEXT DEFAULT 'filesystem'",
+            "ALTER TABLE assets ADD COLUMN IF NOT EXISTS storage_key TEXT",
+        ]
+        for statement in asset_alter_statements:
+            await session.execute(text(statement))
+
         await session.execute(
             text(
                 "ALTER TABLE subscription_tier_limits ADD CONSTRAINT subscription_tier_limits_tier_check "

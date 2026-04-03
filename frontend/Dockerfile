@@ -11,6 +11,10 @@ RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
+ARG DEV_API_PROXY_TARGET=http://localhost:8000
+ARG ENABLE_API_PROXY=1
+ENV DEV_API_PROXY_TARGET=$DEV_API_PROXY_TARGET
+ENV ENABLE_API_PROXY=$ENABLE_API_PROXY
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 

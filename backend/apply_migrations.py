@@ -51,6 +51,8 @@ MIGRATIONS = [
     'migrations/028_stream_scheduler_v1.sql',
     'migrations/029_asset_optimization_status.sql',
     'migrations/030_stream_runtime_leases.sql',
+    'migrations/031_stream_runtime_restart_state.sql',
+    'migrations/032_asset_storage_contract.sql',
 ]
 
 

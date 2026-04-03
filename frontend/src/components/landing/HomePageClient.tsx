@@ -228,9 +228,24 @@ export function HomePageClient() {
     }
   }, [heroT])
 
+  const heroTrustPoints = useMemo(() => {
+    return heroT('trustIndicator')
+      .split(/\s+[•·]\s+/)
+      .filter(Boolean)
+  }, [heroT])
+
+  const ctaTrustIndicators = useMemo(
+    () => [
+      ctaT('trustIndicators.noCard'),
+      ctaT('trustIndicators.freeStorage'),
+      ctaT('trustIndicators.cancelAnytime'),
+    ],
+    [ctaT]
+  )
+
   const handleHeroPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const element = heroStageRef.current
-    if (!element) {
+    if (!element || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return
     }
 
@@ -260,22 +275,22 @@ export function HomePageClient() {
       <LandingNavBar onStartStreaming={handleStartStreaming} />
 
       <main className="relative z-10">
-        <section className="px-4 pb-8 pt-6 sm:px-6 lg:px-8">
+        <section className="px-4 pb-8 pt-3 sm:px-6 sm:pt-4 lg:px-8 lg:pt-5">
           <div className="stream-v3-container">
             <div className="stream-v3-hero-grid">
-              <div className="max-w-2xl xl:max-w-3xl">
+              <div className="max-w-2xl xl:max-w-[42rem]">
                 <div className="stream-v3-kicker">
                   <Sparkles className="h-4 w-4 text-[#ffd06e]" />
                   <span>{heroT('badge')}</span>
                 </div>
 
-                <div className="mt-7 space-y-6">
-                  <h1 className="stream-v3-display max-w-4xl text-5xl leading-[0.96] text-white sm:text-6xl xl:text-[5.4rem]">
+                <div className="mt-7 space-y-5 xl:space-y-6">
+                  <h1 className="stream-v3-display stream-v3-hero-title text-[clamp(3rem,6.4vw,5.15rem)] leading-[0.92] text-white">
                     <span>{titleParts.lead} </span>
                     <span className="stream-v3-title-accent stream-v3-gradient-text">{titleParts.accent}</span>
                   </h1>
 
-                  <p className="max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">
+                  <p className="stream-v3-hero-subtitle max-w-[36rem] text-[clamp(1.03rem,1.65vw,1.24rem)] leading-[1.62] text-slate-300 sm:leading-[1.72]">
                     {heroT('subtitle')}
                   </p>
                 </div>
@@ -305,11 +320,11 @@ export function HomePageClient() {
                   <div className="stream-v3-pill-row text-sm text-slate-300">
                     <span className="stream-v3-pill">
                       <CheckCircle2 className="h-4 w-4 text-[#73f1c5]" />
-                      {heroT('trustIndicator').split(' • ')[0]}
+                      {heroTrustPoints[0] ?? heroT('trustIndicator')}
                     </span>
                     <span className="stream-v3-pill">
                       <Layers3 className="h-4 w-4 text-[#66e6ff]" />
-                      {statsT('streamsMax.label')}
+                      {heroTrustPoints[1] ?? statsT('streamsMax.label')}
                     </span>
                     <span className="stream-v3-pill">
                       <ShieldCheck className="h-4 w-4 text-[#ffd06e]" />
@@ -410,7 +425,7 @@ export function HomePageClient() {
               </div>
             </div>
 
-            <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-20 grid gap-4 md:grid-cols-2 xl:mt-16 xl:grid-cols-4">
               {metrics.map((metric) => (
                 <article key={metric.label} className="stream-v3-metric-card">
                   <div className="stream-v3-stage-label">{metric.label}</div>
@@ -622,6 +637,15 @@ export function HomePageClient() {
               >
                 {navT('pricing')}
               </Button>
+            </div>
+
+            <div className="stream-v3-pill-row mt-6 text-sm text-slate-300">
+              {ctaTrustIndicators.map((item) => (
+                <span key={item} className="stream-v3-pill">
+                  <CheckCircle2 className="h-4 w-4 text-[#73f1c5]" />
+                  {item}
+                </span>
+              ))}
             </div>
           </div>
         </section>

@@ -85,6 +85,8 @@ class AssetResponse(AssetBase):
     id: UUID
     user_id: UUID
     storage_path: str
+    storage_backend: Literal["filesystem", "object_storage"] = "filesystem"
+    storage_key: Optional[str] = None
     size_bytes: int
     duration_seconds: Optional[float]
     meta: Optional[dict]

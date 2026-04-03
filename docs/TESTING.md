@@ -70,8 +70,8 @@ make verify-v0
 | Surface | Що має бути перевірено | Автоматичний baseline | Додатково перед release |
 | --- | --- | --- | --- |
 | Backend auth | login/logout/current-user, multi-tenant scoping, quota auth binding | `backend/tests/test_auth_api.py`, `backend/tests/test_auth_multitenancy.py` | один manual прогін реального Supabase auth path без DEV bypass |
-| Backend assets | list/filter/delete/download/optimization, asset typing, folder routing | `backend/tests/test_assets_api.py`, `backend/tests/test_assets_helpers.py` | manual upload + delete flow у локальному UI |
-| Backend streaming | playlist validation, live edit, hot swap, scheduler, runtime stop/restart, FFmpeg negative paths | `backend/tests/test_playlist_builder.py`, `backend/tests/test_stream_live_edit.py`, `backend/tests/test_hot_swap.py`, `backend/tests/test_stream_scheduler.py`, `backend/tests/test_stream_schedule_update.py`, `backend/tests/test_ffmpeg_manager.py`, `backend/tests/test_stream_supervisor_stop.py` | rehearsal одного реального локального стріму за `docs/operations/first_stream_checklist.md` |
+| Backend assets | list/filter/delete/download/optimization, asset typing, folder routing, storage seam resolution | `backend/tests/test_assets_api.py`, `backend/tests/test_assets_helpers.py`, `backend/tests/test_asset_storage.py` | manual upload + delete flow у локальному UI |
+| Backend streaming | playlist validation, live edit, hot swap, scheduler, runtime stop/restart, FFmpeg negative paths, storage-backed asset payload resolution | `backend/tests/test_playlist_builder.py`, `backend/tests/test_playlist_storage_resolution.py`, `backend/tests/test_stream_asset_payload.py`, `backend/tests/test_stream_live_edit.py`, `backend/tests/test_hot_swap.py`, `backend/tests/test_stream_scheduler.py`, `backend/tests/test_stream_schedule_update.py`, `backend/tests/test_ffmpeg_manager.py`, `backend/tests/test_stream_supervisor_stop.py` | rehearsal одного реального локального стріму за `docs/operations/first_stream_checklist.md` |
 | Backend security/runtime | encryption, rate limit, websocket middleware, supervisor deps, health/startup | `backend/tests/test_security.py`, `backend/tests/test_rate_limiter.py`, `backend/tests/test_websocket_safe_csrf.py`, `backend/tests/test_supervisor_runtime_dependencies.py`, `backend/tests/test_main.py` | перевірка `/health` і логів під час rehearsal |
 | Frontend app shell | dashboard bootstrap, admin page, локалізація, API auth wrapper | `frontend/src/app/dashboard/__tests__/page.test.tsx`, `frontend/src/app/admin/__tests__/page.test.tsx`, `frontend/src/components/__tests__/localization-smoke.test.tsx`, `frontend/src/lib/__tests__/*` | ручна перевірка DEV auth та real auth path |
 | Frontend library/upload | asset cards, asset display rules, upload modal/token flow | `frontend/src/components/library/__tests__/AssetCard.test.tsx`, `frontend/src/app/dashboard/library/__tests__/*`, `frontend/e2e/dashboard-flows.spec.ts` | manual upload через tusd з оновленням списку файлів |
@@ -98,6 +98,12 @@ make verify-v0
 - дефолтний режим: `FFMPEG_TEE_ONFAIL_POLICY=ignore`
 - треба окремо перевірити, що падіння одного destination не валить інші
 - оператор має бачити degraded destination у логах і мати documented triage path з `docs/operations/supervisor.md`
+
+Storage seam regression bar:
+
+- filesystem assets мають і далі резолвитись у локальний файл всередині `upload_dir/<user_id>/...`
+- `object_storage` asset без локального cache не повинен тихо доходити до playlist/stream runtime
+- canonical automated checks: `backend/tests/test_asset_storage.py`, `backend/tests/test_stream_asset_payload.py`, `backend/tests/test_playlist_storage_resolution.py`
 
 ## Merge Gate
 

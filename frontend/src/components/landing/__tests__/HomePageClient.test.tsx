@@ -60,16 +60,20 @@ describe('HomePageClient landing', () => {
   })
 
   it('renders the immersive hero and routes CTA clicks to login', () => {
+    const heroTitle = enMessages.landing.hero.title
+    const routingValue = enMessages.landing.hero.scene.routingValue
+    const primaryCta = enMessages.landing.hero.primaryCTA
+
     render(
       <NextIntlClientProvider locale="en" messages={enMessages as unknown as AbstractIntlMessages}>
         <HomePageClient />
       </NextIntlClientProvider>
     )
 
-    expect(screen.getByRole('heading', { name: /always-on youtube streaming without babysitting obs/i })).toBeInTheDocument()
-    expect(screen.getByText(/4 \/ 4 live/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: heroTitle })).toBeInTheDocument()
+    expect(screen.getByText(routingValue)).toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('button', { name: /start for free/i })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: primaryCta })[0])
 
     expect(pushMock).toHaveBeenCalledWith('/login')
   })

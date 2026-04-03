@@ -33,7 +33,12 @@ from .serializers import (
     extract_thumbnail_url,
     serialize_assets,
 )
-from .storage import apply_storage_delta, audit_collection_quorum
+from .storage import (
+    apply_storage_delta,
+    audit_collection_quorum,
+    require_user_filesystem_path,
+    resolve_asset_local_path,
+)
 from .utils import (
     apply_stream_summary_fields,
     generate_download_token,
@@ -111,7 +116,7 @@ class AssetService:
         return await serialize_assets(self.db, self.user_id, assets)
 
     async def create_asset(self, asset_data: AssetCreate) -> AssetResponse:
-        file_path = _require_user_storage_path(
+        file_path = require_user_filesystem_path(
             asset_data.storage_path, self.user_id, must_exist=True
         )
         size_bytes = file_path.stat().st_size
@@ -125,6 +130,7 @@ class AssetService:
             user_id=self.user_id,
             filename=asset_data.filename,
             storage_path=str(file_path),
+            storage_backend="filesystem",
             size_bytes=size_bytes,
             duration_seconds=asset_data.duration_seconds,
             meta=asset_data.meta,
@@ -180,9 +186,7 @@ class AssetService:
             )
 
         asset = await self._get_asset_record(asset_id)
-        file_path = _require_user_storage_path(
-            asset.storage_path, self.user_id, must_exist=True
-        )
+        file_path = resolve_asset_local_path(asset, self.user_id, must_exist=True)
 
         previous_size = asset.size_bytes or 0
 
@@ -220,9 +224,7 @@ class AssetService:
             )
 
         try:
-            file_path = _require_user_storage_path(
-                asset.storage_path, self.user_id, must_exist=True
-            )
+            file_path = resolve_asset_local_path(asset, self.user_id, must_exist=True)
         except HTTPException as exc:
             asset.optimization_status = "failed"
             asset.optimization_error = str(exc.detail)
@@ -265,7 +267,7 @@ class AssetService:
 
     async def create_download_token(self, asset_id: UUID) -> tuple[str, datetime]:
         asset = await self._get_asset_record(asset_id)
-        _require_user_storage_path(asset.storage_path, self.user_id, must_exist=True)
+        resolve_asset_local_path(asset, self.user_id, must_exist=True)
 
         token, expires_at = generate_download_token(asset.id, self.user_id)
         return token, datetime.fromtimestamp(expires_at, tz=timezone.utc)
@@ -347,9 +349,7 @@ class AssetService:
 
     def _delete_asset_files(self, asset: Asset) -> None:
         try:
-            file_path = _require_user_storage_path(
-                asset.storage_path, self.user_id, must_exist=False
-            )
+            file_path = resolve_asset_local_path(asset, self.user_id, must_exist=False)
         except HTTPException as exc:
             logger.warning(
                 "Skipping file deletion for asset %s due to invalid storage_path: %s",
@@ -431,38 +431,8 @@ class AssetDownloadService:
 
     @staticmethod
     def ensure_file_exists(asset: Asset, user_id: UUID) -> Path:
-        file_path = _require_user_storage_path(
-            asset.storage_path, user_id, must_exist=True
-        )
+        file_path = resolve_asset_local_path(asset, user_id, must_exist=True)
         return file_path
-
-
-def _require_user_storage_path(
-    raw_path: str, user_id: UUID, *, must_exist: bool
-) -> Path:
-    if not isinstance(raw_path, str) or not raw_path.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="storage_path is required",
-        )
-
-    candidate = Path(raw_path).expanduser().resolve(strict=False)
-    upload_root = Path(settings.upload_dir).resolve(strict=False)
-    expected_root = (upload_root / str(user_id)).resolve(strict=False)
-
-    if candidate != expected_root and expected_root not in candidate.parents:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Asset storage_path must be within the user's upload directory",
-        )
-
-    if must_exist and (not candidate.exists() or not candidate.is_file()):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Asset file missing on disk",
-        )
-
-    return candidate
 
 
 __all__ = [

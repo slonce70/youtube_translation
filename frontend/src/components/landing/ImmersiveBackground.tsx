@@ -156,7 +156,7 @@ export function ImmersiveBackground() {
     }
 
     const drawEqualizer = (time: number, simplified: boolean) => {
-      const baseline = height - 84
+      const baseline = height - (width >= 1100 ? 74 : width >= 768 ? 58 : 46)
       const limit = simplified ? Math.ceil(beamBars.length * 0.45) : beamBars.length
 
       for (let index = 0; index < limit; index += 1) {
@@ -165,7 +165,8 @@ export function ImmersiveBackground() {
         const v2 = Math.sin(time * 0.52 + index * 0.08)
         const v3 = Math.cos(time * 0.18 + index * 0.03)
         const strength = Math.abs(v1 * 0.56 + v2 * 0.28 + v3 * 0.16)
-        const heightValue = 8 + strength * height * (simplified ? 0.14 : 0.22) * bar.amp
+        const heightValue =
+          6 + strength * height * (simplified ? 0.05 : width >= 1100 ? 0.096 : width >= 768 ? 0.074 : 0.058) * bar.amp
         const gradient = context.createLinearGradient(
           bar.x,
           baseline - heightValue,
