@@ -1,13 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient, useQueries } from '@tanstack/react-query'
-import type { UseQueryResult } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import type { Locale as DateFnsLocale } from 'date-fns'
-import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
 import { Play, Loader2, X, Info, ChevronDown } from 'lucide-react'
-import { useTranslations, useLocale } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 
 import { api, ApiError } from '@/lib/api'
@@ -39,6 +36,7 @@ import { QualityGateModal } from './components/QualityGateModal'
 import { StreamScheduleModal } from './components/StreamScheduleModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
+import { useStreamStatusMap } from './hooks/useStreamStatusMap'
 
 type DestinationFormState = {
   name: string
@@ -56,12 +54,6 @@ const statusVariantMap: Record<StreamStatusValue, 'secondary' | 'error' | 'succe
   scheduled: 'info',
 }
 
-const dateLocales: Record<string, DateFnsLocale> = {
-  en: enUS,
-  ru,
-  uk: ukLocale,
-}
-
 export default function StreamingPage() {
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -71,8 +63,6 @@ export default function StreamingPage() {
   const streamingToasts = useTranslations('streaming.toasts')
   const streamingStatus = useTranslations('streaming.status')
   const tStreaming = useTranslations('streaming.page')
-  const locale = useLocale()
-  const dateLocale = dateLocales[locale] ?? enUS
   const { qualityGate, openQualityGate, closeQualityGate, groupedViolations } = useQualityGate()
 
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
@@ -102,15 +92,7 @@ export default function StreamingPage() {
     refetchInterval: 3000,
   })
 
-  const streamStatusQueries = useQueries({
-    queries: (streams ?? []).map((stream) => ({
-      queryKey: ['stream-status', user?.id, stream.id],
-      queryFn: () => api.streams.status(stream.id),
-      enabled: !!user && Boolean(stream?.id),
-      refetchInterval: ['running', 'starting', 'stopping', 'error'].includes(stream.status) ? 5000 : 30000,
-      retry: false,
-    })),
-  }) as UseQueryResult<StreamStatusResponse>[]
+  const liveStatusMap = useStreamStatusMap(streams, user?.id)
 
   const { data: playlists } = useQuery<Playlist[]>({
     queryKey: ['playlists', user?.id],
@@ -143,17 +125,6 @@ export default function StreamingPage() {
       }),
     enabled: !!user && showCreateStream,
   })
-
-  const liveStatusMap = useMemo(() => {
-    const map = new Map<string, UseQueryResult<StreamStatusResponse>>()
-    streams?.forEach((stream, index) => {
-      const query = streamStatusQueries[index]
-      if (stream && query) {
-        map.set(stream.id, query)
-      }
-    })
-    return map
-  }, [streamStatusQueries, streams])
 
   const playlistMap = useMemo(() => {
     if (!playlists) return new Map<string, Playlist>()
@@ -522,7 +493,6 @@ export default function StreamingPage() {
             playlistMap={playlistMap}
             t={tStreaming}
             streamingStatus={streamingStatus}
-            dateLocale={dateLocale}
             isStartPending={startStreamMutation.isPending}
             isStopPending={stopStreamMutation.isPending}
             isDeletePending={deleteStreamMutation.isPending}

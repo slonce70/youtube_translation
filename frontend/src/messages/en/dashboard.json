@@ -14,12 +14,66 @@
     "storageLabel": "File storage",
     "storageUsed": "{value} used",
     "storageRemaining": "Remaining {remaining} of {limit}",
-    "dailyStreamingLabel": "Daily streaming time",
+    "dailyStreamingLabel": "Streaming in the last 24 hours",
     "dailyStreamingUsed": "{value} used",
     "dailyStreamingRemaining": "Remaining {remaining} of {limit}",
     "concurrentLabel": "Concurrent stream slot",
     "concurrentValue": "{current} of {limit}",
     "concurrentHint": "Upgrade to run parallel broadcasts or add redundancy destinations."
+  },
+  "hero": {
+    "badges": {
+      "setup": "Next best step",
+      "live": "Live now",
+      "attention": "Needs attention"
+    },
+    "metrics": {
+      "live": "Live",
+      "attention": "Attention",
+      "files": "Files"
+    },
+    "upload": {
+      "title": "Upload your first video and start your 24/7 setup",
+      "description": "Your account is empty right now. Add content first, then connect a channel and create your first stream.",
+      "primary": "Upload files",
+      "secondary": "Open streaming"
+    },
+    "connect": {
+      "title": "Connect your first channel",
+      "description": "Your files are ready. Add a channel next so the service knows where to send your stream.",
+      "primary": "Add channel",
+      "secondary": "Open library"
+    },
+    "create": {
+      "title": "Create your first stream",
+      "description": "You already have content and a destination. The next step is to create a stream and launch it.",
+      "primary": "Create stream",
+      "secondary": "Review files"
+    },
+    "attention": {
+      "title": "{count} stream needs attention",
+      "description": "One or more streams need a retry, schedule fix, or manual review. Open streaming to resolve the issue before it affects your channel.",
+      "primary": "Open live control",
+      "secondary": "Review plans"
+    },
+    "live": {
+      "title": "{count} stream live right now",
+      "description": "Your channel is on air. Open streaming to stop, adjust, or inspect the live runtime in more detail.",
+      "primary": "Open live control",
+      "secondary": "Upload more content"
+    }
+  },
+  "overview": {
+    "title": "Operational summary",
+    "cards": {
+      "live": "Live now",
+      "planned": "Scheduled",
+      "attention": "Needs attention"
+    },
+    "attention": {
+      "title": "Action needed",
+      "description": "Use the streaming page for retries, schedule fixes, and detailed recovery actions."
+    }
   },
   "checklist": {
     "heading": "Streaming checklist",
@@ -182,6 +236,7 @@
       "liveSince": "Live {time}",
       "idle": "Idle",
       "attention": "Some streams require attention",
+      "unavailable": "Live status unavailable",
       "untitled": "Untitled stream"
     }
   },
@@ -196,7 +251,7 @@
       "assets": "Files stored: {count}"
     },
     "streaming": {
-      "label": "Daily streaming time",
+      "label": "Streaming in the last 24 hours",
       "summary": "{used} of {limit}",
       "remaining": "Remaining {value}"
     },
@@ -209,7 +264,7 @@
       "title": "Need more headroom?",
       "description": "Upgrade to unlock additional storage, longer broadcasts, and more destinations.",
       "button": "Compare plans",
-      "reset": "Daily limits reset at midnight"
+      "reset": "Rolling 24-hour window updates continuously"
     }
   },
   "quota": {

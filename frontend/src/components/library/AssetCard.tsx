@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { format } from 'date-fns'
+import { useLocale } from 'next-intl'
 import {
   AlertCircle,
   CheckCircle,
@@ -28,6 +28,7 @@ import {
   formatSampleRateDisplay,
   type AssetWarning,
 } from '@/app/dashboard/library/asset-utils'
+import { formatAbsoluteDateTime } from '@/lib/dates'
 
 interface AssetCardProps {
   asset: Asset
@@ -106,9 +107,10 @@ export function AssetCard({
 }: AssetCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null)
+  const locale = useLocale()
   const info = deriveAssetDisplayInfo(asset)
   const optimization = asset.optimization ?? FALLBACK_OPTIMIZATION
-  const uploadedAt = format(new Date(asset.created_at), 'MMM d, yyyy • HH:mm')
+  const uploadedAt = formatAbsoluteDateTime(asset.created_at, locale)
   const isAudioAsset = asset.asset_type === 'audio'
   const isCompact = density === 'compact'
   const previewSizeClass = isCompact ? 'h-12 w-12' : 'h-14 w-14'

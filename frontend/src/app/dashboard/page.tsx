@@ -2,25 +2,28 @@
 
 import { useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { HardDrive, Clock3, Radio, Video, Lightbulb, ChevronDown } from 'lucide-react'
+import { AlertTriangle, Clock3, Radio, Lightbulb, ChevronDown, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatBytes } from '@/lib/utils'
-import { StatCard } from '@/components/StatCard'
 import { LoadingState } from '@/components/LoadingState'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { SubscriptionBanner } from '@/components/SubscriptionBanner'
-import { QuickActions } from '@/components/QuickActions'
 import { StreamControlWidget } from '@/components/StreamControlWidget'
 import { PlanLimitsCard } from '@/components/PlanLimitsCard'
 import { BroadcasterLevel } from '@/components/Gamification/BroadcasterLevel'
 import { Progress } from '@/components/ui/Progress'
+import { Button } from '@/components/ui/Button'
 import { useDashboardContext } from './dashboard-context'
 import { useStreamSocket } from './streaming/hooks/useStreamSocket'
 import type { Stream, Asset, SubscriptionTierKey } from '@/lib/types'
+import { useStreamStatusMap } from './streaming/hooks/useStreamStatusMap'
+import { deriveDashboardNextAction, deriveStreamState } from '@/lib/stream-state'
 
 export default function DashboardPage() {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const { user, quota, quotaLoading, currentTier, planDetail } = useDashboardContext()
   const dashboard = useTranslations('dashboard')
   useStreamSocket(user?.id)
@@ -56,52 +59,61 @@ export default function DashboardPage() {
     staleTime: 30_000,
     refetchOnWindowFocus: true,
   })
+  const liveStatusMap = useStreamStatusMap(streams, user?.id)
   const planKey = (currentTier ?? 'free') as SubscriptionTierKey
   const plan = planDetail
   const planStorageLimitBytes = plan.storageGb * Math.pow(1024, 3)
   const planDailyLimitHours = plan.dailyLimitHours ?? Infinity
   const planStreamLimit = plan.streams
 
+  const presentedStreams = useMemo(
+    () =>
+      (streams ?? [])
+        .map((stream) => ({
+          stream,
+          derived: deriveStreamState(stream, liveStatusMap.get(stream.id)),
+        }))
+        .sort((a, b) => {
+          const score = (item: { derived: ReturnType<typeof deriveStreamState> }) => {
+            if (item.derived.isRunning) return 3
+            if (item.derived.requiresAttention) return 2
+            if (item.derived.derivedStatus === 'scheduled') return 1
+            return 0
+          }
+          return score(b) - score(a)
+        }),
+    [liveStatusMap, streams],
+  )
+
   const usage = useMemo(() => {
-    const now = new Date()
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-
-    const activeStreams = (streams ?? []).filter((stream) => stream.status === 'running')
-
-    const activeSeconds = activeStreams.reduce((total, stream) => {
-      if (!stream.started_at) return total
-      const startedAt = new Date(stream.started_at)
-      const effectiveStart = startedAt < startOfDay ? startOfDay : startedAt
-      const diffSeconds = (now.getTime() - effectiveStart.getTime()) / 1000
-      return diffSeconds > 0 ? total + diffSeconds : total
-    }, 0)
-
-    const hoursUsed = activeSeconds / 3600
-    const hoursUsagePercent = Number.isFinite(planDailyLimitHours) && planDailyLimitHours > 0
-      ? Math.min(100, (hoursUsed / (planDailyLimitHours as number)) * 100)
-      : 0
-
-    const storageUsedBytes = (assets ?? []).reduce((total, asset) => total + (asset.size_bytes ?? 0), 0)
-    const storageUsagePercent = planStorageLimitBytes === 0
-      ? 0
-      : Math.min(100, (storageUsedBytes / planStorageLimitBytes) * 100)
-
-    const streamUsagePercent = Math.min(
-      100,
-      (activeStreams.length / planStreamLimit) * 100
-    )
+    const activeStreams = presentedStreams.filter(({ derived }) => derived.isRunning).map(({ stream }) => stream)
+    const storageUsedBytes =
+      quota?.storage.used_bytes ?? (assets ?? []).reduce((total, asset) => total + (asset.size_bytes ?? 0), 0)
+    const storageUsagePercent =
+      quota?.storage.percent ??
+      (planStorageLimitBytes === 0 ? 0 : Math.min(100, (storageUsedBytes / planStorageLimitBytes) * 100))
+    const hoursUsed = quota?.streaming_hours.used ?? 0
+    const hoursUsagePercent =
+      quota?.streaming_hours.percent ??
+      (Number.isFinite(planDailyLimitHours) && planDailyLimitHours > 0
+        ? Math.min(100, (hoursUsed / (planDailyLimitHours as number)) * 100)
+        : 0)
+    const streamUsagePercent =
+      quota?.streams.percent ?? Math.min(100, (activeStreams.length / planStreamLimit) * 100)
 
     const totalLifetimeHours = (streams ?? []).reduce((total, stream) => {
       return total + ((stream.total_duration_seconds ?? 0) / 3600)
     }, 0)
 
+    const hoursLimit = quota?.streaming_hours.unlimited ? Infinity : (quota?.streaming_hours.limit ?? planDailyLimitHours)
+
     return {
       activeStreams,
-      assetsCount: assets?.length ?? 0,
+      assetsCount: quota?.assets.count ?? assets?.length ?? 0,
       hoursUsed,
       totalLifetimeHours,
-      hoursRemaining: Number.isFinite(planDailyLimitHours)
-        ? Math.max(0, (planDailyLimitHours as number) - hoursUsed)
+      hoursRemaining: Number.isFinite(hoursLimit)
+        ? Math.max(0, (hoursLimit as number) - hoursUsed)
         : Infinity,
       hoursUsagePercent: Number.isFinite(hoursUsagePercent) ? hoursUsagePercent : 0,
       storageUsedBytes,
@@ -109,37 +121,76 @@ export default function DashboardPage() {
       storageUsagePercent: Number.isFinite(storageUsagePercent) ? storageUsagePercent : 0,
       streamUsagePercent: Number.isFinite(streamUsagePercent) ? streamUsagePercent : 0,
     }
-  }, [assets, streams, planDailyLimitHours, planStorageLimitBytes, planStreamLimit])
+  }, [assets, planDailyLimitHours, planStorageLimitBytes, planStreamLimit, presentedStreams, quota, streams])
 
-  const statCards = useMemo(
-    () => [
-      {
-        title: dashboard('stats.storageUsed'),
-        value: `${formatBytes(usage.storageUsedBytes)} / ${plan.storageGb} GB`,
-        icon: HardDrive,
-        gradient: 'from-primary-500 to-cyan-500',
-      },
-      {
-        title: dashboard('stats.streamingTimeLeft'),
-        value: formatHoursLabel(usage.hoursRemaining),
-        icon: Clock3,
-        gradient: 'from-purple-500 to-pink-500',
-      },
-      {
-        title: dashboard('stats.activeStreams'),
-        value: `${usage.activeStreams.length} / ${planStreamLimit}`,
-        icon: Radio,
-        gradient: 'from-success-500 to-emerald-500',
-      },
-      {
-        title: dashboard('stats.libraryAssets'),
-        value: usage.assetsCount,
-        icon: Video,
-        gradient: 'from-amber-500 to-orange-500',
-      },
-    ],
-    [dashboard, usage, formatHoursLabel, plan.storageGb, planStreamLimit]
+  const liveCount = presentedStreams.filter(({ derived }) => derived.isRunning).length
+  const attentionCount = presentedStreams.filter(({ derived }) => derived.requiresAttention).length
+  const nextAction = useMemo(
+    () =>
+      deriveDashboardNextAction({
+        assetCount: usage.assetsCount,
+        destinationCount: quota?.destinations.count ?? 0,
+        streams: streams ?? [],
+        liveStatusMap,
+      }),
+    [liveStatusMap, quota?.destinations.count, streams, usage.assetsCount],
   )
+  const isFirstRun = nextAction.key === 'upload' || nextAction.key === 'connect' || nextAction.key === 'create'
+
+  const hero = useMemo(() => {
+    switch (nextAction.key) {
+      case 'upload':
+        return {
+          badge: dashboard('hero.badges.setup'),
+          title: dashboard('hero.upload.title'),
+          description: dashboard('hero.upload.description'),
+          primary: dashboard('hero.upload.primary'),
+          secondary: dashboard('hero.upload.secondary'),
+          primaryHref: '/dashboard/library?tab=assets',
+          secondaryHref: '/dashboard/streaming',
+        }
+      case 'connect':
+        return {
+          badge: dashboard('hero.badges.setup'),
+          title: dashboard('hero.connect.title'),
+          description: dashboard('hero.connect.description'),
+          primary: dashboard('hero.connect.primary'),
+          secondary: dashboard('hero.connect.secondary'),
+          primaryHref: '/dashboard/streaming',
+          secondaryHref: '/dashboard/library?tab=assets',
+        }
+      case 'create':
+        return {
+          badge: dashboard('hero.badges.setup'),
+          title: dashboard('hero.create.title'),
+          description: dashboard('hero.create.description'),
+          primary: dashboard('hero.create.primary'),
+          secondary: dashboard('hero.create.secondary'),
+          primaryHref: '/dashboard/streaming',
+          secondaryHref: '/dashboard/library?tab=assets',
+        }
+      case 'attention':
+        return {
+          badge: dashboard('hero.badges.attention'),
+          title: dashboard('hero.attention.title', { count: attentionCount }),
+          description: dashboard('hero.attention.description'),
+          primary: dashboard('hero.attention.primary'),
+          secondary: dashboard('hero.attention.secondary'),
+          primaryHref: '/dashboard/streaming',
+          secondaryHref: '/dashboard/plans',
+        }
+      default:
+        return {
+          badge: dashboard('hero.badges.live'),
+          title: dashboard('hero.live.title', { count: liveCount }),
+          description: dashboard('hero.live.description'),
+          primary: dashboard('hero.live.primary'),
+          secondary: dashboard('hero.live.secondary'),
+          primaryHref: '/dashboard/streaming',
+          secondaryHref: '/dashboard/library?tab=assets',
+        }
+    }
+  }, [attentionCount, dashboard, liveCount, nextAction.key])
 
   const initialLoading =
     (!streams && !assets && (streamsLoading || assetsLoading)) ||
@@ -163,89 +214,162 @@ export default function DashboardPage() {
         onUpgrade={() => window.location.assign('/dashboard/plans')}
       />
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 items-stretch">
-        {statCards.map((card, index) => (
-          <StatCard
-            key={card.title}
-            title={card.title}
-            value={card.value}
-            icon={card.icon}
-            gradient={card.gradient}
-            delay={index * 0.05}
-          />
-        ))}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.75fr,1fr]">
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl space-y-3">
+                <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 dark:border-primary-900/40 dark:bg-primary-900/20 dark:text-primary-300">
+                  {hero.badge}
+                </span>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-semibold text-slate-900 dark:text-white">{hero.title}</h3>
+                  <p className="text-sm leading-6 text-slate-600 dark:text-slate-400">{hero.description}</p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Button onClick={() => router.push(hero.primaryHref)}>
+                    {hero.primary}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push(hero.secondaryHref)}>
+                    {hero.secondary}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid min-w-[240px] gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/50">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {dashboard('hero.metrics.live')}
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">{liveCount}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/50">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {dashboard('hero.metrics.attention')}
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">{attentionCount}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/50">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {dashboard('hero.metrics.files')}
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">{usage.assetsCount}</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{dashboard('usage.heading')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div>
+              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span>{dashboard('usage.storageLabel')}</span>
+                <span>{dashboard('usage.storageUsed', { value: formatBytes(usage.storageUsedBytes) })}</span>
+              </div>
+              <Progress value={usage.storageUsagePercent} className="mt-2" indicatorClassName={usage.storageUsagePercent >= 90 ? 'bg-error-500' : undefined} />
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                {dashboard('usage.storageRemaining', {
+                  remaining: formatBytes(usage.storageRemainingBytes),
+                  limit: `${plan.storageGb} GB`,
+                })}
+              </p>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span>{dashboard('usage.dailyStreamingLabel')}</span>
+                <span>{dashboard('usage.dailyStreamingUsed', {
+                  value: formatHoursLabel(usage.hoursUsed),
+                })}</span>
+              </div>
+              <Progress value={usage.hoursUsagePercent} className="mt-2" indicatorClassName={usage.hoursUsagePercent >= 90 ? 'bg-error-500' : undefined} />
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                {dashboard('usage.dailyStreamingRemaining', {
+                  remaining: formatHoursLabel(usage.hoursRemaining),
+                  limit: formatHoursLabel(planDailyLimitHours),
+                })}
+              </p>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span>{dashboard('usage.concurrentLabel')}</span>
+                <span>{dashboard('usage.concurrentValue', {
+                  current: usage.activeStreams.length,
+                  limit: planStreamLimit,
+                })}</span>
+              </div>
+              <Progress value={usage.streamUsagePercent} className="mt-2" indicatorClassName={usage.streamUsagePercent >= 90 ? 'bg-error-500' : undefined} />
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                {dashboard('usage.concurrentHint')}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="space-y-6 xl:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>{dashboard('usage.heading')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div>
-                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-                  <span>{dashboard('usage.storageLabel')}</span>
-                  <span>{dashboard('usage.storageUsed', { value: formatBytes(usage.storageUsedBytes) })}</span>
-                </div>
-                <Progress value={usage.storageUsagePercent} className="mt-2" indicatorClassName={usage.storageUsagePercent >= 90 ? 'bg-error-500' : undefined} />
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  {dashboard('usage.storageRemaining', {
-                    remaining: formatBytes(usage.storageRemainingBytes),
-                    limit: `${plan.storageGb} GB`,
-                  })}
-                </p>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-                  <span>{dashboard('usage.dailyStreamingLabel')}</span>
-                  <span>{dashboard('usage.dailyStreamingUsed', {
-                    value: formatHoursLabel(usage.hoursUsed),
-                  })}</span>
-                </div>
-                <Progress value={usage.hoursUsagePercent} className="mt-2" indicatorClassName={usage.hoursUsagePercent >= 90 ? 'bg-error-500' : undefined} />
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  {dashboard('usage.dailyStreamingRemaining', {
-                    remaining: formatHoursLabel(usage.hoursRemaining),
-                    limit: formatHoursLabel(planDailyLimitHours),
-                  })}
-                </p>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-                  <span>{dashboard('usage.concurrentLabel')}</span>
-                  <span>{dashboard('usage.concurrentValue', {
-                    current: usage.activeStreams.length,
-                    limit: planStreamLimit,
-                  })}</span>
-                </div>
-                <Progress value={usage.streamUsagePercent} className="mt-2" indicatorClassName={usage.streamUsagePercent >= 90 ? 'bg-error-500' : undefined} />
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  {dashboard('usage.concurrentHint')}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <QuickActions />
-
           <StreamControlWidget
             streams={streams}
+            liveStatusMap={liveStatusMap}
             loading={streamsLoading}
             onRefresh={() => {
               queryClient.invalidateQueries({ queryKey: ['streams'] })
             }}
           />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{dashboard('overview.title')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {dashboard('overview.cards.live')}
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
+                    {liveCount}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {dashboard('overview.cards.planned')}
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
+                    {presentedStreams.filter(({ derived }) => derived.group === 'scheduled').length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {dashboard('overview.cards.attention')}
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
+                    {attentionCount}
+                  </p>
+                </div>
+              </div>
+
+              {attentionCount > 0 && (
+                <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">{dashboard('overview.attention.title')}</p>
+                    <p className="mt-1">{dashboard('overview.attention.description')}</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="space-y-6">
-          <BroadcasterLevel 
-            totalStreamHours={usage.totalLifetimeHours + usage.hoursUsed} 
-            totalAssets={usage.assetsCount} 
-          />
-
           <PlanLimitsCard
             planKey={planKey}
             plan={plan}
@@ -256,7 +380,13 @@ export default function DashboardPage() {
             onUpgrade={() => window.location.assign('/dashboard/plans')}
           />
 
-          <Card>
+          <BroadcasterLevel
+            totalStreamHours={usage.totalLifetimeHours + usage.hoursUsed} 
+            totalAssets={usage.assetsCount} 
+          />
+
+          {isFirstRun && (
+            <Card>
             <details className="group">
               <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
                 <span className="text-base font-semibold text-slate-900 dark:text-white">
@@ -294,7 +424,8 @@ export default function DashboardPage() {
                 </div>
               </div>
             </details>
-          </Card>
+            </Card>
+          )}
         </div>
       </div>
     </div>

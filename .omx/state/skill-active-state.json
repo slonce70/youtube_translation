@@ -1,13 +1,13 @@
 {
   "version": 1,
   "active": true,
-  "skill": "ralplan",
-  "keyword": "$ralplan",
+  "skill": "ralph",
+  "keyword": "$ralph",
   "phase": "planning",
-  "activated_at": "2026-04-03T20:47:59.444Z",
-  "updated_at": "2026-04-03T20:47:59.444Z",
+  "activated_at": "2026-04-03T21:24:35.569Z",
+  "updated_at": "2026-04-03T21:24:35.569Z",
   "source": "keyword-detector",
   "session_id": "",
-  "thread_id": "019d54c3-97f4-7a02-8e7d-b6d3e674c067",
-  "turn_id": "019d550b-9e69-7391-923a-9b04d351f770"
+  "thread_id": "019d553b-b218-7901-ad97-b1351edf428e",
+  "turn_id": "019d553b-b25a-7e60-9ad6-0631a094fb9c"
 }
