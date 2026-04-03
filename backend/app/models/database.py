@@ -157,6 +157,8 @@ class Asset(Base):
     # File info
     filename = Column(Text, nullable=False)
     storage_path = Column(Text, nullable=False, unique=True)
+    storage_backend = Column(Text, nullable=False, default="filesystem")
+    storage_key = Column(Text)
     size_bytes = Column(BigInteger, nullable=False)
     duration_seconds = Column(Float)
 

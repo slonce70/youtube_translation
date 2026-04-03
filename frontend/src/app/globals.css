@@ -261,10 +261,11 @@
     overflow-x: clip;
     color: #f5f7fb;
     background:
-      radial-gradient(circle at 12% 18%, rgba(255, 61, 91, 0.22), transparent 26%),
-      radial-gradient(circle at 86% 14%, rgba(94, 231, 255, 0.18), transparent 24%),
-      radial-gradient(circle at 50% 48%, rgba(124, 156, 255, 0.1), transparent 30%),
-      linear-gradient(180deg, #05060a 0%, #090c12 34%, #06070b 100%);
+      radial-gradient(circle at 12% 18%, rgba(255, 61, 91, 0.26), transparent 28%),
+      radial-gradient(circle at 86% 14%, rgba(94, 231, 255, 0.2), transparent 26%),
+      radial-gradient(circle at 50% 48%, rgba(124, 156, 255, 0.12), transparent 32%),
+      radial-gradient(circle at 30% 72%, rgba(255, 100, 80, 0.08), transparent 24%),
+      linear-gradient(180deg, #04050a 0%, #080b11 28%, #060709 100%);
   }
 
   .stream-v3-shell::before,
@@ -432,6 +433,13 @@
     max-width: 1240px;
   }
 
+  #features,
+  #how-it-works,
+  #pricing,
+  #benefits {
+    scroll-margin-top: 7rem;
+  }
+
   .stream-v3-display {
     font-family: var(--font-tech), var(--font-display), serif;
     letter-spacing: -0.05em;
@@ -443,19 +451,20 @@
     align-items: center;
     gap: 0.55rem;
     border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.05);
-    padding: 0.6rem 1rem;
-    font-size: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 0.55rem 1rem;
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.18em;
-    color: #d7deeb;
+    color: #d0daef;
     backdrop-filter: blur(12px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
 
   .stream-v3-gradient-text {
-    background-image: linear-gradient(135deg, #fff1b5 0%, #ff6f7d 34%, #66e6ff 70%, #92a5ff 100%);
+    background-image: linear-gradient(130deg, #ffd070 0%, #ff5c70 30%, #ff85a0 52%, #66e6ff 75%, #a0b4ff 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -466,16 +475,36 @@
     margin-top: 0.08em;
   }
 
+  .stream-v3-hero-title {
+    font-size: clamp(2.9rem, 6vw, 4.95rem);
+    max-width: 34rem;
+  }
+
+  .stream-v3-hero-subtitle {
+    max-width: 36rem;
+  }
+
   .stream-v3-primary-btn {
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: linear-gradient(135deg, #ffffff 0%, #f5f6fb 100%);
-    color: #0b1020;
-    box-shadow: 0 24px 54px -28px rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    background: linear-gradient(135deg, #ffffff 0%, #f0f3ff 100%) !important;
+    background-image: none !important;
+    background-color: transparent !important;
+    background: linear-gradient(135deg, #ffffff 0%, #f0f3ff 100%) !important;
+    color: #0b1020 !important;
+    box-shadow: 0 24px 54px -28px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    font-weight: 600;
   }
 
   .stream-v3-primary-btn:hover {
-    background: linear-gradient(135deg, #ffffff 0%, #edf1f8 100%);
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, #ffffff 0%, #e8eeff 100%) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 28px 64px -28px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.14) !important;
+  }
+
+  .stream-v3-primary-btn:active {
+    transform: translateY(0) !important;
+    box-shadow: 0 16px 40px -24px rgba(0, 0, 0, 0.7) !important;
   }
 
   .stream-v3-hero-actions {
@@ -492,26 +521,35 @@
   }
 
   .stream-v3-secondary-btn {
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.05);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    background-image: none !important;
+    color: #fff !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    font-weight: 500;
   }
 
   .stream-v3-secondary-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    transform: translateY(-1px) !important;
+  }
+
+  .stream-v3-secondary-btn:active {
+    transform: translateY(0) !important;
   }
 
   .stream-v3-hero-grid {
     display: grid;
-    gap: 2.5rem;
+    gap: 2.85rem;
     align-items: center;
-    padding: 2rem 0 1rem;
+    padding: 1.1rem 0 1.8rem;
   }
 
   .stream-v3-stage {
     position: relative;
-    min-height: 780px;
+    min-height: 670px;
     transform-style: preserve-3d;
     transform:
       rotateX(var(--stream-v3-stage-rotate-x))
@@ -530,18 +568,18 @@
   }
 
   .stream-v3-stage-glow {
-    inset: 16% 14% 12%;
+    inset: 18% 15% 14%;
     border-radius: 2.4rem;
     background:
       radial-gradient(circle at 50% 16%, rgba(255, 74, 98, 0.22), transparent 38%),
       radial-gradient(circle at 76% 42%, rgba(94, 231, 255, 0.18), transparent 30%),
       radial-gradient(circle at 40% 82%, rgba(124, 156, 255, 0.2), transparent 34%);
-    filter: blur(62px);
-    opacity: 0.78;
+    filter: blur(58px);
+    opacity: 0.66;
   }
 
   .stream-v3-stage-grid {
-    inset: 18% 16% 14%;
+    inset: 19% 16% 15%;
     border-radius: 2rem;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background:
@@ -562,7 +600,7 @@
   .stream-v3-stage-rings span {
     position: absolute;
     left: 50%;
-    top: 37%;
+    top: 35%;
     transform: translate(-50%, -50%);
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -570,27 +608,27 @@
   }
 
   .stream-v3-stage-rings span:nth-child(1) {
-    width: 320px;
-    height: 320px;
+    width: 280px;
+    height: 280px;
   }
 
   .stream-v3-stage-rings span:nth-child(2) {
-    width: 440px;
-    height: 440px;
+    width: 392px;
+    height: 392px;
   }
 
   .stream-v3-stage-rings span:nth-child(3) {
-    width: 560px;
-    height: 560px;
+    width: 500px;
+    height: 500px;
   }
 
   .stream-v3-stage-main {
-    inset: 14% 10% 8% 10%;
+    inset: 18% 10% 10% 10%;
     z-index: 2;
     display: flex;
     flex-direction: column;
-    gap: 1.2rem;
-    padding: 1.5rem;
+    gap: 1rem;
+    padding: 1.3rem;
     border-radius: 2rem;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background:
@@ -635,7 +673,7 @@
     display: flex;
     align-items: stretch;
     justify-content: space-between;
-    gap: 1.1rem;
+    gap: 0.95rem;
   }
 
   .stream-v3-stage-value {
@@ -661,7 +699,7 @@
   .stream-v3-stage-health {
     width: min(220px, 100%);
     border-radius: 1.35rem;
-    padding: 1rem 1rem 1.05rem;
+    padding: 0.95rem 0.95rem 1rem;
   }
 
   .stream-v3-stage-health__value {
@@ -674,15 +712,15 @@
   }
 
   .stream-v3-stage-health__text {
-    margin-top: 0.5rem;
-    font-size: 0.9rem;
-    line-height: 1.55;
+    margin-top: 0.45rem;
+    font-size: 0.86rem;
+    line-height: 1.5;
     color: #c3cfe3;
   }
 
   .stream-v3-stage-visual {
     border-radius: 1.55rem;
-    padding: 1.15rem 1rem 0.95rem;
+    padding: 1rem 0.95rem 0.85rem;
   }
 
   .stream-v3-bars {
@@ -690,7 +728,7 @@
     grid-template-columns: repeat(16, minmax(0, 1fr));
     align-items: end;
     gap: 0.45rem;
-    min-height: 156px;
+    min-height: 128px;
   }
 
   .stream-v3-bars span {
@@ -702,7 +740,7 @@
 
   .stream-v3-route-card {
     border-radius: 1.6rem;
-    padding: 1rem;
+    padding: 0.95rem;
     height: 100%;
   }
 
@@ -735,19 +773,20 @@
   }
 
   .stream-v3-route-card__meta {
-    margin-top: 1rem;
+    margin-top: 0.85rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .stream-v3-stage-bottom {
     display: grid;
-    gap: 1rem;
-    grid-template-columns: minmax(0, 1.12fr) minmax(230px, 0.88fr);
+    gap: 0.9rem;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 0.9fr);
+    align-items: start;
   }
 
   .stream-v3-mini-card {
     border-radius: 1.45rem;
-    padding: 1rem;
+    padding: 0.95rem;
   }
 
   .stream-v3-mini-card--channels {
@@ -771,18 +810,19 @@
   }
 
   .stream-v3-routing-list {
-    margin-top: 0.75rem;
+    margin-top: 0.68rem;
     display: grid;
-    gap: 0.85rem;
+    gap: 0.7rem;
   }
 
   .stream-v3-routing-list span {
     display: flex;
     justify-content: space-between;
-    gap: 0.75rem;
-    font-size: 0.84rem;
+    align-items: baseline;
+    gap: 0.85rem;
+    font-size: 0.8rem;
     border-bottom: 1px solid rgba(255,255,255,0.06);
-    padding-bottom: 0.7rem;
+    padding-bottom: 0.62rem;
   }
 
   .stream-v3-routing-list span:last-child {
@@ -811,17 +851,38 @@
     background: rgba(7, 11, 18, 0.74);
     box-shadow: 0 24px 70px -42px rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(18px);
+    transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s ease;
+  }
+
+  .stream-v3-feature-card:hover,
+  .stream-v3-step-card:hover,
+  .stream-v3-benefit-card:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 28px 80px -38px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    transform: translateY(-2px);
+  }
+
+  .stream-v3-pricing-card:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow: 0 32px 90px -40px rgba(0, 0, 0, 0.92);
+    transform: translateY(-3px);
+  }
+
+  .stream-v3-metric-card:hover {
+    border-color: rgba(94, 231, 255, 0.18);
+    box-shadow: 0 28px 76px -40px rgba(0, 0, 0, 0.9);
+    transform: translateY(-2px);
   }
 
   .stream-v3-section,
   .stream-v3-cta {
     overflow: hidden;
     border-radius: 2rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(8, 12, 18, 0.64);
-    padding: 2rem;
-    box-shadow: 0 22px 74px -48px rgba(0, 0, 0, 0.82);
-    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: rgba(8, 12, 18, 0.68);
+    padding: 2.5rem 2rem;
+    box-shadow: 0 22px 74px -48px rgba(0, 0, 0, 0.82), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(20px);
   }
 
   .stream-v3-section--accent {
@@ -905,17 +966,21 @@
     width: 3rem;
     height: 3rem;
     border-radius: 1rem;
-    border: 1px solid rgba(255,255,255,0.12);
-    background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.04));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.14);
+    background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 12px rgba(0,0,0,0.3);
+    flex-shrink: 0;
   }
 
   .stream-v3-step-index {
     font-family: var(--font-tech), var(--font-display), serif;
     font-size: 3rem;
     line-height: 1;
-    color: rgba(255,255,255,0.14);
+    color: rgba(255,255,255,0.18);
     letter-spacing: -0.08em;
+    background-image: linear-gradient(135deg, rgba(255,200,100,0.4), rgba(255,90,110,0.25), rgba(100,210,255,0.25));
+    -webkit-background-clip: text;
+    background-clip: text;
   }
 
   .stream-v3-step-card {
@@ -926,10 +991,12 @@
 
   .stream-v3-pricing-card--featured {
     background:
-      radial-gradient(circle at top right, rgba(255, 74, 98, 0.16), transparent 30%),
-      radial-gradient(circle at bottom left, rgba(94, 231, 255, 0.16), transparent 28%),
-      rgba(10, 14, 22, 0.88);
-    border-color: rgba(255, 255, 255, 0.16);
+      radial-gradient(circle at top right, rgba(255, 74, 98, 0.2), transparent 32%),
+      radial-gradient(circle at bottom left, rgba(94, 231, 255, 0.18), transparent 30%),
+      radial-gradient(circle at center, rgba(124, 156, 255, 0.08), transparent 60%),
+      rgba(8, 12, 20, 0.92);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 28px 80px -40px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
   .stream-v3-pricing-badge {
@@ -953,10 +1020,12 @@
 
   .stream-v3-cta {
     background:
-      radial-gradient(circle at 16% 18%, rgba(255, 74, 98, 0.16), transparent 26%),
-      radial-gradient(circle at 82% 22%, rgba(94, 231, 255, 0.16), transparent 22%),
-      rgba(7, 11, 18, 0.82);
+      radial-gradient(circle at 16% 18%, rgba(255, 74, 98, 0.2), transparent 30%),
+      radial-gradient(circle at 82% 22%, rgba(94, 231, 255, 0.18), transparent 26%),
+      radial-gradient(circle at 50% 80%, rgba(124, 156, 255, 0.1), transparent 28%),
+      rgba(6, 9, 16, 0.88);
     text-align: left;
+    border-color: rgba(255, 255, 255, 0.1);
   }
 
   .stream-v3-benefit-card {
@@ -969,15 +1038,53 @@
 
   @media (min-width: 1100px) {
     .stream-v3-hero-grid {
-      grid-template-columns: minmax(0, 1.14fr) minmax(430px, 0.86fr);
-      gap: 3.25rem;
-      padding: 2.55rem 0 1.1rem;
+      grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
+      gap: 3.5rem;
+      padding: 1.45rem 0 1.35rem;
+    }
+  }
+
+  @media (max-width: 1279px) and (min-width: 1100px) {
+    .stream-v3-hero-grid {
+      grid-template-columns: minmax(0, 0.9fr) minmax(500px, 1.1fr);
+      gap: 2rem;
+      padding-top: 1.25rem;
+    }
+
+    .stream-v3-stage {
+      width: 100%;
+      min-height: 720px;
+      margin: 0;
+    }
+
+    .stream-v3-stage-main {
+      inset: 17% 8% 9% 8%;
+    }
+
+    .stream-v3-stage-value {
+      font-size: clamp(1.85rem, 2.2vw, 2.45rem);
     }
   }
 
   @media (max-width: 1099px) {
+    .stream-v3-hero-grid {
+      gap: 2.3rem;
+      padding-top: 1rem;
+    }
+
+    .stream-v3-hero-title {
+      font-size: clamp(2.55rem, 7.1vw, 4.1rem);
+      max-width: 30rem;
+    }
+
+    .stream-v3-hero-subtitle {
+      max-width: 34rem;
+      font-size: 1rem;
+      line-height: 1.65;
+    }
+
     .stream-v3-stage {
-      min-height: 708px;
+      min-height: 560px;
     }
 
     .stream-v3-stage-header {
@@ -987,9 +1094,42 @@
     .stream-v3-stage-health {
       width: 100%;
     }
+
+    .stream-v3-stage-main {
+      inset: 16% 8% 8% 8%;
+    }
+
+    .stream-v3-stage-rings span:nth-child(1) {
+      width: 240px;
+      height: 240px;
+    }
+
+    .stream-v3-stage-rings span:nth-child(2) {
+      width: 332px;
+      height: 332px;
+    }
+
+    .stream-v3-stage-rings span:nth-child(3) {
+      width: 420px;
+      height: 420px;
+    }
   }
 
   @media (max-width: 767px) {
+    .stream-v3-hero-grid {
+      gap: 2rem;
+      padding: 0.75rem 0 0.85rem;
+    }
+
+    .stream-v3-hero-title {
+      font-size: clamp(2.15rem, 12vw, 3.55rem);
+      max-width: 100%;
+    }
+
+    .stream-v3-hero-subtitle {
+      max-width: 100%;
+    }
+
     .stream-v3-section,
     .stream-v3-cta {
       padding: 1.15rem;
@@ -1002,12 +1142,26 @@
     }
 
     .stream-v3-stage {
-      min-height: 612px;
+      min-height: 760px;
     }
 
     .stream-v3-stage-main {
-      padding: 1rem;
-      gap: 0.9rem;
+      inset: 14% 4% 7% 4%;
+      padding: 0.9rem;
+      gap: 0.8rem;
+    }
+
+    .stream-v3-stage-topbar {
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 0.6rem;
+    }
+
+    .stream-v3-stage-badge,
+    .stream-v3-stage-status {
+      padding: 0.38rem 0.7rem;
+      font-size: 0.64rem;
+      letter-spacing: 0.14em;
     }
 
     .stream-v3-stage-rings {
@@ -1015,9 +1169,9 @@
     }
 
     .stream-v3-stage-glow {
-      inset: 18% 16% 14%;
-      filter: blur(44px);
-      opacity: 0.62;
+      inset: 22% 16% 18%;
+      filter: blur(38px);
+      opacity: 0.46;
     }
 
     .stream-v3-stage-visual,
@@ -1028,8 +1182,8 @@
     }
 
     .stream-v3-bars {
-      min-height: 112px;
-      gap: 0.32rem;
+      min-height: 84px;
+      gap: 0.22rem;
     }
 
     .stream-v3-pill-row {
@@ -1041,9 +1195,41 @@
       font-size: 0.68rem;
       letter-spacing: 0.13em;
     }
+
+    .stream-v3-routing-list span {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.25rem;
+    }
+
+    .stream-v3-route-card__top {
+      grid-template-columns: 1fr;
+      align-items: start;
+    }
+
+    .stream-v3-route-card__top span {
+      justify-self: start;
+    }
+
+    .stream-v3-route-card__top strong,
+    .stream-v3-route-card__meta strong,
+    .stream-v3-routing-list strong {
+      font-size: 0.96rem;
+      line-height: 1.35;
+    }
+
+    .stream-v3-routing-list em {
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .stream-v3-stage {
+      transform: none !important;
+      transition: none !important;
+    }
+
     .stream-v3-noise::before,
     .stream-v3-meteor,
     .stream-v3-chip-shell,

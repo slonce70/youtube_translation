@@ -393,6 +393,8 @@ async def _apply_schema_changes(conn):
 
     # Add missing columns to assets table
     asset_columns = [
+        "storage_backend",
+        "storage_key",
         "asset_type",
         "video_codec",
         "audio_codec",
@@ -412,6 +414,8 @@ async def _apply_schema_changes(conn):
             text(
                 """
                 ALTER TABLE assets
+                ADD COLUMN IF NOT EXISTS storage_backend TEXT NOT NULL DEFAULT 'filesystem',
+                ADD COLUMN IF NOT EXISTS storage_key TEXT,
                 ADD COLUMN IF NOT EXISTS asset_type TEXT NOT NULL DEFAULT 'video',
                 ADD COLUMN IF NOT EXISTS video_codec TEXT,
                 ADD COLUMN IF NOT EXISTS audio_codec TEXT,
@@ -428,6 +432,12 @@ async def _apply_schema_changes(conn):
                 """
             )
         )
+
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_assets_storage_backend ON assets(storage_backend)"
+        )
+    )
 
     await conn.execute(
         text("CREATE INDEX IF NOT EXISTS idx_assets_asset_type ON assets(asset_type)")

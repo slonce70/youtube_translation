@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.database import (
     CollectionItem,
     MediaCollection,
@@ -17,6 +20,96 @@ from app.models.database import (
 )
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_ASSET_STORAGE_BACKENDS = {"filesystem", "object_storage"}
+
+
+def normalize_storage_backend(raw_value: object) -> str:
+    if raw_value is None:
+        return "filesystem"
+    candidate = str(raw_value).strip().lower()
+    if not candidate:
+        return "filesystem"
+    if candidate not in SUPPORTED_ASSET_STORAGE_BACKENDS:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unsupported asset storage backend: {candidate}",
+        )
+    return candidate
+
+
+def require_user_filesystem_path(
+    raw_path: str, user_id: UUID, *, must_exist: bool
+) -> Path:
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="storage_path is required",
+        )
+
+    candidate = Path(raw_path).expanduser().resolve(strict=False)
+    upload_root = Path(settings.upload_dir).resolve(strict=False)
+    expected_root = (upload_root / str(user_id)).resolve(strict=False)
+
+    if candidate != expected_root and expected_root not in candidate.parents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Asset storage_path must be within the user's upload directory",
+        )
+
+    if must_exist and (not candidate.exists() or not candidate.is_file()):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset file missing on disk",
+        )
+
+    return candidate
+
+
+def get_asset_storage_backend(asset: object) -> str:
+    return normalize_storage_backend(getattr(asset, "storage_backend", None))
+
+
+def get_asset_storage_key(asset: object) -> Optional[str]:
+    backend = get_asset_storage_backend(asset)
+    storage_key = getattr(asset, "storage_key", None)
+    if isinstance(storage_key, str) and storage_key.strip():
+        return storage_key.strip()
+    if backend == "filesystem":
+        storage_path = getattr(asset, "storage_path", None)
+        if isinstance(storage_path, str) and storage_path.strip():
+            return str(Path(storage_path).expanduser().resolve(strict=False))
+    return None
+
+
+def resolve_asset_local_path(asset: object, user_id: UUID, *, must_exist: bool) -> Path:
+    backend = get_asset_storage_backend(asset)
+    storage_path = getattr(asset, "storage_path", None)
+
+    if backend == "filesystem":
+        return require_user_filesystem_path(
+            storage_path,
+            user_id,
+            must_exist=must_exist,
+        )
+
+    local_path = require_user_filesystem_path(
+        storage_path,
+        user_id,
+        must_exist=False,
+    )
+    if local_path.exists() and local_path.is_file():
+        return local_path
+
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": "asset_local_file_unavailable",
+            "message": "Asset local cache is unavailable; remote hydration is not implemented yet.",
+            "storage_backend": backend,
+            "storage_key": get_asset_storage_key(asset),
+        },
+    )
 
 
 async def apply_storage_delta(

@@ -14,7 +14,7 @@ from app.models.database import (
     UserActivityLog,
     UserProfile,
 )
-from app.services.assets.service import AssetService
+from app.services.assets.service import AssetDownloadService, AssetService
 
 
 @pytest.mark.asyncio
@@ -336,7 +336,75 @@ async def test_optimize_asset_queues_transcode_for_incompatible_asset(tmp_path):
         settings.upload_dir = original_upload_dir
 
 
+def test_asset_download_service_resolves_filesystem_asset(tmp_path):
+    user_id = uuid4()
+    upload_root = tmp_path / "uploads"
+    user_dir = upload_root / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    asset_path = user_dir / "clip.mp4"
+    asset_path.write_text("video")
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+
+    try:
+        asset = Asset(
+            user_id=user_id,
+            filename="clip.mp4",
+            storage_path=str(asset_path),
+            storage_backend="filesystem",
+            size_bytes=asset_path.stat().st_size,
+            asset_type="video",
+        )
+
+        resolved = AssetDownloadService.ensure_file_exists(asset, user_id)
+
+        assert resolved == asset_path.resolve()
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
+def test_asset_download_service_rejects_object_storage_asset_without_local_cache(
+    tmp_path,
+):
+    user_id = uuid4()
+    upload_root = tmp_path / "uploads"
+    user_dir = upload_root / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    asset_path = user_dir / "remote-cache.mp4"
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+
+    try:
+        asset = Asset(
+            user_id=user_id,
+            filename="remote.mp4",
+            storage_path=str(asset_path),
+            storage_backend="object_storage",
+            storage_key="assets/remote.mp4",
+            size_bytes=1024,
+            asset_type="video",
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            AssetDownloadService.ensure_file_exists(asset, user_id)
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["error"] == "asset_local_file_unavailable"
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
 async def _ensure_asset_columns(session):
+    await session.execute(
+        text(
+            "ALTER TABLE assets ADD COLUMN IF NOT EXISTS storage_backend TEXT DEFAULT 'filesystem'"
+        )
+    )
+    await session.execute(
+        text("ALTER TABLE assets ADD COLUMN IF NOT EXISTS storage_key TEXT")
+    )
     await session.execute(
         text(
             "ALTER TABLE assets ADD COLUMN IF NOT EXISTS asset_type TEXT DEFAULT 'video'"

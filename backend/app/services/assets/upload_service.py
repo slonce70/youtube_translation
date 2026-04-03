@@ -187,6 +187,7 @@ class AssetUploadService:
             user_id=asset_owner_id,
             filename=filename_override or file_path.name,
             storage_path=str(file_path),
+            storage_backend="filesystem",
             size_bytes=size_bytes,
             duration_seconds=stream_info.get("duration"),
             meta=stream_info,

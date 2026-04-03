@@ -202,6 +202,12 @@ user_profiles (synced on first login)
 4. FFprobe analyzes compatibility
 5. Metadata stored in database
 
+**Current storage contract (Phase 1 seam):**
+- `assets.storage_path` still points to the local file/cache path used by validation, playlist prep and FFmpeg launch
+- `assets.storage_backend` is additive and defaults to `filesystem`
+- `assets.storage_key` is reserved for future object-storage identity
+- `object_storage` rows are allowed in the data model, but stream prep still requires a hydrated local file; if cache is missing, runtime fails closed instead of silently using a broken path
+
 ### 7. Observability & Monitoring
 
 - **Structured logging** — все сервисы используют `app.core.logging_config` (JSON + masking). Дополнительный middleware `APIMetricsMiddleware` снимает длительность/статус каждого HTTP-запроса и пишет их в кореллируемые логи.

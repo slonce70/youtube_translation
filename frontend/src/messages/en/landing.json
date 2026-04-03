@@ -1,46 +1,46 @@
 {
   "nav": {
     "brand": "YouTube Streaming",
-    "features": "Product tour",
+    "features": "Features",
     "howItWorks": "How it works",
-    "pricing": "Plans & pricing",
-    "benefits": "Why creators stay",
+    "pricing": "Pricing",
+    "benefits": "Why creators use us",
     "startStreaming": "Open dashboard"
   },
   "hero": {
-    "badge": "Keep your channel live day and night",
-    "title": "Always-on YouTube streaming without babysitting OBS",
-    "subtitle": "Upload your shows once, set a simple schedule, and let our platform keep the broadcast running while you sleep.",
-    "primaryCTA": "Start for free",
-    "secondaryCTA": "Watch a quick demo",
-    "trustIndicator": "Free tier included \u2022 Upgrade only when you grow",
+    "badge": "Stream 24/7 on autopilot",
+    "title": "Stop babysitting your YouTube stream",
+    "subtitle": "Upload your videos once, set a schedule, and keep your channel live while you sleep. It's that simple.",
+    "primaryCTA": "Start free",
+    "secondaryCTA": "See it in action",
+    "trustIndicator": "Free forever • No credit card needed",
     "scene": {
-      "badge": "LIVE MATRIX",
+      "badge": "LIVE STATUS",
       "routingLabel": "Signal routing",
       "routingValue": "4 / 4 live",
       "statusLive": "LIVE",
-      "mainDestinationLabel": "Main destination",
+      "mainDestinationLabel": "Main stream",
       "mainDestinationValue": "YouTube RTMPS",
       "statusHealthy": "HEALTHY",
-      "fallbackLabel": "Fallback",
+      "fallbackLabel": "Backup",
       "fallbackValue": "Backup relay armed",
-      "restartLabel": "Restart policy",
+      "restartLabel": "Auto recovery",
       "restartValue": "Auto retry enabled"
     },
     "panel": {
-      "kicker": "Broadcast desk",
-      "title": "An operations cockpit for the stream that never sleeps",
-      "status": "Live orchestration",
-      "playlistLabel": "Active rotation",
-      "playlistTitle": "Night cycle / 14 assets",
+      "kicker": "Your control center",
+      "title": "Everything you need to run a channel that never sleeps",
+      "status": "Live status",
+      "playlistLabel": "Current rotation",
+      "playlistTitle": "Night cycle / 14 videos",
       "playlistItems": {
-        "overnight": "Auto intro plus evergreen episodes",
-        "day": "Prime blocks with sponsor-safe placements",
-        "evening": "Live fallback and scheduled swaps"
+        "overnight": "Intro video plus classic episodes",
+        "day": "Best content for peak hours",
+        "evening": "Backup ready and scheduled swaps"
       },
-      "healthLabel": "System health",
-      "healthDescription": "Failover, alerts, and restart control stay visible in one operator view.",
-      "channelsLabel": "Channels in sync",
+      "healthLabel": "Stream health",
+      "healthDescription": "Monitor connections, spot problems early, and control restarts—all from one dashboard.",
+      "channelsLabel": "Your channels",
       "channels": {
         "music": {
           "name": "Music",
@@ -58,170 +58,170 @@
     }
   },
   "features": {
-    "eyebrow": "Capabilities",
-    "title": "Built for creators who stream around the clock",
-    "intro": "Instead of a generic video SaaS grid, we present the platform as an operating system for continuous broadcast: more clarity, less noise, and stronger control for the whole team.",
+    "eyebrow": "What you get",
+    "title": "Built for creators who want to stream around the clock",
+    "intro": "Everything you need to keep your channel live without thinking about it. Simple controls, powerful automation, and peace of mind across all your channels.",
     "items": {
       "streaming": {
-        "title": "Hands-off broadcasting",
-        "description": "Loop playlists, swap fallbacks, and recover from hiccups automatically\u2014no 3 a.m. restarts."
+        "title": "Set it and forget it",
+        "description": "Loop your videos, swap backups when needed, and recover from problems automatically. No 3 a.m. wake-up calls."
       },
       "multiChannel": {
-        "title": "All channels in one place",
-        "description": "Connect every YouTube channel you manage and switch between them from a single dashboard."
+        "title": "Manage all your channels here",
+        "description": "Connect every YouTube channel you own and switch between them from one dashboard."
       },
       "quota": {
-        "title": "Usage guardrails",
-        "description": "Realtime gauges for storage, destinations, and runtime so you stay ahead of platform limits."
+        "title": "Stay in control",
+        "description": "See your storage, stream slots, and usage in real time so you never hit platform limits."
       },
       "quality": {
-        "title": "Original quality preserved",
-        "description": "We pass through your H.264 or HEVC source without re-encoding, so viewers see exactly what you uploaded."
+        "title": "Keep your quality",
+        "description": "Your videos stream at the exact quality you uploaded—no re-encoding, no loss."
       },
       "schedule": {
-        "title": "Set-and-forget scheduling",
-        "description": "Drag a calendar, plan special events, and trigger backups automatically when the playlist ends."
+        "title": "Plan it out",
+        "description": "Drag and drop a calendar, schedule special events, and trigger backups when playlists end."
       },
       "uploads": {
-        "title": "Resumable uploads",
-        "description": "Large files finish faster with tusd. Pause, resume, and never worry about losing progress again."
+        "title": "Upload stays put",
+        "description": "Big files? No problem. Pause and resume uploads anytime without losing your progress."
       }
     }
   },
   "howItWorks": {
-    "eyebrow": "Workflow",
-    "title": "From upload to live in four clear steps",
+    "eyebrow": "Get started",
+    "title": "Four simple steps to live streaming",
     "steps": {
       "upload": {
-        "title": "Load your files",
-        "description": "Drop pre-produced sets into secure storage with resumable uploads."
+        "title": "Upload your videos",
+        "description": "Drop files into secure storage. Pause and resume uploads whenever you want."
       },
       "playlist": {
-        "title": "Arrange the rotation",
-        "description": "Create playlists, balance durations, and define what plays next."
+        "title": "Build a rotation",
+        "description": "Create playlists, arrange your videos, and decide what plays next."
       },
       "stream": {
         "title": "Go live",
-        "description": "Provision RTMPS outputs for YouTube in one click\u2014FFmpeg orchestration included."
+        "description": "Start streaming to YouTube with one click. We handle all the technical stuff."
       },
       "monitor": {
-        "title": "Monitor the feed",
-        "description": "Track bitrate, quota usage, and health alerts directly from the admin console."
+        "title": "Watch and relax",
+        "description": "Check on your stream anytime. See bitrate, storage, alerts, and health from your dashboard."
       }
     }
   },
   "stats": {
     "storageMax": {
       "label": "Storage per workspace",
-      "description": "Plans include from {value} GB and scale as your catalog grows"
+      "description": "Start with {value} GB and grow as your video library expands"
     },
     "streamsMax": {
-      "label": "Concurrent streams",
-      "description": "Add more slots as you expand to 24/7 or parallel channels"
+      "label": "Channels you can run",
+      "description": "Add more slots as you grow from one channel to many"
     },
     "destinationsMax": {
-      "label": "Destinations per stream",
-      "description": "Send the same feed to the platforms you rely on"
+      "label": "Destination streams",
+      "description": "Send the same video feed to multiple platforms at once"
     },
     "resolutionMax": {
-      "label": "Maximum passthrough",
-      "description": "Up to {value} at 60 fps for top plans"
+      "label": "Maximum quality",
+      "description": "Stream up to {value} at 60 fps on top plans"
     }
   },
   "pricing": {
-    "eyebrow": "Pricing",
-    "title": "Plans for every type of channel",
-    "subtitle": "Experiment on the free tier and upgrade only when you need extra streams, storage, or support.",
+    "eyebrow": "Plans",
+    "title": "Pick the plan that fits your channel",
+    "subtitle": "Try free first. Upgrade whenever you're ready for more streams, storage, or support.",
     "ctaLabel": "Choose plan",
     "billingPeriod": "/month",
     "freeForever": "forever",
-    "selectedSummary": "{resolution} \u00b7 {streams} stream slots \u00b7 {destinations} destinations",
+    "selectedSummary": "{resolution} · {streams} stream slots · {destinations} destinations",
     "popularBadge": "Popular",
     "freeCard": {
       "badge": "Start here",
       "title": "Free forever",
-      "subtitle": "Perfect for testing automations or keeping a hobby channel online with zero risk.",
+      "subtitle": "Perfect for testing out automation or keeping a hobby channel online with zero risk.",
       "button": "Create free workspace",
-      "note": "Start in a free workspace and add more power only when your broadcast grows.",
+      "note": "Start free and add power only when your channel grows.",
       "features": [
-        "1 live channel at a time",
-        "8 hours of streaming each day",
-        "3 GB of secure storage",
-        "Resumable uploads & live health checks"
+        "1 live channel",
+        "8 hours of streaming per day",
+        "3 GB of storage",
+        "Upload and health monitoring"
       ]
     },
     "planLabels": {
       "free": {
         "name": "Free",
-        "tagline": "Launch your stream risk-free"
+        "tagline": "Test the waters free"
       },
       "fhd_start": {
         "name": "FHD Start",
-        "tagline": "Step up from manual OBS sessions"
+        "tagline": "Leave manual streaming behind"
       },
       "fhd_flow": {
         "name": "FHD Flow",
-        "tagline": "Most popular for monetised channels",
-        "badge": "Creators' choice"
+        "tagline": "Perfect for channels making money",
+        "badge": "Best choice"
       },
       "fhd_boost": {
         "name": "FHD Boost",
-        "tagline": "Advanced automations and bigger libraries"
+        "tagline": "Big libraries and advanced scheduling"
       },
       "uhd_start": {
         "name": "4K Start",
-        "tagline": "Launch your first true 4K60 channel"
+        "tagline": "Your first 4K60 channel"
       },
       "uhd_flow": {
         "name": "4K Flow",
-        "tagline": "Redundant UHD output for growing teams"
+        "tagline": "Multiple 4K streams for growing teams"
       },
       "uhd_boost": {
         "name": "4K Boost",
-        "tagline": "Studios that need concierge support",
+        "tagline": "Full support for studios and teams",
         "badge": "Teams"
       }
     },
     "selection": {
       "badges": {
-        "current": "Current plan",
+        "current": "Your plan",
         "selected": "Selected"
       },
       "button": {
-        "default": "Buy plan",
-        "selected": "Continue with {plan}",
-        "current": "Current plan"
+        "default": "Choose plan",
+        "selected": "Pick {plan}",
+        "current": "Your current plan"
       }
     },
     "featureLabels": {
-      "storage": "Includes {value} GB of secure storage",
-      "streams": "{value} parallel stream slots",
-      "destinations": "Stream to {value} destinations at once",
-      "resolution": "{resolution} passthrough at up to {fps} fps",
-      "dailyLimit": "Daily streaming window: up to {hours} hours",
-      "noDailyLimit": "Daily streaming window: no cap (24/7)",
-      "branding": "Channel branding toolkit included",
-      "automation": "Automation & scheduled playlist swaps",
-      "support": "Support response: {value}",
-      "manager": "Dedicated success manager"
+      "storage": "{value} GB of storage included",
+      "streams": "{value, plural, one {# concurrent stream slot} other {# concurrent stream slots}}",
+      "destinations": "{value, plural, one {Stream to # platform at once} other {Stream to # platforms at once}}",
+      "resolution": "{resolution} streaming at {fps} fps",
+      "dailyLimit": "Stream up to {hours} hours per day",
+      "noDailyLimit": "Stream 24/7 with no limits",
+      "branding": "Tools to brand your channel",
+      "automation": "Automatic scheduling and playlist swaps",
+      "support": "Get help via {value}",
+      "manager": "Personal success manager"
     },
     "supportLevels": {
       "community": "Community forum",
       "standard": "Email within 1 business day",
-      "priority": "Priority queue (under 12 hours)",
-      "sameDay": "Same-day engineer reply",
+      "priority": "Priority support (under 12 hours)",
+      "sameDay": "Engineer response same day",
       "dedicated": "Direct line to your manager"
     }
   },
   "comparison": {
-    "eyebrow": "Plan matrix",
-    "title": "Snapshot of what's included",
-    "subtitle": "Every plan delivers secure storage, analytics, and automation-ready infrastructure.",
+    "eyebrow": "Compare plans",
+    "title": "See what's included",
+    "subtitle": "Every plan comes with secure storage, streaming analytics, and automation tools.",
     "features": {
-      "storage": "Storage (GB)",
+      "storage": "Storage",
       "streams": "Concurrent streams",
       "destinations": "Destinations",
-      "dailyLimit": "Daily streaming",
+      "dailyLimit": "Daily streaming limit",
       "resolution": "Max resolution",
       "branding": "Branding tools",
       "automation": "Automation",
@@ -229,57 +229,57 @@
       "manager": "Success manager"
     },
     "notes": {
-      "dailyLimit": "\u201c24/7\u201d means no daily cap.",
-      "resolution": "Lower resolutions are available on every plan."
+      "dailyLimit": "24/7 means no daily limit.",
+      "resolution": "Lower resolutions available on all plans."
     }
   },
   "benefits": {
-    "eyebrow": "Why teams stay",
-    "title": "Why serious creators rely on us",
-    "intro": "A streaming service should do more than keep video online. It should remove operational weight, reduce risk, and give your team peace of mind across time zones.",
+    "eyebrow": "Why creators love it",
+    "title": "Peace of mind for your stream",
+    "intro": "A good streaming platform does more than just keep video online. It removes the stress, reduces problems, and lets your whole team breathe easy—no matter what time zone you're in.",
     "items": {
       "quality": {
-        "title": "Sleep through the night",
-        "description": "Your stream stays live while we handle restarts, failovers, and alerts."
+        "title": "Actually sleep at night",
+        "description": "Your stream stays live while we handle restarts, backups, and alerts automatically."
       },
       "secure": {
-        "title": "Enterprise-grade security",
-        "description": "Row-level access, audit logs, and encrypted storage keep your catalog safe."
+        "title": "Your content is safe",
+        "description": "Enterprise security, access controls, and encrypted storage keep your videos protected."
       },
       "simple": {
-        "title": "Operations on autopilot",
-        "description": "Spend time making content, not juggling scripts, cron jobs, and ad-hoc tooling."
+        "title": "Run on autopilot",
+        "description": "Make content instead of babysitting scripts, cron jobs, and tools. Focus on what matters."
       },
       "support": {
-        "title": "Streaming-first support",
-        "description": "Chat with engineers who keep streaming pipelines healthy every day."
+        "title": "Get real help",
+        "description": "Talk to engineers who live and breathe streaming. They get your problems."
       }
     }
   },
   "cta": {
-    "eyebrow": "Launch window",
-    "title": "Launch your always-on stream today",
-    "subtitle": "Music channels, podcasts, radio stations, and webcams run nonstop on our platform.",
-    "button": "Start for free",
-    "panelLabel": "Start now",
-    "note": "Build your own 24/7 workflow without late-night operator shifts.",
+    "eyebrow": "Ready?",
+    "title": "Start your always-on stream today",
+    "subtitle": "Music channels, podcasts, radio shows, and webcams. Run them 24/7 with zero headaches.",
+    "button": "Start free",
+    "panelLabel": "Get started",
+    "note": "Build your own 24/7 stream without late-night operator shifts.",
     "trustIndicators": {
       "noCard": "No credit card required",
       "freeStorage": "Free plan includes storage and daily streaming",
-      "cancelAnytime": "Upgrade, downgrade, or cancel anytime"
+      "cancelAnytime": "Change your plan or cancel anytime"
     }
   },
   "footer": {
     "brand": {
       "name": "YouTube Streaming",
-      "tagline": "Automation platform for always-on creators"
+      "tagline": "24/7 streaming made simple"
     },
     "product": {
       "title": "Product",
-      "features": "Product tour",
-      "pricing": "Plans & pricing",
-      "docs": "Documentation",
-      "api": "API reference"
+      "features": "Features",
+      "pricing": "Pricing",
+      "docs": "Docs",
+      "api": "API"
     },
     "company": {
       "title": "Company",
@@ -290,11 +290,11 @@
     },
     "legal": {
       "title": "Legal",
-      "terms": "Terms of service",
-      "privacy": "Privacy policy",
+      "terms": "Terms",
+      "privacy": "Privacy",
       "security": "Security",
       "compliance": "Compliance"
     },
-    "copyright": "\u00a9 2024 YouTube Streaming. All rights reserved."
+    "copyright": "© 2026 YouTube Streaming. All rights reserved."
   }
 }

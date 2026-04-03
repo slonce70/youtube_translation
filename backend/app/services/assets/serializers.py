@@ -28,6 +28,8 @@ from app.schemas.api import (
     AssetUsageSummary,
 )
 
+from .storage import get_asset_storage_backend, get_asset_storage_key
+
 
 async def collect_asset_folders(
     db: AsyncSession, asset_ids: Sequence[UUID]
@@ -242,6 +244,8 @@ def serialize_loaded_asset(asset: Asset) -> AssetResponse:
         user_id=asset.user_id,
         filename=asset.filename,
         storage_path=asset.storage_path,
+        storage_backend=get_asset_storage_backend(asset),
+        storage_key=get_asset_storage_key(asset),
         size_bytes=asset.size_bytes,
         duration_seconds=asset.duration_seconds,
         meta=asset.meta,

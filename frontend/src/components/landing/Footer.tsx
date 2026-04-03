@@ -33,7 +33,7 @@ export function Footer({ onStartStreaming }: Props) {
                   <Radio className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <div className="landing-display text-2xl text-white">{t('brand.name')}</div>
+                  <div className="stream-v3-display text-xl font-semibold text-white tracking-tight">{t('brand.name')}</div>
                   <div className="text-sm text-slate-400">{t('brand.tagline')}</div>
                 </div>
               </div>
@@ -57,6 +57,7 @@ export function Footer({ onStartStreaming }: Props) {
                 {t('copyright')}
               </p>
               <Button
+                variant="ghost"
                 className="mt-6 w-full rounded-2xl border border-white/10 bg-white text-slate-950 hover:bg-slate-100"
                 onClick={() => {
                   if (onStartStreaming) {

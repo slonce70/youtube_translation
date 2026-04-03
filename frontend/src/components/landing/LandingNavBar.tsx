@@ -69,7 +69,7 @@ export function LandingNavBar({ onStartStreaming }: Props) {
                 <Radio className="h-5 w-5 text-white" />
               </div>
               <div className="hidden sm:block">
-                <div className="landing-display text-2xl text-white">
+                <div className="stream-v3-display text-xl font-semibold text-white tracking-tight">
                   {t('brand')}
                 </div>
               </div>
@@ -93,6 +93,7 @@ export function LandingNavBar({ onStartStreaming }: Props) {
             <LanguageSwitcher />
             <div className="hidden md:block">
               <Button
+                variant="ghost"
                 size="sm"
                 className="rounded-full border border-white/12 bg-white/92 px-5 py-2 text-slate-950 shadow-[0_18px_36px_-24px_rgba(0,0,0,0.7)] hover:-translate-y-0.5 hover:bg-white"
                 onClick={() => {
@@ -131,6 +132,7 @@ export function LandingNavBar({ onStartStreaming }: Props) {
                 </div>
 
                 <Button
+                  variant="ghost"
                   className="mt-4 w-full rounded-2xl border border-white/12 bg-white py-3 text-slate-950 shadow-[0_18px_36px_-24px_rgba(0,0,0,0.7)]"
                   onClick={() => {
                     setMobileMenuOpen(false)

@@ -98,6 +98,30 @@ supervisor_pid_is_valid() {
     [[ "${candidate}" =~ ^[0-9]+$ ]] && [ "${candidate}" -gt 0 ]
 }
 
+supervisor_conf_supports_daemon_start() {
+    local config_path="${1:-}"
+
+    [ -f "${config_path}" ] && grep -q '^\[supervisord\]' "${config_path}"
+}
+
+read_supervisor_pid() {
+    local config_path="${1:-}"
+    local raw_output=""
+
+    if ! tool_is_available "${SUPERVISOR_CTL_BIN}"; then
+        return
+    fi
+
+    raw_output=$("${SUPERVISOR_CTL_BIN}" -c "${config_path}" pid 2>&1 || true)
+    printf '%s' "${raw_output}"
+}
+
+extract_supervisor_pid() {
+    local raw_output="${1:-}"
+
+    printf '%s\n' "${raw_output}" | awk '/^[0-9]+$/{pid=$0} END{print pid}'
+}
+
 echo "🚀 Starting Backend..."
 echo "📍 API will be at: http://localhost:${API_PORT}"
 echo "❤️  Health: http://localhost:${API_PORT}/health"
@@ -146,13 +170,32 @@ if [ "${REQUESTED_RUNTIME_MODE}" = "supervisor" ]; then
     fi
 
     RUNNING_PID=""
-    if tool_is_available "${SUPERVISOR_CTL_BIN}"; then
-        RUNNING_PID=$("${SUPERVISOR_CTL_BIN}" -c "${SUPERVISOR_CONF_PATH}" pid 2>/dev/null | tr -d '[:space:]' || true)
+    SUPERVISOR_PID_RAW=""
+    SUPERVISOR_RETRIES=1
+    if ! supervisor_conf_supports_daemon_start "${SUPERVISOR_CONF_PATH}"; then
+        SUPERVISOR_RETRIES=5
     fi
 
-    if [ -n "${RUNNING_PID}" ] && ! supervisor_pid_is_valid "${RUNNING_PID}"; then
-        echo "⚠️  Ігнорую невалідну відповідь supervisorctl pid: ${RUNNING_PID}"
+    for attempt in $(seq 1 "${SUPERVISOR_RETRIES}"); do
+        if ! tool_is_available "${SUPERVISOR_CTL_BIN}"; then
+            break
+        fi
+
+        SUPERVISOR_PID_RAW="$(read_supervisor_pid "${SUPERVISOR_CONF_PATH}")"
+        RUNNING_PID="$(extract_supervisor_pid "${SUPERVISOR_PID_RAW}")"
+
+        if [ -n "${RUNNING_PID}" ] && supervisor_pid_is_valid "${RUNNING_PID}"; then
+            break
+        fi
+
         RUNNING_PID=""
+        if [ "${SUPERVISOR_RETRIES}" -gt 1 ] && [ "${attempt}" -lt "${SUPERVISOR_RETRIES}" ]; then
+            sleep 1
+        fi
+    done
+
+    if [ -n "${SUPERVISOR_PID_RAW}" ] && [ -z "${RUNNING_PID}" ]; then
+        echo "⚠️  Ігнорую невалідну відповідь supervisorctl pid: $(printf '%s' "${SUPERVISOR_PID_RAW}" | tr -d '\n')"
     fi
 
     if [ -n "${RUNNING_PID}" ] && [ "${RUNNING_PID}" != "unknown" ]; then
@@ -160,6 +203,9 @@ if [ "${REQUESTED_RUNTIME_MODE}" = "supervisor" ]; then
         export STREAM_RUNTIME_MODE="supervisor"
     elif ! tool_is_available "${SUPERVISOR_CTL_BIN}"; then
         echo "⚠️  supervisorctl не знайдено (${SUPERVISOR_CTL_BIN}). Перемикаю STREAM_RUNTIME_MODE на manager."
+        export STREAM_RUNTIME_MODE="manager"
+    elif ! supervisor_conf_supports_daemon_start "${SUPERVISOR_CONF_PATH}"; then
+        echo "⚠️  Віддалений supervisor endpoint недоступний через ${SUPERVISOR_CONF_PATH}. Не можу стартувати локальний supervisord цим client-only config, тому перемикаю STREAM_RUNTIME_MODE на manager."
         export STREAM_RUNTIME_MODE="manager"
     elif ! tool_is_available "${SUPERVISORD_BIN}"; then
         echo "⚠️  supervisord не знайдено (${SUPERVISORD_BIN}) і зовнішній runner недоступний. Перемикаю STREAM_RUNTIME_MODE на manager."

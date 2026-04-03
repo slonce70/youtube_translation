@@ -26,6 +26,11 @@ from app.models.database import (
     StreamAsset,
     StreamDestination,
 )
+from app.services.assets.storage import (
+    get_asset_storage_backend,
+    get_asset_storage_key,
+    resolve_asset_local_path,
+)
 from app.streaming.playlist_builder import PlaylistBuilder, PlaylistFileSet
 
 ALLOWED_MIX_MODES = {"video_only", "audio_only", "mixed"}
@@ -41,27 +46,23 @@ def build_asset_payload(asset_obj: Asset, loop_mode: str = "loop") -> Dict[str, 
         if isinstance(video_meta, dict):
             duration = video_meta.get("duration")
 
-    # Verify that storage_path points to an existing file
-    storage_path = Path(asset_obj.storage_path)
-    if not storage_path.exists():
-        logger.error(
-            "Asset %s (%s) has invalid storage_path: %s (file not found)",
-            asset_obj.id,
-            asset_obj.filename,
-            storage_path,
-        )
-        resolved_path = storage_path
-    else:
-        resolved_path = storage_path.resolve()
+    resolved_path = resolve_asset_local_path(
+        asset_obj,
+        asset_obj.user_id,
+        must_exist=True,
+    )
 
     payload = {
-        "path": str(resolved_path),
+        "path": str(resolved_path.resolve()),
         "meta": meta,
         "asset_id": str(asset_obj.id),
         "filename": asset_obj.filename,
         "compatible_for_copy": asset_obj.compatible_for_copy,
         "validation_errors": asset_obj.validation_errors or [],
         "loop_mode": loop_mode,
+        "storage_backend": get_asset_storage_backend(asset_obj),
+        "storage_key": get_asset_storage_key(asset_obj),
+        "local_file_available": True,
     }
     if duration is not None:
         payload.setdefault("meta", {}).setdefault("duration", duration)
