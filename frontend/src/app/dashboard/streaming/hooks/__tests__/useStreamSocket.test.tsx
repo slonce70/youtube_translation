@@ -42,7 +42,7 @@ function TestHarness() {
 }
 
 describe('useStreamSocket', () => {
-  const originalNodeEnv = process.env.NODE_ENV
+  const originalEnv = process.env
   const originalWebSocket = global.WebSocket
   const createWsToken = api.streams.createWsToken as jest.Mock
 
@@ -53,12 +53,15 @@ describe('useStreamSocket', () => {
       token: 'ws-token',
       expires_at: Math.floor(Date.now() / 1000) + 60,
     })
-    process.env.NODE_ENV = 'development'
+    jest.replaceProperty(process, 'env', {
+      ...process.env,
+      NODE_ENV: 'development',
+    })
     global.WebSocket = MockWebSocket as unknown as typeof WebSocket
   })
 
   afterEach(() => {
-    process.env.NODE_ENV = originalNodeEnv
+    jest.replaceProperty(process, 'env', originalEnv)
     global.WebSocket = originalWebSocket
   })
 

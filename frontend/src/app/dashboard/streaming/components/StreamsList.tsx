@@ -71,6 +71,11 @@ type PresentedStream = {
 
 const GROUP_ORDER: Array<PresentedStream['derived']['group']> = ['live', 'attention', 'scheduled', 'stopped']
 
+function hasRetryHistory(runtimeRestart: Stream['runtime_restart'] | null | undefined): boolean {
+  if (!runtimeRestart?.enabled) return false
+  return runtimeRestart.attempts > 0 || Boolean(runtimeRestart.last_restart_at || runtimeRestart.last_failure_at)
+}
+
 export function StreamsList({
   streams,
   isLoading,
@@ -161,6 +166,7 @@ export function StreamsList({
                       const playlistName = stream.playlist_id
                         ? playlistMap.get(stream.playlist_id)?.name ?? t('streams.unknownPlaylist')
                         : t('streams.unknownPlaylist')
+                      const retryVisible = hasRetryHistory(derived.runtimeRestart)
                       const primaryButton = (() => {
                         if (derived.primaryAction === 'stop') {
                           return (
@@ -298,7 +304,7 @@ export function StreamsList({
                                   <div>
                                     <p className="text-slate-500 dark:text-slate-400">{t('streams.labels.autoRetry')}</p>
                                     <p className="font-medium text-slate-900 dark:text-white">
-                                      {derived.runtimeRestart.enabled
+                                      {retryVisible
                                         ? t('streams.retry.attempt', {
                                             current: derived.runtimeRestart.attempts,
                                             max: derived.runtimeRestart.max_attempts,

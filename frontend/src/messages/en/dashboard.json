@@ -56,6 +56,12 @@
       "primary": "Open live control",
       "secondary": "Review plans"
     },
+    "resume": {
+      "title": "Open streams and start your next broadcast",
+      "description": "Your setup is ready, but nothing is live right now. Open streaming to start a stream, adjust schedules, or review the current lineup.",
+      "primary": "Open streaming",
+      "secondary": "Review files"
+    },
     "live": {
       "title": "{count} stream live right now",
       "description": "Your channel is on air. Open streaming to stop, adjust, or inspect the live runtime in more detail.",
