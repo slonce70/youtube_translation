@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     ffmpeg_video_bufsize_kbps: int = 12000
     ffmpeg_audio_bitrate_kbps: int = 160
     ffmpeg_keyframe_interval_seconds: float = 2.0  # YouTube/Twitch recommend 2s, max 4s
+    ffmpeg_tee_onfail_policy: str = "ignore"
     ffmpeg_cleanup_interval_seconds: int = 60
     stream_log_max_bytes: int = 52428800  # 50MB
     stream_log_max_backups: int = 5
@@ -386,6 +387,14 @@ class Settings(BaseSettings):
                 "FFMPEG_KEYFRAME_INTERVAL_SECONDS must be between 0.5 and 4.0 seconds"
             )
         return value
+
+    @field_validator("ffmpeg_tee_onfail_policy")
+    @classmethod
+    def validate_ffmpeg_tee_onfail_policy(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"ignore", "abort"}:
+            raise ValueError("FFMPEG_TEE_ONFAIL_POLICY must be 'ignore' or 'abort'")
+        return normalized
 
 
 settings = Settings()  # type: ignore[call-arg]

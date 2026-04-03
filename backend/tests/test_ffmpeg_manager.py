@@ -1,6 +1,7 @@
 """
 Tests for FFmpeg stream manager (process management, cleanup).
 """
+
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,33 +16,33 @@ from app.streaming.playlist_builder import PlaylistFileSet
 
 class TestFFmpegStreamManager:
     """Test FFmpeg stream manager functionality"""
-    
+
     @pytest.mark.asyncio
     async def test_cleanup_dead_streams(self):
         """Test cleanup of dead stream info to prevent memory leaks"""
         manager = FFmpegStreamManager()
-        
+
         # Create mock processes
         dead_process = MagicMock()
         dead_process.returncode = 1  # Process has exited
-        
+
         alive_process = MagicMock()
         alive_process.returncode = None  # Process still running
-        
+
         # Add streams to manager
         manager.active_streams["dead-stream"] = dead_process
         manager.active_streams["alive-stream"] = alive_process
-        
+
         manager.stream_info["dead-stream"] = {"started_at": "2024-01-01"}
         manager.stream_info["alive-stream"] = {"started_at": "2024-01-01"}
-        
+
         # Run cleanup
         await manager.cleanup_dead_streams()
-        
+
         # Verify dead stream was removed
         assert "dead-stream" not in manager.active_streams
         assert "dead-stream" not in manager.stream_info
-        
+
         # Verify alive stream still exists
         assert "alive-stream" in manager.active_streams
         assert "alive-stream" in manager.stream_info
@@ -60,64 +61,64 @@ class TestFFmpegStreamManager:
         await manager.cleanup_dead_streams()
 
         assert "stale-stream" not in manager.stream_info
-    
+
     @pytest.mark.asyncio
     async def test_stop_stream_cleans_up_orphaned_info(self):
         """Test that stop_stream cleans up orphaned stream info"""
         manager = FFmpegStreamManager()
-        
+
         # Add orphaned stream info (no active process)
         manager.stream_info["orphaned-stream"] = {"started_at": "2024-01-01"}
-        
+
         # Try to stop non-existent stream
         result = await manager.stop_stream("orphaned-stream")
-        
+
         # Should return False (not running)
         assert result is False
-        
+
         # But should cleanup the orphaned info
         assert "orphaned-stream" not in manager.stream_info
-    
+
     def test_is_running_returns_false_for_nonexistent_stream(self):
         """Test is_running returns False for streams that don't exist"""
         manager = FFmpegStreamManager()
-        
+
         assert manager.is_running("nonexistent-stream") is False
-    
+
     def test_get_stream_info_returns_none_for_nonexistent_stream(self):
         """Test get_stream_info returns None for streams that don't exist"""
         manager = FFmpegStreamManager()
-        
+
         info = manager.get_stream_info("nonexistent-stream")
         assert info is None
-    
+
     @pytest.mark.asyncio
     async def test_stop_all_streams_cleanup(self):
         """Test that stop_all_streams properly cleans up all streams"""
         manager = FFmpegStreamManager()
-        
+
         # Mock processes
         process1 = AsyncMock()
         process1.returncode = None
         process1.pid = 1234
         process1.send_signal = MagicMock()
         process1.wait = AsyncMock()
-        
+
         process2 = AsyncMock()
         process2.returncode = None
         process2.pid = 5678
         process2.send_signal = MagicMock()
         process2.wait = AsyncMock()
-        
+
         # Add streams
         manager.active_streams["stream1"] = process1
         manager.active_streams["stream2"] = process2
         manager.stream_info["stream1"] = {"pid": 1234}
         manager.stream_info["stream2"] = {"pid": 5678}
-        
+
         # Stop all streams
         await manager.stop_all_streams()
-        
+
         # Verify all streams were removed
         assert len(manager.active_streams) == 0
         assert len(manager.stream_info) == 0
@@ -183,7 +184,10 @@ class TestFFmpegStreamManager:
 
         # Ensure restart attempted
         assert restart_invocation.get("restart_flag") is True
-        assert restart_invocation["metadata"]["user_id"] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        assert (
+            restart_invocation["metadata"]["user_id"]
+            == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        )
 
         # Alert created at least once (warning for restart)
         assert manager._create_system_alert.await_count >= 1
@@ -215,7 +219,9 @@ class TestFFmpegStreamManager:
         # Alert recorded
         assert manager._create_system_alert.await_count == 1
 
-    def test_build_command_includes_bitrate_limits_for_transcoding(self, tmp_path, monkeypatch):
+    def test_build_command_includes_bitrate_limits_for_transcoding(
+        self, tmp_path, monkeypatch
+    ):
         """Ensure explicit bitrate flags are present when source media is not copy-compatible."""
         manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
 
@@ -274,7 +280,12 @@ class TestFFmpegStreamManager:
         assert "tee" in cmd
         tee_index = cmd.index("tee")
         assert tee_index > 0 and cmd[tee_index - 1] == "-f"
-        assert any("fifo_format=flv" in part for part in cmd if part.startswith("[select"))
+        assert any(
+            "fifo_format=flv" in part for part in cmd if part.startswith("[select")
+        )
+        assert any(
+            "onfail=ignore" in part for part in cmd if part.startswith("[select")
+        )
 
         assert plan.copy_video is False
         assert plan.copy_audio is False
@@ -288,12 +299,15 @@ class TestFFmpegStreamManager:
         assert plan.keyframe_gop_frames is not None
         assert plan.keyframe_gop_frames >= 1
         assert plan.multi_destination is True
+        assert plan.tee_onfail_policy == "ignore"
         assert plan.destination_uris == [
             "rtmp://a.youtube.com/live/primary",
             "rtmp://b.youtube.com/live/backup",
         ]
 
-    def test_build_command_keeps_copy_mode_for_multi_destination_when_compatible(self, tmp_path):
+    def test_build_command_keeps_copy_mode_for_multi_destination_when_compatible(
+        self, tmp_path
+    ):
         """Compatible assets should stay in copy mode even when tee muxer fans out to multiple outputs."""
         manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
 
@@ -331,21 +345,71 @@ class TestFFmpegStreamManager:
         assert "-c:v" in cmd and cmd[cmd.index("-c:v") + 1] == "copy"
         assert "-c:a" in cmd and cmd[cmd.index("-c:a") + 1] == "copy"
         assert "-f" in cmd and "tee" in cmd
+        assert any(
+            "onfail=ignore" in part for part in cmd if part.startswith("[select")
+        )
         assert "-b:v" not in cmd
         assert "-b:a" not in cmd
         assert plan.video_bitrate_kbps is None
         assert plan.audio_bitrate_kbps is None
+        assert plan.tee_onfail_policy == "ignore"
+
+    def test_build_command_allows_overriding_tee_failure_policy(
+        self, tmp_path, monkeypatch
+    ):
+        """Operators can switch tee behavior back to abort when they prefer fail-fast handling."""
+        manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
+
+        video_playlist = tmp_path / "video.txt"
+        audio_playlist = tmp_path / "audio.txt"
+        video_playlist.write_text("ffconcat version 1.0\n")
+        audio_playlist.write_text("ffconcat version 1.0\n")
+
+        playlists = PlaylistFileSet(
+            stream_dir=tmp_path,
+            video_playlist=video_playlist,
+            audio_playlist=audio_playlist,
+            mix_mode="mixed",
+            video_loop=True,
+            audio_loop=True,
+            needs_video_placeholder=False,
+            needs_audio_placeholder=False,
+            video_copy_compatible=True,
+            audio_copy_compatible=True,
+            video_assets=[],
+            audio_assets=[],
+        )
+
+        monkeypatch.setattr(settings, "ffmpeg_tee_onfail_policy", "abort")
+        plan = manager._build_command(
+            playlists,
+            [
+                {"url": "rtmp://a.youtube.com/live", "key": "primary"},
+                {"url": "rtmp://b.youtube.com/live", "key": "backup"},
+            ],
+        )
+
+        assert any(
+            "onfail=abort" in part
+            for part in plan.command
+            if part.startswith("[select")
+        )
+        assert plan.tee_onfail_policy == "abort"
 
     def test_init_defers_missing_configured_ffmpeg_path(self, monkeypatch):
         """Implicit env/config paths should not crash manager initialization."""
         monkeypatch.setattr(settings, "ffmpeg_bin", "/nonexistent/custom/ffmpeg")
-        monkeypatch.setattr("app.streaming.ffmpeg_manager.shutil.which", lambda _value: None)
+        monkeypatch.setattr(
+            "app.streaming.ffmpeg_manager.shutil.which", lambda _value: None
+        )
 
         manager = FFmpegStreamManager()
 
         assert manager.ffmpeg_bin == "ffmpeg"
 
-    def test_build_command_audio_only_injects_video_placeholder(self, tmp_path, monkeypatch):
+    def test_build_command_audio_only_injects_video_placeholder(
+        self, tmp_path, monkeypatch
+    ):
         """Audio-only streams should generate a color input for video while reusing audio playlist."""
         manager = FFmpegStreamManager(ffmpeg_bin="ffmpeg")
 
@@ -427,7 +491,9 @@ class TestFFmpegStreamManager:
             needs_audio_placeholder=False,
             video_copy_compatible=True,
             audio_copy_compatible=False,
-            video_assets=[{"path": str(video_playlist), "meta": {"audio": {"codec": "aac"}}}],
+            video_assets=[
+                {"path": str(video_playlist), "meta": {"audio": {"codec": "aac"}}}
+            ],
             audio_assets=[],
             video_has_audio=True,
             video_audio_copy_compatible=True,
@@ -542,7 +608,9 @@ class TestFFmpegStreamManager:
             scheduled.append(coro)
             return AsyncMock()
 
-        monkeypatch.setattr("app.streaming.ffmpeg_manager.asyncio.create_task", fake_create_task)
+        monkeypatch.setattr(
+            "app.streaming.ffmpeg_manager.asyncio.create_task", fake_create_task
+        )
 
         started = await manager.start_stream(
             stream_id="99999999-9999-9999-9999-999999999999",
@@ -561,14 +629,22 @@ class TestFFmpegStreamManager:
         assert plan["copy_audio"] is False
         assert plan["destination_uris"] == ["rtmp://youtube.com/live/<redacted>"]
         assert plan["multi_destination"] is False
+        assert plan["tee_onfail_policy"] is None
         assert plan["uses_video_placeholder"] is False
         assert plan["uses_audio_placeholder"] is False
 
         # ensure telemetry persisted even after retrieving info
-        assert manager.stream_info["99999999-9999-9999-9999-999999999999"]["ffmpeg_plan"]["copy_video"] is False
+        assert (
+            manager.stream_info["99999999-9999-9999-9999-999999999999"]["ffmpeg_plan"][
+                "copy_video"
+            ]
+            is False
+        )
 
     @pytest.mark.asyncio
-    async def test_restart_stream_stops_then_starts_with_hot_swap(self, tmp_path, monkeypatch):
+    async def test_restart_stream_stops_then_starts_with_hot_swap(
+        self, tmp_path, monkeypatch
+    ):
         """restart_stream should reuse metadata, stop existing process, and call start_stream with restart flag."""
 
         manager = FFmpegStreamManager()
@@ -612,8 +688,13 @@ class TestFFmpegStreamManager:
         assert start_kwargs["restart"] is True
         assert start_kwargs["metadata"]["hot_swap"] is True
         assert start_kwargs["metadata"]["reason"] == "hot"
-        assert start_kwargs["metadata"]["user_id"] == "dddddddd-dddd-dddd-dddd-dddddddddddd"
-        assert start_kwargs["destinations"] == [{"url": "rtmp://a.youtube.com/live", "key": "one"}]
+        assert (
+            start_kwargs["metadata"]["user_id"]
+            == "dddddddd-dddd-dddd-dddd-dddddddddddd"
+        )
+        assert start_kwargs["destinations"] == [
+            {"url": "rtmp://a.youtube.com/live", "key": "one"}
+        ]
 
     @pytest.mark.asyncio
     async def test_restart_stream_raises_without_destinations(self, tmp_path):

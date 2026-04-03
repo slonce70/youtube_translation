@@ -93,6 +93,12 @@ make verify-v0
 
 Тобто default gates зелені, але це не повний backend static-analysis gate. Для стабілізаційного tranche canonical gate = `make verify-v0`.
 
+Для tranche-one launch цього репозиторію окремо вважайте multi-destination rehearsal обов'язковим pre-public gate:
+
+- дефолтний режим: `FFMPEG_TEE_ONFAIL_POLICY=ignore`
+- треба окремо перевірити, що падіння одного destination не валить інші
+- оператор має бачити degraded destination у логах і мати documented triage path з `docs/operations/supervisor.md`
+
 ## Merge Gate
 
 Для звичайного merge в активну гілку engineering baseline має бути таким:
@@ -127,6 +133,8 @@ make verify-v0
 5. Створення test stream, start/stop, перевірка логів
 6. Один реальний auth sanity check без `NEXT_PUBLIC_DEV_BYPASS_AUTH`
 7. Перевірка сценарію з `docs/operations/first_stream_checklist.md`
+8. Для multi-destination: окремо перевірити кейс з одним failing destination при `FFMPEG_TEE_ONFAIL_POLICY=ignore`
+9. Звірити операторські runbooks у `docs/operations/supervisor.md` для node restart, failed stream, disk pressure і upload validation failures
 
 ## Точкові перевірки
 

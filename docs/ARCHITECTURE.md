@@ -133,6 +133,12 @@ management endpoint назовні ширше за localhost. Supervisor HTTP co
 Файли програм та логи (`/app/supervisord/programs/*.ini`, `/app/supervisord/logs`)
 зберігаються у спільному томі/маунті `/app/supervisord`.
 
+Для tranche-one production-ish rollout підтримувана топологія лишається
+**all-in-one node**: `frontend + backend + postgres + redis + tusd + runner +
+uploads` на одному хості. Ранній split між backend і media host поки що
+небезпечний, бо upload finalization, локальна валідація, thumbnail generation і
+stream prep все ще очікують asset як локальний файл на backend host.
+
 ### 4. FFmpeg Streaming Engine
 
 **Core Strategy:**
@@ -140,8 +146,8 @@ management endpoint назовні ширше за localhost. Supervisor HTTP co
 ffmpeg -re -f concat -safe 0 -i playlist.txt \
   -c copy \
   -f tee \
-  "[f=fifo:fifo_format=flv:attempt_recovery=1]rtmps://channel1|\
-   [f=fifo:fifo_format=flv:attempt_recovery=1]rtmps://channel2"
+  "[onfail=ignore:f=fifo:fifo_format=flv:attempt_recovery=1]rtmps://channel1|\
+   [onfail=ignore:f=fifo:fifo_format=flv:attempt_recovery=1]rtmps://channel2"
 ```
 
 **Key Components:**
@@ -149,6 +155,7 @@ ffmpeg -re -f concat -safe 0 -i playlist.txt \
 - `-c copy` - Stream copy (NO transcoding)
 - `tee` muxer - Multiple outputs from single input
 - `fifo` muxer - Automatic recovery on network failures
+- `onfail=ignore` - One bad destination should not automatically abort the entire stream
 
 **Advantages:**
 - Low CPU usage (no encoding)
@@ -255,6 +262,9 @@ user_profiles (synced on first login)
 - **Capacity:** ~5-10 simultaneous streams (depends on bandwidth)
 - **Bottleneck:** Network bandwidth (not CPU)
 - **Estimation:** `available_bandwidth / (stream_bitrate × channels)`
+- **Recommended launch topology:** one all-in-one node for tranche one
+- **Why not split backend from media yet:** upload finalization, validation, thumbnail generation, and stream prep still expect the asset to exist on the backend host as a local file
+- **Do not do yet:** do not add multiple runner nodes before object storage becomes the canonical asset source
 
 ### Future Horizontal Scaling
 
@@ -272,6 +282,12 @@ user_profiles (synced on first login)
    - S3-compatible object storage
    - CDN for static assets
    - Distributed caching
+
+Recommended order:
+1. Launch on one all-in-one node.
+2. Move uploads and asset origin to S3/MinIO-backed object storage.
+3. Add runner placement and horizontal media scaling.
+4. Add MediaMTX only if relay or observability needs justify the extra layer.
 
 ## Security Considerations
 

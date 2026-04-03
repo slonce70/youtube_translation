@@ -14,6 +14,20 @@
 
 Саме це вважається мінімальним rehearsal-критерієм перед подальшими змінами.
 
+## Підтримувана топологія для першого запуску
+
+Для першого production-like запуску в цьому репозиторії підтримується один all-in-one вузол:
+
+- `frontend`
+- `backend`
+- `postgres`
+- `redis`
+- `tusd`
+- `runner`
+- локальний media disk
+
+Не розділяйте backend і media host до переходу на object storage. Зараз upload finalization, ffprobe validation, thumbnail generation і stream prep все ще спираються на локальний `storage_path`.
+
 ## 1) Доступ і середовище
 - Для локального rehearsal рекомендовано `ENABLE_DEV_AUTH=true` і `NEXT_PUBLIC_DEV_BYPASS_AUTH=1`.
 - Якщо перевіряєте продуктовий auth path, використовуйте валідні Supabase credentials замість DEV auth.
@@ -53,3 +67,9 @@
 ## 7) Під час ефіру
 - Слідкуйте за статусом і залишком денного ліміту.
 - У разі помилки перевірте лог‑панель та повідомлення системи.
+
+## 8) Multi-destination rehearsal
+- Для першого публічного запуску вважайте multi-destination окремим rehearsal gate, а не автоматично “готовою” можливістю.
+- Рекомендований дефолт: `FFMPEG_TEE_ONFAIL_POLICY=ignore`.
+- Якщо один destination падає, перевірте, що інші продовжують ефір, а degraded destination видно в логах.
+- Не запускайте публічний multi-destination сценарій без окремої перевірки цього кейсу на своїх RTMPS endpoints.
