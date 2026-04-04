@@ -332,6 +332,16 @@ jobs:
         run: |
           echo 'No runtime-relevant service changes detected; nothing to deploy.'
 
+      - name: Sync VPS checkout when only deploy metadata changed
+        if: steps.impact.outputs.needs_deploy != 'true' && steps.prod_state.outputs.vps_checkout_sha != github.sha
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
+            "cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main"
+
       - name: Skip deploy because live stream protection is active
         if: steps.impact.outputs.needs_deploy == 'true' && steps.live_guard.outputs.can_deploy != 'true'
         run: |
