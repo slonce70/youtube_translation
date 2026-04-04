@@ -200,8 +200,19 @@ if [ -z "$TOKEN_METADATA" ] || [ "$TOKEN_METADATA" = "null" ]; then
 fi
 
 if ! RESOLVED_USER_ID=$(resolve_user_from_token "$TOKEN_METADATA"); then
-    write_failure_manifest "invalid_upload_token" "Upload token could not be resolved"
-    exit 0
+    INFO_TOKEN=$(read_metadata_from_info "$TEMP_INFO" "upload_token" || true)
+    if [ -n "$INFO_TOKEN" ] && [ "$INFO_TOKEN" != "$TOKEN_METADATA" ]; then
+        echo "[post-finish] Retrying token resolution from info file: $TEMP_INFO" >&2
+        if RESOLVED_USER_ID=$(resolve_user_from_token "$INFO_TOKEN"); then
+            TOKEN_METADATA="$INFO_TOKEN"
+        else
+            write_failure_manifest "invalid_upload_token" "Upload token could not be resolved"
+            exit 0
+        fi
+    else
+        write_failure_manifest "invalid_upload_token" "Upload token could not be resolved"
+        exit 0
+    fi
 fi
 
 if [ -n "$USER_ID_METADATA" ] && [ "$USER_ID_METADATA" != "$RESOLVED_USER_ID" ]; then

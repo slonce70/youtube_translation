@@ -44,23 +44,35 @@ class _ValidatorStub:
         }
 
 
-def _build_payload(*, upload_id: str, token: str, file_path: Path, filename: str):
+def _build_payload(
+    *,
+    upload_id: str,
+    token: str | None,
+    file_path: Path,
+    filename: str,
+    storage_info_path: Path | None = None,
+):
+    metadata = {
+        "filename": filename,
+        "asset_type": "video",
+    }
+    if token is not None:
+        metadata["upload_token"] = token
+
+    storage_payload = {
+        "Path": str(file_path),
+    }
+    if storage_info_path is not None:
+        storage_payload["InfoPath"] = str(storage_info_path)
+
     return {
         "Type": "post-finish",
         "Upload": {
             "ID": upload_id,
-            "MetaData": {
-                "upload_token": token,
-                "filename": filename,
-                "asset_type": "video",
-            },
-            "Storage": {
-                "Path": str(file_path),
-            },
+            "MetaData": metadata,
+            "Storage": dict(storage_payload),
         },
-        "Storage": {
-            "Path": str(file_path),
-        },
+        "Storage": dict(storage_payload),
     }
 
 
@@ -583,6 +595,82 @@ def test_post_finish_accepts_expired_token_after_upload_started(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Upload token expired" not in result.stderr
     assert (upload_root / str(user_id) / upload_id).exists()
+
+
+def test_post_finish_recovers_from_invalid_hook_token_using_info_file(tmp_path):
+    upload_root = tmp_path / "uploads"
+    temp_dir = upload_root / "_temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    upload_id = f"upload-invalid-hook-token-{uuid4()}"
+    user_id = uuid4()
+    temp_file = temp_dir / upload_id
+    temp_file.write_bytes(b"fake-video")
+
+    valid_token, _ = asset_utils.generate_upload_token(user_id)
+    invalid_token = "not-a-valid-token"
+    info_path = Path(f"{temp_file}.info")
+    info_path.write_text(
+        json.dumps(
+            {
+                "ID": upload_id,
+                "MetaData": {
+                    "upload_token": valid_token,
+                    "user_id": str(user_id),
+                    "filename": "recovered.mp4",
+                },
+                "Storage": {
+                    "Path": str(temp_file),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = {
+        "Upload": {
+            "ID": upload_id,
+            "MetaData": {
+                "upload_token": invalid_token,
+                "user_id": str(user_id),
+                "filename": "recovered.mp4",
+            },
+            "Storage": {
+                "Path": str(temp_file),
+                "InfoPath": str(info_path),
+            },
+        },
+        "Storage": {
+            "Path": str(temp_file),
+            "InfoPath": str(info_path),
+        },
+    }
+
+    script_path = Path(__file__).resolve().parents[1] / "tusd-hooks" / "post-finish"
+    env = {
+        **os.environ,
+        "TUSD_UPLOAD_ROOT": str(upload_root),
+        "TUSD_BACKEND_URL": "http://127.0.0.1:1",
+        "UPLOAD_TOKEN_SECRET": settings.upload_token_secret,
+    }
+
+    result = subprocess.run(
+        [str(script_path)],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Retrying token resolution from info file" in result.stderr
+    assert (upload_root / str(user_id) / upload_id).exists()
+
+    manifest_path = upload_root / "_failed-finalizations" / f"{upload_id}.json"
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["reason"] != "invalid_upload_token"
 
 
 @pytest.mark.asyncio

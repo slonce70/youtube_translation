@@ -45,10 +45,10 @@ services:
       # Active host-level Caddy on the VPS proxies to this loopback binding.
       - "127.0.0.1:8000:8000"
     volumes:
-      - ../backend/uploads:/app/uploads
-      - ../backend/streams:/app/streams
-      - ../backend/logs:/app/logs
-      - ../backend/supervisord:/app/supervisord
+      - ${HOST_UPLOADS_DIR:-../backend/uploads}:/app/uploads
+      - ${HOST_STREAMS_DIR:-../backend/streams}:/app/streams
+      - ${HOST_LOGS_DIR:-../backend/logs}:/app/logs
+      - ${HOST_SUPERVISORD_DIR:-../backend/supervisord}:/app/supervisord
       - ../backend/supervisord.docker.conf:/app/supervisord.conf
     env_file:
       - ../backend/.env
@@ -91,7 +91,7 @@ services:
       # Active host-level Caddy on the VPS proxies to this loopback binding.
       - "127.0.0.1:1080:1080"
     volumes:
-      - ../backend/uploads:/app/uploads
+      - ${HOST_UPLOADS_DIR:-../backend/uploads}:/app/uploads
     env_file:
       - ../backend/.env
     environment:
@@ -176,10 +176,10 @@ services:
     ports:
       - "127.0.0.1:9001:9001"
     volumes:
-      - ../backend/uploads:/app/uploads
-      - ../backend/streams:/app/streams
-      - ../backend/logs:/app/logs
-      - ../backend/supervisord:/app/supervisord
+      - ${HOST_UPLOADS_DIR:-../backend/uploads}:/app/uploads
+      - ${HOST_STREAMS_DIR:-../backend/streams}:/app/streams
+      - ${HOST_LOGS_DIR:-../backend/logs}:/app/logs
+      - ${HOST_SUPERVISORD_DIR:-../backend/supervisord}:/app/supervisord
       - ../backend/supervisord.docker.conf:/app/supervisord.conf
     env_file:
       - ../backend/.env
@@ -222,11 +222,11 @@ services:
 
 volumes:
   caddy-data:
-    name: docker_caddy-data
+    name: ${CADDY_DATA_VOLUME_NAME:-youtube_translation_caddy_data}
   caddy-config:
-    name: docker_caddy-config
+    name: ${CADDY_CONFIG_VOLUME_NAME:-youtube_translation_caddy_config}
   postgres-data:
-    name: docker_postgres-data
+    name: ${POSTGRES_VOLUME_NAME:-youtube_translation_postgres_data}
 
 networks:
   app-network:
