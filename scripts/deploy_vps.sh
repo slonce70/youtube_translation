@@ -64,6 +64,36 @@ wait_for_http() {
   curl "${curl_args[@]}" "$url" >/dev/null
 }
 
+count_active_streams() {
+  local postgres_container="youtube-streaming-postgres"
+
+  if ! docker ps --format '{{.Names}}' | grep -qx "$postgres_container"; then
+    echo 0
+    return 0
+  fi
+
+  docker exec "$postgres_container" \
+    psql -U youtube_user -d youtube_streaming -tAc \
+    "SELECT count(*) FROM streams WHERE status IN ('running', 'starting', 'stopping');" \
+    | tr -d '[:space:]'
+}
+
+guard_stream_runtime() {
+  local allow_live_restart="${ALLOW_LIVE_STREAM_RESTARTS:-0}"
+  if [[ "$allow_live_restart" == "1" ]]; then
+    echo "ALLOW_LIVE_STREAM_RESTARTS=1 set; bypassing live-stream deploy guard."
+    return 0
+  fi
+
+  local active_streams
+  active_streams="$(count_active_streams)"
+  if [[ "$active_streams" =~ ^[0-9]+$ ]] && (( active_streams > 0 )); then
+    echo "Refusing deploy: ${active_streams} live stream(s) currently running. This deploy path would restart stream services." >&2
+    echo "If you intentionally need to override, set ALLOW_LIVE_STREAM_RESTARTS=1 for that deploy." >&2
+    exit 1
+  fi
+}
+
 prepare_linux_persistence() {
   if [[ "$(uname -s)" != "Linux" ]]; then
     return 0
@@ -239,6 +269,7 @@ echo "Validating compose config..."
 docker compose -f "$compose_file" config >/dev/null
 
 registry_login
+guard_stream_runtime
 echo "Deploying services via registry images pinned to ${deploy_ref}: ${services[*]}"
 docker compose -f "$compose_file" pull "${services[@]}"
 docker compose -f "$compose_file" up -d --no-build --remove-orphans "${services[@]}"
