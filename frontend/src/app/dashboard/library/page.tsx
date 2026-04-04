@@ -317,7 +317,7 @@ export default function LibraryPage() {
 
   // Uppy configuration
   const tusEndpoint = useMemo(() => {
-    const base = process.env.NEXT_PUBLIC_TUSD_URL || 'http://localhost:1080'
+    const base = process.env.NEXT_PUBLIC_TUSD_URL || ''
     return `${base.replace(/\/$/, '')}/files/`
   }, [])
 
