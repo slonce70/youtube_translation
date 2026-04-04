@@ -12,7 +12,8 @@ from collections import deque
 from ipaddress import ip_address, ip_network
 from typing import Dict, Tuple, Iterable, List
 from threading import RLock
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
@@ -126,16 +127,23 @@ class RateLimiter:
 
     def _get_client_key(self, request: Request) -> str:
         """Generate unique key for client (IP + endpoint)"""
-        client_ip = request.client.host or "unknown"
-        forwarded = request.headers.get("X-Forwarded-For")
-
-        if forwarded and self._is_trusted_proxy(client_ip):
-            client_ip = forwarded.split(",")[0].strip()
+        client_ip = self._get_client_ip(request)
 
         # Include endpoint pattern for different limits per route
         endpoint = request.url.path
 
         return f"{client_ip}:{endpoint}"
+
+    def _get_client_ip(self, request: Request) -> str:
+        client_ip = request.client.host if request.client else "unknown"
+        forwarded = request.headers.get("X-Forwarded-For")
+
+        if forwarded and self._is_trusted_proxy(client_ip):
+            forwarded_client = forwarded.split(",")[0].strip()
+            if forwarded_client:
+                return forwarded_client
+
+        return client_ip
 
     def _is_trusted_proxy(self, client_ip: str) -> bool:
         if not self._trusted_proxy_networks:
@@ -292,15 +300,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not allowed:
             # Rate limit exceeded
             reset_time = entry.get_reset_time()
+            client_host = self.rate_limiter._get_client_ip(request)
 
             logger.warning(
-                f"Rate limit exceeded for {request.client.host} "
+                f"Rate limit exceeded for {client_host} "
                 f"on {request.url.path} - resets in {reset_time}s"
             )
 
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={"error": "Rate limit exceeded", "retry_after": reset_time},
+                content={
+                    "detail": {
+                        "error": "Rate limit exceeded",
+                        "retry_after": reset_time,
+                    }
+                },
                 headers={
                     "Retry-After": str(reset_time),
                     "X-RateLimit-Limit": str(entry.max_requests),
@@ -324,11 +338,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 def _build_rate_limiter() -> RateLimiter:
     if settings.redis_url:
         try:
-            return RedisRateLimiter(
+            rate_limiter = RedisRateLimiter(
                 settings.redis_url,
                 trusted_proxies=settings.trusted_proxies,
                 prefix=settings.redis_rate_limit_prefix,
             )
+            logger.info("Using Redis-backed rate limiter")
+            return rate_limiter
         except Exception as exc:  # pragma: no cover - fallback on runtime errors
             logger.warning("Failed to initialize Redis rate limiter: %s", exc)
     return RateLimiter(trusted_proxies=settings.trusted_proxies)

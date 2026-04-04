@@ -341,7 +341,7 @@ export default function LibraryPage() {
 
     uppy.use(Tus, {
       endpoint: tusEndpoint,
-      chunkSize: 5 * 1024 * 1024,
+      chunkSize: 16 * 1024 * 1024,
       retryDelays: [0, 1000, 3000, 5000],
     })
 
