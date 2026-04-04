@@ -1,0 +1,68 @@
+# Git-managed host-level Caddyfile template for the VPS systemd service.
+# scripts/deploy_vps.sh renders this into /etc/caddy/Caddyfile during production deploys.
+
+__PRIMARY_SITE__ {
+    handle /api/internal/* {
+        respond 404
+    }
+
+    handle /api/* {
+        reverse_proxy __BACKEND_UPSTREAM__
+    }
+
+    handle /files/* {
+        reverse_proxy __TUSD_UPSTREAM__
+    }
+
+    handle_path /uploads/* {
+        redir /files{path} 308
+    }
+
+    handle {
+        reverse_proxy __FRONTEND_UPSTREAM__
+    }
+
+    encode gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co wss:; media-src 'self' blob: https:"
+    }
+}
+
+__FALLBACK_SITE__ {
+    handle /api/internal/* {
+        respond 404
+    }
+
+    handle /api/* {
+        reverse_proxy __BACKEND_UPSTREAM__
+    }
+
+    handle /files/* {
+        reverse_proxy __TUSD_UPSTREAM__
+    }
+
+    handle_path /uploads/* {
+        redir /files{path} 308
+    }
+
+    handle {
+        reverse_proxy __FRONTEND_UPSTREAM__
+    }
+
+    encode gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co wss:; media-src 'self' blob: https:"
+    }
+}
