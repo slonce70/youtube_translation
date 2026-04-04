@@ -6,6 +6,7 @@ export type EmptyStateCopy = {
   cta: string
 }
 
+// Keep empty-state copy aligned with the selected asset tab.
 export function getAssetEmptyCopy(
   t: (key: string) => string,
   assetFilter: AssetFilterValue,
