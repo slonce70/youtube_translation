@@ -337,6 +337,7 @@ export const useStreamBuilder = ({
       video: null as string | null,
       audio: null as string | null,
     }
+    let createRequestFailed = false
 
     setIsBuilderSubmitting(true)
     try {
@@ -381,11 +382,18 @@ export const useStreamBuilder = ({
         schedule_stop_at: stopAtIso,
       }
 
-      await createStreamMutation.mutateAsync(payload)
+      try {
+        await createStreamMutation.mutateAsync(payload)
+      } catch (error) {
+        createRequestFailed = true
+        throw error
+      }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : streamingToasts('errors.createStreamFailed')
-      toast.error(streamingToasts('generic.errorWithMessage', { message }))
+      if (!createRequestFailed) {
+        const message =
+          error instanceof Error ? error.message : streamingToasts('errors.createStreamFailed')
+        toast.error(streamingToasts('generic.errorWithMessage', { message }))
+      }
 
       const createdCollectionIds = [createdCollectionTracker.video, createdCollectionTracker.audio].filter(
         (id): id is string => Boolean(id),

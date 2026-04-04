@@ -48,9 +48,9 @@ export type StreamsListProps = {
   audioCollectionMap: Map<string, MediaCollection>
   t: Translator
   streamingStatus: Translator
-  isStartPending: boolean
-  isStopPending: boolean
-  isDeletePending: boolean
+  pendingStartStreamId?: string | null
+  pendingStopStreamId?: string | null
+  pendingDeleteStreamId?: string | null
 }
 
 function formatDuration(seconds?: number | null): string {
@@ -96,17 +96,26 @@ export function StreamsList({
   audioCollectionMap,
   t,
   streamingStatus,
-  isStartPending,
-  isStopPending,
-  isDeletePending,
+  pendingStartStreamId,
+  pendingStopStreamId,
+  pendingDeleteStreamId,
 }: StreamsListProps) {
   const [nowTick, setNowTick] = useState(() => Date.now())
+  const [deleteDialogStream, setDeleteDialogStream] = useState<Stream | null>(null)
   const locale = useLocale()
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowTick(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (!deleteDialogStream) return
+    const streamStillVisible = (streams ?? []).some((stream) => stream.id === deleteDialogStream.id)
+    if (!streamStillVisible) {
+      setDeleteDialogStream(null)
+    }
+  }, [deleteDialogStream, streams])
 
   const groupedStreams = useMemo(() => {
     const groups: Record<PresentedStream['derived']['group'], PresentedStream[]> = {
@@ -196,6 +205,10 @@ export function StreamsList({
                         return t('streams.unknownPlaylist')
                       })()
                       const retryVisible = hasRetryHistory(derived.runtimeRestart)
+                      const isStartPending = pendingStartStreamId === stream.id
+                      const isStopPending = pendingStopStreamId === stream.id
+                      const isDeletePending = pendingDeleteStreamId === stream.id
+                      const isRowPending = isStartPending || isStopPending || isDeletePending
                       const totalDurationLabel =
                         derived.totalDurationSeconds && derived.totalDurationSeconds > 0
                           ? formatDuration(derived.totalDurationSeconds)
@@ -219,7 +232,7 @@ export function StreamsList({
 
                         if (derived.primaryAction === 'edit_schedule') {
                           return (
-                            <Button size="sm" onClick={() => onEditSchedule(stream)}>
+                            <Button size="sm" onClick={() => onEditSchedule(stream)} disabled={isRowPending}>
                               <Clock3 className="w-4 h-4 mr-2" />
                               {t('streams.buttons.schedule')}
                             </Button>
@@ -228,7 +241,7 @@ export function StreamsList({
 
                         if (derived.primaryAction === 'view_issue') {
                           return (
-                            <Button size="sm" onClick={() => onViewLogs(stream.id)}>
+                            <Button size="sm" onClick={() => onViewLogs(stream.id)} disabled={isRowPending}>
                               <AlertTriangle className="w-4 h-4 mr-2" />
                               {t('streams.buttons.reviewIssue')}
                             </Button>
@@ -245,7 +258,12 @@ export function StreamsList({
                         }
 
                         return (
-                          <Button size="sm" isLoading={isStartPending} onClick={() => onStartStream(stream)}>
+                          <Button
+                            size="sm"
+                            isLoading={isStartPending}
+                            disabled={isRowPending && !isStartPending}
+                            onClick={() => onStartStream(stream)}
+                          >
                             <Play className="w-4 h-4 mr-2" />
                             {t('streams.buttons.start')}
                           </Button>
@@ -352,13 +370,28 @@ export function StreamsList({
                             <div className="flex flex-col gap-2 xl:w-56">
                               {primaryButton}
                               <div className="grid grid-cols-2 gap-2">
-                                <Button size="sm" variant="outline" onClick={() => onViewLogs(stream.id)}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => onViewLogs(stream.id)}
+                                  disabled={isRowPending}
+                                >
                                   {t('streams.buttons.logs')}
                                 </Button>
-                                <Button size="sm" variant="outline" onClick={() => onEditSchedule(stream)}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => onEditSchedule(stream)}
+                                  disabled={isRowPending}
+                                >
                                   {t('streams.buttons.schedule')}
                                 </Button>
-                                <Button size="sm" variant="outline" onClick={() => onOpenLiveEditor(stream)}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => onOpenLiveEditor(stream)}
+                                  disabled={isRowPending}
+                                >
                                   {t('streams.liveEdit.button')}
                                 </Button>
                                 <Button
@@ -367,7 +400,8 @@ export function StreamsList({
                                   isLoading={isDeletePending}
                                   aria-label={t('streams.buttons.delete')}
                                   title={t('streams.buttons.delete')}
-                                  onClick={() => onDeleteStream(stream.id)}
+                                  disabled={isRowPending && !isDeletePending}
+                                  onClick={() => setDeleteDialogStream(stream)}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
@@ -393,6 +427,41 @@ export function StreamsList({
             </Button>
           </div>
         )}
+
+        {deleteDialogStream ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
+            <Card role="dialog" aria-modal="true" className="w-full max-w-md">
+              <CardHeader className="space-y-2">
+                <CardTitle>{t('streams.deleteConfirm.title')}</CardTitle>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {t('streams.deleteConfirm.description', {
+                    name: deleteDialogStream.name || t('streams.untitled'),
+                  })}
+                </p>
+              </CardHeader>
+              <CardContent className="flex justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setDeleteDialogStream(null)}
+                  disabled={pendingDeleteStreamId === deleteDialogStream.id}
+                >
+                  {t('streams.deleteConfirm.cancel')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => {
+                    onDeleteStream(deleteDialogStream.id)
+                    setDeleteDialogStream(null)
+                  }}
+                >
+                  {t('streams.deleteConfirm.confirm')}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )

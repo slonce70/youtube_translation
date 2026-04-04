@@ -134,6 +134,12 @@
         "details": "Details",
         "delete": "Delete"
       },
+      "deleteConfirm": {
+        "title": "Delete stream?",
+        "description": "This permanently removes \"{name}\" and its stream data.",
+        "cancel": "Keep stream",
+        "confirm": "Delete stream"
+      },
       "empty": {
         "title": "No active streams",
         "description": "Create a stream configuration to start broadcasting",
