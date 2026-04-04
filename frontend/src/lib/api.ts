@@ -342,7 +342,7 @@ export const api = {
   },
 
   metrics: {
-    get: () => apiRequest<MetricsResponse>('/metrics'),
+    get: () => apiRequest<MetricsResponse>('/metrics/'),
   },
 
   quota: {
