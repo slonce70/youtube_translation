@@ -398,6 +398,9 @@ export default function StreamingPage() {
 
   const handleStopStream = (streamId: string) => stopStreamMutation.mutate(streamId)
   const handleDeleteStream = (streamId: string) => deleteStreamMutation.mutate(streamId)
+  const pendingStartStreamId = startStreamMutation.isPending ? startStreamMutation.variables?.streamId ?? null : null
+  const pendingStopStreamId = stopStreamMutation.isPending ? stopStreamMutation.variables ?? null : null
+  const pendingDeleteStreamId = deleteStreamMutation.isPending ? deleteStreamMutation.variables ?? null : null
 
   const { data: logsResponse } = useQuery<StreamLogsResponse>({
     queryKey: ['stream-logs', user?.id, viewingLogs, logsMode],
@@ -503,9 +506,9 @@ export default function StreamingPage() {
             audioCollectionMap={audioCollectionMap}
             t={tStreaming}
             streamingStatus={streamingStatus}
-            isStartPending={startStreamMutation.isPending}
-            isStopPending={stopStreamMutation.isPending}
-            isDeletePending={deleteStreamMutation.isPending}
+            pendingStartStreamId={pendingStartStreamId}
+            pendingStopStreamId={pendingStopStreamId}
+            pendingDeleteStreamId={pendingDeleteStreamId}
           />
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">

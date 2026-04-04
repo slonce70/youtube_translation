@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { UseQueryResult } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { NextIntlClientProvider, type AbstractIntlMessages, type TranslationValues } from 'next-intl'
 
 import { StreamsList } from '../StreamsList'
@@ -39,6 +39,10 @@ const translations: Record<string, string> = {
   'streams.buttons.cancelSchedule': 'Cancel schedule',
   'streams.buttons.details': 'Details',
   'streams.buttons.delete': 'Delete',
+  'streams.deleteConfirm.title': 'Delete stream?',
+  'streams.deleteConfirm.description': 'This permanently removes "{name}" and its stream data.',
+  'streams.deleteConfirm.cancel': 'Keep stream',
+  'streams.deleteConfirm.confirm': 'Delete stream',
   'streams.buttons.reviewIssue': 'Review issue',
   'streams.liveEdit.button': 'Edit',
   'streams.empty.title': 'No streams',
@@ -173,7 +177,11 @@ describe('StreamsList restart visibility', () => {
 
   const renderStatusBadge = (status: StreamStatusValue): ReactNode => <span>{status}</span>
 
-  function renderList(streams: Stream[], liveStatusMap?: Map<string, UseQueryResult<StreamStatusResponse>>) {
+  function renderList(
+    streams: Stream[],
+    liveStatusMap?: Map<string, UseQueryResult<StreamStatusResponse>>,
+    overrides: Partial<ComponentProps<typeof StreamsList>> = {},
+  ) {
     render(
       <NextIntlClientProvider locale="en" messages={{} as AbstractIntlMessages}>
         <StreamsList
@@ -193,9 +201,10 @@ describe('StreamsList restart visibility', () => {
           audioCollectionMap={audioCollectionMap}
           t={t}
           streamingStatus={(status) => status}
-          isStartPending={false}
-          isStopPending={false}
-          isDeletePending={false}
+          pendingStartStreamId={null}
+          pendingStopStreamId={null}
+          pendingDeleteStreamId={null}
+          {...overrides}
         />
       </NextIntlClientProvider>,
     )
@@ -292,9 +301,9 @@ describe('StreamsList restart visibility', () => {
           audioCollectionMap={audioCollectionMap}
           t={t}
           streamingStatus={(status) => status}
-          isStartPending={false}
-          isStopPending={false}
-          isDeletePending={false}
+          pendingStartStreamId={null}
+          pendingStopStreamId={null}
+          pendingDeleteStreamId={null}
         />
       </NextIntlClientProvider>,
     )
@@ -326,9 +335,126 @@ describe('StreamsList restart visibility', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
-  it('exposes a named delete action for stream cards', () => {
-    renderList([createStream({ id: 'stream-delete', runtime_restart: createRestartInfo({ enabled: false }) })])
+  it('confirms stream deletion before calling the destructive action', () => {
+    const onDeleteStream = jest.fn()
+    renderList(
+      [createStream({ id: 'stream-delete', runtime_restart: createRestartInfo({ enabled: false }) })],
+      undefined,
+      { onDeleteStream },
+    )
 
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(onDeleteStream).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete stream' }))
+
+    expect(onDeleteStream).toHaveBeenCalledWith('stream-delete')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('keeps pending action state scoped to the active stream row', () => {
+    const running = createStream({
+      id: 'stream-running',
+      name: 'Running stream',
+      status: 'running',
+      runtime_restart: createRestartInfo({ enabled: false }),
+    })
+    const stopped = createStream({
+      id: 'stream-stopped',
+      name: 'Stopped stream',
+      status: 'stopped',
+      runtime_restart: createRestartInfo({ enabled: false }),
+    })
+
+    renderList([running, stopped], undefined, {
+      pendingStopStreamId: 'stream-running',
+      pendingDeleteStreamId: null,
+      pendingStartStreamId: null,
+    })
+
+    const runningCard = screen.getByText('Running stream').closest('article')
+    const stoppedCard = screen.getByText('Stopped stream').closest('article')
+
+    expect(runningCard).not.toBeNull()
+    expect(stoppedCard).not.toBeNull()
+
+    expect(within(runningCard as HTMLElement).getByRole('button', { name: 'Stop' })).toBeDisabled()
+    expect(within(stoppedCard as HTMLElement).getByRole('button', { name: 'Start' })).toBeEnabled()
+    expect(within(stoppedCard as HTMLElement).getByRole('button', { name: 'Delete' })).toBeEnabled()
+  })
+
+  it('shows audio-only collection sources without falling back to unknown playlist', () => {
+    const audioOnlyCollection = new Map<string, MediaCollection>([
+      [
+        'audio-collection-1',
+        {
+          id: 'audio-collection-1',
+          user_id: 'user-1',
+          name: 'Audio-only collection',
+          description: null,
+          collection_type: 'audio_playlist',
+          is_active: true,
+          origin_playlist_id: null,
+          created_at: '2026-03-30T08:00:00Z',
+          updated_at: '2026-03-30T08:00:00Z',
+          items: [],
+        },
+      ],
+    ])
+
+    render(
+      <NextIntlClientProvider locale="en" messages={{} as AbstractIntlMessages}>
+        <StreamsList
+          streams={[
+            createStream({
+              id: 'stream-audio-only',
+              playlist_id: null,
+              video_collection_id: null,
+              audio_collection_id: 'audio-collection-1',
+              mix_mode: 'audio_only',
+              source_type: 'assets',
+            }),
+          ]}
+          isLoading={false}
+          liveStatusMap={new Map()}
+          onCreateStream={jest.fn()}
+          onViewLogs={jest.fn()}
+          onOpenLiveEditor={jest.fn()}
+          onEditSchedule={jest.fn()}
+          onStartStream={jest.fn()}
+          onStopStream={jest.fn()}
+          onDeleteStream={jest.fn()}
+          renderStatusBadge={renderStatusBadge}
+          playlistMap={playlistMap}
+          videoCollectionMap={videoCollectionMap}
+          audioCollectionMap={audioOnlyCollection}
+          t={t}
+          streamingStatus={(status) => status}
+          pendingStartStreamId={null}
+          pendingStopStreamId={null}
+          pendingDeleteStreamId={null}
+        />
+      </NextIntlClientProvider>,
+    )
+
+    expect(screen.getByText('Audio-only collection')).toBeInTheDocument()
+    expect(screen.queryByText('Unknown playlist')).not.toBeInTheDocument()
+  })
+
+  it('shows custom queue source labels for stream assets fallback', () => {
+    renderList([
+      createStream({
+        id: 'stream-custom-queue',
+        playlist_id: null,
+        video_collection_id: null,
+        audio_collection_id: null,
+        source_type: 'assets',
+        stream_assets: [{ asset_id: 'asset-1', position: 0 }, { asset_id: 'asset-2', position: 1 }] as Stream['stream_assets'],
+      }),
+    ])
+
+    expect(screen.getByText('Custom queue (2)')).toBeInTheDocument()
   })
 })
