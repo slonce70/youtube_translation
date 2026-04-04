@@ -132,6 +132,56 @@ async def test_audio_only_quality_detects_mismatched_codec():
         assert "audio_sample_rate_low" in codes
 
 
+
+
+@pytest.mark.asyncio
+async def test_uhd_plan_allows_lower_resolution_guideline_bitrates() -> None:
+    user_id = uuid4()
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@video-quality.test",
+            subscription_tier="uhd_boost",
+            subscription_status="active",
+        )
+        session.add(profile)
+        await session.commit()
+
+        limits = await session.get(SubscriptionTierLimits, "uhd_boost")
+        assert limits is not None
+        limits.min_video_bitrate_mbps = 6
+        limits.max_video_bitrate_mbps = 40
+        await session.commit()
+
+        enforcer = QuotaEnforcer(session, user_id)
+        video_assets = [
+            {
+                "asset_id": uuid4(),
+                "filename": "video1.mp4",
+                "meta": {
+                    "video": {
+                        "codec": "h264",
+                        "height": 720,
+                        "fps": 30,
+                        "bitrate": 3_020_000,
+                    },
+                    "audio": {
+                        "codec": "aac",
+                        "sample_rate": 48_000,
+                        "bitrate": 192_000,
+                        "channels": 2,
+                    },
+                    "bitrate": 3_020_000,
+                },
+            }
+        ]
+
+        result = await enforcer.evaluate_stream_quality(video_assets)
+
+        assert result["ok"] is True
+        assert result["violations"] == []
+        assert all(violation["code"] != "bitrate_out_of_range" for violation in result["violations"])
+
 @pytest.mark.asyncio
 async def test_audio_quality_missing_tier_metadata_fails_closed() -> None:
     user_id = uuid4()

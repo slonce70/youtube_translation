@@ -612,7 +612,6 @@ class QuotaEnforcer:
                 height, fps
             )
 
-            tier_min_bitrate = limits.min_video_bitrate_mbps
             tier_max_bitrate = limits.max_video_bitrate_mbps
 
             guideline_min = (
@@ -628,10 +627,9 @@ class QuotaEnforcer:
             actual_min_bitrate = guideline_min
             actual_max_bitrate = guideline_max
 
-            if tier_min_bitrate is not None:
-                actual_min_bitrate = max(
-                    actual_min_bitrate or tier_min_bitrate, tier_min_bitrate
-                )
+            # Plan tiers define the ceiling for video bitrate, but lower resolutions
+            # must remain streamable on higher-end plans. Keep the resolution-specific
+            # guidance minimum intact instead of raising it to the plan's max-tier floor.
             if tier_max_bitrate is not None:
                 actual_max_bitrate = min(
                     actual_max_bitrate or tier_max_bitrate, tier_max_bitrate
@@ -781,14 +779,6 @@ class QuotaEnforcer:
                             current=_format_bitrate(bitrate_mbps),
                             allowed=allowed_text,
                         )
-
-                if tier_min_bitrate is not None and bitrate_mbps < tier_min_bitrate:
-                    add_violation(
-                        "bitrate_out_of_range",
-                        "Video bitrate is below your plan's minimum.",
-                        current=_format_bitrate(bitrate_mbps),
-                        allowed=f"≥ {tier_min_bitrate} Mbps",
-                    )
 
                 if tier_max_bitrate is not None and bitrate_mbps > tier_max_bitrate:
                     add_violation(
