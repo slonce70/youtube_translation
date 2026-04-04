@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import os
 import subprocess
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -69,6 +74,18 @@ async def _create_user(session, *, user_id):
     session.add(profile)
     await session.commit()
     return profile
+
+
+def _build_expired_upload_token(user_id):
+    expires_at = int(time.time()) - 5
+    nonce = uuid4().hex
+    payload = f"{user_id}:{expires_at}:{nonce}"
+    signature = hmac.new(
+        settings.upload_token_secret.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return base64.b64encode(f"{payload}:{signature}".encode("utf-8")).decode("utf-8")
 
 
 @pytest.mark.asyncio
@@ -207,6 +224,64 @@ async def test_upload_complete_is_idempotent_by_upload_id(tmp_path, monkeypatch)
             assert ingest_count == 1
             assert asset_count == 1
             assert user.current_storage_bytes == len(b"fake-video")
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
+@pytest.mark.asyncio
+async def test_upload_complete_accepts_expired_token_after_upload_started(
+    tmp_path, monkeypatch
+):
+    user_id = uuid4()
+    upload_id = f"upload-expired-after-start-{uuid4()}"
+    upload_root = tmp_path / "uploads"
+    temp_dir = upload_root / "_temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_file = temp_dir / upload_id
+    temp_file.write_bytes(b"fake-video")
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
+
+    async def _thumbnail_skip(**_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.generate_video_thumbnail",
+        _thumbnail_skip,
+    )
+
+    try:
+        async with async_session_maker() as session:
+            await _create_user(session, user_id=user_id)
+            token = _build_expired_upload_token(user_id)
+            service = AssetUploadService(session)
+
+            response = await service.handle_upload_complete(
+                _build_payload(
+                    upload_id=upload_id,
+                    token=token,
+                    file_path=temp_file,
+                    filename="late-finish.mp4",
+                )
+            )
+
+            assert response["success"] is True
+            assert response["status"] == "finalized"
+
+            ingest = (
+                (
+                    await session.execute(
+                        select(UploadIngest).where(UploadIngest.upload_id == upload_id)
+                    )
+                )
+                .scalars()
+                .one()
+            )
+            assert ingest.status == "finalized"
     finally:
         settings.upload_dir = original_upload_dir
 
@@ -393,6 +468,56 @@ def test_post_finish_redacts_upload_token_in_failure_manifest(tmp_path):
     assert token not in manifest_path.read_text()
 
 
+def test_post_finish_accepts_expired_token_after_upload_started(tmp_path):
+    upload_root = tmp_path / "uploads"
+    temp_dir = upload_root / "_temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    upload_id = f"upload-expired-token-{uuid4()}"
+    user_id = uuid4()
+    temp_file = temp_dir / upload_id
+    temp_file.write_bytes(b"fake-video")
+
+    token = _build_expired_upload_token(user_id)
+    payload = {
+        "Upload": {
+            "ID": upload_id,
+            "MetaData": {
+                "upload_token": token,
+                "user_id": str(user_id),
+                "filename": "expired.mp4",
+            },
+            "Storage": {
+                "Path": str(temp_file),
+            },
+        },
+        "Storage": {
+            "Path": str(temp_file),
+        },
+    }
+
+    script_path = Path(__file__).resolve().parents[1] / "tusd-hooks" / "post-finish"
+    env = {
+        **os.environ,
+        "TUSD_UPLOAD_ROOT": str(upload_root),
+        "TUSD_BACKEND_URL": "http://127.0.0.1:1",
+        "UPLOAD_TOKEN_SECRET": settings.upload_token_secret,
+    }
+
+    result = subprocess.run(
+        [str(script_path)],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Upload token expired" not in result.stderr
+    assert (upload_root / str(user_id) / upload_id).exists()
+
+
 @pytest.mark.asyncio
 async def test_upload_status_api_is_owner_scoped(tmp_path, monkeypatch):
     owner_id = uuid4()
@@ -488,6 +613,53 @@ async def test_upload_status_response_normalizes_empty_message_lists(
             assert response.status == "failed"
             assert response.validation_errors == []
             assert response.warning_messages == []
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
+@pytest.mark.asyncio
+async def test_upload_status_uses_failed_manifest_when_ingest_missing(tmp_path):
+    user_id = uuid4()
+    upload_id = f"upload-failed-manifest-{uuid4()}"
+    upload_root = tmp_path / "uploads"
+    failure_dir = upload_root / "_failed-finalizations"
+    failure_dir.mkdir(parents=True, exist_ok=True)
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+
+    created_at = datetime.now(timezone.utc).replace(microsecond=0)
+    manifest = {
+        "upload_id": upload_id,
+        "reason": "invalid_upload_token",
+        "details": "Upload token could not be resolved",
+        "created_at": created_at.isoformat().replace("+00:00", "Z"),
+        "payload": {
+            "Upload": {
+                "ID": upload_id,
+                "MetaData": {
+                    "user_id": str(user_id),
+                    "filename": "late.mp4",
+                },
+            },
+            "Storage": {
+                "Path": str(upload_root / str(user_id) / upload_id),
+            },
+        },
+    }
+    (failure_dir / f"{upload_id}.json").write_text(json.dumps(manifest))
+
+    try:
+        async with async_session_maker() as session:
+            ingest = await AssetUploadService(session).get_upload_status(
+                upload_id, user_id
+            )
+
+            assert ingest.status == "failed"
+            assert ingest.error_code == "invalid_upload_token"
+            assert ingest.error_message == "Upload token could not be resolved"
+            assert ingest.filename == "late.mp4"
+            assert ingest.failed_at == created_at
     finally:
         settings.upload_dir = original_upload_dir
 

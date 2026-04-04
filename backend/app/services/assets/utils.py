@@ -270,7 +270,7 @@ def generate_upload_token(user_id: UUID) -> tuple[str, int]:
     return token, expires_at
 
 
-def verify_upload_token(token: str) -> UUID:
+def verify_upload_token(token: str, *, allow_expired: bool = False) -> UUID:
     try:
         decoded = base64.b64decode(token.strip().encode("utf-8"), validate=True).decode(
             "utf-8"
@@ -289,7 +289,7 @@ def verify_upload_token(token: str) -> UUID:
         if not hmac.compare_digest(signature, expected_signature):
             raise ValueError("invalid signature")
         expires_at = int(expires_at_str)
-        if expires_at < int(time.time()):
+        if expires_at < int(time.time()) and not allow_expired:
             raise ValueError("token expired")
         return UUID(user_id_str)
     except Exception as exc:  # pylint: disable=broad-except
