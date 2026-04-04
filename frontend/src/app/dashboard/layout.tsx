@@ -12,6 +12,7 @@ import { DashboardContext } from './dashboard-context'
 import { api } from '@/lib/api'
 import type { QuotaUsageResponse, SubscriptionTierKey } from '@/lib/types'
 import { PLAN_DETAILS } from '@/lib/plans'
+import { readDevBypassDisplayName } from '@/lib/devBypassUser'
 
 type Props = {
   children: React.ReactNode
@@ -20,6 +21,14 @@ type Props = {
 const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
 const DEV_USER_EMAIL = process.env.NEXT_PUBLIC_DEV_USER_EMAIL ?? 'dev@example.com'
 const DEV_USER_ID = process.env.NEXT_PUBLIC_DEV_USER_ID ?? 'dev-user-id'
+
+function buildDevBypassUser() {
+  return {
+    id: DEV_USER_ID,
+    email: DEV_USER_EMAIL,
+    user_metadata: { display_name: readDevBypassDisplayName() },
+  }
+}
 
 export default function DashboardLayout({ children }: Props) {
   const router = useRouter()
@@ -40,12 +49,7 @@ export default function DashboardLayout({ children }: Props) {
 
   useEffect(() => {
     if (DEV_BYPASS) {
-      const stubUser = {
-        id: DEV_USER_ID,
-        email: DEV_USER_EMAIL,
-        user_metadata: { display_name: 'Developer' },
-      }
-      setUser(stubUser)
+      setUser(buildDevBypassUser())
       setAuthReady(true)
       setLoading(false)
       return
@@ -99,6 +103,11 @@ export default function DashboardLayout({ children }: Props) {
   }
 
   const refreshUser = async () => {
+    if (DEV_BYPASS) {
+      setUser(buildDevBypassUser())
+      return
+    }
+
     const { data } = await supabase.auth.getUser()
     if (data.user) {
       setUser(data.user)

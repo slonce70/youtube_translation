@@ -8,7 +8,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_user
@@ -19,6 +19,7 @@ from app.schemas.api import (
     AssetDownloadLinkResponse,
     AssetResponse,
     AssetUpdate,
+    UploadIngestResponse,
     UploadTokenResponse,
 )
 from app.services.assets import AssetService, AssetUploadService, UploadTokenService
@@ -32,6 +33,28 @@ logger = logging.getLogger(__name__)
 _warned_missing_tusd_secret = False
 
 router = APIRouter()
+
+
+def _upload_complete_status_code(result: dict) -> int:
+    if result.get("success", True):
+        return status.HTTP_200_OK
+
+    http_status = result.get("http_status")
+    if isinstance(http_status, int):
+        return http_status
+    if isinstance(http_status, str) and http_status.isdigit():
+        return int(http_status)
+
+    error_code = str(result.get("error_code") or "").strip()
+    if error_code.startswith("http_"):
+        http_status = error_code.removeprefix("http_")
+        if http_status.isdigit():
+            return int(http_status)
+
+    if error_code == "upload_file_missing":
+        return status.HTTP_404_NOT_FOUND
+
+    return status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
 def _verify_tusd_signature(raw_body: bytes, signature: Optional[str]) -> None:
@@ -147,12 +170,27 @@ async def handle_upload_complete(
 
     try:
         service = AssetUploadService(db)
-        return await service.handle_upload_complete(payload)
+        result = await service.handle_upload_complete(payload)
     except HTTPException:
         raise
     except Exception:
         logger.exception("Failed to process tusd webhook")
         raise
+
+    response_status = _upload_complete_status_code(result)
+    if response_status == status.HTTP_200_OK:
+        return result
+    return JSONResponse(status_code=response_status, content=result)
+
+
+@router.get("/uploads/{upload_id}", response_model=UploadIngestResponse)
+async def get_upload_status(
+    upload_id: str,
+    user_deps: tuple = Depends(require_user),
+):
+    db, user_id = user_deps
+    service = AssetUploadService(db)
+    return await service.get_upload_status(upload_id, user_id)
 
 
 @router.post("/{asset_id}/check", response_model=AssetResponse)

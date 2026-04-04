@@ -12,8 +12,10 @@ import { enUS, ru, uk as ukLocale } from 'date-fns/locale'
 import type { Locale as DateFnsLocale } from 'date-fns'
 import { useTranslations } from 'next-intl'
 import { useLocale } from 'next-intl'
+import { useRouter } from 'next/navigation'
 
 export default function AdminDashboard() {
+  const router = useRouter()
   const locale = useLocale()
   const { data: usersData, isLoading: usersLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -345,13 +347,25 @@ export default function AdminDashboard() {
 
             {/* Quick Actions */}
             <div className="pt-4 flex flex-wrap gap-2">
-              <button className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+              <button
+                type="button"
+                onClick={() => router.push('/admin/users')}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
                 {tDashboard('systemResources.actions.viewUsers')}
               </button>
-              <button className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+              <button
+                type="button"
+                onClick={() => router.push('/admin/streams')}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
                 {tDashboard('systemResources.actions.monitorStreams')}
               </button>
-              <button className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+              <button
+                type="button"
+                onClick={() => router.push('/admin/alerts')}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
                 {tDashboard('systemResources.actions.resolveAlerts')}
               </button>
             </div>

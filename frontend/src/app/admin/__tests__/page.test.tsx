@@ -1,9 +1,22 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl'
 import React from 'react'
 import AdminDashboard from '../page'
 import enMessages from '@/messages/en'
+
+const pushMock = jest.fn()
+
+jest.mock('next/navigation', () => {
+  const actual = jest.requireActual('next/navigation')
+  return {
+    ...actual,
+    useRouter: () => ({
+      push: pushMock,
+    }),
+    useParams: () => ({}),
+  }
+})
 
 jest.mock('@/lib/api', () => ({
   api: {
@@ -57,5 +70,19 @@ describe('AdminDashboard', () => {
     await waitFor(() => expect(api.admin.users.list).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(api.admin.alerts.list).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.getByText(/Admin Dashboard/i)).toBeInTheDocument())
+  })
+
+  it('navigates via quick action buttons', async () => {
+    renderAdmin()
+
+    await waitFor(() => expect(screen.getByText(/System Resources/i)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /View all users/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Monitor streams/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Resolve alerts/i }))
+
+    expect(pushMock).toHaveBeenNthCalledWith(1, '/admin/users')
+    expect(pushMock).toHaveBeenNthCalledWith(2, '/admin/streams')
+    expect(pushMock).toHaveBeenNthCalledWith(3, '/admin/alerts')
   })
 })

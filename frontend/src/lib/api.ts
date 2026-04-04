@@ -39,6 +39,7 @@ import type {
   StreamQueueAppendPayload,
   StreamQueueResponse,
   UploadTokenResponse,
+  UploadIngest,
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api'
@@ -276,6 +277,8 @@ export const api = {
       apiRequest<AssetDownloadLink>(`/assets/${id}/download-link`, { method: 'POST' }),
     createUploadToken: () =>
       apiRequest<UploadTokenResponse>('/assets/upload-token', { method: 'POST' }),
+    getUploadStatus: (uploadId: string) =>
+      apiRequest<UploadIngest>(`/assets/uploads/${uploadId}`),
   },
 
   playlists: {

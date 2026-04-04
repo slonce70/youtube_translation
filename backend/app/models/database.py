@@ -63,6 +63,9 @@ class UserProfile(Base):
     last_login_at = Column(TIMESTAMP(timezone=True))
 
     assets = relationship("Asset", back_populates="user", cascade="all, delete-orphan")
+    upload_ingests = relationship(
+        "UploadIngest", back_populates="user", cascade="all, delete-orphan"
+    )
     playlists = relationship(
         "Playlist", back_populates="user", cascade="all, delete-orphan"
     )
@@ -204,6 +207,58 @@ class Asset(Base):
         CheckConstraint(
             "asset_type IN ('video', 'audio', 'image')", name="check_asset_type"
         ),
+    )
+
+
+class UploadIngest(Base):
+    __tablename__ = "upload_ingests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    upload_id = Column(Text, nullable=False, unique=True, index=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id", ondelete="SET NULL"))
+    filename = Column(Text)
+    status = Column(Text, nullable=False, default="received", index=True)
+    storage_backend = Column(Text, nullable=False, default="filesystem")
+    storage_key = Column(Text)
+    local_path = Column(Text)
+    error_code = Column(Text)
+    error_message = Column(Text)
+    validation_errors = Column(
+        ARRAY(Text),
+        nullable=False,
+        default=list,
+        server_default=text("ARRAY[]::TEXT[]"),
+    )
+    warning_messages = Column(
+        ARRAY(Text),
+        nullable=False,
+        default=list,
+        server_default=text("ARRAY[]::TEXT[]"),
+    )
+    attempt_count = Column(Integer, nullable=False, default=0)
+    received_at = Column(TIMESTAMP(timezone=True))
+    finalized_at = Column(TIMESTAMP(timezone=True))
+    failed_at = Column(TIMESTAMP(timezone=True))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(
+        TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user = relationship("UserProfile", back_populates="upload_ingests")
+    asset = relationship("Asset")
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('received', 'validating', 'finalized', 'failed')",
+            name="check_upload_ingest_status",
+        ),
+        Index("idx_upload_ingests_user_status", "user_id", "status"),
     )
 
 

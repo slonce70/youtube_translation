@@ -186,6 +186,70 @@ async def test_ensure_user_profile_rejects_email_collision_for_existing_subject(
 
 
 @pytest.mark.asyncio
+async def test_ensure_user_profile_grants_admin_to_configured_dev_user_on_create(
+    db_session,
+    monkeypatch,
+):
+    user_id = uuid4()
+    email = f"dev-{user_id}@example.test"
+
+    monkeypatch.setattr(settings, "enable_dev_auth", True)
+    monkeypatch.setattr(settings, "dev_user_id", str(user_id))
+    monkeypatch.setattr(settings, "dev_user_email", email)
+
+    created_user_id = await deps._ensure_user_profile(
+        db_session,
+        {
+            "sub": str(user_id),
+            "email": email,
+            "user_metadata": {"full_name": "Dev User"},
+        },
+    )
+
+    assert created_user_id == user_id
+    profile = await db_session.get(UserProfile, user_id)
+    assert profile is not None
+    assert profile.is_admin is True
+
+
+@pytest.mark.asyncio
+async def test_ensure_user_profile_promotes_existing_configured_dev_user_to_admin(
+    db_session,
+    monkeypatch,
+):
+    user_id = uuid4()
+    email = f"dev-existing-{user_id}@example.test"
+
+    await _ensure_user_profile(
+        db_session,
+        user_id,
+        email,
+        subscription_tier="free",
+        subscription_status="active",
+        is_admin=False,
+    )
+    await db_session.commit()
+
+    monkeypatch.setattr(settings, "enable_dev_auth", True)
+    monkeypatch.setattr(settings, "dev_user_id", str(user_id))
+    monkeypatch.setattr(settings, "dev_user_email", email)
+
+    ensured_user_id = await deps._ensure_user_profile(
+        db_session,
+        {
+            "sub": str(user_id),
+            "email": email,
+            "user_metadata": {"full_name": "Dev User"},
+        },
+    )
+
+    assert ensured_user_id == user_id
+    profile = await db_session.get(UserProfile, user_id)
+    assert profile is not None
+    assert profile.is_admin is True
+
+
+@pytest.mark.asyncio
 async def test_assets_are_scoped_per_user(db_session):
     """Assets endpoints should only expose data for the authenticated user."""
 

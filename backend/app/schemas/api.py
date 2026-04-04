@@ -113,6 +113,33 @@ class UploadTokenResponse(BaseModel):
     expires_at: datetime
 
 
+UploadIngestStatus = Literal["received", "validating", "finalized", "failed"]
+
+
+class UploadIngestResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    upload_id: str
+    user_id: UUID
+    asset_id: Optional[UUID] = None
+    filename: Optional[str] = None
+    status: UploadIngestStatus
+    storage_backend: Literal["filesystem", "object_storage"] = "filesystem"
+    storage_key: Optional[str] = None
+    local_path: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    validation_errors: List[str] = Field(default_factory=list)
+    warning_messages: List[str] = Field(default_factory=list)
+    attempt_count: int = 0
+    received_at: Optional[datetime] = None
+    finalized_at: Optional[datetime] = None
+    failed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 # Media folder schemas
 class MediaFolderBase(BaseModel):
     name: str

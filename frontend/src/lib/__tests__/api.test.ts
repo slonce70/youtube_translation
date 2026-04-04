@@ -70,4 +70,26 @@ describe('api client', () => {
 
     await expect(api.assets.list()).rejects.toThrow('Bad Request')
   })
+
+  it('requests upload status from the dedicated ingest endpoint', async () => {
+    getAccessToken.mockResolvedValue('token')
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ upload_id: 'upload-1', status: 'validating' }),
+    })
+
+    const result = await api.assets.getUploadStatus('upload-1')
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/assets/uploads/upload-1'),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json',
+        }),
+      })
+    )
+    expect(result).toEqual({ upload_id: 'upload-1', status: 'validating' })
+  })
 })
