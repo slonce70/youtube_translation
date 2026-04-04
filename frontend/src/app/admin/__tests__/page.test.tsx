@@ -31,6 +31,9 @@ jest.mock('@/lib/api', () => ({
         list: jest.fn(),
       },
     },
+    metrics: {
+      get: jest.fn(),
+    },
   },
 }))
 
@@ -62,6 +65,35 @@ describe('AdminDashboard', () => {
       items: [],
       summary: { total: 0, unresolved: 0, critical: 0, resolved: 0 },
     })
+    api.metrics.get.mockResolvedValue({
+      system: {
+        cpu: { percent: 12.5, count: 8, frequency_mhz: 3200 },
+        memory: { total_gb: 64, available_gb: 40, used_gb: 24, percent: 37.5 },
+        disk: { total_gb: 512, used_gb: 256, free_gb: 256, percent: 50 },
+        network: { bytes_sent: 0, bytes_recv: 0, packets_sent: 0, packets_recv: 0 },
+      },
+      streams: {
+        total_streams: 0,
+        active_streams: 0,
+        idle_streams: 0,
+        error_streams: 0,
+        restart_orchestration: {
+          auto_restart_enabled: true,
+          scheduled_restart_streams: 0,
+          streams_with_retry_history: 0,
+          total_restart_attempts: 0,
+          max_attempts: 5,
+          next_restart_at: null,
+        },
+      },
+      capacity: {
+        active_streams: 0,
+        estimated_additional_capacity: 12,
+        estimated_total_capacity: 12,
+        cpu_limited: false,
+        memory_limited: false,
+      },
+    })
   })
 
   it('loads admin data without crashing', async () => {
@@ -69,7 +101,17 @@ describe('AdminDashboard', () => {
 
     await waitFor(() => expect(api.admin.users.list).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(api.admin.alerts.list).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(api.metrics.get).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.getByText(/Admin Dashboard/i)).toBeInTheDocument())
+  })
+
+
+  it('shows real system resource metrics instead of hardcoded storage totals', async () => {
+    renderAdmin()
+
+    await waitFor(() => expect(screen.getByText('256 GB / 512 GB')).toBeInTheDocument())
+    expect(screen.getByText('24 GB / 64 GB')).toBeInTheDocument()
+    expect(screen.getByText('12.5% across 8 cores')).toBeInTheDocument()
   })
 
   it('navigates via quick action buttons', async () => {

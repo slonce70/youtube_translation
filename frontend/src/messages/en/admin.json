@@ -333,12 +333,17 @@
     "systemResources": {
       "title": "System Resources",
       "storageUsage": "Storage Usage",
-      "storageSummary": "{used} TB / {total} TB",
+      "storageSummary": "{used} / {total}",
       "actions": {
         "viewUsers": "View All Users",
         "monitorStreams": "Monitor Streams",
         "resolveAlerts": "Resolve Alerts"
-      }
+      },
+      "memoryUsage": "Memory Usage",
+      "memorySummary": "{used} / {total}",
+      "cpuLoad": "CPU Load",
+      "cpuSummary": "{value}% across {cores} cores",
+      "unavailable": "Unavailable"
     }
   },
   "settings": {

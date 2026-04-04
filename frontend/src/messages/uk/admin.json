@@ -333,12 +333,17 @@
     "systemResources": {
       "title": "Ресурси системи",
       "storageUsage": "Використання сховища",
-      "storageSummary": "{used} ТБ / {total} ТБ",
+      "storageSummary": "{used} / {total}",
       "actions": {
         "viewUsers": "Переглянути всіх користувачів",
         "monitorStreams": "Моніторити трансляції",
         "resolveAlerts": "Закрити сповіщення"
-      }
+      },
+      "memoryUsage": "Використання пам’яті",
+      "memorySummary": "{used} / {total}",
+      "cpuLoad": "Навантаження CPU",
+      "cpuSummary": "{value}% на {cores} ядрах",
+      "unavailable": "Недоступно"
     }
   },
   "settings": {
