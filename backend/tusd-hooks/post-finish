@@ -79,6 +79,17 @@ write_failure_manifest() {
     echo "[post-finish] Wrote failure manifest: $manifest_path" >&2
 }
 
+read_metadata_from_info() {
+    local info_path="$1"
+    local key="$2"
+
+    if [ -z "$info_path" ] || [ ! -f "$info_path" ]; then
+        return 1
+    fi
+
+    jq -r --arg key "$key" '.MetaData[$key] // empty' "$info_path" 2>/dev/null
+}
+
 resolve_user_from_token() {
     local token="$1"
 
@@ -139,6 +150,43 @@ USER_ID_METADATA=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.user_id // 
 UPLOAD_ID=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.ID // .Upload.ID // empty')
 FILENAME=$(echo "$HOOK_DATA" | jq -r '.Event.Upload.MetaData.filename // .Upload.MetaData.filename // .Upload.MetaData.name // empty')
 
+STORAGE_PATH=$(echo "$HOOK_DATA" | jq -r '.Storage.Path // .Event.Upload.Storage.Path // .Upload.Storage.Path // empty')
+STORAGE_INFO_PATH=$(echo "$HOOK_DATA" | jq -r '.Storage.InfoPath // .Event.Upload.Storage.InfoPath // .Upload.Storage.InfoPath // empty')
+
+UPLOAD_ROOT="$(resolve_upload_root)"
+TEMP_DIR="$UPLOAD_ROOT/_temp"
+USER_DIR=""
+
+if [ -n "$STORAGE_PATH" ] && [ "$STORAGE_PATH" != "null" ]; then
+    TEMP_FILE="$STORAGE_PATH"
+else
+    TEMP_FILE="$TEMP_DIR/$UPLOAD_ID"
+    if [ ! -f "$TEMP_FILE" ]; then
+        TEMP_FILE="$UPLOAD_ROOT/$UPLOAD_ID"
+    fi
+fi
+
+if [ -n "$STORAGE_INFO_PATH" ] && [ "$STORAGE_INFO_PATH" != "null" ]; then
+    TEMP_INFO="$STORAGE_INFO_PATH"
+else
+    TEMP_INFO="${TEMP_FILE}.info"
+fi
+
+if [ -z "$TOKEN_METADATA" ] || [ "$TOKEN_METADATA" = "null" ]; then
+    TOKEN_METADATA=$(read_metadata_from_info "$TEMP_INFO" "upload_token" || true)
+    if [ -n "$TOKEN_METADATA" ]; then
+        echo "[post-finish] Recovered upload token from info file: $TEMP_INFO" >&2
+    fi
+fi
+
+if [ -z "$USER_ID_METADATA" ] || [ "$USER_ID_METADATA" = "null" ]; then
+    USER_ID_METADATA=$(read_metadata_from_info "$TEMP_INFO" "user_id" || true)
+fi
+
+if [ -z "$FILENAME" ] || [ "$FILENAME" = "null" ]; then
+    FILENAME=$(read_metadata_from_info "$TEMP_INFO" "filename" || read_metadata_from_info "$TEMP_INFO" "name" || true)
+fi
+
 # Debug logging
 echo "[post-finish] Upload ID: $UPLOAD_ID" >&2
 echo "[post-finish] User ID (metadata): $USER_ID_METADATA" >&2
@@ -146,7 +194,7 @@ echo "[post-finish] Filename: $FILENAME" >&2
 
 # Validate token
 if [ -z "$TOKEN_METADATA" ] || [ "$TOKEN_METADATA" = "null" ]; then
-    echo "[post-finish] ERROR: Missing upload token in metadata" >&2
+    echo "[post-finish] ERROR: Missing upload token in metadata and info file" >&2
     write_failure_manifest "missing_upload_token" "Upload token metadata was not present"
     exit 0
 fi
@@ -164,28 +212,7 @@ USER_ID="$RESOLVED_USER_ID"
 echo "[post-finish] Resolved User ID: $USER_ID" >&2
 
 # Define paths (absolute to avoid cwd issues)
-UPLOAD_ROOT="$(resolve_upload_root)"
-TEMP_DIR="$UPLOAD_ROOT/_temp"
 USER_DIR="$UPLOAD_ROOT/$USER_ID"
-
-STORAGE_PATH=$(echo "$HOOK_DATA" | jq -r '.Storage.Path // .Event.Upload.Storage.Path // .Upload.Storage.Path // empty')
-STORAGE_INFO_PATH=$(echo "$HOOK_DATA" | jq -r '.Storage.InfoPath // .Event.Upload.Storage.InfoPath // .Upload.Storage.InfoPath // empty')
-
-if [ -n "$STORAGE_PATH" ] && [ "$STORAGE_PATH" != "null" ]; then
-    TEMP_FILE="$STORAGE_PATH"
-else
-    TEMP_FILE="$TEMP_DIR/$UPLOAD_ID"
-    if [ ! -f "$TEMP_FILE" ]; then
-        TEMP_FILE="$UPLOAD_ROOT/$UPLOAD_ID"
-    fi
-fi
-
-if [ -n "$STORAGE_INFO_PATH" ] && [ "$STORAGE_INFO_PATH" != "null" ]; then
-    TEMP_INFO="$STORAGE_INFO_PATH"
-else
-    TEMP_INFO="${TEMP_FILE}.info"
-fi
-
 FINAL_FILE="$USER_DIR/$UPLOAD_ID"
 FINAL_INFO="$USER_DIR/$UPLOAD_ID.info"
 

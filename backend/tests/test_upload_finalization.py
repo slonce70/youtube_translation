@@ -468,6 +468,73 @@ def test_post_finish_redacts_upload_token_in_failure_manifest(tmp_path):
     assert token not in manifest_path.read_text()
 
 
+def test_post_finish_recovers_missing_token_from_info_file(tmp_path):
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir(parents=True, exist_ok=True)
+
+    upload_id = f"upload-metadata-fallback-{uuid4()}"
+    user_id = uuid4()
+    temp_file = upload_root / upload_id
+    temp_file.write_bytes(b"fake-video")
+
+    token, _ = asset_utils.generate_upload_token(user_id)
+    info_payload = {
+        "ID": upload_id,
+        "MetaData": {
+            "upload_token": token,
+            "user_id": str(user_id),
+            "filename": "fallback.mp4",
+        },
+        "Storage": {
+            "Path": str(temp_file),
+        },
+    }
+    (upload_root / f"{upload_id}.info").write_text(json.dumps(info_payload))
+
+    payload = {
+        "Upload": {
+            "ID": upload_id,
+            "MetaData": {
+                "user_id": str(user_id),
+                "filename": "fallback.mp4",
+            },
+            "Storage": {
+                "Path": str(temp_file),
+            },
+        },
+        "Storage": {
+            "Path": str(temp_file),
+        },
+    }
+
+    script_path = Path(__file__).resolve().parents[1] / "tusd-hooks" / "post-finish"
+    env = {
+        **os.environ,
+        "TUSD_UPLOAD_ROOT": str(upload_root),
+        "TUSD_BACKEND_URL": "http://127.0.0.1:1",
+        "UPLOAD_TOKEN_SECRET": settings.upload_token_secret,
+    }
+
+    result = subprocess.run(
+        [str(script_path)],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Recovered upload token from info file" in result.stderr
+    assert (upload_root / str(user_id) / upload_id).exists()
+
+    manifest_path = upload_root / "_failed-finalizations" / f"{upload_id}.json"
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["reason"] != "invalid_upload_token"
+        assert manifest["reason"] != "missing_upload_token"
+
+
 def test_post_finish_accepts_expired_token_after_upload_started(tmp_path):
     upload_root = tmp_path / "uploads"
     temp_dir = upload_root / "_temp"

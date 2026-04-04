@@ -222,8 +222,11 @@ services:
 
 volumes:
   caddy-data:
+    name: docker_caddy-data
   caddy-config:
+    name: docker_caddy-config
   postgres-data:
+    name: docker_postgres-data
 
 networks:
   app-network:
