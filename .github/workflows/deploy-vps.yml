@@ -27,6 +27,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Verify generated docker Caddyfile is in sync
         run: |
@@ -108,32 +110,51 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
           TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+
+          extract_sha() {
+            local image="$1"
+            if [[ "$image" =~ :([0-9a-f]{40})$ ]]; then
+              echo "${BASH_REMATCH[1]}"
+            else
+              echo ""
+            fi
+          }
+
           remote_state="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" '
             for name in youtube-streaming-backend youtube-streaming-frontend youtube-streaming-tusd; do
               docker inspect "$name" --format "{{.Name}}|{{.Config.Image}}|{{.State.StartedAt}}" 2>/dev/null || true
             done
           ')"
+          vps_checkout_sha="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "cd '$VPS_DEPLOY_PATH' && git rev-parse HEAD 2>/dev/null || true")"
 
-          matches=0
-          seen=0
+          current_backend_sha=''
+          current_frontend_sha=''
+          current_tusd_sha=''
+
           while IFS='|' read -r name image started_at; do
             [[ -z "${name:-}" ]] && continue
-            seen=$((seen + 1))
-            if [[ "$image" == *":$TARGET_SHA" ]]; then
-              matches=$((matches + 1))
-            fi
+            case "$name" in
+              /youtube-streaming-backend)
+                current_backend_sha="$(extract_sha "$image")"
+                ;;
+              /youtube-streaming-frontend)
+                current_frontend_sha="$(extract_sha "$image")"
+                ;;
+              /youtube-streaming-tusd)
+                current_tusd_sha="$(extract_sha "$image")"
+                ;;
+            esac
           done <<< "$remote_state"
 
-          needs_deploy=true
-          if [[ "$seen" -eq 3 && "$matches" -eq 3 ]]; then
-            needs_deploy=false
-          fi
-
           {
-            echo "needs_deploy=$needs_deploy"
+            echo "current_backend_sha=$current_backend_sha"
+            echo "current_frontend_sha=$current_frontend_sha"
+            echo "current_tusd_sha=$current_tusd_sha"
+            echo "vps_checkout_sha=$vps_checkout_sha"
             echo 'remote_state<<EOF'
             printf '%s\n' "$remote_state"
             echo 'EOF'
@@ -147,16 +168,132 @@ jobs:
             else
               echo '- `No running containers detected for backend/frontend/tusd`'
             fi
+            echo "- VPS checkout SHA: \`$vps_checkout_sha\`"
             echo "- Target SHA: \`$TARGET_SHA\`"
-            echo "- Needs deploy: \`$needs_deploy\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Determine deploy impact
+        id: impact
+        env:
+          TARGET_SHA: ${{ github.sha }}
+          CURRENT_BACKEND_SHA: ${{ steps.prod_state.outputs.current_backend_sha }}
+          CURRENT_FRONTEND_SHA: ${{ steps.prod_state.outputs.current_frontend_sha }}
+          CURRENT_TUSD_SHA: ${{ steps.prod_state.outputs.current_tusd_sha }}
+        run: |
+          set -euo pipefail
+
+          diff_has_paths() {
+            local base_sha="$1"
+            local pattern="$2"
+
+            if [[ -z "$base_sha" ]]; then
+              return 0
+            fi
+            if [[ "$base_sha" == "$TARGET_SHA" ]]; then
+              return 1
+            fi
+
+            git diff --name-only "$base_sha" "$TARGET_SHA" | grep -Eq "$pattern"
+          }
+
+          add_service() {
+            local service="$1"
+            local existing
+            for existing in "${services[@]:-}"; do
+              if [[ "$existing" == "$service" ]]; then
+                return 0
+              fi
+            done
+            services+=("$service")
+          }
+
+          frontend_pattern='^frontend/'
+          backend_pattern='^(backend/|docker/docker-compose\.yml|docker/Caddyfile(\.template)?|docker/mediamtx\.yml|scripts/render_caddyfile\.py)$'
+          tusd_pattern='^(backend/tusd-hooks/|docker/tusd\.Dockerfile|docker/docker-compose\.yml)$'
+          infra_pattern='^(docker/docker-compose\.yml|docker/Caddyfile(\.template)?|docker/mediamtx\.yml|scripts/render_caddyfile\.py)$'
+
+          frontend_needs_deploy=false
+          backend_needs_deploy=false
+          tusd_needs_deploy=false
+          infra_needs_deploy=false
+
+          if [[ "$CURRENT_FRONTEND_SHA" != "$TARGET_SHA" ]] && diff_has_paths "$CURRENT_FRONTEND_SHA" "$frontend_pattern"; then
+            frontend_needs_deploy=true
+          fi
+
+          if [[ "$CURRENT_BACKEND_SHA" != "$TARGET_SHA" ]] && diff_has_paths "$CURRENT_BACKEND_SHA" "$backend_pattern"; then
+            backend_needs_deploy=true
+          fi
+
+          if [[ "$CURRENT_TUSD_SHA" != "$TARGET_SHA" ]] && diff_has_paths "$CURRENT_TUSD_SHA" "$tusd_pattern"; then
+            tusd_needs_deploy=true
+          fi
+
+          if diff_has_paths "$CURRENT_BACKEND_SHA" "$infra_pattern" || diff_has_paths "$CURRENT_TUSD_SHA" "$infra_pattern"; then
+            infra_needs_deploy=true
+          fi
+
+          services=()
+          sync_host_caddy=0
+
+          if [[ "$infra_needs_deploy" == 'true' ]]; then
+            services=(postgres redis backend tusd frontend runner mediamtx)
+            sync_host_caddy=1
+          else
+            if [[ "$backend_needs_deploy" == 'true' ]]; then
+              add_service backend
+              add_service runner
+            fi
+            if [[ "$tusd_needs_deploy" == 'true' ]]; then
+              add_service tusd
+            fi
+            if [[ "$frontend_needs_deploy" == 'true' ]]; then
+              add_service frontend
+            fi
+          fi
+
+          deploy_services=''
+          deploy_services_csv=''
+          needs_deploy=false
+          frontend_only_deploy=false
+          if [[ "${#services[@]}" -gt 0 ]]; then
+            needs_deploy=true
+            deploy_services="${services[*]}"
+            deploy_services_csv="$(IFS=,; echo "${services[*]}")"
+            if [[ "${#services[@]}" -eq 1 && "${services[0]}" == 'frontend' && "$sync_host_caddy" == '0' ]]; then
+              frontend_only_deploy=true
+            fi
+          fi
+
+          {
+            echo "needs_deploy=$needs_deploy"
+            echo "frontend_needs_deploy=$frontend_needs_deploy"
+            echo "backend_needs_deploy=$backend_needs_deploy"
+            echo "tusd_needs_deploy=$tusd_needs_deploy"
+            echo "infra_needs_deploy=$infra_needs_deploy"
+            echo "frontend_only_deploy=$frontend_only_deploy"
+            echo "deploy_services=$deploy_services"
+            echo "deploy_services_csv=$deploy_services_csv"
+            echo "sync_host_caddy=$sync_host_caddy"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo '### Deploy impact analysis'
+            echo ''
+            echo "- Frontend update needed: \`$frontend_needs_deploy\`"
+            echo "- Backend/runner update needed: \`$backend_needs_deploy\`"
+            echo "- tusd update needed: \`$tusd_needs_deploy\`"
+            echo "- Infra sync needed: \`$infra_needs_deploy\`"
+            echo "- Planned services: \`${deploy_services:-none}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check live stream deploy safety
         id: live_guard
-        if: steps.prod_state.outputs.needs_deploy == 'true'
+        if: steps.impact.outputs.needs_deploy == 'true'
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
+          FRONTEND_ONLY_DEPLOY: ${{ steps.impact.outputs.frontend_only_deploy }}
         run: |
           set -euo pipefail
           active_streams="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "if docker ps --format '{{.Names}}' | grep -qx 'youtube-streaming-postgres'; then docker exec youtube-streaming-postgres psql -U youtube_user -d youtube_streaming -tAc \"SELECT count(*) FROM streams WHERE status IN ('running','starting','stopping');\" | tr -d '[:space:]'; else echo 0; fi")"
@@ -167,38 +304,41 @@ jobs:
           fi
 
           can_deploy=true
+          decision='safe to deploy'
           if (( active_streams > 0 )); then
-            can_deploy=false
+            if [[ "$FRONTEND_ONLY_DEPLOY" == 'true' ]]; then
+              decision='live stream active: frontend-only deploy allowed'
+            else
+              can_deploy=false
+              decision='deploy deferred to protect live streams'
+            fi
           fi
 
           {
             echo "active_streams=$active_streams"
             echo "can_deploy=$can_deploy"
+            echo "decision=$decision"
           } >> "$GITHUB_OUTPUT"
 
           {
             echo '### Live stream deploy guard'
             echo ''
             echo "- Active streams: \`$active_streams\`"
-            if [[ "$can_deploy" == 'true' ]]; then
-              echo '- Result: `safe to deploy`'
-            else
-              echo '- Result: `deploy deferred to protect live streams`'
-            fi
+            echo "- Decision: \`$decision\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Skip deploy because production already matches target
-        if: steps.prod_state.outputs.needs_deploy != 'true'
+      - name: Skip deploy because no runtime-relevant services changed
+        if: steps.impact.outputs.needs_deploy != 'true'
         run: |
-          echo 'Production already runs the target commit; nothing to do.'
+          echo 'No runtime-relevant service changes detected; nothing to deploy.'
 
       - name: Skip deploy because live stream protection is active
-        if: steps.prod_state.outputs.needs_deploy == 'true' && steps.live_guard.outputs.can_deploy != 'true'
+        if: steps.impact.outputs.needs_deploy == 'true' && steps.live_guard.outputs.can_deploy != 'true'
         run: |
-          echo "Skipping production deploy for commit ${{ github.sha }} because ${{ steps.live_guard.outputs.active_streams }} live stream(s) are active."
+          echo "Skipping production deploy for commit ${{ github.sha }} because ${{ steps.live_guard.outputs.active_streams }} live stream(s) are active and the planned service set is not frontend-only."
 
-      - name: Deploy current main to VPS
-        if: steps.prod_state.outputs.needs_deploy == 'true' && steps.live_guard.outputs.can_deploy == 'true'
+      - name: Deploy selected services to VPS
+        if: steps.impact.outputs.needs_deploy == 'true' && steps.live_guard.outputs.can_deploy == 'true'
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
@@ -206,6 +346,8 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           REGISTRY_USER: ${{ github.actor }}
           REGISTRY_PASSWORD: ${{ github.token }}
+          DEPLOY_SERVICES: ${{ steps.impact.outputs.deploy_services_csv }}
+          DEPLOY_SYNC_HOST_CADDY: ${{ steps.impact.outputs.sync_host_caddy }}
         run: |
           ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
-            "export GITHUB_SHA='$GITHUB_SHA' REGISTRY_HOST='ghcr.io' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASSWORD='$REGISTRY_PASSWORD' BACKEND_IMAGE='ghcr.io/slonce70/youtube_translation-backend:$GITHUB_SHA' FRONTEND_IMAGE='ghcr.io/slonce70/youtube_translation-frontend:$GITHUB_SHA' TUSD_IMAGE='ghcr.io/slonce70/youtube_translation-tusd:$GITHUB_SHA'; cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
+            "export GITHUB_SHA='$GITHUB_SHA' REGISTRY_HOST='ghcr.io' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASSWORD='$REGISTRY_PASSWORD' BACKEND_IMAGE='ghcr.io/slonce70/youtube_translation-backend:$GITHUB_SHA' FRONTEND_IMAGE='ghcr.io/slonce70/youtube_translation-frontend:$GITHUB_SHA' TUSD_IMAGE='ghcr.io/slonce70/youtube_translation-tusd:$GITHUB_SHA' DEPLOY_SERVICES='$DEPLOY_SERVICES' DEPLOY_SYNC_HOST_CADDY='$DEPLOY_SYNC_HOST_CADDY'; cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
