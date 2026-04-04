@@ -5,6 +5,7 @@ import { NextIntlClientProvider, type AbstractIntlMessages, type TranslationValu
 
 import { StreamsList } from '../StreamsList'
 import type {
+  MediaCollection,
   Playlist,
   Stream,
   StreamRuntimeRestartInfo,
@@ -16,7 +17,7 @@ const translations: Record<string, string> = {
   'streams.title': 'Live Streams',
   'streams.new': 'New Stream',
   'streams.untitled': 'Untitled Stream',
-  'streams.labels.playlist': 'Playlist',
+  'streams.labels.source': 'Source',
   'streams.labels.destinations': 'Channel',
   'streams.labels.status': 'Status',
   'streams.labels.created': 'Created',
@@ -26,6 +27,9 @@ const translations: Record<string, string> = {
   'streams.labels.scheduledStart': 'Scheduled start',
   'streams.labels.autoRetry': 'Auto-restart',
   'streams.destinations.none': 'No destinations configured',
+  'streams.sources.videoCollection': 'Video queue',
+  'streams.sources.audioCollection': 'Audio playlist',
+  'streams.sources.customQueue': 'Custom queue ({count})',
   'streams.unknownPlaylist': 'Unknown playlist',
   'streams.statusCheck.unreachable': 'Live status unavailable',
   'streams.buttons.logs': 'Logs',
@@ -33,6 +37,9 @@ const translations: Record<string, string> = {
   'streams.buttons.stop': 'Stop',
   'streams.buttons.start': 'Start',
   'streams.buttons.cancelSchedule': 'Cancel schedule',
+  'streams.buttons.details': 'Details',
+  'streams.buttons.reviewIssue': 'Review issue',
+  'streams.liveEdit.button': 'Edit',
   'streams.empty.title': 'No streams',
   'streams.empty.description': 'Nothing here yet',
   'streams.empty.cta': 'Create stream',
@@ -144,6 +151,24 @@ describe('StreamsList restart visibility', () => {
       },
     ],
   ])
+  const videoCollectionMap = new Map<string, MediaCollection>([
+    [
+      'video-collection-1',
+      {
+        id: 'video-collection-1',
+        user_id: 'user-1',
+        name: 'Loop queue',
+        description: null,
+        collection_type: 'video_background',
+        is_active: true,
+        origin_playlist_id: null,
+        created_at: '2026-03-30T08:00:00Z',
+        updated_at: '2026-03-30T08:00:00Z',
+        items: [],
+      },
+    ],
+  ])
+  const audioCollectionMap = new Map<string, MediaCollection>()
 
   const renderStatusBadge = (status: StreamStatusValue): ReactNode => <span>{status}</span>
 
@@ -163,6 +188,8 @@ describe('StreamsList restart visibility', () => {
           onDeleteStream={jest.fn()}
           renderStatusBadge={renderStatusBadge}
           playlistMap={playlistMap}
+          videoCollectionMap={videoCollectionMap}
+          audioCollectionMap={audioCollectionMap}
           t={t}
           streamingStatus={(status) => status}
           isStartPending={false}
@@ -260,6 +287,8 @@ describe('StreamsList restart visibility', () => {
           onDeleteStream={jest.fn()}
           renderStatusBadge={renderStatusBadge}
           playlistMap={playlistMap}
+          videoCollectionMap={videoCollectionMap}
+          audioCollectionMap={audioCollectionMap}
           t={t}
           streamingStatus={(status) => status}
           isStartPending={false}
@@ -277,5 +306,22 @@ describe('StreamsList restart visibility', () => {
 
     expect(onStopStream).toHaveBeenCalledWith(stream.id)
     expect(onStartStream).not.toHaveBeenCalled()
+  })
+
+  it('shows collection-backed streams with a real source label instead of an unknown playlist', () => {
+    renderList([
+      createStream({
+        id: 'stream-collection',
+        source_type: 'assets',
+        playlist_id: null,
+        video_collection_id: 'video-collection-1',
+        total_duration_seconds: 0,
+      }),
+    ])
+
+    expect(screen.getByText('Source')).toBeInTheDocument()
+    expect(screen.getByText('Loop queue')).toBeInTheDocument()
+    expect(screen.queryByText('Unknown playlist')).not.toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 })

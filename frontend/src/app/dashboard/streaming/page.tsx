@@ -113,7 +113,7 @@ export default function StreamingPage() {
         collection_type: 'video_background',
         include_items: true,
       }),
-    enabled: !!user && showCreateStream,
+    enabled: !!user,
   })
 
   const { data: audioCollections, isLoading: isLoadingAudioCollections } = useQuery<MediaCollection[]>({
@@ -123,13 +123,21 @@ export default function StreamingPage() {
         collection_type: 'audio_playlist',
         include_items: true,
       }),
-    enabled: !!user && showCreateStream,
+    enabled: !!user,
   })
 
   const playlistMap = useMemo(() => {
     if (!playlists) return new Map<string, Playlist>()
     return new Map(playlists.map((playlist) => [playlist.id, playlist]))
   }, [playlists])
+  const videoCollectionMap = useMemo(() => {
+    if (!videoCollections) return new Map<string, MediaCollection>()
+    return new Map(videoCollections.map((collection) => [collection.id, collection]))
+  }, [videoCollections])
+  const audioCollectionMap = useMemo(() => {
+    if (!audioCollections) return new Map<string, MediaCollection>()
+    return new Map(audioCollections.map((collection) => [collection.id, collection]))
+  }, [audioCollections])
 
   const runningStreams = useMemo(
     () => (streams ?? []).filter((stream) => stream.status === 'running'),
@@ -491,6 +499,8 @@ export default function StreamingPage() {
             onEditSchedule={handleOpenSchedule}
             renderStatusBadge={renderStatusBadge}
             playlistMap={playlistMap}
+            videoCollectionMap={videoCollectionMap}
+            audioCollectionMap={audioCollectionMap}
             t={tStreaming}
             streamingStatus={streamingStatus}
             isStartPending={startStreamMutation.isPending}

@@ -22,6 +22,7 @@ import { LoadingState } from '@/components/LoadingState'
 import { formatRelativeDateTime } from '@/lib/dates'
 import { deriveStreamState } from '@/lib/stream-state'
 import type {
+  MediaCollection,
   Playlist,
   Stream,
   StreamStatusResponse,
@@ -43,6 +44,8 @@ export type StreamsListProps = {
   onDeleteStream: (streamId: string) => void
   renderStatusBadge: (status: StreamStatusValue) => ReactNode
   playlistMap: Map<string, Playlist>
+  videoCollectionMap: Map<string, MediaCollection>
+  audioCollectionMap: Map<string, MediaCollection>
   t: Translator
   streamingStatus: Translator
   isStartPending: boolean
@@ -89,6 +92,8 @@ export function StreamsList({
   onDeleteStream,
   renderStatusBadge,
   playlistMap,
+  videoCollectionMap,
+  audioCollectionMap,
   t,
   streamingStatus,
   isStartPending,
@@ -163,10 +168,40 @@ export function StreamsList({
                           ? formatRelativeDateTime(stream.scheduled_start_time, locale, '—')
                           : null
                       const createdLabel = formatRelativeDateTime(stream.created_at, locale, '—')
-                      const playlistName = stream.playlist_id
-                        ? playlistMap.get(stream.playlist_id)?.name ?? t('streams.unknownPlaylist')
-                        : t('streams.unknownPlaylist')
+                      const sourceName = (() => {
+                        if (stream.playlist_id) {
+                          return playlistMap.get(stream.playlist_id)?.name ?? t('streams.unknownPlaylist')
+                        }
+
+                        if (stream.video_collection_id) {
+                          return (
+                            videoCollectionMap.get(stream.video_collection_id)?.name ??
+                            t('streams.sources.videoCollection')
+                          )
+                        }
+
+                        if (stream.audio_collection_id && stream.mix_mode === 'audio_only') {
+                          return (
+                            audioCollectionMap.get(stream.audio_collection_id)?.name ??
+                            t('streams.sources.audioCollection')
+                          )
+                        }
+
+                        if ((stream.stream_assets?.length ?? 0) > 0) {
+                          return t('streams.sources.customQueue', {
+                            count: stream.stream_assets?.length ?? 0,
+                          })
+                        }
+
+                        return t('streams.unknownPlaylist')
+                      })()
                       const retryVisible = hasRetryHistory(derived.runtimeRestart)
+                      const totalDurationLabel =
+                        derived.totalDurationSeconds && derived.totalDurationSeconds > 0
+                          ? formatDuration(derived.totalDurationSeconds)
+                          : stream.playlist_id || (stream.stream_assets?.length ?? 0) > 0
+                            ? formatDuration(derived.totalDurationSeconds)
+                            : '—'
                       const primaryButton = (() => {
                         if (derived.primaryAction === 'stop') {
                           return (
@@ -284,14 +319,12 @@ export function StreamsList({
                                 </summary>
                                 <div className="grid gap-3 border-t border-slate-200 px-3 py-3 text-sm dark:border-slate-800 md:grid-cols-2">
                                   <div>
-                                    <p className="text-slate-500 dark:text-slate-400">{t('streams.labels.playlist')}</p>
-                                    <p className="font-medium text-slate-900 dark:text-white">{playlistName}</p>
+                                    <p className="text-slate-500 dark:text-slate-400">{t('streams.labels.source')}</p>
+                                    <p className="font-medium text-slate-900 dark:text-white">{sourceName}</p>
                                   </div>
                                   <div>
                                     <p className="text-slate-500 dark:text-slate-400">{t('streams.labels.totalDuration')}</p>
-                                    <p className="font-medium text-slate-900 dark:text-white">
-                                      {formatDuration(derived.totalDurationSeconds)}
-                                    </p>
+                                    <p className="font-medium text-slate-900 dark:text-white">{totalDurationLabel}</p>
                                   </div>
                                   <div>
                                     <p className="text-slate-500 dark:text-slate-400">{t('streams.labels.quotaRemaining')}</p>
