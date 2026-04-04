@@ -69,6 +69,8 @@ jobs:
           build-args: |
             DEV_API_PROXY_TARGET=http://backend:8000
             ENABLE_API_PROXY=1
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           tags: |
             ghcr.io/slonce70/youtube_translation-frontend:${{ github.sha }}
             ghcr.io/slonce70/youtube_translation-frontend:latest
