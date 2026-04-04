@@ -5,7 +5,7 @@ from fastapi import HTTPException
 
 from app.core.database import async_session_maker
 from app.core.quota import QuotaEnforcer
-from app.models.database import UserProfile
+from app.models.database import SubscriptionTierLimits, UserProfile
 
 
 @pytest.mark.asyncio
@@ -139,10 +139,15 @@ async def test_audio_quality_missing_tier_metadata_fails_closed() -> None:
         profile = UserProfile(
             user_id=user_id,
             email=f"{user_id}@audio-quality.test",
-            subscription_tier="missing-tier",
+            subscription_tier="fhd_start",
             subscription_status="active",
         )
         session.add(profile)
+        await session.commit()
+
+        limits = await session.get(SubscriptionTierLimits, "fhd_start")
+        assert limits is not None
+        await session.delete(limits)
         await session.commit()
 
         enforcer = QuotaEnforcer(session, user_id)
@@ -173,7 +178,7 @@ async def test_audio_quality_missing_tier_metadata_fails_closed() -> None:
         assert error.status_code == 400
         assert error.detail == {
             "error": "tier_limits_unavailable",
-            "tier": "missing-tier",
+            "tier": "fhd_start",
             "message": (
                 "Subscription tier limits are unavailable for this account. "
                 "Streaming quality and launch checks cannot proceed until tier metadata is restored."

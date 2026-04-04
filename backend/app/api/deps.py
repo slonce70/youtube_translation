@@ -372,6 +372,13 @@ async def _ensure_user_profile(
             detail="Invalid user identifier in token",
         )
 
+    dev_payload = _dev_user_payload()
+    is_configured_dev_user = (
+        dev_payload is not None
+        and str(user_id) == str(dev_payload.get("sub"))
+        and user_payload.get("email") == dev_payload.get("email")
+    )
+
     result = await db.execute(select(UserProfile).where(UserProfile.user_id == user_id))
     profile = result.scalar_one_or_none()
 
@@ -433,6 +440,9 @@ async def _ensure_user_profile(
         if user_timezone and getattr(profile, "timezone", None) != user_timezone:
             cast(Any, profile).timezone = user_timezone
             updated = True
+        if is_configured_dev_user and not getattr(profile, "is_admin", False):
+            profile.is_admin = True
+            updated = True
 
         if updated:
             await db.commit()
@@ -449,6 +459,7 @@ async def _ensure_user_profile(
         full_name=full_name,
         subscription_tier="free",
         subscription_status="active",
+        is_admin=is_configured_dev_user,
     )
     if user_timezone:
         cast(Any, new_profile).timezone = user_timezone

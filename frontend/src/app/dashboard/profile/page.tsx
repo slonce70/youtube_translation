@@ -8,10 +8,12 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
+import { writeDevBypassDisplayName } from '@/lib/devBypassUser'
 import { useDashboardContext } from '../dashboard-context'
 import { toast } from 'sonner'
 
 export default function ProfilePage() {
+  const devBypass = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
   const { user, refreshUser } = useDashboardContext()
   const t = useTranslations('profile')
   const toasts = useTranslations('profile.toasts')
@@ -35,13 +37,17 @@ export default function ProfilePage() {
 
     setProfileLoading(true)
     try {
-      const { error } = await supabase.auth.updateUser({
-        data: {
-          display_name: displayName,
-        },
-      })
+      if (devBypass) {
+        writeDevBypassDisplayName(displayName)
+      } else {
+        const { error } = await supabase.auth.updateUser({
+          data: {
+            display_name: displayName,
+          },
+        })
 
-      if (error) throw error
+        if (error) throw error
+      }
 
       await refreshUser()
       toast.success(toasts('profileUpdated'))

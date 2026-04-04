@@ -163,6 +163,14 @@ async def _apply_schema_changes(conn):
         )
     )
 
+    # Storage accounting is maintained by explicit apply_storage_delta() calls
+    # in asset service mutations. Remove the legacy trigger path so init_db
+    # environments do not double count storage bytes.
+    await conn.execute(
+        text("DROP TRIGGER IF EXISTS trigger_update_user_storage ON assets")
+    )
+    await conn.execute(text("DROP FUNCTION IF EXISTS update_user_storage_usage()"))
+
     await conn.execute(
         text(
             """
