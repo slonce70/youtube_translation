@@ -1,6 +1,7 @@
 import {
   BUILDER_STEPS,
   createDefaultEditorState,
+  customizeEditorState,
   DEFAULT_SCHEDULE_STATE,
   deriveEditorStateFromCollection,
   formatReviewDateTime,
@@ -89,6 +90,23 @@ describe('stream builder helpers', () => {
         items: [{ asset_id: 'asset-1' }],
       }),
     ).toBe(true)
+  })
+
+  it('switches existing editors into custom mode while preserving queued assets', () => {
+    const existingEditor = {
+      ...createDefaultEditorState({ shuffle: true }),
+      mode: 'existing' as const,
+      selectedCollectionId: 'collection-1',
+      items: [{ asset_id: 'asset-1' }],
+      name: 'Saved collection',
+    }
+
+    expect(customizeEditorState(existingEditor, { loop: false })).toEqual({
+      ...existingEditor,
+      mode: 'custom',
+      selectedCollectionId: null,
+      loop: false,
+    })
   })
 
   it('formats review dates with the provided app locale', () => {
