@@ -33,18 +33,20 @@ resolve_upload_root() {
 }
 
 sanitize_hook_payload() {
-    if [ -z "${HOOK_DATA:-}" ]; then
+    local payload="${FAILURE_PAYLOAD_OVERRIDE:-${HOOK_DATA:-}}"
+
+    if [ -z "$payload" ]; then
         return 0
     fi
 
-    if ! printf '%s' "$HOOK_DATA" | jq '
+    if ! printf '%s' "$payload" | jq '
         if type == "object" then
             del(.Event.Upload.MetaData.upload_token?, .Upload.MetaData.upload_token?)
         else
             .
         end
     ' 2>/dev/null; then
-        printf '%s' "$HOOK_DATA"
+        printf '%s' "$payload"
     fi
 }
 
@@ -88,6 +90,17 @@ read_metadata_from_info() {
     fi
 
     jq -r --arg key "$key" '.MetaData[$key] // empty' "$info_path" 2>/dev/null
+}
+
+first_existing_path() {
+    local candidate
+    for candidate in "$@"; do
+        if [ -n "$candidate" ] && [ -e "$candidate" ]; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+    return 1
 }
 
 resolve_user_from_token() {
@@ -172,6 +185,17 @@ else
     TEMP_INFO="${TEMP_FILE}.info"
 fi
 
+RESOLVED_INFO_PATH=$(
+    first_existing_path \
+        "$TEMP_INFO" \
+        "$UPLOAD_ROOT/$UPLOAD_ID.info" \
+        "$TEMP_DIR/$UPLOAD_ID.info" \
+        "$UPLOAD_ROOT/$USER_ID_METADATA/$UPLOAD_ID.info" || true
+)
+if [ -n "$RESOLVED_INFO_PATH" ]; then
+    TEMP_INFO="$RESOLVED_INFO_PATH"
+fi
+
 if [ -z "$TOKEN_METADATA" ] || [ "$TOKEN_METADATA" = "null" ]; then
     TOKEN_METADATA=$(read_metadata_from_info "$TEMP_INFO" "upload_token" || true)
     if [ -n "$TOKEN_METADATA" ]; then
@@ -227,6 +251,32 @@ USER_DIR="$UPLOAD_ROOT/$USER_ID"
 FINAL_FILE="$USER_DIR/$UPLOAD_ID"
 FINAL_INFO="$USER_DIR/$UPLOAD_ID.info"
 
+RESOLVED_TEMP_FILE=$(
+    first_existing_path \
+        "$TEMP_FILE" \
+        "$FINAL_FILE" \
+        "$UPLOAD_ROOT/$UPLOAD_ID" \
+        "$TEMP_DIR/$UPLOAD_ID" || true
+)
+if [ -n "$RESOLVED_TEMP_FILE" ]; then
+    TEMP_FILE="$RESOLVED_TEMP_FILE"
+else
+    TEMP_FILE="$FINAL_FILE"
+fi
+
+RESOLVED_TEMP_INFO=$(
+    first_existing_path \
+        "$TEMP_INFO" \
+        "$FINAL_INFO" \
+        "$UPLOAD_ROOT/$UPLOAD_ID.info" \
+        "$TEMP_DIR/$UPLOAD_ID.info" || true
+)
+if [ -n "$RESOLVED_TEMP_INFO" ]; then
+    TEMP_INFO="$RESOLVED_TEMP_INFO"
+else
+    TEMP_INFO="$FINAL_INFO"
+fi
+
 echo "[post-finish] Temp file: $TEMP_FILE" >&2
 echo "[post-finish] Final file: $FINAL_FILE" >&2
 
@@ -238,7 +288,7 @@ if [ ! -d "$USER_DIR" ]; then
 fi
 
 # Move file from _temp to user directory
-if [ -f "$TEMP_FILE" ]; then
+if [ -f "$TEMP_FILE" ] && [ "$TEMP_FILE" != "$FINAL_FILE" ]; then
     echo "[post-finish] Moving file to user directory..." >&2
     mv "$TEMP_FILE" "$FINAL_FILE"
     
@@ -250,7 +300,11 @@ if [ -f "$TEMP_FILE" ]; then
     # Update storage path in webhook data
     UPDATED_DATA=$(echo "$HOOK_DATA" | jq \
         --arg path "$FINAL_FILE" \
-        '.Storage.Path = $path')
+        --arg info_path "$FINAL_INFO" \
+        '.Storage.Path = $path
+        | .Storage.InfoPath = $info_path
+        | .Upload.Storage.Path = $path
+        | .Upload.Storage.InfoPath = $info_path')
     
     echo "[post-finish] File moved successfully" >&2
 else
@@ -259,7 +313,13 @@ else
     # Check if file already in user directory (maybe moved by tusd)
     if [ -f "$FINAL_FILE" ]; then
         echo "[post-finish] File already in user directory" >&2
-        UPDATED_DATA="$HOOK_DATA"
+        UPDATED_DATA=$(echo "$HOOK_DATA" | jq \
+            --arg path "$FINAL_FILE" \
+            --arg info_path "$FINAL_INFO" \
+            '.Storage.Path = $path
+            | .Storage.InfoPath = $info_path
+            | .Upload.Storage.Path = $path
+            | .Upload.Storage.InfoPath = $info_path')
     else
         echo "[post-finish] ERROR: File not found in temp or user directory!" >&2
         write_failure_manifest "upload_file_missing" "Uploaded file not found in temp or user directory"
@@ -270,6 +330,7 @@ fi
 # Notify backend via webhook
 BACKEND_URL="$(resolve_backend_base)/api/assets/upload-complete"
 PAYLOAD="${UPDATED_DATA:-$HOOK_DATA}"
+FAILURE_PAYLOAD_OVERRIDE="$PAYLOAD"
 
 echo "[post-finish] Notifying backend..." >&2
 
