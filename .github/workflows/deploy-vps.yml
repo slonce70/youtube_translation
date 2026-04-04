@@ -1,0 +1,44 @@
+name: Deploy VPS
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vps-main
+  cancel-in-progress: false
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Install SSH key
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519_vps_deploy
+          chmod 600 ~/.ssh/id_ed25519_vps_deploy
+
+      - name: Trust VPS host key
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy current main to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
+            "export GITHUB_SHA='$GITHUB_SHA'; cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
