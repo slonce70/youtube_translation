@@ -1,4 +1,7 @@
-import { UPLOAD_STATUS_POLL_SCHEDULE_MS } from '../upload-status-poll'
+import {
+  buildUploadFailureOverrides,
+  UPLOAD_STATUS_POLL_SCHEDULE_MS,
+} from '../upload-status-poll'
 
 describe('UPLOAD_STATUS_POLL_SCHEDULE_MS', () => {
   it('waits before the first status lookup so post-finish can create the ingest row', () => {
@@ -8,5 +11,24 @@ describe('UPLOAD_STATUS_POLL_SCHEDULE_MS', () => {
   it('keeps multiple retries for slower backend finalization', () => {
     expect(UPLOAD_STATUS_POLL_SCHEDULE_MS).toHaveLength(7)
     expect(UPLOAD_STATUS_POLL_SCHEDULE_MS.at(-1)).toBeGreaterThanOrEqual(20000)
+  })
+
+  it('marks pending uploads as errored without overwriting completed ones', () => {
+    expect(
+      buildUploadFailureOverrides(
+        [{ fileId: 'pending' }, { fileId: 'complete' }],
+        {
+          pending: { status: 'processing' },
+          complete: { status: 'complete' },
+        },
+        'Timed out waiting for upload finalization'
+      )
+    ).toEqual({
+      pending: {
+        status: 'error',
+        error: 'Timed out waiting for upload finalization',
+      },
+      complete: { status: 'complete' },
+    })
   })
 })

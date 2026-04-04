@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl'
 
 import enMessages from '@/messages/en/library.json'
@@ -39,23 +40,27 @@ class MockUppy {
 
 function renderModal(
   uppy: MockUppy,
-  uploadStatusOverrides?: Record<string, { status: 'processing' | 'complete' | 'error'; error?: string }>
+  uploadStatusOverrides?: Record<string, { status: 'processing' | 'complete' | 'error'; error?: string }>,
+  onClose: jest.Mock = jest.fn()
 ) {
-  return render(
-    <NextIntlClientProvider
-      locale="en"
-      messages={{ library: enMessages } as unknown as AbstractIntlMessages}
-    >
-      <UploadModal
-        isOpen
-        onClose={jest.fn()}
-        uppy={uppy as never}
-        isProcessingUpload={false}
-        uploadStatusOverrides={uploadStatusOverrides}
-        folders={[]}
-      />
-    </NextIntlClientProvider>
-  )
+  return {
+    onClose,
+    ...render(
+      <NextIntlClientProvider
+        locale="en"
+        messages={{ library: enMessages } as unknown as AbstractIntlMessages}
+      >
+        <UploadModal
+          isOpen
+          onClose={onClose}
+          uppy={uppy as never}
+          isProcessingUpload={false}
+          uploadStatusOverrides={uploadStatusOverrides}
+          folders={[]}
+        />
+      </NextIntlClientProvider>
+    ),
+  }
 }
 
 describe('UploadModal', () => {
@@ -148,5 +153,62 @@ describe('UploadModal', () => {
     await waitFor(() =>
       expect(screen.getByText('Backend finalization failed')).toBeInTheDocument()
     )
+  })
+
+  it('re-enables close and item actions after backend finalization fails', async () => {
+    const uppy = new MockUppy()
+    const onClose = jest.fn()
+    const user = userEvent.setup()
+    const file = new File(['video'], 'stuck.mp4', { type: 'video/mp4' })
+    const fileItem = {
+      id: 'file-3',
+      name: 'stuck.mp4',
+      size: file.size,
+      type: file.type,
+      data: file,
+      meta: { asset_type: 'video' },
+    }
+
+    const view = renderModal(uppy, undefined, onClose)
+
+    await act(async () => {
+      uppy.emit('file-added', fileItem)
+      uppy.emit('complete')
+    })
+
+    await waitFor(() => expect(screen.getByText('stuck.mp4')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /close/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /clear/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /remove/i })).toBeDisabled()
+
+    view.rerender(
+      <NextIntlClientProvider
+        locale="en"
+        messages={{ library: enMessages } as unknown as AbstractIntlMessages}
+      >
+        <UploadModal
+          isOpen
+          onClose={onClose}
+          uppy={uppy as never}
+          isProcessingUpload={false}
+          uploadStatusOverrides={{
+            'file-3': {
+              status: 'error',
+              error: 'Timed out waiting for upload finalization',
+            },
+          }}
+          folders={[]}
+        />
+      </NextIntlClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /close/i })).toBeEnabled()
+      expect(screen.getByRole('button', { name: /clear/i })).toBeEnabled()
+      expect(screen.getByRole('button', { name: /remove/i })).toBeEnabled()
+    })
+
+    await user.click(screen.getByRole('button', { name: /close/i }))
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
