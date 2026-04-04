@@ -14,6 +14,7 @@ from app.main import app
 from app.models.database import (
     Asset,
     Destination,
+    SubscriptionTierLimits,
     Stream,
     StreamAsset,
     StreamDestination,
@@ -103,6 +104,13 @@ async def _create_stream_fixture(
         await session.commit()
 
         return user_id, stream.id
+
+
+async def _remove_tier_limits(session, tier: str) -> None:
+    limits = await session.get(SubscriptionTierLimits, tier)
+    if limits is not None:
+        await session.delete(limits)
+        await session.commit()
 
 
 @pytest.mark.asyncio
@@ -305,7 +313,7 @@ async def test_http_quality_route_fails_closed_when_tier_limits_are_missing(
     )
     user_id, stream_id = await _create_stream_fixture(
         tmp_path,
-        subscription_tier="missing-tier",
+        subscription_tier="fhd_start",
     )
 
     monkeypatch.setattr(streams_control.default_settings, "enable_dev_auth", True)
@@ -316,13 +324,16 @@ async def test_http_quality_route_fails_closed_when_tier_limits_are_missing(
         f"{user_id}@stream-safety.test",
     )
 
+    async with async_session_maker() as session:
+        await _remove_tier_limits(session, "fhd_start")
+
     async with AsyncClient(app=app, base_url="http://testserver") as client:
         response = await client.get(f"/api/streams/{stream_id}/quality")
 
     assert response.status_code == 400
     assert response.json()["detail"] == {
         "error": "tier_limits_unavailable",
-        "tier": "missing-tier",
+        "tier": "fhd_start",
         "message": (
             "Subscription tier limits are unavailable for this account. "
             "Streaming quality and launch checks cannot proceed until tier metadata is restored."
@@ -341,7 +352,7 @@ async def test_start_returns_authoritative_running_status_before_prerequisite_er
     user_id, stream_id = await _create_stream_fixture(
         tmp_path,
         destination_enabled=False,
-        subscription_tier="missing-tier",
+        subscription_tier="fhd_start",
         stream_status="running",
     )
 
@@ -366,6 +377,7 @@ async def test_start_returns_authoritative_running_status_before_prerequisite_er
     )
 
     async with async_session_maker() as session:
+        await _remove_tier_limits(session, "fhd_start")
         service = StreamControlService(session, user_id)
         status_payload = await service.start_stream(stream_id)
 

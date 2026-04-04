@@ -216,11 +216,11 @@ export default function DashboardPage() {
         onUpgrade={() => window.location.assign('/dashboard/plans')}
       />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.75fr,1fr]">
-        <Card className="overflow-hidden">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <Card className="overflow-hidden xl:col-span-2">
           <CardContent className="p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-2xl space-y-3">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),260px] xl:items-start">
+              <div className="min-w-0 max-w-2xl space-y-3">
                 <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 dark:border-primary-900/40 dark:bg-primary-900/20 dark:text-primary-300">
                   {hero.badge}
                 </span>
@@ -239,7 +239,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="grid min-w-[240px] gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
                 <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/50">
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     {dashboard('hero.metrics.live')}

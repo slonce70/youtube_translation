@@ -66,6 +66,30 @@ export interface UploadTokenResponse {
   expires_at: string
 }
 
+export type UploadIngestStatus = 'received' | 'validating' | 'finalized' | 'failed'
+
+export interface UploadIngest {
+  id: string
+  upload_id: string
+  user_id: string
+  asset_id?: string | null
+  filename?: string | null
+  status: UploadIngestStatus
+  storage_backend: 'filesystem' | 'object_storage'
+  storage_key?: string | null
+  local_path?: string | null
+  error_code?: string | null
+  error_message?: string | null
+  validation_errors: string[]
+  warning_messages: string[]
+  attempt_count: number
+  received_at?: string | null
+  finalized_at?: string | null
+  failed_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface MediaFolder {
   id: string
   user_id: string
