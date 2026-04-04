@@ -10,11 +10,27 @@ host_caddy_target="${HOST_CADDYFILE_PATH:-/etc/caddy/Caddyfile}"
 render_caddy_script="$repo_root/scripts/render_caddyfile.py"
 services=(postgres redis backend tusd frontend runner mediamtx)
 tmp_dir="$(mktemp -d)"
+deploy_mode="${DEPLOY_MODE:-build}"
 
 cleanup() {
   rm -rf "$tmp_dir"
 }
 trap cleanup EXIT
+
+registry_login() {
+  if [[ -z "${REGISTRY_PASSWORD:-}" ]]; then
+    return 0
+  fi
+
+  if [[ -z "${REGISTRY_USER:-}" ]]; then
+    echo "REGISTRY_USER is required when REGISTRY_PASSWORD is provided" >&2
+    exit 1
+  fi
+
+  local registry_host="${REGISTRY_HOST:-ghcr.io}"
+  echo "Logging in to container registry ${registry_host}..."
+  printf '%s' "$REGISTRY_PASSWORD" | docker login "$registry_host" --username "$REGISTRY_USER" --password-stdin >/dev/null
+}
 
 run_as_root() {
   if [[ "$(id -u)" -eq 0 ]]; then
@@ -212,8 +228,23 @@ ensure_persistent_storage
 echo "Validating compose config..."
 docker compose -f "$compose_file" config >/dev/null
 
-echo "Deploying services: ${services[*]}"
-docker compose -f "$compose_file" up -d --build --remove-orphans "${services[@]}"
+registry_login
+
+case "$deploy_mode" in
+  build)
+    echo "Deploying services via local image build: ${services[*]}"
+    docker compose -f "$compose_file" up -d --build --remove-orphans "${services[@]}"
+    ;;
+  registry)
+    echo "Deploying services via registry images: ${services[*]}"
+    docker compose -f "$compose_file" pull "${services[@]}"
+    docker compose -f "$compose_file" up -d --no-build --remove-orphans "${services[@]}"
+    ;;
+  *)
+    echo "Unsupported DEPLOY_MODE: $deploy_mode" >&2
+    exit 1
+    ;;
+esac
 
 wait_for_http "backend health endpoint" "http://127.0.0.1:8000/health" -fsS --max-time 5
 wait_for_http "frontend health endpoint" "http://127.0.0.1:3000/api/health" -fsS --max-time 5

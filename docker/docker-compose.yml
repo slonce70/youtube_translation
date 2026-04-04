@@ -37,6 +37,7 @@ services:
 
   # Backend API
   backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/slonce70/youtube_translation-backend:latest}
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -82,6 +83,7 @@ services:
 
   # tusd (Resumable uploads)
   tusd:
+    image: ${TUSD_IMAGE:-ghcr.io/slonce70/youtube_translation-tusd:latest}
     build:
       context: ..
       dockerfile: docker/tusd.Dockerfile
@@ -132,6 +134,7 @@ services:
   # Frontend (Next.js) - Optional in docker-compose
   # Can be deployed separately on Vercel
   frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/slonce70/youtube_translation-frontend:latest}
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -168,6 +171,7 @@ services:
 
   # Runner (Supervisor for FFmpeg processes)
   runner:
+    image: ${BACKEND_IMAGE:-ghcr.io/slonce70/youtube_translation-backend:latest}
     build:
       context: ../backend
       dockerfile: Dockerfile
