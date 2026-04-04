@@ -47,6 +47,69 @@ wait_for_http() {
   curl "${curl_args[@]}" "$url" >/dev/null
 }
 
+prepare_linux_persistence() {
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    return 0
+  fi
+
+  export PERSISTENT_STORAGE_ROOT="${PERSISTENT_STORAGE_ROOT:-/opt/youtube_translation_data}"
+  export HOST_UPLOADS_DIR="${HOST_UPLOADS_DIR:-$PERSISTENT_STORAGE_ROOT/uploads}"
+  export HOST_STREAMS_DIR="${HOST_STREAMS_DIR:-$PERSISTENT_STORAGE_ROOT/streams}"
+  export HOST_LOGS_DIR="${HOST_LOGS_DIR:-$PERSISTENT_STORAGE_ROOT/logs}"
+  export HOST_SUPERVISORD_DIR="${HOST_SUPERVISORD_DIR:-$PERSISTENT_STORAGE_ROOT/supervisord}"
+  export POSTGRES_VOLUME_NAME="${POSTGRES_VOLUME_NAME:-youtube_translation_postgres_data}"
+  export CADDY_DATA_VOLUME_NAME="${CADDY_DATA_VOLUME_NAME:-youtube_translation_caddy_data}"
+  export CADDY_CONFIG_VOLUME_NAME="${CADDY_CONFIG_VOLUME_NAME:-youtube_translation_caddy_config}"
+  export LEGACY_POSTGRES_VOLUME_NAME="${LEGACY_POSTGRES_VOLUME_NAME:-docker_postgres-data}"
+}
+
+sync_legacy_dir() {
+  local label="$1"
+  local source_dir="$2"
+  local target_dir="$3"
+
+  run_as_root mkdir -p "$target_dir"
+
+  if [[ "$source_dir" == "$target_dir" || ! -d "$source_dir" ]]; then
+    return 0
+  fi
+
+  echo "Syncing ${label} into persistent storage..."
+  if command -v rsync >/dev/null 2>&1; then
+    run_as_root rsync -a --ignore-existing "$source_dir"/ "$target_dir"/
+  else
+    run_as_root sh -c 'cp -an "$1"/. "$2"/ 2>/dev/null || true' sh "$source_dir" "$target_dir"
+  fi
+}
+
+ensure_persistent_storage() {
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    return 0
+  fi
+
+  sync_legacy_dir "uploads" "$repo_root/backend/uploads" "$HOST_UPLOADS_DIR"
+  sync_legacy_dir "streams" "$repo_root/backend/streams" "$HOST_STREAMS_DIR"
+  sync_legacy_dir "logs" "$repo_root/backend/logs" "$HOST_LOGS_DIR"
+  sync_legacy_dir "supervisord state" "$repo_root/backend/supervisord" "$HOST_SUPERVISORD_DIR"
+
+  if docker volume inspect "$POSTGRES_VOLUME_NAME" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! docker volume inspect "$LEGACY_POSTGRES_VOLUME_NAME" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Migrating PostgreSQL volume ${LEGACY_POSTGRES_VOLUME_NAME} -> ${POSTGRES_VOLUME_NAME}..."
+  docker volume create "$POSTGRES_VOLUME_NAME" >/dev/null
+  docker run --rm \
+    -v "${LEGACY_POSTGRES_VOLUME_NAME}:/from:ro" \
+    -v "${POSTGRES_VOLUME_NAME}:/to" \
+    --entrypoint sh \
+    postgres:16 \
+    -c 'cd /from && cp -a . /to/'
+}
+
 sync_host_caddy() {
   local rendered_caddy="$tmp_dir/Caddyfile.host"
 
@@ -118,6 +181,9 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
   echo "POSTGRES_PASSWORD must be set via backend/.env or .env" >&2
   exit 1
 fi
+
+prepare_linux_persistence
+ensure_persistent_storage
 
 echo "Validating compose config..."
 docker compose -f "$compose_file" config >/dev/null

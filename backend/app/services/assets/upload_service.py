@@ -673,24 +673,32 @@ class AssetUploadService:
             or {}
         )
 
-        if not meta_payload:
-            info_path_value = (
-                storage_payload.get("InfoPath")
-                if isinstance(storage_payload, dict)
-                else None
-            )
+        info_file: Optional[Path] = None
+        if isinstance(storage_payload, dict):
+            info_path_value = storage_payload.get("InfoPath")
+            storage_path_value = storage_payload.get("Path")
             if info_path_value:
                 info_file = Path(info_path_value)
-                if info_file.exists():
-                    try:
-                        info_data = json.loads(info_file.read_text(encoding="utf-8"))
-                        meta_payload = info_data.get("MetaData", {}) or {}
-                    except Exception as info_error:  # pylint: disable=broad-except
-                        logger.warning(
-                            "Unable to read metadata from %s: %s",
-                            info_file,
-                            info_error,
-                        )
+            elif storage_path_value:
+                info_file = Path(f"{storage_path_value}.info")
+
+        if info_file and info_file.exists():
+            try:
+                info_data = json.loads(info_file.read_text(encoding="utf-8"))
+                info_meta = info_data.get("MetaData", {}) or {}
+                if info_meta:
+                    if not meta_payload:
+                        meta_payload = dict(info_meta)
+                    else:
+                        for key, value in info_meta.items():
+                            if value and not meta_payload.get(key):
+                                meta_payload[key] = value
+            except Exception as info_error:  # pylint: disable=broad-except
+                logger.warning(
+                    "Unable to read metadata from %s: %s",
+                    info_file,
+                    info_error,
+                )
         project_id_raw = meta_payload.get("project_id")
         if project_id_raw:
             logger.info(
