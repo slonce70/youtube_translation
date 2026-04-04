@@ -38,7 +38,11 @@ import type {
 } from '@/lib/types'
 
 import { useStreamBuilder } from '../hooks/useStreamBuilder'
-import { formatReviewDateTime, isTimelineCustomized } from '../builder-helpers'
+import {
+  customizeEditorState,
+  formatReviewDateTime,
+  isTimelineCustomized,
+} from '../builder-helpers'
 import { applyDurationPreset, DURATION_PRESETS } from '../schedule-utils'
 
 type Translator = (key: string, values?: TranslationValues) => string
@@ -285,12 +289,7 @@ export function StreamBuilderModal({
                             variant="ghost"
                             size="sm"
                             onClick={() =>
-                              updateEditor('video', (prev) => ({
-                                ...prev,
-                                items: [],
-                                mode: 'custom',
-                                selectedCollectionId: null,
-                              }))
+                              updateEditor('video', (prev) => customizeEditorState(prev, { items: [] }))
                             }
                           >
                             {t('streams.builder.video.clear')}
@@ -624,13 +623,9 @@ export function StreamBuilderModal({
                                 size="sm"
                                 variant={videoEditor.loop ? 'primary' : 'secondary'}
                                 onClick={() =>
-                                  updateEditor('video', (prev) => ({
-                                    ...prev,
-                                    loop: !prev.loop,
-                                    mode: 'custom',
-                                    selectedCollectionId:
-                                      prev.mode === 'existing' ? null : prev.selectedCollectionId,
-                                  }))
+                                  updateEditor('video', (prev) =>
+                                    customizeEditorState(prev, { loop: !prev.loop }),
+                                  )
                                 }
                               >
                                 <Repeat className="mr-1 h-4 w-4" />
@@ -640,13 +635,9 @@ export function StreamBuilderModal({
                                 size="sm"
                                 variant={videoEditor.shuffle ? 'primary' : 'secondary'}
                                 onClick={() =>
-                                  updateEditor('video', (prev) => ({
-                                    ...prev,
-                                    shuffle: !prev.shuffle,
-                                    mode: 'custom',
-                                    selectedCollectionId:
-                                      prev.mode === 'existing' ? null : prev.selectedCollectionId,
-                                  }))
+                                  updateEditor('video', (prev) =>
+                                    customizeEditorState(prev, { shuffle: !prev.shuffle }),
+                                  )
                                 }
                               >
                                 <Shuffle className="mr-1 h-4 w-4" />
@@ -705,15 +696,9 @@ export function StreamBuilderModal({
                                   size="sm"
                                   variant={audioEditor.loop ? 'primary' : 'secondary'}
                                   onClick={() =>
-                                    updateEditor('audio', (prev) => ({
-                                      ...prev,
-                                      loop: !prev.loop,
-                                      mode: 'custom',
-                                      selectedCollectionId:
-                                        prev.mode === 'existing'
-                                          ? null
-                                          : prev.selectedCollectionId,
-                                    }))
+                                    updateEditor('audio', (prev) =>
+                                      customizeEditorState(prev, { loop: !prev.loop }),
+                                    )
                                   }
                                 >
                                   <Repeat className="mr-1 h-4 w-4" />
@@ -723,15 +708,9 @@ export function StreamBuilderModal({
                                   size="sm"
                                   variant={audioEditor.shuffle ? 'primary' : 'secondary'}
                                   onClick={() =>
-                                    updateEditor('audio', (prev) => ({
-                                      ...prev,
-                                      shuffle: !prev.shuffle,
-                                      mode: 'custom',
-                                      selectedCollectionId:
-                                        prev.mode === 'existing'
-                                          ? null
-                                          : prev.selectedCollectionId,
-                                    }))
+                                    updateEditor('audio', (prev) =>
+                                      customizeEditorState(prev, { shuffle: !prev.shuffle }),
+                                    )
                                   }
                                 >
                                   <Shuffle className="mr-1 h-4 w-4" />

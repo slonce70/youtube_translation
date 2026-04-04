@@ -83,6 +83,16 @@ export const deriveEditorStateFromCollection = (
 export const hasEditorSelection = (editor: CollectionEditorState) =>
   Boolean(editor.selectedCollectionId) || editor.items.length > 0
 
+export const customizeEditorState = (
+  editor: CollectionEditorState,
+  overrides: Partial<CollectionEditorState> = {},
+): CollectionEditorState => ({
+  ...editor,
+  ...overrides,
+  mode: 'custom',
+  selectedCollectionId: null,
+})
+
 export const formatReviewDateTime = (locale: string, value: string) => {
   if (!value) return null
 
