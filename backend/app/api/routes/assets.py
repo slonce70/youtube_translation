@@ -39,6 +39,12 @@ def _upload_complete_status_code(result: dict) -> int:
     if result.get("success", True):
         return status.HTTP_200_OK
 
+    http_status = result.get("http_status")
+    if isinstance(http_status, int):
+        return http_status
+    if isinstance(http_status, str) and http_status.isdigit():
+        return int(http_status)
+
     error_code = str(result.get("error_code") or "").strip()
     if error_code.startswith("http_"):
         http_status = error_code.removeprefix("http_")

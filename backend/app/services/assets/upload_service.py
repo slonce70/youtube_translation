@@ -20,6 +20,7 @@ from app.core.quota import QuotaEnforcer
 from app.models.database import Asset, UploadIngest
 from app.schemas.api import ALLOWED_ASSET_TYPES
 
+from .storage import apply_storage_delta
 from .thumbnails import generate_video_thumbnail
 from .utils import (
     apply_stream_summary_fields,
@@ -126,6 +127,7 @@ class AssetUploadService:
                 stream_info=stream_info,
                 meta_payload=meta_payload,
             )
+            await apply_storage_delta(self.db, asset_owner_id, size_bytes)
 
             warning_messages = self._normalize_messages(stream_info.get("warnings", []))
             ingest.asset_id = created_asset.id if created_asset else None
@@ -181,7 +183,9 @@ class AssetUploadService:
                 error=self._extract_error_detail(exc),
                 local_path=Path(ingest.local_path) if ingest.local_path else None,
             )
-            return self._build_failed_response(failed_ingest)
+            response = self._build_failed_response(failed_ingest)
+            response["http_status"] = exc.status_code
+            return response
         except Exception as exc:
             logger.exception("Failed to finalize upload %s", upload_id)
             failed_ingest = await self._mark_ingest_failed(
@@ -333,6 +337,7 @@ class AssetUploadService:
 
         existing = await self._lookup_ingest(upload_id)
         if existing is not None:
+            self._ensure_ingest_owner(existing, user_id)
             return existing
 
         ingest = UploadIngest(
@@ -353,6 +358,7 @@ class AssetUploadService:
             await self.db.rollback()
             existing = await self._lookup_ingest(upload_id)
             if existing is not None:
+                self._ensure_ingest_owner(existing, user_id)
                 return existing
             raise
 
@@ -361,6 +367,17 @@ class AssetUploadService:
             select(UploadIngest).where(UploadIngest.upload_id == upload_id)
         )
         return result.scalar_one_or_none()
+
+    def _ensure_ingest_owner(self, ingest: UploadIngest, user_id: UUID) -> None:
+        if ingest.user_id == user_id:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "upload_id_conflict",
+                "message": "Upload id is already associated with another account.",
+            },
+        )
 
     async def _mark_ingest_validating(
         self, ingest: UploadIngest, *, filename: str, local_path: Path
@@ -534,15 +551,18 @@ class AssetUploadService:
                     or detail.get("detail")
                     or f"HTTP {exc.status_code}"
                 ),
+                "http_status": str(exc.status_code),
             }
         if isinstance(detail, str):
             return {
                 "error": f"http_{exc.status_code}",
                 "message": detail,
+                "http_status": str(exc.status_code),
             }
         return {
             "error": f"http_{exc.status_code}",
             "message": str(exc) or f"HTTP {exc.status_code}",
+            "http_status": str(exc.status_code),
         }
 
     def _normalize_messages(self, raw_messages: Any) -> list[str]:

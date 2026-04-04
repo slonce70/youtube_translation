@@ -163,47 +163,13 @@ async def _apply_schema_changes(conn):
         )
     )
 
-    await conn.execute(
-        text(
-            """
-            CREATE OR REPLACE FUNCTION update_user_storage_usage()
-            RETURNS TRIGGER AS $$
-            DECLARE
-                target_user_id UUID;
-            BEGIN
-                IF TG_OP = 'DELETE' THEN
-                    target_user_id := OLD.user_id;
-                ELSE
-                    target_user_id := NEW.user_id;
-                END IF;
-
-                UPDATE user_profiles
-                SET current_storage_bytes = COALESCE((
-                    SELECT SUM(size_bytes)
-                    FROM assets
-                    WHERE user_id = target_user_id
-                ), 0)
-                WHERE user_id = target_user_id;
-
-                RETURN NULL;
-            END;
-            $$ LANGUAGE plpgsql
-            """
-        )
-    )
+    # Storage accounting is maintained by explicit apply_storage_delta() calls
+    # in asset service mutations. Remove the legacy trigger path so init_db
+    # environments do not double count storage bytes.
     await conn.execute(
         text("DROP TRIGGER IF EXISTS trigger_update_user_storage ON assets")
     )
-    await conn.execute(
-        text(
-            """
-            CREATE TRIGGER trigger_update_user_storage
-                AFTER INSERT OR UPDATE OF size_bytes OR DELETE ON assets
-                FOR EACH ROW
-                EXECUTE FUNCTION update_user_storage_usage()
-            """
-        )
-    )
+    await conn.execute(text("DROP FUNCTION IF EXISTS update_user_storage_usage()"))
 
     await conn.execute(
         text(
