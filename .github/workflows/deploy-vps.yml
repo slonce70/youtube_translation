@@ -2,6 +2,7 @@ name: Deploy VPS
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: deploy-vps-main
@@ -17,9 +18,62 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: ghcr.io/slonce70
+      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/slonce70/youtube_translation-backend:${{ github.sha }}
+            ghcr.io/slonce70/youtube_translation-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build and push tusd image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/tusd.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/slonce70/youtube_translation-tusd:${{ github.sha }}
+            ghcr.io/slonce70/youtube_translation-tusd:latest
+          cache-from: type=gha,scope=tusd
+          cache-to: type=gha,mode=max,scope=tusd
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          build-args: |
+            DEV_API_PROXY_TARGET=http://backend:8000
+            ENABLE_API_PROXY=1
+          tags: |
+            ghcr.io/slonce70/youtube_translation-frontend:${{ github.sha }}
+            ghcr.io/slonce70/youtube_translation-frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
       - name: Verify generated docker Caddyfile is in sync
         run: |
@@ -46,6 +100,8 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
           GITHUB_SHA: ${{ github.sha }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_PASSWORD: ${{ github.token }}
         run: |
           ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
-            "export GITHUB_SHA='$GITHUB_SHA'; cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
+            "export GITHUB_SHA='$GITHUB_SHA' DEPLOY_MODE='registry' REGISTRY_HOST='ghcr.io' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASSWORD='$REGISTRY_PASSWORD' BACKEND_IMAGE='ghcr.io/slonce70/youtube_translation-backend:$GITHUB_SHA' FRONTEND_IMAGE='ghcr.io/slonce70/youtube_translation-frontend:$GITHUB_SHA' TUSD_IMAGE='ghcr.io/slonce70/youtube_translation-tusd:$GITHUB_SHA'; cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
