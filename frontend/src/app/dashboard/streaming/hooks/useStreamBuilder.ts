@@ -17,6 +17,7 @@ import type {
 
 import {
   BUILDER_STEPS,
+  customizeEditorState,
   createDefaultEditorState,
   DEFAULT_SCHEDULE_STATE,
   deriveEditorStateFromCollection,
@@ -149,12 +150,9 @@ export const useStreamBuilder = ({
         if (prev.items.some((item) => item.asset_id === assetId)) {
           return prev
         }
-        return {
-          ...prev,
+        return customizeEditorState(prev, {
           items: [...prev.items, { asset_id: assetId }],
-          mode: prev.mode === 'existing' ? 'custom' : prev.mode,
-          selectedCollectionId: prev.mode === 'existing' ? null : prev.selectedCollectionId,
-        }
+        })
       })
     },
     [updateEditor],
@@ -162,11 +160,8 @@ export const useStreamBuilder = ({
 
   const removeAssetFromEditor = useCallback(
     (target: 'video' | 'audio', assetId: string) => {
-      updateEditor(target, (prev) => ({
-        ...prev,
+      updateEditor(target, (prev) => customizeEditorState(prev, {
         items: prev.items.filter((item) => item.asset_id !== assetId),
-        mode: prev.mode === 'existing' ? 'custom' : prev.mode,
-        selectedCollectionId: prev.mode === 'existing' ? null : prev.selectedCollectionId,
       }))
     },
     [updateEditor],
@@ -179,12 +174,7 @@ export const useStreamBuilder = ({
         const items = [...prev.items]
         const [moved] = items.splice(fromIndex, 1)
         items.splice(Math.max(0, Math.min(items.length, toIndex)), 0, moved)
-        return {
-          ...prev,
-          items,
-          mode: prev.mode === 'existing' ? 'custom' : prev.mode,
-          selectedCollectionId: prev.mode === 'existing' ? null : prev.selectedCollectionId,
-        }
+        return customizeEditorState(prev, { items })
       })
     },
     [updateEditor],
@@ -243,11 +233,7 @@ export const useStreamBuilder = ({
   )
 
   const handleCustomizeExisting = useCallback((target: 'video' | 'audio') => {
-    updateEditor(target, (prev) => ({
-      ...prev,
-      mode: 'custom',
-      selectedCollectionId: null,
-    }))
+    updateEditor(target, (prev) => customizeEditorState(prev))
   }, [updateEditor])
 
   const handleDestinationToggle = useCallback((destinationId: string) => {
