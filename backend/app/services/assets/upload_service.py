@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -209,6 +209,8 @@ class AssetUploadService:
             )
         )
         ingest = result.scalar_one_or_none()
+        if ingest is None:
+            ingest = self._load_failed_manifest(upload_id, user_id)
         if ingest is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -708,7 +710,10 @@ class AssetUploadService:
             )
 
         try:
-            owner_id = verify_upload_token(token)
+            # Tusd pre-create already validated token freshness before the upload
+            # was accepted. Post-finish can happen after that deadline for long
+            # uploads, so we only require signature integrity here.
+            owner_id = verify_upload_token(token, allow_expired=True)
         except HTTPException:
             raise
         except Exception as exc:  # pragma: no cover - defensive
@@ -736,6 +741,71 @@ class AssetUploadService:
             )
 
         return owner_id
+
+    def _load_failed_manifest(
+        self, upload_id: str, user_id: UUID
+    ) -> Optional[UploadIngest]:
+        manifest_path = (
+            Path(settings.upload_dir) / "_failed-finalizations" / f"{upload_id}.json"
+        )
+        if not manifest_path.exists():
+            return None
+
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception as manifest_error:  # pylint: disable=broad-except
+            logger.warning(
+                "Failed to parse upload failure manifest %s: %s",
+                manifest_path,
+                manifest_error,
+            )
+            return None
+
+        payload = manifest.get("payload")
+        if not isinstance(payload, dict):
+            return None
+
+        upload_block = payload.get("Upload") or payload.get("Event", {}).get("Upload") or {}
+        meta = upload_block.get("MetaData") or {}
+        user_id_raw = meta.get("user_id")
+        if user_id_raw != str(user_id):
+            return None
+
+        created_at_raw = manifest.get("created_at")
+        failed_at = self._parse_manifest_timestamp(created_at_raw) or self._utcnow()
+        storage = payload.get("Storage") or upload_block.get("Storage") or {}
+
+        return UploadIngest(
+            id=uuid4(),
+            upload_id=upload_id,
+            user_id=user_id,
+            filename=meta.get("filename") or meta.get("name"),
+            status="failed",
+            storage_backend="filesystem",
+            local_path=storage.get("Path"),
+            error_code=str(manifest.get("reason") or "upload_finalize_failed"),
+            error_message=str(
+                manifest.get("details") or "Upload finalization failed before ingest creation"
+            ),
+            validation_errors=[],
+            warning_messages=[],
+            attempt_count=1,
+            failed_at=failed_at,
+            created_at=failed_at,
+            updated_at=failed_at,
+        )
+
+    def _parse_manifest_timestamp(self, value: Any) -> Optional[datetime]:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        normalized = value.strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
 
     def _ensure_user_directory(self, user_id: UUID, file_path: Path) -> None:
         expected_root = (Path(settings.upload_dir) / str(user_id)).resolve()

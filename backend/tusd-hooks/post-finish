@@ -109,19 +109,15 @@ resolve_user_from_token() {
         return 1
     fi
 
+    # Pre-create already enforced expiry before tusd accepted the upload.
+    # Post-finish may legitimately run after that deadline for large/slow uploads,
+    # so we only re-check integrity here.
     local user_id
     user_id=$(printf '%s' "$payload" | cut -d':' -f1)
     local expires_at
     expires_at=$(printf '%s' "$payload" | cut -d':' -f2)
     if [ -z "$user_id" ] || [ -z "$expires_at" ]; then
         echo "[post-finish] ERROR: Upload token missing fields" >&2
-        return 1
-    fi
-
-    local now
-    now=$(date +%s)
-    if [ "$expires_at" -le "$now" ]; then
-        echo "[post-finish] ERROR: Upload token expired" >&2
         return 1
     fi
 
