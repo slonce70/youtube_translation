@@ -365,6 +365,8 @@ export function StreamsList({
                                   size="sm"
                                   variant="danger"
                                   isLoading={isDeletePending}
+                                  aria-label={t('streams.buttons.delete')}
+                                  title={t('streams.buttons.delete')}
                                   onClick={() => onDeleteStream(stream.id)}
                                 >
                                   <Trash2 className="w-4 h-4" />
