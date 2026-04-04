@@ -103,7 +103,7 @@
       "new": "New Stream",
       "untitled": "Untitled Stream",
       "labels": {
-        "playlist": "Playlist",
+        "source": "Source",
         "destinations": "Channel",
         "status": "Status",
         "created": "Created",
@@ -118,6 +118,11 @@
       },
       "statusCheck": {
         "unreachable": "Live status unavailable — backend unreachable"
+      },
+      "sources": {
+        "videoCollection": "Video queue",
+        "audioCollection": "Audio playlist",
+        "customQueue": "Custom queue ({count})"
       },
       "unknownPlaylist": "Unknown playlist",
       "buttons": {

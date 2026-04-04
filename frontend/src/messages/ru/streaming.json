@@ -103,7 +103,7 @@
       "new": "Новая трансляция",
       "untitled": "Без названия",
       "labels": {
-        "playlist": "Плейлист",
+        "source": "Источник",
         "destinations": "Канал",
         "status": "Статус",
         "created": "Создано",
@@ -118,6 +118,11 @@
       },
       "statusCheck": {
         "unreachable": "Статус не обновён — бэкенд недоступен"
+      },
+      "sources": {
+        "videoCollection": "Видеоочередь",
+        "audioCollection": "Аудиоплейлист",
+        "customQueue": "Своя очередь ({count})"
       },
       "unknownPlaylist": "Неизвестный плейлист",
       "buttons": {

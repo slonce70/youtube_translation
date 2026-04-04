@@ -103,7 +103,7 @@
       "new": "Нова трансляція",
       "untitled": "Без назви",
       "labels": {
-        "playlist": "Плейлист",
+        "source": "Джерело",
         "destinations": "Канал",
         "status": "Статус",
         "created": "Створено",
@@ -118,6 +118,11 @@
       },
       "statusCheck": {
         "unreachable": "Статус недоступний — бекенд не відповіда"
+      },
+      "sources": {
+        "videoCollection": "Відеочерга",
+        "audioCollection": "Аудіоплейлист",
+        "customQueue": "Власна черга ({count})"
       },
       "unknownPlaylist": "Невідомий плейлист",
       "buttons": {
