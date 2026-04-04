@@ -88,8 +88,22 @@ describe('UsersManagement', () => {
           created_at: '2026-03-30T08:00:00Z',
           last_login_at: '2026-03-30T09:00:00Z',
         },
+        {
+          user_id: 'user-2',
+          email: 'suspended@example.com',
+          full_name: 'Suspended User',
+          subscription_tier: 'fhd_boost',
+          subscription_status: 'active',
+          subscription_started_at: '2026-03-29T08:00:00Z',
+          subscription_expires_at: null,
+          is_suspended: true,
+          current_storage_bytes: 0,
+          total_stream_hours: 0,
+          created_at: '2026-03-29T08:00:00Z',
+          last_login_at: null,
+        },
       ],
-      summary: { total: 1, active: 1, suspended: 0, paid: 1 },
+      summary: { total: 2, active: 1, suspended: 1, paid: 2 },
     })
     api.admin.users.suspend.mockResolvedValue({ status: 'success' })
     api.admin.users.unsuspend.mockResolvedValue({ status: 'success' })
@@ -140,5 +154,18 @@ describe('UsersManagement', () => {
 
     expect(api.admin.users.suspend).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalled()
+  })
+
+  it('keeps suspended cards readable with explicit text and tinted danger styling', async () => {
+    renderUsersPage()
+
+    await waitFor(() => expect(screen.getByText('suspended@example.com')).toBeInTheDocument())
+
+    const suspendedCard = screen.getByText('suspended@example.com').closest('div[class*="rounded-lg"]')
+
+    expect(suspendedCard).toHaveClass('text-slate-950')
+    expect(suspendedCard).toHaveClass('dark:text-slate-50')
+    expect(suspendedCard).toHaveClass('bg-error-500/10')
+    expect(suspendedCard).toHaveClass('border-error-500/40')
   })
 })
