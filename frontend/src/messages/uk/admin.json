@@ -94,6 +94,18 @@
       "unsuspendConfirm": "Розблокувати цього користувача?",
       "changeTierReason": "Коментар до зміни тарифу {email}:"
     },
+    "dialogs": {
+      "suspendTitle": "Заблокувати користувача",
+      "suspendDescription": "Додайте причину перед блокуванням {email}. Це зупинить активні стріми та заборонить нові дії з квотами.",
+      "unsuspendTitle": "Розблокувати користувача",
+      "unsuspendDescription": "Повернути доступ для {email}?",
+      "reasonLabel": "Причина блокування",
+      "reasonPlaceholder": "Опишіть, чому доступ потрібно заблокувати",
+      "reasonRequired": "Вкажіть причину блокування перед продовженням",
+      "cancel": "Скасувати",
+      "confirmSuspend": "Заблокувати користувача",
+      "confirmUnsuspend": "Повернути доступ"
+    },
     "toasts": {
       "suspendSuccess": "Користувача заблоковано",
       "suspendError": "Не вдалося заблокувати користувача",

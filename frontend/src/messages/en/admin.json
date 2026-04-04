@@ -94,6 +94,18 @@
       "unsuspendConfirm": "Are you sure you want to unsuspend this user?",
       "changeTierReason": "Optional note for changing {email}'s plan:"
     },
+    "dialogs": {
+      "suspendTitle": "Suspend user",
+      "suspendDescription": "Add a reason before suspending {email}. This blocks quota usage and stops active streams.",
+      "unsuspendTitle": "Unsuspend user",
+      "unsuspendDescription": "Restore access for {email}?",
+      "reasonLabel": "Suspension reason",
+      "reasonPlaceholder": "Describe why access is being blocked",
+      "reasonRequired": "Enter a suspension reason before continuing",
+      "cancel": "Cancel",
+      "confirmSuspend": "Suspend user",
+      "confirmUnsuspend": "Restore access"
+    },
     "toasts": {
       "suspendSuccess": "User suspended successfully",
       "suspendError": "Failed to suspend user",
