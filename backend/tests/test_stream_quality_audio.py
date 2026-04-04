@@ -182,6 +182,55 @@ async def test_uhd_plan_allows_lower_resolution_guideline_bitrates() -> None:
         assert result["violations"] == []
         assert all(violation["code"] != "bitrate_out_of_range" for violation in result["violations"])
 
+
+@pytest.mark.asyncio
+async def test_uhd_plan_allows_4k60_youtube_guideline_bitrate() -> None:
+    user_id = uuid4()
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@video-quality.test",
+            subscription_tier="uhd_boost",
+            subscription_status="active",
+        )
+        session.add(profile)
+        await session.commit()
+
+        enforcer = QuotaEnforcer(session, user_id)
+        video_assets = [
+            {
+                "asset_id": uuid4(),
+                "filename": "4k60.mp4",
+                "meta": {
+                    "video": {
+                        "codec": "h264",
+                        "height": 2160,
+                        "fps": 60,
+                        "bitrate": 39_890_000,
+                    },
+                    "audio": {
+                        "codec": "aac",
+                        "sample_rate": 48_000,
+                        "bitrate": 192_000,
+                        "channels": 2,
+                    },
+                    "bitrate": 39_890_000,
+                },
+            }
+        ]
+
+        result = await enforcer.evaluate_stream_quality(video_assets)
+
+        assert result["ok"] is True
+        assert result["violations"] == []
+        assert result["recommended"] == {
+            "resolution": "4K / 2160p",
+            "fps": 60,
+            "min_bitrate_mbps": 20,
+            "max_bitrate_mbps": 51,
+            "target_bitrate_mbps": 40,
+        }
+
 @pytest.mark.asyncio
 async def test_audio_quality_missing_tier_metadata_fails_closed() -> None:
     user_id = uuid4()
