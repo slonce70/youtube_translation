@@ -131,7 +131,8 @@
         "start": "Start",
         "cancelSchedule": "Cancel schedule",
         "schedule": "Schedule",
-        "details": "Details"
+        "details": "Details",
+        "delete": "Delete"
       },
       "empty": {
         "title": "No active streams",

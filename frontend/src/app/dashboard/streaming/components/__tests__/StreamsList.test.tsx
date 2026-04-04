@@ -38,6 +38,7 @@ const translations: Record<string, string> = {
   'streams.buttons.start': 'Start',
   'streams.buttons.cancelSchedule': 'Cancel schedule',
   'streams.buttons.details': 'Details',
+  'streams.buttons.delete': 'Delete',
   'streams.buttons.reviewIssue': 'Review issue',
   'streams.liveEdit.button': 'Edit',
   'streams.empty.title': 'No streams',
@@ -323,5 +324,11 @@ describe('StreamsList restart visibility', () => {
     expect(screen.getByText('Loop queue')).toBeInTheDocument()
     expect(screen.queryByText('Unknown playlist')).not.toBeInTheDocument()
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+  })
+
+  it('exposes a named delete action for stream cards', () => {
+    renderList([createStream({ id: 'stream-delete', runtime_restart: createRestartInfo({ enabled: false }) })])
+
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
   })
 })
