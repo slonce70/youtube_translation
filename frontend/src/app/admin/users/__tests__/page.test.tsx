@@ -32,6 +32,7 @@ jest.mock('sonner', () => ({
 }))
 
 const { api } = jest.requireMock('@/lib/api')
+const { toast } = jest.requireMock('sonner')
 
 function renderUsersPage() {
   const queryClient = new QueryClient()
@@ -90,6 +91,8 @@ describe('UsersManagement', () => {
       ],
       summary: { total: 1, active: 1, suspended: 0, paid: 1 },
     })
+    api.admin.users.suspend.mockResolvedValue({ status: 'success' })
+    api.admin.users.unsuspend.mockResolvedValue({ status: 'success' })
   })
 
   afterEach(() => {
@@ -107,5 +110,35 @@ describe('UsersManagement', () => {
     expect(createObjectURLMock).toHaveBeenCalledTimes(1)
     expect(anchorClickMock).toHaveBeenCalledTimes(1)
     expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:admin-users')
+  })
+
+  it('uses an in-page dialog to suspend a user', async () => {
+    renderUsersPage()
+
+    await waitFor(() => expect(screen.getByText('dev@example.com')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend' }))
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Suspension reason'), {
+      target: { value: 'Chargeback abuse' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend user' }))
+
+    await waitFor(() =>
+      expect(api.admin.users.suspend).toHaveBeenCalledWith('user-1', 'Chargeback abuse')
+    )
+  })
+
+  it('shows an error if suspension reason is empty', async () => {
+    renderUsersPage()
+
+    await waitFor(() => expect(screen.getByText('dev@example.com')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend user' }))
+
+    expect(api.admin.users.suspend).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalled()
   })
 })

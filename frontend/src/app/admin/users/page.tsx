@@ -20,6 +20,15 @@ export default function UsersManagement() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterTier, setFilterTier] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [suspendDialog, setSuspendDialog] = useState<{
+    userId: string
+    email: string
+    reason: string
+  } | null>(null)
+  const [unsuspendDialog, setUnsuspendDialog] = useState<{
+    userId: string
+    email: string
+  } | null>(null)
   const queryClient = useQueryClient()
   const t = useTranslations('admin.users')
   const locale = useLocale()
@@ -104,16 +113,52 @@ export default function UsersManagement() {
   })
 
   const handleSuspend = (userId: string, email: string) => {
-    const reason = prompt(t('prompts.suspendReason', { email }))
-    if (reason) {
-      suspendMutation.mutate({ userId, reason })
-    }
+    setSuspendDialog({ userId, email, reason: '' })
   }
 
   const handleUnsuspend = (userId: string) => {
-    if (confirm(t('prompts.unsuspendConfirm'))) {
-      unsuspendMutation.mutate(userId)
+    const user = userItems.find((item) => item.user_id === userId)
+    if (!user) {
+      return
     }
+    setUnsuspendDialog({ userId, email: user.email })
+  }
+
+  const handleSuspendReasonChange = (reason: string) => {
+    setSuspendDialog((current) => (current ? { ...current, reason } : current))
+  }
+
+  const handleConfirmSuspend = () => {
+    if (!suspendDialog) {
+      return
+    }
+
+    const reason = suspendDialog.reason.trim()
+    if (!reason) {
+      toast.error(t('dialogs.reasonRequired'))
+      return
+    }
+
+    suspendMutation.mutate(
+      { userId: suspendDialog.userId, reason },
+      {
+        onSuccess: () => {
+          setSuspendDialog(null)
+        },
+      }
+    )
+  }
+
+  const handleConfirmUnsuspend = () => {
+    if (!unsuspendDialog) {
+      return
+    }
+
+    unsuspendMutation.mutate(unsuspendDialog.userId, {
+      onSuccess: () => {
+        setUnsuspendDialog(null)
+      },
+    })
   }
 
   const handleTierSelectionChange = (userId: string, value: SubscriptionTierKey) => {
@@ -513,6 +558,94 @@ export default function UsersManagement() {
           </div>
         </CardContent>
       </Card>
+
+      {suspendDialog ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="suspend-user-dialog-title"
+            className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="space-y-2">
+              <h3 id="suspend-user-dialog-title" className="text-xl font-semibold text-slate-900 dark:text-white">
+                {t('dialogs.suspendTitle')}
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                {t('dialogs.suspendDescription', { email: suspendDialog.email })}
+              </p>
+            </div>
+            <div className="mt-4 space-y-2">
+              <label htmlFor="suspend-reason" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t('dialogs.reasonLabel')}
+              </label>
+              <textarea
+                id="suspend-reason"
+                value={suspendDialog.reason}
+                onChange={(e) => handleSuspendReasonChange(e.target.value)}
+                placeholder={t('dialogs.reasonPlaceholder')}
+                className="min-h-28 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              />
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                variant="ghost"
+                onClick={() => setSuspendDialog(null)}
+                disabled={suspendMutation.isPending}
+              >
+                {t('dialogs.cancel')}
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex items-center justify-center gap-2"
+                onClick={handleConfirmSuspend}
+                disabled={suspendMutation.isPending}
+              >
+                <Ban className="h-4 w-4" />
+                <span>{t('dialogs.confirmSuspend')}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {unsuspendDialog ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unsuspend-user-dialog-title"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="space-y-2">
+              <h3 id="unsuspend-user-dialog-title" className="text-xl font-semibold text-slate-900 dark:text-white">
+                {t('dialogs.unsuspendTitle')}
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                {t('dialogs.unsuspendDescription', { email: unsuspendDialog.email })}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                variant="ghost"
+                onClick={() => setUnsuspendDialog(null)}
+                disabled={unsuspendMutation.isPending}
+              >
+                {t('dialogs.cancel')}
+              </Button>
+              <Button
+                variant="success"
+                className="flex items-center justify-center gap-2"
+                onClick={handleConfirmUnsuspend}
+                disabled={unsuspendMutation.isPending}
+              >
+                <CheckCircle className="h-4 w-4" />
+                <span>{t('dialogs.confirmUnsuspend')}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
