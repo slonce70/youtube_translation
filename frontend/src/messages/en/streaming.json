@@ -125,7 +125,8 @@
         "stop": "Stop",
         "start": "Start",
         "cancelSchedule": "Cancel schedule",
-        "schedule": "Schedule"
+        "schedule": "Schedule",
+        "details": "Details"
       },
       "empty": {
         "title": "No active streams",
@@ -410,6 +411,12 @@
         "save": "Save",
         "close": "Close",
         "runningHint": "The stream is running — you can schedule the next start after stopping it."
+      },
+      "sections": {
+        "live": "Live now",
+        "attention": "Needs attention",
+        "scheduled": "Scheduled",
+        "stopped": "Stopped"
       }
     },
     "checklist": {
