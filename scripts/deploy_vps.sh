@@ -9,7 +9,8 @@ frontend_env="$repo_root/frontend/.env.local"
 caddy_template="$repo_root/docker/Caddyfile.template"
 host_caddy_target="${HOST_CADDYFILE_PATH:-/etc/caddy/Caddyfile}"
 render_caddy_script="$repo_root/scripts/render_caddyfile.py"
-services=(postgres redis backend tusd frontend runner mediamtx)
+all_services=(postgres redis backend tusd frontend runner mediamtx)
+services=()
 tmp_dir="$(mktemp -d)"
 registry_host="${REGISTRY_HOST:-ghcr.io}"
 image_namespace="${IMAGE_NAMESPACE:-ghcr.io/slonce70}"
@@ -78,6 +79,52 @@ count_active_streams() {
     | tr -d '[:space:]'
 }
 
+service_selected() {
+  local needle="$1"
+  local service
+  for service in "${services[@]}"; do
+    if [[ "$service" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+parse_selected_services() {
+  local requested="${DEPLOY_SERVICES:-}"
+  local normalized=()
+  local seen=""
+  local item
+
+  if [[ -z "$requested" ]]; then
+    services=("${all_services[@]}")
+    return 0
+  fi
+
+  requested="${requested//,/ }"
+  for item in $requested; do
+    case "$item" in
+      postgres|redis|backend|tusd|frontend|runner|mediamtx)
+        if [[ " $seen " != *" $item "* ]]; then
+          normalized+=("$item")
+          seen+=" $item"
+        fi
+        ;;
+      *)
+        echo "Unknown deploy service requested: $item" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  if [[ "${#normalized[@]}" -eq 0 ]]; then
+    echo "DEPLOY_SERVICES resolved to an empty service list" >&2
+    exit 1
+  fi
+
+  services=("${normalized[@]}")
+}
+
 guard_stream_runtime() {
   local allow_live_restart="${ALLOW_LIVE_STREAM_RESTARTS:-0}"
   if [[ "$allow_live_restart" == "1" ]]; then
@@ -87,10 +134,27 @@ guard_stream_runtime() {
 
   local active_streams
   active_streams="$(count_active_streams)"
-  if [[ "$active_streams" =~ ^[0-9]+$ ]] && (( active_streams > 0 )); then
-    echo "Refusing deploy: ${active_streams} live stream(s) currently running. This deploy path would restart stream services." >&2
-    echo "If you intentionally need to override, set ALLOW_LIVE_STREAM_RESTARTS=1 for that deploy." >&2
+  if ! [[ "$active_streams" =~ ^[0-9]+$ ]]; then
+    echo "Unable to determine active stream count: $active_streams" >&2
     exit 1
+  fi
+
+  if (( active_streams <= 0 )); then
+    return 0
+  fi
+
+  local service
+  for service in "${services[@]}"; do
+    if [[ "$service" != "frontend" ]]; then
+      echo "Refusing deploy: ${active_streams} live stream(s) currently running and service '$service' would be restarted." >&2
+      echo "Only a frontend-only deploy is allowed during an active live stream." >&2
+      echo "If you intentionally need to override, set ALLOW_LIVE_STREAM_RESTARTS=1 for that deploy." >&2
+      exit 1
+    fi
+  done
+
+  if (( active_streams > 0 )); then
+    echo "Active live stream detected; allowing frontend-only deploy without touching runtime services."
   fi
 }
 
@@ -256,6 +320,8 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
   exit 1
 fi
 
+parse_selected_services
+
 deploy_ref="${GITHUB_SHA:-$(git rev-parse HEAD)}"
 export BACKEND_IMAGE="${BACKEND_IMAGE:-${image_namespace}/youtube_translation-backend:${deploy_ref}}"
 export FRONTEND_IMAGE="${FRONTEND_IMAGE:-${image_namespace}/youtube_translation-frontend:${deploy_ref}}"
@@ -274,11 +340,19 @@ echo "Deploying services via registry images pinned to ${deploy_ref}: ${services
 docker compose -f "$compose_file" pull "${services[@]}"
 docker compose -f "$compose_file" up -d --no-build --remove-orphans "${services[@]}"
 
-wait_for_http "backend health endpoint" "http://127.0.0.1:8000/health" -fsS --max-time 5
-wait_for_http "frontend health endpoint" "http://127.0.0.1:3000/api/health" -fsS --max-time 5
-wait_for_http "tusd" "http://127.0.0.1:1080/" -sS -o /dev/null --max-time 5
+if service_selected backend; then
+  wait_for_http "backend health endpoint" "http://127.0.0.1:8000/health" -fsS --max-time 5
+fi
+if service_selected frontend; then
+  wait_for_http "frontend health endpoint" "http://127.0.0.1:3000/api/health" -fsS --max-time 5
+fi
+if service_selected tusd; then
+  wait_for_http "tusd" "http://127.0.0.1:1080/" -sS -o /dev/null --max-time 5
+fi
 
-sync_host_caddy
+if [[ "${DEPLOY_SYNC_HOST_CADDY:-0}" == "1" ]]; then
+  sync_host_caddy
+fi
 
 echo "Deployment complete for commit $(git rev-parse --short HEAD)"
 docker compose -f "$compose_file" ps
