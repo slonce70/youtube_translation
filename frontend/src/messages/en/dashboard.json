@@ -101,6 +101,10 @@
   "actions": {
     "upgrade": "Go to plans"
   },
+  "sidebar": {
+    "title": "Plan notes",
+    "description": "Use the plans page only when you need to review limits, compare upgrades, or prepare more capacity for the next event."
+  },
   "timeFormat": {
     "hours": "{hours}h",
     "minutes": "{minutes}m",
