@@ -216,8 +216,8 @@ export default function DashboardPage() {
         onUpgrade={() => window.location.assign('/dashboard/plans')}
       />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Card className="overflow-hidden xl:col-span-2">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.75fr,1fr]">
+        <Card className="overflow-hidden">
           <CardContent className="p-6">
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),260px] xl:items-start">
               <div className="min-w-0 max-w-2xl space-y-3">
@@ -383,8 +383,8 @@ export default function DashboardPage() {
           />
 
           <BroadcasterLevel
-            totalStreamHours={usage.totalLifetimeHours + usage.hoursUsed} 
-            totalAssets={usage.assetsCount} 
+            totalStreamHours={usage.totalLifetimeHours + usage.hoursUsed}
+            totalAssets={usage.assetsCount}
           />
 
           {isFirstRun && (

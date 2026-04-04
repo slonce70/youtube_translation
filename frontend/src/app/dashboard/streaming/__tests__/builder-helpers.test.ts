@@ -1,4 +1,14 @@
-import { createDefaultEditorState, DEFAULT_SCHEDULE_STATE, deriveEditorStateFromCollection } from '../builder-helpers'
+import {
+  BUILDER_STEPS,
+  createDefaultEditorState,
+  customizeEditorState,
+  DEFAULT_SCHEDULE_STATE,
+  deriveEditorStateFromCollection,
+  formatReviewDateTime,
+  hasEditorSelection,
+  isTimelineCustomized,
+  validateBuilderState,
+} from '../builder-helpers'
 import type { MediaCollection } from '@/lib/types'
 
 describe('stream builder helpers', () => {
@@ -60,5 +70,151 @@ describe('stream builder helpers', () => {
     expect(DEFAULT_SCHEDULE_STATE.stopAt).toBe('')
     expect(DEFAULT_SCHEDULE_STATE.loopStream).toBe(true)
     expect(DEFAULT_SCHEDULE_STATE.videoVolume).toBeGreaterThan(DEFAULT_SCHEDULE_STATE.audioVolume)
+  })
+
+  it('defines the guided builder steps in wizard order', () => {
+    expect(BUILDER_STEPS).toEqual(['content', 'channels', 'schedule', 'review'])
+  })
+
+  it('checks editor selection from either saved collections or picked assets', () => {
+    expect(hasEditorSelection(createDefaultEditorState())).toBe(false)
+    expect(
+      hasEditorSelection({
+        ...createDefaultEditorState(),
+        selectedCollectionId: 'collection-1',
+      }),
+    ).toBe(true)
+    expect(
+      hasEditorSelection({
+        ...createDefaultEditorState(),
+        items: [{ asset_id: 'asset-1' }],
+      }),
+    ).toBe(true)
+  })
+
+  it('switches existing editors into custom mode while preserving queued assets', () => {
+    const existingEditor = {
+      ...createDefaultEditorState({ shuffle: true }),
+      mode: 'existing' as const,
+      selectedCollectionId: 'collection-1',
+      items: [{ asset_id: 'asset-1' }],
+      name: 'Saved collection',
+    }
+
+    expect(customizeEditorState(existingEditor, { loop: false })).toEqual({
+      ...existingEditor,
+      mode: 'custom',
+      selectedCollectionId: null,
+      loop: false,
+    })
+  })
+
+  it('formats review dates with the provided app locale', () => {
+    const format = jest.fn().mockReturnValue('4 квіт. 2026 р., 09:00')
+    const formatterSpy = jest
+      .spyOn(Intl, 'DateTimeFormat')
+      .mockImplementation(
+        ((locale?: string | string[]) =>
+          ({
+            format,
+          }) as unknown as Intl.DateTimeFormat) as typeof Intl.DateTimeFormat,
+      )
+
+    expect(formatReviewDateTime('uk', '2026-04-04T09:00:00.000Z')).toBe('4 квіт. 2026 р., 09:00')
+    expect(formatterSpy).toHaveBeenCalledWith('uk', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    })
+
+    formatterSpy.mockRestore()
+  })
+
+  it('tracks timeline customisation from actual editor state instead of disclosure state', () => {
+    expect(
+      isTimelineCustomized({
+        videoEditor: {
+          ...createDefaultEditorState(),
+          mode: 'existing',
+          selectedCollectionId: 'video-collection',
+          items: [{ asset_id: 'video-1' }],
+        },
+        audioEnabled: true,
+        audioEditor: {
+          ...createDefaultEditorState({ shuffle: true }),
+          mode: 'existing',
+          selectedCollectionId: 'audio-collection',
+          items: [{ asset_id: 'audio-1' }],
+        },
+      }),
+    ).toBe(false)
+
+    expect(
+      isTimelineCustomized({
+        videoEditor: {
+          ...createDefaultEditorState(),
+          items: [{ asset_id: 'video-1' }],
+        },
+        audioEnabled: false,
+        audioEditor: createDefaultEditorState({ shuffle: true }),
+      }),
+    ).toBe(true)
+  })
+
+  it('routes validation failures back to the guided step that needs attention', () => {
+    expect(
+      validateBuilderState({
+        hasVideoSelection: false,
+        audioEnabled: false,
+        hasAudioSelection: false,
+        selectedDestinationCount: 1,
+        scheduleState: DEFAULT_SCHEDULE_STATE,
+      }),
+    ).toEqual({
+      step: 'content',
+      errorKey: 'errors.selectBackground',
+    })
+
+    expect(
+      validateBuilderState({
+        hasVideoSelection: true,
+        audioEnabled: true,
+        hasAudioSelection: false,
+        selectedDestinationCount: 1,
+        scheduleState: DEFAULT_SCHEDULE_STATE,
+      }),
+    ).toEqual({
+      step: 'content',
+      errorKey: 'errors.selectAudio',
+    })
+
+    expect(
+      validateBuilderState({
+        hasVideoSelection: true,
+        audioEnabled: false,
+        hasAudioSelection: false,
+        selectedDestinationCount: 0,
+        scheduleState: DEFAULT_SCHEDULE_STATE,
+      }),
+    ).toEqual({
+      step: 'channels',
+      errorKey: 'errors.selectDestination',
+    })
+
+    expect(
+      validateBuilderState({
+        hasVideoSelection: true,
+        audioEnabled: false,
+        hasAudioSelection: false,
+        selectedDestinationCount: 1,
+        scheduleState: {
+          ...DEFAULT_SCHEDULE_STATE,
+          startMode: 'schedule',
+          startAt: '',
+        },
+      }),
+    ).toEqual({
+      step: 'schedule',
+      errorKey: 'errors.scheduleTime',
+    })
   })
 })

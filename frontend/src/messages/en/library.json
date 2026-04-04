@@ -59,6 +59,13 @@
       "assets": "Files ({count})",
       "playlists": "Playlists ({count})"
     },
+    "summary": {
+      "title": "Keep upload, readiness, and folders within reach",
+      "subtitle": "Use this space to add new files, spot what still needs attention, and keep your library organised.",
+      "ready": "Ready files",
+      "attention": "Need attention",
+      "folders": "Folders"
+    },
     "assets": {
       "title": "Files",
       "filters": {
@@ -283,7 +290,7 @@
   },
   "uploadModal": {
     "title": "Upload media files",
-    "description": "Drag and drop media or pick them manually. We'll inspect video and audio codecs, resolution, and bitrate right away to flag potential YouTube Live issues.",
+    "description": "Start by adding the files you want in the queue. Upload progress comes first, and technical checks stay nearby when you need them.",
     "assetType": {
       "label": "Asset type",
       "video": "Video",
@@ -331,6 +338,9 @@
       "audio": "Audio",
       "channels": "{count, plural, one {# channel} other {# channels}}"
     },
+    "details": {
+      "summary": "Technical details and warnings"
+    },
     "progress": {
       "uploaded": "Uploaded {uploaded} of {total}"
     },
@@ -349,6 +359,7 @@
       "audioCodec": "Audio codec must be {expected} for stream copy. Detected {found}.",
       "pixelFormat": "Pixel format must be {expected} for stream copy. Detected {found}.",
       "unknownValue": "unknown",
+      "summary": "{count, plural, one {# technical warning found. Open details before you stream.} other {# technical warnings found. Open details before you stream.}}",
       "section": {
         "video": "Video warnings",
         "audio": "Audio warnings"
@@ -377,7 +388,7 @@
       "processing": "Finalising upload and refreshing your media library…"
     },
     "empty": {
-      "description": "No files in the queue yet. Add a video to analyse its parameters before uploading."
+      "description": "No files in the queue yet. Add video or audio to start preparing your upload."
     }
   }
 }
