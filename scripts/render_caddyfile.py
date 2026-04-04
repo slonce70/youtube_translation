@@ -5,37 +5,68 @@ import argparse
 import os
 from pathlib import Path
 
-DEFAULTS = {
-    "__PRIMARY_SITE__": "your-server.example.com",
-    "__FALLBACK_SITE__": "http://203.0.113.10",
-    "__BACKEND_UPSTREAM__": "127.0.0.1:8000",
-    "__TUSD_UPSTREAM__": "127.0.0.1:1080",
-    "__FRONTEND_UPSTREAM__": "127.0.0.1:3000",
+VARIANTS = {
+    "docker": {
+        "__VARIANT__": "docker",
+        "__PRIMARY_SITE__": "yourdomain.com",
+        "__PRIMARY_BACKEND_UPSTREAM__": "backend:8000",
+        "__PRIMARY_TUSD_UPSTREAM__": "tusd:1080",
+        "__PRIMARY_FRONTEND_UPSTREAM__": "frontend:3000",
+        "__PRIMARY_HSTS_LINE__": 'Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"',
+        "__PRIMARY_LOG_BLOCK__": 'log {\n        output file /var/log/caddy/access.log\n    }',
+        "__SECONDARY_SITE__": ":80",
+        "__SECONDARY_BACKEND_UPSTREAM__": "backend:8000",
+        "__SECONDARY_TUSD_UPSTREAM__": "tusd:1080",
+        "__SECONDARY_FRONTEND_UPSTREAM__": "frontend:3000",
+        "__SECONDARY_HSTS_LINE__": "",
+        "__SECONDARY_LOG_BLOCK__": "",
+    },
+    "host": {
+        "__VARIANT__": "host",
+        "__PRIMARY_SITE__": "your-server.example.com",
+        "__PRIMARY_BACKEND_UPSTREAM__": "127.0.0.1:8000",
+        "__PRIMARY_TUSD_UPSTREAM__": "127.0.0.1:1080",
+        "__PRIMARY_FRONTEND_UPSTREAM__": "127.0.0.1:3000",
+        "__PRIMARY_HSTS_LINE__": 'Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"',
+        "__PRIMARY_LOG_BLOCK__": "",
+        "__SECONDARY_SITE__": "http://203.0.113.10",
+        "__SECONDARY_BACKEND_UPSTREAM__": "127.0.0.1:8000",
+        "__SECONDARY_TUSD_UPSTREAM__": "127.0.0.1:1080",
+        "__SECONDARY_FRONTEND_UPSTREAM__": "127.0.0.1:3000",
+        "__SECONDARY_HSTS_LINE__": "",
+        "__SECONDARY_LOG_BLOCK__": "",
+    },
 }
 
-ENV_MAP = {
+ENV_OVERRIDES = {
     "__PRIMARY_SITE__": "CADDY_PRIMARY_SITE",
-    "__FALLBACK_SITE__": "CADDY_FALLBACK_SITE",
-    "__BACKEND_UPSTREAM__": "CADDY_BACKEND_UPSTREAM",
-    "__TUSD_UPSTREAM__": "CADDY_TUSD_UPSTREAM",
-    "__FRONTEND_UPSTREAM__": "CADDY_FRONTEND_UPSTREAM",
+    "__SECONDARY_SITE__": "CADDY_FALLBACK_SITE",
+    "__PRIMARY_BACKEND_UPSTREAM__": "CADDY_BACKEND_UPSTREAM",
+    "__PRIMARY_TUSD_UPSTREAM__": "CADDY_TUSD_UPSTREAM",
+    "__PRIMARY_FRONTEND_UPSTREAM__": "CADDY_FRONTEND_UPSTREAM",
+    "__SECONDARY_BACKEND_UPSTREAM__": "CADDY_BACKEND_UPSTREAM",
+    "__SECONDARY_TUSD_UPSTREAM__": "CADDY_TUSD_UPSTREAM",
+    "__SECONDARY_FRONTEND_UPSTREAM__": "CADDY_FRONTEND_UPSTREAM",
 }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Render the host Caddyfile from a git-managed template.")
-    parser.add_argument("--template", required=True, help="Path to the Caddyfile template")
-    parser.add_argument("--output", required=True, help="Where to write the rendered Caddyfile")
+    parser = argparse.ArgumentParser(description="Render Caddy config variants from a shared git-managed template.")
+    parser.add_argument("--variant", choices=sorted(VARIANTS), required=True, help="Config variant to render")
+    parser.add_argument("--template", required=True, help="Path to the template file")
+    parser.add_argument("--output", required=True, help="Where to write the rendered config")
     args = parser.parse_args()
 
-    template_path = Path(args.template)
-    output_path = Path(args.output)
+    rendered = Path(args.template).read_text(encoding="utf-8")
+    values = dict(VARIANTS[args.variant])
+    for token, env_name in ENV_OVERRIDES.items():
+        if env_name in os.environ and os.environ[env_name]:
+            values[token] = os.environ[env_name]
 
-    rendered = template_path.read_text(encoding="utf-8")
-    for token, default in DEFAULTS.items():
-        rendered = rendered.replace(token, os.environ.get(ENV_MAP[token], default))
+    for token, value in values.items():
+        rendered = rendered.replace(token, value)
 
-    output_path.write_text(rendered, encoding="utf-8")
+    Path(args.output).write_text(rendered, encoding="utf-8")
     return 0
 
 

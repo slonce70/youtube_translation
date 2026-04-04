@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose_file="$repo_root/docker/docker-compose.yml"
 backend_env="$repo_root/backend/.env"
 root_env="$repo_root/.env"
-host_caddy_template="$repo_root/docker/Caddyfile.host.template"
+caddy_template="$repo_root/docker/Caddyfile.template"
 host_caddy_target="${HOST_CADDYFILE_PATH:-/etc/caddy/Caddyfile}"
 render_caddy_script="$repo_root/scripts/render_caddyfile.py"
 services=(postgres redis backend tusd frontend runner mediamtx)
@@ -55,8 +55,8 @@ sync_host_caddy() {
     return 0
   fi
 
-  if [[ ! -f "$host_caddy_template" ]]; then
-    echo "Skipping host Caddy sync: missing template $host_caddy_template"
+  if [[ ! -f "$caddy_template" ]]; then
+    echo "Skipping host Caddy sync: missing template $caddy_template"
     return 0
   fi
 
@@ -81,7 +81,7 @@ sync_host_caddy() {
   fi
 
   echo "Rendering host Caddy config from git-managed template..."
-  python3 "$render_caddy_script" --template "$host_caddy_template" --output "$rendered_caddy"
+  python3 "$render_caddy_script" --variant host --template "$caddy_template" --output "$rendered_caddy"
   caddy fmt --overwrite "$rendered_caddy" >/dev/null
   run_as_root caddy validate --config "$rendered_caddy" >/dev/null
 
