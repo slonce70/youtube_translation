@@ -43,6 +43,7 @@ import {
   type AssetWarning,
 } from './asset-utils'
 import { applyAssetView, type AssetSortValue } from './asset-view'
+import { UPLOAD_STATUS_POLL_SCHEDULE_MS } from './upload-status-poll'
 import { useDashboardContext } from '../dashboard-context'
 import { Breadcrumbs } from '@/components/library/Breadcrumbs'
 import { FolderCard } from '@/components/library/FolderCard'
@@ -389,8 +390,7 @@ export default function LibraryPage() {
         let failedCount = 0
         let lastFailureMessage: string | null = null
 
-        const pollSchedule = [0, 800, 1600, 3200, 6400, 12000, 20000]
-        for (const delayMs of pollSchedule) {
+        for (const delayMs of UPLOAD_STATUS_POLL_SCHEDULE_MS) {
           if (delayMs) {
             await sleep(delayMs)
           }
