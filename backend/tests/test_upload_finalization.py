@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,6 +17,7 @@ from app.models.database import Asset, UploadIngest, UserProfile
 from app.schemas.api import UploadIngestResponse
 from app.services.assets.service import UploadTokenService
 from app.services.assets.upload_service import AssetUploadService
+from app.services.assets import utils as asset_utils
 
 
 class _ValidatorStub:
@@ -257,6 +261,62 @@ async def test_upload_complete_marks_missing_file_as_failed_ingest(tmp_path, mon
             assert user.current_storage_bytes == 0
     finally:
         settings.upload_dir = original_upload_dir
+
+
+def test_post_finish_redacts_upload_token_in_failure_manifest(tmp_path):
+    upload_root = tmp_path / "uploads"
+    temp_dir = upload_root / "_temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    upload_id = f"upload-manifest-redaction-{uuid4()}"
+    user_id = uuid4()
+    temp_file = temp_dir / upload_id
+    temp_file.write_bytes(b"fake-video")
+
+    token, _ = asset_utils.generate_upload_token(user_id)
+    payload = {
+        "Upload": {
+            "ID": upload_id,
+            "MetaData": {
+                "upload_token": token,
+                "filename": "sensitive.mp4",
+            },
+            "Storage": {
+                "Path": str(temp_file),
+            },
+        },
+        "Storage": {
+            "Path": str(temp_file),
+        },
+    }
+
+    script_path = Path(__file__).resolve().parents[1] / "tusd-hooks" / "post-finish"
+    env = {
+        **os.environ,
+        "TUSD_UPLOAD_ROOT": str(upload_root),
+        "TUSD_BACKEND_URL": "http://127.0.0.1:1",
+        "UPLOAD_TOKEN_SECRET": settings.upload_token_secret,
+    }
+
+    result = subprocess.run(
+        [str(script_path)],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+    manifest_path = upload_root / "_failed-finalizations" / f"{upload_id}.json"
+    assert manifest_path.exists(), result.stderr
+
+    manifest = json.loads(manifest_path.read_text())
+    payload_json = manifest["payload"]
+
+    assert payload_json["Upload"]["MetaData"].get("upload_token") in (None, "[REDACTED]")
+    assert token not in manifest_path.read_text()
 
 
 @pytest.mark.asyncio

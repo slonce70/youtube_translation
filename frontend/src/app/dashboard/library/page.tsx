@@ -43,7 +43,12 @@ import {
   type AssetWarning,
 } from './asset-utils'
 import { applyAssetView, type AssetSortValue } from './asset-view'
-import { UPLOAD_STATUS_POLL_SCHEDULE_MS } from './upload-status-poll'
+import {
+  buildUploadFailureOverrides,
+  UPLOAD_STATUS_POLL_SCHEDULE_MS,
+  type TrackedUpload,
+  type UploadModalStatusOverride,
+} from './upload-status-poll'
 import { useDashboardContext } from '../dashboard-context'
 import { Breadcrumbs } from '@/components/library/Breadcrumbs'
 import { FolderCard } from '@/components/library/FolderCard'
@@ -51,17 +56,6 @@ import { AssetCard } from '@/components/library/AssetCard'
 
 type AssetFilterValue = 'all' | 'video' | 'audio'
 type PlaylistFormState = PlaylistCreatePayload & { description: string }
-type UploadModalStatusOverride = {
-  status: 'processing' | 'complete' | 'error'
-  error?: string
-}
-type TrackedUpload = {
-  fileId: string
-  uploadId: string
-  name: string
-  size?: number
-}
-
 function extractTusUploadId(file: {
   response?: {
     uploadURL?: string
@@ -372,8 +366,10 @@ export default function LibraryPage() {
       })
       const toastId = toast.loading(libraryToasts('upload.finalizing'))
 
+      let trackedUploads: TrackedUpload[] = []
+
       try {
-        const trackedUploads = successfulUploads.map<TrackedUpload>((file) => {
+        trackedUploads = successfulUploads.map<TrackedUpload>((file) => {
           const uploadId = extractTusUploadId(file)
           if (!uploadId) {
             throw new Error(`Missing upload id for ${file.name}`)
@@ -488,6 +484,9 @@ export default function LibraryPage() {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : libraryToasts('generic.unknownError')
+        setUploadStatusOverrides((current) =>
+          buildUploadFailureOverrides(trackedUploads ?? [], current, message)
+        )
         toast.error(libraryToasts('upload.refreshFailed', { message }), { id: toastId })
       } finally {
         setIsProcessingUpload(false)

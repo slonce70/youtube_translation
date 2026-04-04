@@ -32,6 +32,22 @@ resolve_upload_root() {
     printf '%s' "$(cd "$script_dir/.." && pwd)/uploads"
 }
 
+sanitize_hook_payload() {
+    if [ -z "${HOOK_DATA:-}" ]; then
+        return 0
+    fi
+
+    if ! printf '%s' "$HOOK_DATA" | jq '
+        if type == "object" then
+            del(.Event.Upload.MetaData.upload_token?, .Upload.MetaData.upload_token?)
+        else
+            .
+        end
+    ' 2>/dev/null; then
+        printf '%s' "$HOOK_DATA"
+    fi
+}
+
 write_failure_manifest() {
     local reason="$1"
     local details="$2"
@@ -43,12 +59,15 @@ write_failure_manifest() {
     local manifest_upload_id="${UPLOAD_ID:-unknown}"
     local manifest_path="$manifest_dir/${manifest_upload_id}.json"
 
+    local sanitized_payload
+    sanitized_payload=$(sanitize_hook_payload)
+
     jq -n \
         --arg upload_id "$manifest_upload_id" \
         --arg reason "$reason" \
         --arg details "$details" \
         --arg created_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-        --arg payload "$HOOK_DATA" \
+        --arg payload "$sanitized_payload" \
         '{
             upload_id: $upload_id,
             reason: $reason,
