@@ -1,9 +1,11 @@
-FROM alpine:3.19
+FROM debian:bookworm-slim
 
 ARG TUSD_VERSION=1.13.0
 ARG TARGETARCH
 
-RUN apk add --no-cache bash ca-certificates curl jq openssl tar
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl jq openssl tar \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN arch="${TARGETARCH:-amd64}" \
     && curl -L -o /tmp/tusd.tar.gz "https://github.com/tus/tusd/releases/download/v${TUSD_VERSION}/tusd_linux_${arch}.tar.gz" \

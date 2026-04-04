@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str
+    postgres_password: Optional[str] = None
     db_pool_size: int = 10
     db_max_overflow: int = 5
     db_pool_timeout_seconds: int = 30

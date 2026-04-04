@@ -1,17 +1,18 @@
 services:
   # Supported tranche-one topology keeps backend, tusd, runner, and uploads on the same host.
+  # Compose expects POSTGRES_PASSWORD to be exported in the shell (or provided via a root .env)
+  # before `docker compose` runs; in production we source `backend/.env` first so the secret
+  # stays out of this file.
   # PostgreSQL
   postgres:
     image: postgres:16
     container_name: youtube-streaming-postgres
     environment:
       - POSTGRES_USER=youtube_user
-      - POSTGRES_PASSWORD=dev_password_local_only
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - POSTGRES_DB=youtube_streaming
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     restart: unless-stopped
     networks:
       - app-network
@@ -25,8 +26,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: youtube-streaming-redis
-    ports:
-      - "6379:6379"
     restart: unless-stopped
     networks:
       - app-network
@@ -43,7 +42,8 @@ services:
       dockerfile: Dockerfile
     container_name: youtube-streaming-backend
     ports:
-      - "8000:8000"
+      # Active host-level Caddy on the VPS proxies to this loopback binding.
+      - "127.0.0.1:8000:8000"
     volumes:
       - ../backend/uploads:/app/uploads
       - ../backend/streams:/app/streams
@@ -53,7 +53,7 @@ services:
     env_file:
       - ../backend/.env
     environment:
-      - DATABASE_URL=postgresql://youtube_user:dev_password_local_only@postgres:5432/youtube_streaming
+      - DATABASE_URL=postgresql://youtube_user:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/youtube_streaming
       - REDIS_URL=redis://redis:6379/0
       - FFMPEG_BIN=/usr/bin/ffmpeg
       - FFPROBE_BIN=/usr/bin/ffprobe
@@ -88,7 +88,8 @@ services:
     container_name: youtube-streaming-tusd
     command: -port 1080 -base-path=/files/ -behind-proxy -upload-dir /app/uploads -hooks-dir /tusd-hooks -hooks-enabled-events=pre-create,post-finish -max-size=10737418240
     ports:
-      - "1080:1080"
+      # Active host-level Caddy on the VPS proxies to this loopback binding.
+      - "127.0.0.1:1080:1080"
     volumes:
       - ../backend/uploads:/app/uploads
     env_file:
@@ -139,7 +140,8 @@ services:
         ENABLE_API_PROXY: "1"
     container_name: youtube-streaming-frontend
     ports:
-      - "3000:3000"
+      # Active host-level Caddy on the VPS proxies to this loopback binding.
+      - "127.0.0.1:3000:3000"
     env_file:
       - ../frontend/.env.local
     environment:
@@ -182,7 +184,7 @@ services:
     env_file:
       - ../backend/.env
     environment:
-      - DATABASE_URL=postgresql://youtube_user:dev_password_local_only@postgres:5432/youtube_streaming
+      - DATABASE_URL=postgresql://youtube_user:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/youtube_streaming
       - REDIS_URL=redis://redis:6379/0
       - FFMPEG_BIN=/usr/bin/ffmpeg
       - FFPROBE_BIN=/usr/bin/ffprobe
