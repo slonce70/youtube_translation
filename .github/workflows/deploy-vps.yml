@@ -12,6 +12,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -26,10 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Verify generated docker Caddyfile is in sync
+        run: |
+          python3 scripts/render_caddyfile.py --variant docker --template docker/Caddyfile.template --output /tmp/docker.Caddyfile
+          diff -u docker/Caddyfile /tmp/docker.Caddyfile
+
       - name: Set up Docker Buildx
+        if: github.event_name == 'push'
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
+        if: github.event_name == 'push'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -37,6 +46,7 @@ jobs:
           password: ${{ github.token }}
 
       - name: Build and push backend image
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v7
         with:
           context: ./backend
@@ -49,6 +59,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend
 
       - name: Build and push tusd image
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -61,6 +72,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=tusd
 
       - name: Build and push frontend image
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v7
         with:
           context: ./frontend
@@ -77,11 +89,6 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
-      - name: Verify generated docker Caddyfile is in sync
-        run: |
-          python3 scripts/render_caddyfile.py --variant docker --template docker/Caddyfile.template --output /tmp/docker.Caddyfile
-          diff -u docker/Caddyfile /tmp/docker.Caddyfile
-
       - name: Install SSH key
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -96,7 +103,102 @@ jobs:
         run: |
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
 
+      - name: Resolve current production state
+        id: prod_state
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          remote_state="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" '
+            for name in youtube-streaming-backend youtube-streaming-frontend youtube-streaming-tusd; do
+              docker inspect "$name" --format "{{.Name}}|{{.Config.Image}}|{{.State.StartedAt}}" 2>/dev/null || true
+            done
+          ')"
+
+          matches=0
+          seen=0
+          while IFS='|' read -r name image started_at; do
+            [[ -z "${name:-}" ]] && continue
+            seen=$((seen + 1))
+            if [[ "$image" == *":$TARGET_SHA" ]]; then
+              matches=$((matches + 1))
+            fi
+          done <<< "$remote_state"
+
+          needs_deploy=true
+          if [[ "$seen" -eq 3 && "$matches" -eq 3 ]]; then
+            needs_deploy=false
+          fi
+
+          {
+            echo "needs_deploy=$needs_deploy"
+            echo 'remote_state<<EOF'
+            printf '%s\n' "$remote_state"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo '### Production deployment state'
+            echo ''
+            if [[ -n "$remote_state" ]]; then
+              printf '%s\n' "$remote_state" | sed 's/^/- `/; s/$/`/'
+            else
+              echo '- `No running containers detected for backend/frontend/tusd`'
+            fi
+            echo "- Target SHA: \`$TARGET_SHA\`"
+            echo "- Needs deploy: \`$needs_deploy\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check live stream deploy safety
+        id: live_guard
+        if: steps.prod_state.outputs.needs_deploy == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          active_streams="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "if docker ps --format '{{.Names}}' | grep -qx 'youtube-streaming-postgres'; then docker exec youtube-streaming-postgres psql -U youtube_user -d youtube_streaming -tAc \"SELECT count(*) FROM streams WHERE status IN ('running','starting','stopping');\" | tr -d '[:space:]'; else echo 0; fi")"
+
+          if [[ ! "$active_streams" =~ ^[0-9]+$ ]]; then
+            echo "Unable to determine active stream count: $active_streams" >&2
+            exit 1
+          fi
+
+          can_deploy=true
+          if (( active_streams > 0 )); then
+            can_deploy=false
+          fi
+
+          {
+            echo "active_streams=$active_streams"
+            echo "can_deploy=$can_deploy"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo '### Live stream deploy guard'
+            echo ''
+            echo "- Active streams: \`$active_streams\`"
+            if [[ "$can_deploy" == 'true' ]]; then
+              echo '- Result: `safe to deploy`'
+            else
+              echo '- Result: `deploy deferred to protect live streams`'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Skip deploy because production already matches target
+        if: steps.prod_state.outputs.needs_deploy != 'true'
+        run: |
+          echo 'Production already runs the target commit; nothing to do.'
+
+      - name: Skip deploy because live stream protection is active
+        if: steps.prod_state.outputs.needs_deploy == 'true' && steps.live_guard.outputs.can_deploy != 'true'
+        run: |
+          echo "Skipping production deploy for commit ${{ github.sha }} because ${{ steps.live_guard.outputs.active_streams }} live stream(s) are active."
+
       - name: Deploy current main to VPS
+        if: steps.prod_state.outputs.needs_deploy == 'true' && steps.live_guard.outputs.can_deploy == 'true'
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
