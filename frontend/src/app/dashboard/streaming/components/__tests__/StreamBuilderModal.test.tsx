@@ -170,6 +170,19 @@ describe('StreamBuilderModal', () => {
     expect(screen.getByText('Visual overview of your stream content')).toBeInTheDocument()
   })
 
+  it('keeps the guided content flow stacked in playback-first order', () => {
+    renderModal()
+
+    const playbackOrder = screen.getByText('Playback order')
+    const videoAssets = screen.getByText('Available video assets')
+    const audioPlaylist = screen.getByText('Audio playlist')
+    const advancedTimeline = screen.getByText('Advanced timeline')
+
+    expect(playbackOrder.compareDocumentPosition(videoAssets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(videoAssets.compareDocumentPosition(audioPlaylist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(audioPlaylist.compareDocumentPosition(advancedTimeline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('shows a review summary with jump-back actions before launch', () => {
     renderModal({
       activeBuilderTab: 'review',
