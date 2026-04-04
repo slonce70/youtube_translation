@@ -13,6 +13,7 @@ import type { Locale as DateFnsLocale } from 'date-fns'
 import { useTranslations } from 'next-intl'
 import { useLocale } from 'next-intl'
 import { useRouter } from 'next/navigation'
+import { formatBytes } from '@/lib/utils'
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -32,6 +33,12 @@ export default function AdminDashboard() {
   const { data: alertsData, isLoading: alertsLoading } = useQuery({
     queryKey: ['admin-alerts'],
     queryFn: () => api.admin.alerts.list({ resolved: false, limit: 1000 }),
+    refetchInterval: 30000,
+  })
+
+  const { data: metricsData, isLoading: metricsLoading } = useQuery({
+    queryKey: ['admin-metrics'],
+    queryFn: () => api.metrics.get(),
     refetchInterval: 30000,
   })
 
@@ -59,18 +66,22 @@ export default function AdminDashboard() {
     errorStreams: streamsData?.summary.errors ?? streamItems.filter((stream) => stream.status === 'error').length,
     unresolvedAlerts: alertsData?.summary.unresolved ?? alertItems.filter((alert) => !alert.resolved).length,
     criticalAlerts: alertsData?.summary.critical ?? alertItems.filter((alert) => alert.severity === 'critical').length,
-    storageUsed: userItems.reduce((sum, user) => sum + user.current_storage_bytes, 0) / 1024 ** 4,
-    storageTotal: 10,
   }
 
   const recentUsers = userItems.slice(0, 3)
   const recentAlerts = alertItems.slice(0, 3)
 
-  const isLoading = usersLoading || streamsLoading || alertsLoading
+  const isLoading = usersLoading || streamsLoading || alertsLoading || metricsLoading
+
+  const diskMetrics = metricsData?.system.disk ?? null
+  const memoryMetrics = metricsData?.system.memory ?? null
+  const cpuMetrics = metricsData?.system.cpu ?? null
 
   const userActivityPercent = stats.totalUsers ? Math.round((stats.activeUsers / stats.totalUsers) * 100) : 0
   const streamUsagePercent = stats.totalStreams ? Math.round((stats.activeStreams / stats.totalStreams) * 100) : 0
-  const storagePercent = stats.storageTotal ? Math.min(100, (stats.storageUsed / stats.storageTotal) * 100) : 0
+  const storagePercent = diskMetrics ? Math.min(100, diskMetrics.percent) : 0
+  const memoryPercent = memoryMetrics ? Math.min(100, memoryMetrics.percent) : 0
+  const cpuPercent = cpuMetrics ? Math.min(100, cpuMetrics.percent) : 0
   const systemHealthValue = Math.max(0, Math.min(100, 100 - stats.errorStreams * 5 - stats.criticalAlerts * 2))
 
   const formatTier = (tier?: string | null) => {
@@ -92,8 +103,21 @@ export default function AdminDashboard() {
       : severity
   }
 
-  const storageUsedFormatted = stats.storageUsed.toFixed(2)
-  const storageTotalFormatted = stats.storageTotal.toFixed(0)
+  const storageUsedFormatted = diskMetrics
+    ? formatBytes(diskMetrics.used_gb * 1024 ** 3)
+    : tDashboard('systemResources.unavailable')
+  const storageTotalFormatted = diskMetrics
+    ? formatBytes(diskMetrics.total_gb * 1024 ** 3)
+    : tDashboard('systemResources.unavailable')
+  const memoryUsedFormatted = memoryMetrics
+    ? formatBytes(memoryMetrics.used_gb * 1024 ** 3)
+    : tDashboard('systemResources.unavailable')
+  const memoryTotalFormatted = memoryMetrics
+    ? formatBytes(memoryMetrics.total_gb * 1024 ** 3)
+    : tDashboard('systemResources.unavailable')
+  const cpuSummary = cpuMetrics
+    ? tDashboard('systemResources.cpuSummary', { value: cpuPercent.toFixed(1), cores: cpuMetrics.count })
+    : tDashboard('systemResources.unavailable')
 
   return (
     <div className="space-y-6">
@@ -341,6 +365,43 @@ export default function AdminDashboard() {
                   animate={{ width: `${storagePercent}%` }}
                   transition={{ duration: 1 }}
                   className="h-full bg-gradient-to-r from-blue-500 to-cyan-500"
+                />
+              </div>
+            </div>
+
+            {/* Memory */}
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-slate-600 dark:text-slate-400">{tDashboard('systemResources.memoryUsage')}</span>
+                <span className="font-medium">
+                  {tDashboard('systemResources.memorySummary', {
+                    used: memoryUsedFormatted,
+                    total: memoryTotalFormatted,
+                  })}
+                </span>
+              </div>
+              <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${memoryPercent}%` }}
+                  transition={{ duration: 1 }}
+                  className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500"
+                />
+              </div>
+            </div>
+
+            {/* CPU */}
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-slate-600 dark:text-slate-400">{tDashboard('systemResources.cpuLoad')}</span>
+                <span className="font-medium">{cpuSummary}</span>
+              </div>
+              <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${cpuPercent}%` }}
+                  transition={{ duration: 1 }}
+                  className="h-full bg-gradient-to-r from-emerald-500 to-lime-500"
                 />
               </div>
             </div>
