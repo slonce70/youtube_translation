@@ -19,6 +19,7 @@ import {
   BUILDER_STEPS,
   customizeEditorState,
   createDefaultEditorState,
+  DEFAULT_MIX_MODE,
   DEFAULT_SCHEDULE_STATE,
   deriveEditorStateFromCollection,
   hasEditorSelection,
@@ -76,7 +77,7 @@ export const useStreamBuilder = ({
     destination_ids: enabledDestinations.length > 0 ? [enabledDestinations[0].id] : [],
   }))
   const [activeBuilderTab, setActiveBuilderTab] = useState<BuilderTab>('content')
-  const [mixMode, setMixMode] = useState<'video_only' | 'mixed'>('mixed')
+  const [mixMode, setMixMode] = useState<'video_only' | 'mixed'>(DEFAULT_MIX_MODE)
   const [videoEditor, setVideoEditor] = useState<CollectionEditorState>(createDefaultEditorState())
   const [audioEditor, setAudioEditor] = useState<CollectionEditorState>(
     createDefaultEditorState({ shuffle: true }),
@@ -294,7 +295,7 @@ export const useStreamBuilder = ({
     setVideoEditor(createDefaultEditorState())
     setAudioEditor(createDefaultEditorState({ shuffle: true }))
     setScheduleState(DEFAULT_SCHEDULE_STATE)
-    setMixMode('mixed')
+    setMixMode(DEFAULT_MIX_MODE)
     setDragState(null)
     setActiveBuilderTab('content')
   }, [enabledDestinations])

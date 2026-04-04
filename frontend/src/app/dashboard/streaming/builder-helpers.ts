@@ -23,6 +23,7 @@ export type ScheduleState = {
 }
 
 export const BUILDER_STEPS = ['content', 'channels', 'schedule', 'review'] as const
+export const DEFAULT_MIX_MODE = 'video_only' as const
 
 export type BuilderStep = (typeof BUILDER_STEPS)[number]
 

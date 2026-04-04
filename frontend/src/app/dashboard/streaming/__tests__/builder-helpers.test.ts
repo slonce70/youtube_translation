@@ -2,6 +2,7 @@ import {
   BUILDER_STEPS,
   createDefaultEditorState,
   customizeEditorState,
+  DEFAULT_MIX_MODE,
   DEFAULT_SCHEDULE_STATE,
   deriveEditorStateFromCollection,
   formatReviewDateTime,
@@ -74,6 +75,10 @@ describe('stream builder helpers', () => {
 
   it('defines the guided builder steps in wizard order', () => {
     expect(BUILDER_STEPS).toEqual(['content', 'channels', 'schedule', 'review'])
+  })
+
+  it('defaults guided builder audio to optional video-only mode', () => {
+    expect(DEFAULT_MIX_MODE).toBe('video_only')
   })
 
   it('checks editor selection from either saved collections or picked assets', () => {

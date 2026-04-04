@@ -183,6 +183,24 @@ describe('StreamBuilderModal', () => {
     expect(audioPlaylist.compareDocumentPosition(advancedTimeline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('treats audio as opt-in in the guided content step', () => {
+    renderModal({
+      audioEnabled: false,
+      audioEditor: {
+        selectedCollectionId: null,
+        items: [],
+        mode: 'custom',
+        loop: true,
+        shuffle: true,
+        name: '',
+      },
+    })
+
+    expect(screen.getByRole('button', { name: 'Enable audio' })).toBeInTheDocument()
+    expect(screen.getByText('Audio is disabled. Enable it to add playlists.')).toBeInTheDocument()
+    expect(screen.queryByText('No audio tracks selected')).not.toBeInTheDocument()
+  })
+
   it('shows a review summary with jump-back actions before launch', () => {
     renderModal({
       activeBuilderTab: 'review',
