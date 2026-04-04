@@ -221,6 +221,21 @@ async def _apply_schema_changes(conn):
         )
     )
 
+    # 4K tiers should not cap bitrate below YouTube's own 4K60 guidance.
+    # Otherwise valid UHD files get blocked during stream launch.
+    await conn.execute(
+        text(
+            """
+            UPDATE subscription_tier_limits
+            SET
+                max_resolution_height = COALESCE(max_resolution_height, 2160),
+                max_fps = COALESCE(max_fps, 60),
+                max_video_bitrate_mbps = GREATEST(COALESCE(max_video_bitrate_mbps, 51), 51)
+            WHERE tier IN ('uhd_start', 'uhd_flow', 'uhd_boost')
+            """
+        )
+    )
+
     # Add missing columns to streams table only if needed
     streams_columns = [
         "video_collection_id",

@@ -54,6 +54,7 @@ MIGRATIONS = [
     'migrations/031_stream_runtime_restart_state.sql',
     'migrations/032_asset_storage_contract.sql',
     'migrations/033_upload_ingests.sql',
+    'migrations/034_fix_uhd_bitrate_caps.sql',
 ]
 
 
@@ -516,7 +517,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     definition = result.scalar()
     status['027'] = bool(definition and 'scheduled' in definition)
 
-    for migration_num in ('028', '029', '030', '031', '032', '033'):
+    for migration_num in ('028', '029', '030', '031', '032', '033', '034'):
         status[migration_num] = await verify_migration(conn, migration_num)
 
     return status
@@ -1238,6 +1239,16 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
             and 'finalized' in definition
             and 'failed' in definition
         )
+
+    elif migration_num == '034':
+        query = text("""
+            SELECT COUNT(*) = 3
+            FROM subscription_tier_limits
+            WHERE tier IN ('uhd_start', 'uhd_flow', 'uhd_boost')
+              AND max_video_bitrate_mbps >= 51
+        """)
+        result = await conn.execute(query)
+        return bool(result.scalar())
 
     return False
 

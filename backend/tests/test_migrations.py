@@ -97,6 +97,7 @@ class TestUserProfilesMigration:
 
         assert uhd_boost.max_resolution_height == 2160
         assert uhd_boost.max_concurrent_streams == 4
+        assert uhd_boost.max_video_bitrate_mbps == 51
         assert 'hevc' in (uhd_boost.allowed_video_codecs or [])
 
 

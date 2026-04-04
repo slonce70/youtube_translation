@@ -387,9 +387,9 @@ INSERT INTO subscription_tier_limits (
     ('fhd_flow', 50, 3, 5, 20, 100, 1080, 60, 8.0, 4.0, TRUE, '1080p60', TRUE, TRUE, TRUE, FALSE, 1999, 60),
     ('fhd_boost', 100, 5, 10, 50, 200, 1080, 60, 8.0, 4.0, TRUE, '1080p60', TRUE, TRUE, TRUE, TRUE, 3999, 90),
     -- UHD tiers
-    ('uhd_start', 100, 2, 5, 20, 100, 2160, 60, 20.0, 10.0, TRUE, '4K60', TRUE, TRUE, TRUE, FALSE, 2999, 60),
-    ('uhd_flow', 250, 5, 10, 50, 300, 2160, 60, 25.0, 12.0, TRUE, '4K60', TRUE, TRUE, TRUE, TRUE, 4999, 90),
-    ('uhd_boost', 500, 10, 20, NULL, 500, 2160, 60, 30.0, 15.0, TRUE, '4K60', TRUE, TRUE, TRUE, TRUE, 7999, 180),
+    ('uhd_start', 100, 2, 5, 20, 100, 2160, 60, 51.0, 10.0, TRUE, '4K60', TRUE, TRUE, TRUE, FALSE, 2999, 60),
+    ('uhd_flow', 250, 5, 10, 50, 300, 2160, 60, 51.0, 12.0, TRUE, '4K60', TRUE, TRUE, TRUE, TRUE, 4999, 90),
+    ('uhd_boost', 500, 10, 20, NULL, 500, 2160, 60, 51.0, 15.0, TRUE, '4K60', TRUE, TRUE, TRUE, TRUE, 7999, 180),
     -- Legacy tiers
     ('pro', 50, 5, 10, 20, 200, 1080, 60, 8.0, 4.0, TRUE, '1080p60', FALSE, TRUE, TRUE, FALSE, 1999, 30),
     ('business', 200, 20, 50, NULL, 1000, 2160, 60, 20.0, 10.0, TRUE, '4K60', TRUE, TRUE, TRUE, TRUE, 4999, 90),
