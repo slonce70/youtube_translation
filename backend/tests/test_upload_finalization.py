@@ -673,6 +673,84 @@ def test_post_finish_recovers_from_invalid_hook_token_using_info_file(tmp_path):
         assert manifest["reason"] != "invalid_upload_token"
 
 
+def test_post_finish_recovers_missing_token_from_user_dir_info_file(tmp_path):
+    upload_root = tmp_path / "uploads"
+    user_id = uuid4()
+    upload_id = f"upload-user-dir-info-{uuid4()}"
+    user_dir = upload_root / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+
+    final_file = user_dir / upload_id
+    final_file.write_bytes(b"fake-video")
+
+    valid_token, _ = asset_utils.generate_upload_token(user_id)
+    final_info = user_dir / f"{upload_id}.info"
+    final_info.write_text(
+        json.dumps(
+            {
+                "ID": upload_id,
+                "MetaData": {
+                    "upload_token": valid_token,
+                    "user_id": str(user_id),
+                    "filename": "recovered-from-user-dir.mp4",
+                },
+                "Storage": {
+                    "Path": str(final_file),
+                    "InfoPath": str(final_info),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = {
+        "Upload": {
+            "ID": upload_id,
+            "MetaData": {
+                "user_id": str(user_id),
+                "filename": "recovered-from-user-dir.mp4",
+            },
+            "Storage": {
+                "Path": str(upload_root / upload_id),
+                "InfoPath": str(upload_root / f"{upload_id}.info"),
+            },
+        },
+        "Storage": {
+            "InfoPath": str(upload_root / f"{upload_id}.info"),
+        },
+    }
+
+    script_path = Path(__file__).resolve().parents[1] / "tusd-hooks" / "post-finish"
+    env = {
+        **os.environ,
+        "TUSD_UPLOAD_ROOT": str(upload_root),
+        "TUSD_BACKEND_URL": "http://127.0.0.1:1",
+        "UPLOAD_TOKEN_SECRET": settings.upload_token_secret,
+        "TUSD_HMAC_SECRET": "test-secret",
+    }
+
+    result = subprocess.run(
+        [str(script_path)],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Recovered upload token from info file" in result.stderr
+    assert "File already in user directory" in result.stderr
+    assert str(final_file) in result.stderr
+
+    manifest_path = upload_root / "_failed-finalizations" / f"{upload_id}.json"
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["reason"] == "backend_unreachable"
+    assert manifest["payload"]["Storage"]["Path"] == str(final_file)
+    assert manifest["payload"]["Storage"]["InfoPath"] == str(final_info)
+
+
 @pytest.mark.asyncio
 async def test_upload_status_api_is_owner_scoped(tmp_path, monkeypatch):
     owner_id = uuid4()

@@ -63,6 +63,29 @@ prepare_linux_persistence() {
   export LEGACY_POSTGRES_VOLUME_NAME="${LEGACY_POSTGRES_VOLUME_NAME:-docker_postgres-data}"
 }
 
+verify_linux_persistence() {
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    return 0
+  fi
+
+  local persistent_target
+  for persistent_target in \
+    "$HOST_UPLOADS_DIR" \
+    "$HOST_STREAMS_DIR" \
+    "$HOST_LOGS_DIR" \
+    "$HOST_SUPERVISORD_DIR"; do
+    if [[ "$persistent_target" != /* ]]; then
+      echo "Persistence target must be an absolute path on Linux: $persistent_target" >&2
+      exit 1
+    fi
+
+    if [[ "$persistent_target" == "$repo_root" || "$persistent_target" == "$repo_root/"* ]]; then
+      echo "Refusing to deploy with repo-scoped persistence target: $persistent_target" >&2
+      exit 1
+    fi
+  done
+}
+
 sync_legacy_dir() {
   local label="$1"
   local source_dir="$2"
@@ -183,6 +206,7 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
 fi
 
 prepare_linux_persistence
+verify_linux_persistence
 ensure_persistent_storage
 
 echo "Validating compose config..."
