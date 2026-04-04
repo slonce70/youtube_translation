@@ -5,7 +5,9 @@ import {
   AlertTriangle,
   ChevronDown,
   Clock3,
+  FileText,
   Loader2,
+  Pencil,
   Play,
   Plus,
   Radio,
@@ -18,8 +20,10 @@ import { useLocale, type TranslationValues } from 'next-intl'
 
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
+import { DropdownMenu, DropdownItem } from '@/components/ui/DropdownMenu'
 import { LoadingState } from '@/components/LoadingState'
 import { formatRelativeDateTime } from '@/lib/dates'
+import { cn } from '@/lib/utils'
 import { deriveStreamState } from '@/lib/stream-state'
 import type {
   MediaCollection,
@@ -73,6 +77,45 @@ type PresentedStream = {
 }
 
 const GROUP_ORDER: Array<PresentedStream['derived']['group']> = ['live', 'attention', 'scheduled', 'stopped']
+
+const STREAM_AVATAR_COLORS = [
+  'bg-blue-500',
+  'bg-emerald-500',
+  'bg-violet-500',
+  'bg-rose-500',
+  'bg-amber-500',
+  'bg-cyan-500',
+  'bg-pink-500',
+  'bg-teal-500',
+  'bg-indigo-500',
+  'bg-orange-500',
+]
+
+function hashString(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash)
+}
+
+function getStreamColor(name: string): string {
+  return STREAM_AVATAR_COLORS[hashString(name) % STREAM_AVATAR_COLORS.length]
+}
+
+function getStreamInitial(name: string): string {
+  return (name || '?').charAt(0).toUpperCase()
+}
+
+function getStatusBorderClass(group: string): string {
+  switch (group) {
+    case 'live': return 'border-l-4 border-l-success-500'
+    case 'attention': return 'border-l-4 border-l-amber-500'
+    case 'scheduled': return 'border-l-4 border-l-primary-400'
+    default: return 'border-l-4 border-l-slate-300 dark:border-l-slate-600'
+  }
+}
 
 function hasRetryHistory(runtimeRestart: Stream['runtime_restart'] | null | undefined): boolean {
   if (!runtimeRestart?.enabled) return false
@@ -177,6 +220,7 @@ export function StreamsList({
                           ? formatRelativeDateTime(stream.scheduled_start_time, locale, '—')
                           : null
                       const createdLabel = formatRelativeDateTime(stream.created_at, locale, '—')
+                      const streamName = stream.name || t('streams.untitled')
                       const sourceName = (() => {
                         if (stream.playlist_id) {
                           return playlistMap.get(stream.playlist_id)?.name ?? t('streams.unknownPlaylist')
@@ -275,50 +319,46 @@ export function StreamsList({
                           key={stream.id}
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className={`rounded-xl border p-4 ${
+                          className={cn(
+                            'rounded-xl border p-4',
+                            getStatusBorderClass(derived.group),
                             derived.group === 'attention'
-                              ? 'border-amber-200 bg-amber-50/40 dark:border-amber-900/50 dark:bg-amber-950/10'
+                              ? 'bg-amber-50/40 dark:bg-amber-950/10'
                               : derived.group === 'live'
-                                ? 'border-success-200 bg-success-50/40 dark:border-success-900/50 dark:bg-success-950/10'
-                                : 'border-slate-200 dark:border-slate-700'
-                          }`}
+                                ? 'bg-success-50/40 dark:bg-success-950/10'
+                                : '',
+                          )}
                         >
                           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div className="min-w-0 flex-1 space-y-3">
                               <div className="flex flex-wrap items-center gap-3">
-                                <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
-                                  {stream.name || t('streams.untitled')}
-                                </h4>
-                                {renderStatusBadge(derived.derivedStatus)}
-                                {derived.statusUnavailable && (
-                                  <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                                    <AlertTriangle className="w-3 h-3" />
-                                    {t('streams.statusCheck.unreachable')}
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="grid gap-4 text-sm md:grid-cols-3">
-                                <div>
-                                  <p className="text-slate-500 dark:text-slate-400">{t('streams.labels.destinations')}</p>
-                                  <p className="font-medium text-slate-900 dark:text-white">{destinationLabel}</p>
+                                {/* Stream avatar */}
+                                <div className={cn(
+                                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white',
+                                  getStreamColor(streamName),
+                                )}>
+                                  {getStreamInitial(streamName)}
                                 </div>
-                                <div>
-                                  <p className="text-slate-500 dark:text-slate-400">
-                                    {derived.isRunning ? t('streams.labels.liveDuration') : t('streams.labels.status')}
-                                  </p>
-                                  <p className="font-medium text-slate-900 dark:text-white">
-                                    {derived.isRunning
-                                      ? formatDuration(derived.liveDurationSeconds)
-                                      : streamingStatus(derived.derivedStatus)}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-slate-500 dark:text-slate-400">
-                                    {scheduleLabel ? t('streams.labels.scheduledStart') : t('streams.labels.created')}
-                                  </p>
-                                  <p className="font-medium text-slate-900 dark:text-white">
-                                    {scheduleLabel ?? createdLabel}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
+                                      {streamName}
+                                    </h4>
+                                    {renderStatusBadge(derived.derivedStatus)}
+                                    {derived.statusUnavailable && (
+                                      <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                                        <AlertTriangle className="w-3 h-3" />
+                                        {t('streams.statusCheck.unreachable')}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                                    {destinationLabel}
+                                    {derived.isRunning && (
+                                      <span className="ml-2 text-success-600 dark:text-success-400 font-medium">
+                                        {formatDuration(derived.liveDurationSeconds)}
+                                      </span>
+                                    )}
                                   </p>
                                 </div>
                               </div>
@@ -353,59 +393,53 @@ export function StreamsList({
                                     </p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 dark:text-slate-400">{t('streams.labels.autoRetry')}</p>
+                                    <p className="text-slate-500 dark:text-slate-400">
+                                      {scheduleLabel ? t('streams.labels.scheduledStart') : t('streams.labels.created')}
+                                    </p>
                                     <p className="font-medium text-slate-900 dark:text-white">
-                                      {retryVisible
-                                        ? t('streams.retry.attempt', {
-                                            current: derived.runtimeRestart.attempts,
-                                            max: derived.runtimeRestart.max_attempts,
-                                          })
-                                        : '—'}
+                                      {scheduleLabel ?? createdLabel}
                                     </p>
                                   </div>
+                                  {retryVisible && (
+                                    <div>
+                                      <p className="text-slate-500 dark:text-slate-400">{t('streams.labels.autoRetry')}</p>
+                                      <p className="font-medium text-slate-900 dark:text-white">
+                                        {t('streams.retry.attempt', {
+                                          current: derived.runtimeRestart.attempts,
+                                          max: derived.runtimeRestart.max_attempts,
+                                        })}
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               </details>
                             </div>
 
-                            <div className="flex flex-col gap-2 xl:w-56">
+                            {/* Actions: primary button + overflow menu */}
+                            <div className="flex items-center gap-2 xl:flex-col xl:items-end">
                               {primaryButton}
-                              <div className="grid grid-cols-2 gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => onViewLogs(stream.id)}
-                                  disabled={isRowPending}
-                                >
+                              <DropdownMenu disabled={isRowPending}>
+                                <DropdownItem onClick={() => onViewLogs(stream.id)} disabled={isRowPending}>
+                                  <FileText className="h-4 w-4" />
                                   {t('streams.buttons.logs')}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => onEditSchedule(stream)}
-                                  disabled={isRowPending}
-                                >
+                                </DropdownItem>
+                                <DropdownItem onClick={() => onEditSchedule(stream)} disabled={isRowPending}>
+                                  <Clock3 className="h-4 w-4" />
                                   {t('streams.buttons.schedule')}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => onOpenLiveEditor(stream)}
+                                </DropdownItem>
+                                <DropdownItem onClick={() => onOpenLiveEditor(stream)} disabled={isRowPending}>
+                                  <Pencil className="h-4 w-4" />
+                                  {t('streams.liveEdit.button')}
+                                </DropdownItem>
+                                <DropdownItem
+                                  variant="danger"
+                                  onClick={() => setDeleteDialogStream(stream)}
                                   disabled={isRowPending}
                                 >
-                                  {t('streams.liveEdit.button')}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="danger"
-                                  isLoading={isDeletePending}
-                                  aria-label={t('streams.buttons.delete')}
-                                  title={t('streams.buttons.delete')}
-                                  disabled={isRowPending && !isDeletePending}
-                                  onClick={() => setDeleteDialogStream(stream)}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
+                                  <Trash2 className="h-4 w-4" />
+                                  {t('streams.buttons.delete')}
+                                </DropdownItem>
+                              </DropdownMenu>
                             </div>
                           </div>
                         </motion.article>

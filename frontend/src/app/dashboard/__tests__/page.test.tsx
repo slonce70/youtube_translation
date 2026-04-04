@@ -97,6 +97,6 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(api.streams.list).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(api.assets.list).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(screen.getByText('Dashboard')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Upload files')).toBeInTheDocument())
   })
 })

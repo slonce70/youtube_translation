@@ -55,6 +55,11 @@ const translations: Record<string, string> = {
   'streams.retry.lastRestart': 'Restarted {value}',
   'streams.retry.lastFailure': 'Last failure {value}',
   'streams.retry.exhausted': 'Auto-restart budget exhausted after {count} attempts',
+  'streams.sections.live': 'Live',
+  'streams.sections.attention': 'Attention',
+  'streams.sections.scheduled': 'Scheduled',
+  'streams.sections.stopped': 'Stopped',
+  'streams.quota.limitReached': 'Limit reached',
 }
 
 function t(key: string, values?: TranslationValues): string {
@@ -139,6 +144,11 @@ function createStatusQuery(
     remove: jest.fn(),
     status: 'success',
   } as unknown as UseQueryResult<StreamStatusResponse>
+}
+
+function openDropdownFor(card: HTMLElement) {
+  const trigger = within(card).getByRole('button', { name: 'More actions' })
+  fireEvent.click(trigger)
 }
 
 describe('StreamsList restart visibility', () => {
@@ -343,6 +353,9 @@ describe('StreamsList restart visibility', () => {
       { onDeleteStream },
     )
 
+    const card = screen.getByText('Retry stream').closest('article')!
+    openDropdownFor(card)
+
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
@@ -374,15 +387,15 @@ describe('StreamsList restart visibility', () => {
       pendingStartStreamId: null,
     })
 
-    const runningCard = screen.getByText('Running stream').closest('article')
-    const stoppedCard = screen.getByText('Stopped stream').closest('article')
+    const runningCard = screen.getByText('Running stream').closest('article')!
+    const stoppedCard = screen.getByText('Stopped stream').closest('article')!
 
-    expect(runningCard).not.toBeNull()
-    expect(stoppedCard).not.toBeNull()
+    expect(within(runningCard).getByRole('button', { name: 'Stop' })).toBeDisabled()
+    expect(within(stoppedCard).getByRole('button', { name: 'Start' })).toBeEnabled()
 
-    expect(within(runningCard as HTMLElement).getByRole('button', { name: 'Stop' })).toBeDisabled()
-    expect(within(stoppedCard as HTMLElement).getByRole('button', { name: 'Start' })).toBeEnabled()
-    expect(within(stoppedCard as HTMLElement).getByRole('button', { name: 'Delete' })).toBeEnabled()
+    // Delete is inside the dropdown — open it and check
+    openDropdownFor(stoppedCard)
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled()
   })
 
   it('shows audio-only collection sources without falling back to unknown playlist', () => {
