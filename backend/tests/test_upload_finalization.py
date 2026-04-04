@@ -12,9 +12,11 @@ from sqlalchemy import func, select
 
 from app.api.routes import assets as assets_routes
 from app.core.config import settings
-from app.core.database import async_session_maker
+from app.core.database import _apply_schema_changes, async_session_maker, engine
+from app.core.quota import QuotaExceededError
 from app.models.database import Asset, UploadIngest, UserProfile
-from app.schemas.api import UploadIngestResponse
+from app.schemas.api import AssetCreate, UploadIngestResponse
+from app.services.assets.service import AssetService
 from app.services.assets.service import UploadTokenService
 from app.services.assets.upload_service import AssetUploadService
 from app.services.assets import utils as asset_utils
@@ -82,8 +84,10 @@ async def test_upload_complete_persists_ingest_and_asset(tmp_path, monkeypatch):
 
     original_upload_dir = settings.upload_dir
     settings.upload_dir = str(upload_root)
-    monkeypatch.setattr("app.services.assets.upload_service.validator", _ValidatorStub())
-    
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
+
     async def _thumbnail_success(**_kwargs):
         return "/thumbnails/upload-finalize-success.jpg"
 
@@ -152,7 +156,9 @@ async def test_upload_complete_is_idempotent_by_upload_id(tmp_path, monkeypatch)
 
     original_upload_dir = settings.upload_dir
     settings.upload_dir = str(upload_root)
-    monkeypatch.setattr("app.services.assets.upload_service.validator", _ValidatorStub())
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
 
     async def _thumbnail_skip(**_kwargs):
         return None
@@ -206,7 +212,9 @@ async def test_upload_complete_is_idempotent_by_upload_id(tmp_path, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_upload_complete_marks_missing_file_as_failed_ingest(tmp_path, monkeypatch):
+async def test_upload_complete_marks_missing_file_as_failed_ingest(
+    tmp_path, monkeypatch
+):
     user_id = uuid4()
     upload_id = f"upload-missing-file-{uuid4()}"
     upload_root = tmp_path / "uploads"
@@ -215,7 +223,9 @@ async def test_upload_complete_marks_missing_file_as_failed_ingest(tmp_path, mon
 
     original_upload_dir = settings.upload_dir
     settings.upload_dir = str(upload_root)
-    monkeypatch.setattr("app.services.assets.upload_service.validator", _ValidatorStub())
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
 
     try:
         async with async_session_maker() as session:
@@ -259,6 +269,67 @@ async def test_upload_complete_marks_missing_file_as_failed_ingest(tmp_path, mon
             assert ingest.failed_at is not None
             assert asset_count == 0
             assert user.current_storage_bytes == 0
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
+@pytest.mark.asyncio
+async def test_upload_complete_rejects_reused_upload_id_from_other_user(
+    tmp_path, monkeypatch
+):
+    owner_id = uuid4()
+    other_user_id = uuid4()
+    upload_id = f"upload-owner-conflict-{uuid4()}"
+    upload_root = tmp_path / "uploads"
+    temp_dir = upload_root / "_temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_file = temp_dir / upload_id
+    temp_file.write_bytes(b"fake-video")
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
+
+    async def _thumbnail_skip(**_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.generate_video_thumbnail",
+        _thumbnail_skip,
+    )
+
+    try:
+        async with async_session_maker() as session:
+            await _create_user(session, user_id=owner_id)
+            await _create_user(session, user_id=other_user_id)
+            owner_token = UploadTokenService(owner_id).create_token().token
+            other_token = UploadTokenService(other_user_id).create_token().token
+            service = AssetUploadService(session)
+
+            first = await service.handle_upload_complete(
+                _build_payload(
+                    upload_id=upload_id,
+                    token=owner_token,
+                    file_path=temp_file,
+                    filename="owner.mp4",
+                )
+            )
+            assert first["success"] is True
+
+            with pytest.raises(HTTPException) as exc_info:
+                await service.handle_upload_complete(
+                    _build_payload(
+                        upload_id=upload_id,
+                        token=other_token,
+                        file_path=upload_root / "_temp" / f"{upload_id}-other",
+                        filename="other.mp4",
+                    )
+                )
+
+            assert exc_info.value.status_code == 409
+            assert exc_info.value.detail["error"] == "upload_id_conflict"
     finally:
         settings.upload_dir = original_upload_dir
 
@@ -315,7 +386,10 @@ def test_post_finish_redacts_upload_token_in_failure_manifest(tmp_path):
     manifest = json.loads(manifest_path.read_text())
     payload_json = manifest["payload"]
 
-    assert payload_json["Upload"]["MetaData"].get("upload_token") in (None, "[REDACTED]")
+    assert payload_json["Upload"]["MetaData"].get("upload_token") in (
+        None,
+        "[REDACTED]",
+    )
     assert token not in manifest_path.read_text()
 
 
@@ -332,7 +406,9 @@ async def test_upload_status_api_is_owner_scoped(tmp_path, monkeypatch):
 
     original_upload_dir = settings.upload_dir
     settings.upload_dir = str(upload_root)
-    monkeypatch.setattr("app.services.assets.upload_service.validator", _ValidatorStub())
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
 
     async def _thumbnail_skip(**_kwargs):
         return None
@@ -376,7 +452,9 @@ async def test_upload_status_api_is_owner_scoped(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_upload_status_response_normalizes_empty_message_lists(tmp_path, monkeypatch):
+async def test_upload_status_response_normalizes_empty_message_lists(
+    tmp_path, monkeypatch
+):
     user_id = uuid4()
     upload_id = f"upload-status-normalized-{uuid4()}"
     upload_root = tmp_path / "uploads"
@@ -385,7 +463,9 @@ async def test_upload_status_response_normalizes_empty_message_lists(tmp_path, m
 
     original_upload_dir = settings.upload_dir
     settings.upload_dir = str(upload_root)
-    monkeypatch.setattr("app.services.assets.upload_service.validator", _ValidatorStub())
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
 
     try:
         async with async_session_maker() as session:
@@ -413,10 +493,7 @@ async def test_upload_status_response_normalizes_empty_message_lists(tmp_path, m
 
 
 def test_upload_complete_status_code_tracks_failure_contract():
-    assert (
-        assets_routes._upload_complete_status_code({"success": True})
-        == 200
-    )
+    assert assets_routes._upload_complete_status_code({"success": True}) == 200
     assert (
         assets_routes._upload_complete_status_code(
             {"success": False, "error_code": "http_403"}
@@ -435,3 +512,103 @@ def test_upload_complete_status_code_tracks_failure_contract():
         )
         == 500
     )
+    assert (
+        assets_routes._upload_complete_status_code(
+            {
+                "success": False,
+                "error_code": "quota_exceeded",
+                "http_status": 402,
+            }
+        )
+        == 402
+    )
+
+
+@pytest.mark.asyncio
+async def test_upload_complete_preserves_http_status_for_quota_errors(
+    tmp_path, monkeypatch
+):
+    user_id = uuid4()
+    upload_id = f"upload-quota-error-{uuid4()}"
+    upload_root = tmp_path / "uploads"
+    temp_dir = upload_root / "_temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_file = temp_dir / upload_id
+    temp_file.write_bytes(b"fake-video")
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
+
+    async def _raise_quota(*_args, **_kwargs):
+        raise QuotaExceededError(
+            resource="assets",
+            current=20,
+            limit=20,
+            tier="free",
+        )
+
+    monkeypatch.setattr(
+        "app.core.quota.QuotaEnforcer.check_assets_limit",
+        _raise_quota,
+    )
+
+    try:
+        async with async_session_maker() as session:
+            await _create_user(session, user_id=user_id)
+            token = UploadTokenService(user_id).create_token().token
+            service = AssetUploadService(session)
+
+            response = await service.handle_upload_complete(
+                _build_payload(
+                    upload_id=upload_id,
+                    token=token,
+                    file_path=temp_file,
+                    filename="quota.mp4",
+                )
+            )
+
+            assert response["success"] is False
+            assert response["error_code"] == "quota_exceeded"
+            assert response["http_status"] == 402
+            assert assets_routes._upload_complete_status_code(response) == 402
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
+@pytest.mark.asyncio
+async def test_schema_changes_do_not_enable_duplicate_storage_accounting(tmp_path):
+    user_id = uuid4()
+    upload_root = tmp_path / "uploads"
+    user_dir = upload_root / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    asset_path = user_dir / "count-once.mp4"
+    asset_path.write_bytes(b"video")
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+
+    try:
+        async with engine.begin() as conn:
+            await _apply_schema_changes(conn)
+
+        async with async_session_maker() as session:
+            await _create_user(session, user_id=user_id)
+            service = AssetService(session, user_id)
+
+            created = await service.create_asset(
+                AssetCreate(
+                    filename="count-once.mp4",
+                    storage_path=str(asset_path),
+                    size_bytes=len(b"video"),
+                    asset_type="video",
+                )
+            )
+
+            profile = await session.get(UserProfile, user_id)
+            assert created.size_bytes == len(b"video")
+            assert profile.current_storage_bytes == len(b"video")
+    finally:
+        settings.upload_dir = original_upload_dir
