@@ -135,9 +135,21 @@
         "unknownValue": "unknown"
       },
       "empty": {
-        "title": "No assets yet",
-        "description": "Upload your first file to get started",
-        "cta": "Upload file"
+        "all": {
+          "title": "No files yet",
+          "description": "Upload your first file to get started",
+          "cta": "Upload file"
+        },
+        "video": {
+          "title": "No video yet",
+          "description": "Upload your first video file to get started",
+          "cta": "Upload video"
+        },
+        "audio": {
+          "title": "No audio yet",
+          "description": "Upload your first audio file to get started",
+          "cta": "Upload audio"
+        }
       },
       "details": {
         "hide": "Hide technical details",

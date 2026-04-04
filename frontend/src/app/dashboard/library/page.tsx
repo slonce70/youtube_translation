@@ -56,9 +56,10 @@ import { useDashboardContext } from '../dashboard-context'
 import { Breadcrumbs } from '@/components/library/Breadcrumbs'
 import { FolderCard } from '@/components/library/FolderCard'
 import { AssetCard } from '@/components/library/AssetCard'
+import { getAssetEmptyCopy, type AssetFilterValue } from './empty-state-copy'
 
-type AssetFilterValue = 'all' | 'video' | 'audio'
 type PlaylistFormState = PlaylistCreatePayload & { description: string }
+
 function extractTusUploadId(file: {
   response?: {
     uploadURL?: string
@@ -191,6 +192,7 @@ export default function LibraryPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | 'all'>(
     deriveFolderSelection(searchParams.get('folder'))
   )
+  const assetEmptyCopy = getAssetEmptyCopy((key) => tLibrary(key), assetFilter)
 
   useEffect(() => {
     const tab = searchParams.get('tab')
@@ -1987,15 +1989,15 @@ export default function LibraryPage() {
                       </div>
                       <div>
                         <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-                          {tLibrary('assets.empty.title')}
+                          {assetEmptyCopy.title}
                         </h3>
                         <p className="text-slate-500 dark:text-slate-400 mb-4">
-                          {tLibrary('assets.empty.description')}
+                          {assetEmptyCopy.description}
                         </p>
                       </div>
                       <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
                         <Upload className="w-4 h-4" />
-                        {tLibrary('assets.empty.cta')}
+                        {assetEmptyCopy.cta}
                       </Button>
                     </div>
                   </Card>

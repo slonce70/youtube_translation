@@ -32,6 +32,44 @@ const statusBadges: Record<string, 'secondary' | 'error'> = {
   error: 'error',
 }
 
+const STREAM_AVATAR_COLORS = [
+  'bg-blue-500',
+  'bg-emerald-500',
+  'bg-violet-500',
+  'bg-rose-500',
+  'bg-amber-500',
+  'bg-cyan-500',
+  'bg-pink-500',
+  'bg-teal-500',
+  'bg-indigo-500',
+  'bg-orange-500',
+]
+
+function hashString(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash)
+}
+
+function getStreamColor(name: string): string {
+  return STREAM_AVATAR_COLORS[hashString(name) % STREAM_AVATAR_COLORS.length]
+}
+
+function getStreamInitial(name: string): string {
+  return (name || '?').charAt(0).toUpperCase()
+}
+
+function getStatusBorderClass(group: string): string {
+  switch (group) {
+    case 'live': return 'border-l-4 border-l-success-500'
+    case 'attention': return 'border-l-4 border-l-amber-500'
+    default: return 'border-l-4 border-l-slate-300 dark:border-l-slate-600'
+  }
+}
+
 export function StreamControlWidget({
   streams,
   liveStatusMap,
@@ -114,7 +152,7 @@ export function StreamControlWidget({
           </div>
         ) : (
           <div className="space-y-3">
-            {activeStreams.slice(0, 3).map(({ stream, derived }, index) => {
+            {activeStreams.slice(0, 5).map(({ stream, derived }, index) => {
               const badgeVariant = statusBadges[derived.derivedStatus] ?? 'secondary'
               const statusLabel =
                 derived.derivedStatus in statusBadges ? t(`status.${derived.derivedStatus}`) : derived.derivedStatus
@@ -130,32 +168,40 @@ export function StreamControlWidget({
                 : derived.requiresAttention
                   ? t('labels.attention')
                   : t('labels.idle')
+              const streamName = stream.name || t('labels.untitled')
 
               return (
                 <motion.div
                   key={stream.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
+                  transition={{ delay: index * 0.05 }}
                   className={cn(
                     'flex items-center justify-between rounded-xl border px-4 py-3 transition-colors',
-                    'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40'
+                    'bg-white dark:bg-slate-900/40',
+                    getStatusBorderClass(derived.group),
                   )}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="p-2 rounded-lg bg-primary-50 dark:bg-primary-900/20">
-                      <Radio className="h-5 w-5 text-primary-600 dark:text-primary-300" />
+                    <div className={cn(
+                      'flex h-9 w-9 items-center justify-center rounded-lg text-sm font-bold text-white',
+                      getStreamColor(streamName),
+                    )}>
+                      {getStreamInitial(streamName)}
                     </div>
                     <div>
                       <p className="font-semibold text-sm text-slate-900 dark:text-white">
-                        {stream.name || t('labels.untitled')}
+                        {streamName}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{startedLabel}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center space-x-3">
-                    <Badge variant={badgeVariant}>{statusLabel}</Badge>
+                    <Badge variant={badgeVariant}>
+                      {derived.isRunning && <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-success-500 animate-pulse" />}
+                      {statusLabel}
+                    </Badge>
                     {derived.statusUnavailable && (
                       <span className="inline-flex items-center space-x-1 text-xs text-amber-600 dark:text-amber-400">
                         <AlertTriangle className="h-3.5 w-3.5" />
@@ -188,7 +234,7 @@ export function StreamControlWidget({
               )
             })}
 
-            {activeStreams.length > 3 && (
+            {activeStreams.length > 5 && (
               <Link
                 href="/dashboard/streaming"
                 className="block text-center text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-primary-600"

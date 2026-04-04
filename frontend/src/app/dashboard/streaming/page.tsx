@@ -143,13 +143,6 @@ export default function StreamingPage() {
     () => (streams ?? []).filter((stream) => stream.status === 'running'),
     [streams],
   )
-  const scheduledRetryStreams = useMemo(
-    () =>
-      (streams ?? []).filter(
-        (stream) => stream.runtime_restart?.enabled && stream.runtime_restart?.state === 'scheduled',
-      ),
-    [streams],
-  )
   const formatLimitValue = (value?: number | null) => (value == null ? '∞' : value.toString())
   const destinationsLimit = quota?.destinations?.limit ?? null
   const concurrentStreamsLimit = quota?.streams?.limit ?? null
@@ -434,21 +427,46 @@ export default function StreamingPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header with inline stats */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-3xl font-bold gradient-text mb-2">{tStreaming('header.title')}</h2>
           <p className="text-slate-600 dark:text-slate-400">{tStreaming('header.description')}</p>
-          <div className="mt-3 inline-flex items-center space-x-2 rounded-full bg-primary-50 dark:bg-primary-900/20 px-3 py-1 text-xs font-medium text-primary-700 dark:text-primary-300">
-            <span>{tStreaming('header.planLabel')}</span>
-            <span className="font-semibold">
-              {quotaLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : activePlanLabel}
-            </span>
-          </div>
         </div>
-        <Button onClick={() => setShowCreateStream(true)} className="flex items-center space-x-2">
-          <Play className="w-4 h-4" />
-          <span>{tStreaming('header.goLive')}</span>
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Compact inline stats */}
+          <div className="hidden sm:flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-success-200 bg-success-50 px-3 py-1 text-xs font-semibold text-success-700 dark:border-success-900/40 dark:bg-success-900/20 dark:text-success-300">
+              <span className="h-2 w-2 rounded-full bg-success-500 animate-pulse" />
+              {runningStreams.length} {tStreaming('streams.stats.active')}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              {streams?.length || 0} {tStreaming('streams.stats.total')}
+            </span>
+            {quotaLoading ? (
+              <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 dark:border-primary-900/40 dark:bg-primary-900/20 dark:text-primary-300">
+                {runningStreams.length}/{formatLimitValue(concurrentStreamsLimit)} {tStreaming('streams.stats.concurrent')}
+              </span>
+            )}
+          </div>
+          <Button onClick={() => setShowCreateStream(true)} className="flex items-center space-x-2">
+            <Play className="w-4 h-4" />
+            <span>{tStreaming('header.goLive')}</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Mobile stats */}
+      <div className="flex flex-wrap gap-2 sm:hidden">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-success-200 bg-success-50 px-3 py-1 text-xs font-semibold text-success-700 dark:border-success-900/40 dark:bg-success-900/20 dark:text-success-300">
+          <span className="h-2 w-2 rounded-full bg-success-500 animate-pulse" />
+          {runningStreams.length} {tStreaming('streams.stats.active')}
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+          {streams?.length || 0} {tStreaming('streams.stats.total')}
+        </span>
       </div>
 
       <Card>
@@ -485,7 +503,7 @@ export default function StreamingPage() {
           formatLimitValue={formatLimitValue}
         />
 
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-3">
           <StreamsList
             streams={streams}
             isLoading={isLoadingStreams}
@@ -510,58 +528,6 @@ export default function StreamingPage() {
             pendingStopStreamId={pendingStopStreamId}
             pendingDeleteStreamId={pendingDeleteStreamId}
           />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-success-600">{runningStreams.length}</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    {tStreaming('streams.stats.active')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-3xl font-bold gradient-text">{streams?.length || 0}</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    {tStreaming('streams.stats.total')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-3xl font-bold gradient-text">
-                    {quotaLoading ? (
-                      <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                    ) : (
-                      `${runningStreams.length}/${formatLimitValue(concurrentStreamsLimit)}`
-                    )}
-                  </p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    {tStreaming('streams.stats.concurrent')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-amber-600">{scheduledRetryStreams.length}</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    {tStreaming('streams.stats.autoRetry')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </div>
 
