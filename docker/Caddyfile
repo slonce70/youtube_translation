@@ -1,36 +1,29 @@
-# Production Caddyfile
-# Replace yourdomain.com with your actual domain
+# Generated from docker/Caddyfile.template via scripts/render_caddyfile.py (--variant docker).
+# Edit the template, then re-render instead of editing generated outputs by hand.
 
 yourdomain.com {
-    # Block internal backend endpoints on the public edge proxy
     handle /api/internal/* {
         respond 404
     }
 
-    # Backend API
     handle /api/* {
         reverse_proxy backend:8000
     }
 
-    # tusd upload endpoint
     handle /files/* {
         reverse_proxy tusd:1080
     }
 
-    # Backward-compatible alias
     handle_path /uploads/* {
         redir /files{path} 308
     }
 
-    # Frontend (fallback)
     handle {
         reverse_proxy frontend:3000
     }
 
-    # Enable compression
     encode gzip
 
-    # Security headers
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
         X-Content-Type-Options "nosniff"
@@ -41,13 +34,11 @@ yourdomain.com {
         Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co wss:; media-src 'self' blob: https:"
     }
 
-    # Logs
     log {
         output file /var/log/caddy/access.log
     }
 }
 
-# Development Caddyfile (localhost)
 :80 {
     handle /api/internal/* {
         respond 404
@@ -69,11 +60,17 @@ yourdomain.com {
         reverse_proxy frontend:3000
     }
 
+    encode gzip
+
     header {
+        
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
         Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co wss:; media-src 'self' blob: https:"
     }
+
+    
 }
