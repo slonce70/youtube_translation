@@ -1136,30 +1136,6 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             </Button>
           </div>
 
-          <div className="flex items-start gap-3 rounded-xl bg-primary-50 dark:bg-slate-800/70 px-4 py-3 border border-primary-100 dark:border-primary-900/40">
-            <Info className="w-5 h-5 text-primary-500 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-primary-700 dark:text-primary-300">
-                {t('info.title')}
-              </p>
-              <a
-                href="https://support.google.com/youtube/answer/2853702"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-primary-600 dark:text-primary-400 underline"
-              >
-                {t('info.link')}
-              </a>
-            </div>
-          </div>
-
-          {mediaInfoError ? (
-            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700">
-              <AlertCircle className="w-5 h-5 mt-0.5" />
-              <p className="text-sm">{mediaInfoError}</p>
-            </div>
-          ) : null}
-
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -1244,6 +1220,13 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
               </p>
             </div>
           </div>
+
+          {mediaInfoError ? (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700">
+              <AlertCircle className="mt-0.5 h-5 w-5" />
+              <p className="text-sm">{mediaInfoError}</p>
+            </div>
+          ) : null}
 
           {uploadItems.length > 0 ? (
             <div className="space-y-4">
@@ -1330,125 +1313,148 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                       </Button>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-600 dark:text-slate-300">
-                      <div className="flex flex-col gap-1 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2">
-                        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          {t('media.video')}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="secondary">
-                            {item.analysis?.video?.codec?.toUpperCase() ?? '—'}
-                          </Badge>
-                          <span>{formatBitrate(item.analysis?.video?.bitrate)}</span>
-                          <span>·</span>
-                          <span>
-                            {item.analysis?.video?.width && item.analysis?.video?.height
-                              ? `${item.analysis.video.width}×${item.analysis.video.height}`
-                              : '—'}
-                          </span>
-                          <span>·</span>
-                          <span>{formatFps(item.analysis?.video?.fps)}</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-1 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2">
-                        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          {t('media.audio')}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="secondary">
-                          {item.analysis?.audio?.codec?.toUpperCase() ?? '—'}
-                        </Badge>
-                        <span>{formatBitrate(item.analysis?.audio?.bitrate)}</span>
-                        <span>·</span>
-                        <span>{formatSampleRate(item.analysis?.audio?.sampleRate)}</span>
-                        {item.analysis?.audio?.channels ? (
-                          <>
-                            <span>·</span>
-                            <span>{t('media.channels', { count: item.analysis.audio.channels })}</span>
-                          </>
-                        ) : null}
+                    <div className="space-y-2">
+                      <Progress value={item.progress} />
+                      <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                        <span>
+                          {t('progress.uploaded', {
+                            uploaded: item.bytesUploaded ? formatBytes(item.bytesUploaded) : '0',
+                            total: formatBytes(item.bytesTotal),
+                          })}
+                        </span>
+                        <span>{item.progress}%</span>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Progress value={item.progress} />
-                    <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span>
-                        {t('progress.uploaded', {
-                          uploaded: item.bytesUploaded ? formatBytes(item.bytesUploaded) : '0',
-                          total: formatBytes(item.bytesTotal),
-                        })}
-                      </span>
-                      <span>{item.progress}%</span>
-                    </div>
-                  </div>
-
-                  {item.analysis?.recommendationLabel ? (
-                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <CheckCircle2 className="w-4 h-4 text-primary-500" />
-                      <span>
-                        {t('recommendations.summary', {
-                          label: item.analysis.recommendationLabel,
-                          details: item.analysis.recommendationDetails,
-                        })}
-                      </span>
-                    </div>
-                  ) : null}
+                    {item.analysis?.recommendationLabel ? (
+                      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <CheckCircle2 className="w-4 h-4 text-primary-500" />
+                        <span>
+                          {t('recommendations.summary', {
+                            label: item.analysis.recommendationLabel,
+                            details: item.analysis.recommendationDetails,
+                          })}
+                        </span>
+                      </div>
+                    ) : null}
 
                     {hasWarnings ? (
-                      <div className="space-y-3">
-                        {warnings?.general.length ? (
-                          <div className="space-y-2">
-                            {warnings.general.map((warning, warningIndex) => (
-                              <div
-                                key={`general-warning-${warningIndex}`}
-                                className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
-                              >
-                                <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                <span>{warning}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                        {warnings?.video.length ? (
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-error-500 dark:text-error-300">
-                              {t('warnings.section.video')}
-                            </p>
-                            {warnings.video.map((warning, warningIndex) => (
-                              <div
-                                key={`video-warning-${warningIndex}`}
-                                className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
-                              >
-                                <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                <span>{warning}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                        {warnings?.audio.length ? (
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-error-500 dark:text-error-300">
-                              {t('warnings.section.audio')}
-                            </p>
-                            {warnings.audio.map((warning, warningIndex) => (
-                              <div
-                                key={`audio-warning-${warningIndex}`}
-                                className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
-                              >
-                                <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                <span>{warning}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
+                      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200">
+                        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <span>
+                          {t('warnings.summary', {
+                            count:
+                              (warnings?.video.length ?? 0) +
+                              (warnings?.audio.length ?? 0) +
+                              (warnings?.general.length ?? 0),
+                          })}
+                        </span>
                       </div>
                     ) : item.analysis && item.analysis.bitrateStatus === 'within' ? (
                       <div className="flex items-start gap-2 text-sm text-success-600 dark:text-success-400">
                         <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
                         <span>{t('recommendations.success')}</span>
                       </div>
+                    ) : null}
+
+                    {item.analysis ? (
+                      <details className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/40">
+                        <summary className="cursor-pointer list-none text-sm font-medium text-slate-700 dark:text-slate-200">
+                          {t('details.summary')}
+                        </summary>
+                        <div className="mt-3 space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-600 dark:text-slate-300">
+                            <div className="flex flex-col gap-1 bg-white dark:bg-slate-900/60 rounded-lg px-3 py-2">
+                              <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                {t('media.video')}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="secondary">
+                                  {item.analysis.video?.codec?.toUpperCase() ?? '—'}
+                                </Badge>
+                                <span>{formatBitrate(item.analysis.video?.bitrate)}</span>
+                                <span>·</span>
+                                <span>
+                                  {item.analysis.video?.width && item.analysis.video?.height
+                                    ? `${item.analysis.video.width}×${item.analysis.video.height}`
+                                    : '—'}
+                                </span>
+                                <span>·</span>
+                                <span>{formatFps(item.analysis.video?.fps)}</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1 bg-white dark:bg-slate-900/60 rounded-lg px-3 py-2">
+                              <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                {t('media.audio')}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="secondary">
+                                  {item.analysis.audio?.codec?.toUpperCase() ?? '—'}
+                                </Badge>
+                                <span>{formatBitrate(item.analysis.audio?.bitrate)}</span>
+                                <span>·</span>
+                                <span>{formatSampleRate(item.analysis.audio?.sampleRate)}</span>
+                                {item.analysis.audio?.channels ? (
+                                  <>
+                                    <span>·</span>
+                                    <span>{t('media.channels', { count: item.analysis.audio.channels })}</span>
+                                  </>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+
+                          {hasWarnings ? (
+                            <div className="space-y-3">
+                              {warnings?.general.length ? (
+                                <div className="space-y-2">
+                                  {warnings.general.map((warning, warningIndex) => (
+                                    <div
+                                      key={`general-warning-${warningIndex}`}
+                                      className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
+                                    >
+                                      <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                      <span>{warning}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {warnings?.video.length ? (
+                                <div className="space-y-2">
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-error-500 dark:text-error-300">
+                                    {t('warnings.section.video')}
+                                  </p>
+                                  {warnings.video.map((warning, warningIndex) => (
+                                    <div
+                                      key={`video-warning-${warningIndex}`}
+                                      className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
+                                    >
+                                      <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                      <span>{warning}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {warnings?.audio.length ? (
+                                <div className="space-y-2">
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-error-500 dark:text-error-300">
+                                    {t('warnings.section.audio')}
+                                  </p>
+                                  {warnings.audio.map((warning, warningIndex) => (
+                                    <div
+                                      key={`audio-warning-${warningIndex}`}
+                                      className="flex items-start gap-2 text-sm text-error-600 dark:text-error-400"
+                                    >
+                                      <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                      <span>{warning}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      </details>
                     ) : null}
 
                     {item.error ? (
@@ -1468,45 +1474,63 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             </div>
           )}
 
-          <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/60 text-sm font-medium text-slate-600 dark:text-slate-300">
+          <details className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+            <summary className="px-4 py-3 bg-slate-50 dark:bg-slate-800/60 text-sm font-medium text-slate-600 dark:text-slate-300 cursor-pointer list-none">
               {t('table.title')}
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-sm">
-                <thead className="bg-white dark:bg-slate-900/50 text-slate-500 dark:text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.resolution')}</th>
-                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.frameRate')}</th>
-                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.minimum')}</th>
-                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.maximum')}</th>
-                    <th className="px-4 py-3 text-left font-medium">{t('table.columns.recommended')}</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-slate-900/40 divide-y divide-slate-200 dark:divide-slate-800">
-                  {BITRATE_GUIDANCE.map((row, index) => (
-                    <tr key={`${row.resolutionLabel}-${row.fps}-${index}`}>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                        {row.resolutionLabel}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                        {row.fps} FPS
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                        {formatMbps(row.minBitrateMbps)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                        {formatMbps(row.maxBitrateMbps)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                        {formatMbps(row.targetBitrateMbps)}
-                      </td>
+            </summary>
+            <div className="space-y-4 border-t border-slate-200 dark:border-slate-700 p-4">
+              <div className="flex items-start gap-3 rounded-xl bg-primary-50 dark:bg-slate-800/70 px-4 py-3 border border-primary-100 dark:border-primary-900/40">
+                <Info className="w-5 h-5 text-primary-500 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-primary-700 dark:text-primary-300">
+                    {t('info.title')}
+                  </p>
+                  <a
+                    href="https://support.google.com/youtube/answer/2853702"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary-600 dark:text-primary-400 underline"
+                  >
+                    {t('info.link')}
+                  </a>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+                  <thead className="bg-white dark:bg-slate-900/50 text-slate-500 dark:text-slate-400">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium">{t('table.columns.resolution')}</th>
+                      <th className="px-4 py-3 text-left font-medium">{t('table.columns.frameRate')}</th>
+                      <th className="px-4 py-3 text-left font-medium">{t('table.columns.minimum')}</th>
+                      <th className="px-4 py-3 text-left font-medium">{t('table.columns.maximum')}</th>
+                      <th className="px-4 py-3 text-left font-medium">{t('table.columns.recommended')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="bg-white dark:bg-slate-900/40 divide-y divide-slate-200 dark:divide-slate-800">
+                    {BITRATE_GUIDANCE.map((row, index) => (
+                      <tr key={`${row.resolutionLabel}-${row.fps}-${index}`}>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                          {row.resolutionLabel}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                          {row.fps} FPS
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                          {formatMbps(row.minBitrateMbps)}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                          {formatMbps(row.maxBitrateMbps)}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                          {formatMbps(row.targetBitrateMbps)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          </details>
 
           {isProcessingUpload && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-xl">
