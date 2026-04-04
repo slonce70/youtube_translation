@@ -388,9 +388,9 @@ export default function UsersManagement() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
                     className={cn(
-                      'p-4 rounded-lg border transition-all',
+                      'p-4 rounded-lg border transition-all text-slate-950 dark:text-slate-50',
                       user.is_suspended
-                        ? 'border-error-200 dark:border-error-800 bg-error-50 dark:bg-error-900/10'
+                        ? 'border-error-500/40 bg-error-500/10 ring-1 ring-error-500/20'
                         : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                     )}
                   >
