@@ -459,11 +459,16 @@ export default function LibraryPage() {
         }
 
         if (failedCount > 0) {
-          toast.error(
+          const failureMessage =
             lastFailureMessage ??
-              libraryToasts('upload.failed', {
-                message: libraryToasts('generic.unknownError'),
-              }),
+            libraryToasts('upload.failed', {
+              message: libraryToasts('generic.unknownError'),
+            })
+          setUploadStatusOverrides((current) =>
+            buildUploadFailureOverrides(trackedUploads, current, failureMessage)
+          )
+          toast.error(
+            failureMessage,
             { id: toastId }
           )
           return

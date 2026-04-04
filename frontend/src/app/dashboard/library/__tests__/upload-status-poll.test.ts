@@ -16,10 +16,11 @@ describe('UPLOAD_STATUS_POLL_SCHEDULE_MS', () => {
   it('marks pending uploads as errored without overwriting completed ones', () => {
     expect(
       buildUploadFailureOverrides(
-        [{ fileId: 'pending' }, { fileId: 'complete' }],
+        [{ fileId: 'pending' }, { fileId: 'complete' }, { fileId: 'failed' }],
         {
           pending: { status: 'processing' },
           complete: { status: 'complete' },
+          failed: { status: 'error', error: 'Backend finalization failed' },
         },
         'Timed out waiting for upload finalization'
       )
@@ -29,6 +30,7 @@ describe('UPLOAD_STATUS_POLL_SCHEDULE_MS', () => {
         error: 'Timed out waiting for upload finalization',
       },
       complete: { status: 'complete' },
+      failed: { status: 'error', error: 'Backend finalization failed' },
     })
   })
 })
