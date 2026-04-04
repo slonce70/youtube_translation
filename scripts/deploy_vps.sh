@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose_file="$repo_root/docker/docker-compose.yml"
 backend_env="$repo_root/backend/.env"
 root_env="$repo_root/.env"
+frontend_env="$repo_root/frontend/.env.local"
 caddy_template="$repo_root/docker/Caddyfile.template"
 host_caddy_target="${HOST_CADDYFILE_PATH:-/etc/caddy/Caddyfile}"
 render_caddy_script="$repo_root/scripts/render_caddyfile.py"
@@ -213,6 +214,10 @@ source "$backend_env"
 if [[ -f "$root_env" ]]; then
   # shellcheck disable=SC1090
   source "$root_env"
+fi
+if [[ -f "$frontend_env" ]]; then
+  # shellcheck disable=SC1090
+  source "$frontend_env"
 fi
 set +a
 

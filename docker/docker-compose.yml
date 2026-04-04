@@ -141,6 +141,8 @@ services:
       args:
         DEV_API_PROXY_TARGET: http://backend:8000
         ENABLE_API_PROXY: "1"
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
     container_name: youtube-streaming-frontend
     ports:
       # Active host-level Caddy on the VPS proxies to this loopback binding.
