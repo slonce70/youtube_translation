@@ -53,6 +53,7 @@ MIGRATIONS = [
     'migrations/030_stream_runtime_leases.sql',
     'migrations/031_stream_runtime_restart_state.sql',
     'migrations/032_asset_storage_contract.sql',
+    'migrations/033_upload_ingests.sql',
 ]
 
 
@@ -514,6 +515,9 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     result = await conn.execute(query)
     definition = result.scalar()
     status['027'] = bool(definition and 'scheduled' in definition)
+
+    for migration_num in ('028', '029', '030', '031', '032', '033'):
+        status[migration_num] = await verify_migration(conn, migration_num)
 
     return status
 
@@ -1056,6 +1060,184 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         definition = result.scalar()
         return bool(definition and 'scheduled' in definition)
+
+    elif migration_num == '028':
+        query = text("""
+            SELECT COUNT(*) = 5
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name IN (
+                  'schedule_timezone',
+                  'schedule_repeat',
+                  'schedule_weekdays',
+                  'schedule_window_end_time',
+                  'schedule_stop_after_seconds'
+              )
+        """)
+        columns_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT pg_get_constraintdef(c.oid)
+            FROM pg_constraint c
+            WHERE c.conrelid = 'public.streams'::regclass
+              AND c.conname = 'check_stream_schedule_repeat'
+        """)
+        definition = (await conn.execute(query)).scalar()
+        return bool(
+            columns_ok
+            and definition
+            and 'daily' in definition
+            and 'weekly' in definition
+        )
+
+    elif migration_num == '029':
+        query = text("""
+            SELECT COUNT(*) = 5
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'assets'
+              AND column_name IN (
+                  'optimization_status',
+                  'optimization_strategy',
+                  'optimized_storage_path',
+                  'optimization_error',
+                  'optimization_updated_at'
+              )
+        """)
+        columns_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT COUNT(*) = 1
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname = 'idx_assets_optimization_status'
+        """)
+        index_ok = bool((await conn.execute(query)).scalar())
+        return bool(columns_ok and index_ok)
+
+    elif migration_num == '030':
+        query = text("""
+            SELECT COUNT(*) = 3
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name IN (
+                  'runtime_owner_id',
+                  'runtime_lease_expires_at',
+                  'runtime_last_heartbeat_at'
+              )
+        """)
+        columns_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT COUNT(*) = 2
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname IN (
+                  'idx_streams_runtime_owner_id',
+                  'idx_streams_runtime_lease_expires_at'
+              )
+        """)
+        indexes_ok = bool((await conn.execute(query)).scalar())
+        return bool(columns_ok and indexes_ok)
+
+    elif migration_num == '031':
+        query = text("""
+            SELECT COUNT(*) = 4
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name IN (
+                  'runtime_restart_attempts',
+                  'runtime_next_restart_at',
+                  'runtime_last_restart_at',
+                  'runtime_last_failure_at'
+              )
+        """)
+        columns_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT COUNT(*) = 1
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname = 'idx_streams_runtime_next_restart_at'
+        """)
+        index_ok = bool((await conn.execute(query)).scalar())
+        return bool(columns_ok and index_ok)
+
+    elif migration_num == '032':
+        query = text("""
+            SELECT COUNT(*) = 2
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'assets'
+              AND column_name IN ('storage_backend', 'storage_key')
+        """)
+        columns_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT COUNT(*) = 1
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname = 'idx_assets_storage_backend'
+        """)
+        index_ok = bool((await conn.execute(query)).scalar())
+        return bool(columns_ok and index_ok)
+
+    elif migration_num == '033':
+        if not await check_table_exists(conn, 'upload_ingests'):
+            return False
+
+        query = text("""
+            SELECT COUNT(*) = 13
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'upload_ingests'
+              AND column_name IN (
+                  'upload_id',
+                  'user_id',
+                  'asset_id',
+                  'status',
+                  'storage_backend',
+                  'storage_key',
+                  'local_path',
+                  'error_code',
+                  'error_message',
+                  'validation_errors',
+                  'warning_messages',
+                  'attempt_count',
+                  'finalized_at'
+              )
+        """)
+        columns_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT COUNT(*) = 2
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'upload_ingests'
+              AND indexname IN (
+                  'idx_upload_ingests_user_id',
+                  'idx_upload_ingests_user_status'
+              )
+        """)
+        indexes_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT pg_get_constraintdef(c.oid)
+            FROM pg_constraint c
+            WHERE c.conrelid = 'public.upload_ingests'::regclass
+              AND c.conname = 'check_upload_ingest_status'
+        """)
+        definition = (await conn.execute(query)).scalar()
+        return bool(
+            columns_ok
+            and indexes_ok
+            and definition
+            and 'finalized' in definition
+            and 'failed' in definition
+        )
 
     return False
 

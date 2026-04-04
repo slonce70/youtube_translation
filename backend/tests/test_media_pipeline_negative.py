@@ -172,8 +172,9 @@ class TestVideoValidatorNegative:
     @pytest.mark.asyncio
     async def test_ffprobe_not_found(self):
         """Test validator with missing ffprobe binary"""
-        with pytest.raises(FileNotFoundError, match="ffprobe"):
-            VideoValidator(ffprobe_bin="/nonexistent/ffprobe")
+        with patch("app.streaming.validator.shutil.which", return_value=None):
+            with pytest.raises(FileNotFoundError, match="ffprobe"):
+                VideoValidator(ffprobe_bin="/nonexistent/ffprobe")
 
 
 class TestFFmpegManagerNegative:

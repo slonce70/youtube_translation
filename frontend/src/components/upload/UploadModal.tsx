@@ -94,6 +94,7 @@ interface UploadModalProps {
   onClose: () => void
   uppy: Uppy<Record<string, string>, Record<string, any>>
   isProcessingUpload: boolean
+  uploadStatusOverrides?: Record<string, { status: 'processing' | 'complete' | 'error'; error?: string }>
   folders?: MediaFolder[]
 }
 
@@ -550,7 +551,14 @@ function buildAnalysis(
   }
 }
 
-export function UploadModal({ isOpen, onClose, uppy, isProcessingUpload, folders }: UploadModalProps) {
+export function UploadModal({
+  isOpen,
+  onClose,
+  uppy,
+  isProcessingUpload,
+  uploadStatusOverrides,
+  folders,
+}: UploadModalProps) {
   const t = useTranslations('library.uploadModal')
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([])
   const [assetKind, setAssetKind] = useState<'video' | 'audio'>('video')
@@ -871,7 +879,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
             ? item
             : {
                 ...item,
-                status: 'complete',
+                status: 'processing',
                 progress: 100,
               }
         )
@@ -894,6 +902,28 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
       uppy.off('complete', handleComplete)
     }
   }, [uppy, analyzeFile])
+
+  useEffect(() => {
+    if (!uploadStatusOverrides || Object.keys(uploadStatusOverrides).length === 0) {
+      return
+    }
+
+    setUploadItems((items) =>
+      items.map((item) => {
+        const override = uploadStatusOverrides[item.id]
+        if (!override) {
+          return item
+        }
+
+        return {
+          ...item,
+          status: override.status,
+          progress: override.status === 'error' ? item.progress : 100,
+          error: override.error ?? item.error,
+        }
+      })
+    )
+  }, [uploadStatusOverrides])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

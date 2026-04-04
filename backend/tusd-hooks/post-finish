@@ -32,6 +32,34 @@ resolve_upload_root() {
     printf '%s' "$(cd "$script_dir/.." && pwd)/uploads"
 }
 
+write_failure_manifest() {
+    local reason="$1"
+    local details="$2"
+    local root
+    root="$(resolve_upload_root)"
+    local manifest_dir="$root/_failed-finalizations"
+    mkdir -p "$manifest_dir"
+
+    local manifest_upload_id="${UPLOAD_ID:-unknown}"
+    local manifest_path="$manifest_dir/${manifest_upload_id}.json"
+
+    jq -n \
+        --arg upload_id "$manifest_upload_id" \
+        --arg reason "$reason" \
+        --arg details "$details" \
+        --arg created_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+        --arg payload "$HOOK_DATA" \
+        '{
+            upload_id: $upload_id,
+            reason: $reason,
+            details: $details,
+            created_at: $created_at,
+            payload: ($payload | fromjson? // $payload)
+        }' > "$manifest_path"
+
+    echo "[post-finish] Wrote failure manifest: $manifest_path" >&2
+}
+
 resolve_user_from_token() {
     local token="$1"
 
@@ -86,6 +114,7 @@ HOOK_DATA=$(cat)
 
 if [ -z "$HOOK_DATA" ]; then
     echo "[post-finish] ERROR: empty payload from tusd" >&2
+    write_failure_manifest "empty_payload" "tusd hook payload was empty"
     exit 0
 fi
 
@@ -103,10 +132,14 @@ echo "[post-finish] Filename: $FILENAME" >&2
 # Validate token
 if [ -z "$TOKEN_METADATA" ] || [ "$TOKEN_METADATA" = "null" ]; then
     echo "[post-finish] ERROR: Missing upload token in metadata" >&2
+    write_failure_manifest "missing_upload_token" "Upload token metadata was not present"
     exit 0
 fi
 
-RESOLVED_USER_ID=$(resolve_user_from_token "$TOKEN_METADATA") || exit 0
+if ! RESOLVED_USER_ID=$(resolve_user_from_token "$TOKEN_METADATA"); then
+    write_failure_manifest "invalid_upload_token" "Upload token could not be resolved"
+    exit 0
+fi
 
 if [ -n "$USER_ID_METADATA" ] && [ "$USER_ID_METADATA" != "$RESOLVED_USER_ID" ]; then
     echo "[post-finish] WARNING: user_id metadata ($USER_ID_METADATA) mismatches token owner ($RESOLVED_USER_ID)" >&2
@@ -176,6 +209,7 @@ else
         UPDATED_DATA="$HOOK_DATA"
     else
         echo "[post-finish] ERROR: File not found in temp or user directory!" >&2
+        write_failure_manifest "upload_file_missing" "Uploaded file not found in temp or user directory"
         exit 0  # Don't fail the upload
     fi
 fi
@@ -197,17 +231,35 @@ fi
 set +e
 WEBHOOK_RESPONSE=$(curl -s -X POST "$BACKEND_URL" \
     "${HOOK_HEADERS[@]}" \
-    -d "$PAYLOAD" 2>&1)
+    -d "$PAYLOAD" \
+    -w '\n%{http_code}' 2>&1)
 CURL_EXIT_CODE=$?
 set -e
+
+HTTP_STATUS=$(printf '%s' "$WEBHOOK_RESPONSE" | tail -n 1)
+RESPONSE_BODY=$(printf '%s' "$WEBHOOK_RESPONSE" | sed '$d')
 
 if [ $CURL_EXIT_CODE -ne 0 ]; then
     echo "[post-finish] ERROR: Failed to notify backend" >&2
     echo "[post-finish] Curl exit code: $CURL_EXIT_CODE" >&2
+    echo "[post-finish] Response: $RESPONSE_BODY" >&2
+    write_failure_manifest "backend_unreachable" "curl exit=$CURL_EXIT_CODE response=$RESPONSE_BODY"
+elif ! printf '%s' "$HTTP_STATUS" | grep -Eq '^[0-9]{3}$'; then
+    echo "[post-finish] ERROR: Missing backend HTTP status" >&2
     echo "[post-finish] Response: $WEBHOOK_RESPONSE" >&2
+    write_failure_manifest "backend_status_unknown" "response=$WEBHOOK_RESPONSE"
+elif [ "$HTTP_STATUS" -ge 400 ]; then
+    echo "[post-finish] ERROR: Backend finalization rejected upload" >&2
+    echo "[post-finish] HTTP status: $HTTP_STATUS" >&2
+    echo "[post-finish] Response: $RESPONSE_BODY" >&2
+    write_failure_manifest "backend_finalize_failed" "status=$HTTP_STATUS response=$RESPONSE_BODY"
+elif printf '%s' "$RESPONSE_BODY" | jq -e 'type == "object" and .success == false' >/dev/null 2>&1; then
+    echo "[post-finish] ERROR: Backend reported failed finalization" >&2
+    echo "[post-finish] Response: $RESPONSE_BODY" >&2
+    write_failure_manifest "backend_finalize_failed" "status=$HTTP_STATUS response=$RESPONSE_BODY"
 else
     echo "[post-finish] Backend notified successfully" >&2
-    echo "[post-finish] Response: $WEBHOOK_RESPONSE" >&2
+    echo "[post-finish] Response: $RESPONSE_BODY" >&2
 fi
 
 # Get file size

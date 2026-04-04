@@ -5,19 +5,21 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.quota import QuotaEnforcer
-from app.models.database import Asset
+from app.models.database import Asset, UploadIngest
 from app.schemas.api import ALLOWED_ASSET_TYPES
 
-from .storage import apply_storage_delta
 from .thumbnails import generate_video_thumbnail
 from .utils import (
     apply_stream_summary_fields,
@@ -63,88 +65,154 @@ class AssetUploadService:
             or {}
         )
 
-        file_path = await self._resolve_file_path(
-            storage_payload, upload_meta, upload_id
-        )
-        if not file_path:
-            logger.error(
-                "Upload file not found after retries: id=%s storage=%s",
-                upload_id,
-                storage_payload,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Uploaded file not found on disk",
-            )
-
-        logger.info("Processing upload: %s", file_path)
-        self._ensure_within_upload_root(file_path)
-
-        size_bytes = file_path.stat().st_size
-
-        if validator is None:
-            validation_result = {
-                "compatible_for_copy": False,
-                "meta": {},
-                "validation_errors": [
-                    "ffprobe is not available on the server. Install FFmpeg or set FFPROBE_BIN."
-                ],
-            }
-            stream_info = {
-                "duration": 0,
-                "size_bytes": size_bytes,
-                "bitrate": 0,
-            }
-        else:
-            validation_result = await validator.validate_file(file_path)
-            meta = validation_result.get("meta", {})
-            stream_info = validator.get_stream_info(meta)
-
         meta_payload = self._extract_meta_payload(
             upload_data, upload_meta, storage_payload
         )
         asset_owner_id = self._resolve_asset_owner(meta_payload, upload_id)
-        self._ensure_user_directory(asset_owner_id, file_path)
-
-        created_asset = None
-        enforcer = QuotaEnforcer(self.db, asset_owner_id)
-        await enforcer.check_assets_limit()
-        await enforcer.check_storage_limit(size_bytes)
-
-        created_asset = await self._persist_asset(
-            asset_owner_id=asset_owner_id,
-            filename_override=meta_payload.get("filename"),
+        filename = meta_payload.get("filename") or upload_meta.get("Name")
+        ingest = await self._get_or_create_ingest(
             upload_id=upload_id,
-            file_path=file_path,
-            size_bytes=size_bytes,
-            validation_result=validation_result,
-            stream_info=stream_info,
-            meta_payload=meta_payload,
+            user_id=asset_owner_id,
+            filename=filename,
         )
 
-        response_payload: Dict[str, Any] = {
-            "success": True,
-            "file_path": str(file_path),
-            "filename": meta_payload.get("filename") or file_path.name,
-            "size_bytes": size_bytes,
-            "compatible_for_copy": validation_result.get("compatible_for_copy", False),
-            "validation_errors": validation_result.get("validation_errors", []),
-            "meta": stream_info,
-            "warnings": stream_info.get("warnings", []),
-            "recommendation": stream_info.get("recommendation"),
-        }
+        if ingest.status == "finalized" and ingest.asset_id:
+            return await self._build_existing_response(ingest)
 
-        if created_asset:
-            response_payload["asset_id"] = str(created_asset.id)
-            response_payload["asset_type"] = created_asset.asset_type
-        elif isinstance(stream_info, dict):
-            response_payload["asset_type"] = infer_asset_type(
-                stream_info,
-                "video",
-                filename=meta_payload.get("filename") or file_path.name,
+        try:
+            file_path = await self._resolve_file_path(
+                storage_payload, upload_meta, upload_id
+            )
+            if not file_path:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "upload_file_missing",
+                        "message": "Uploaded file not found on disk",
+                    },
+                )
+
+            file_path = await self._materialize_user_file(
+                user_id=asset_owner_id,
+                upload_id=upload_id,
+                file_path=file_path,
+            )
+            logger.info("Processing upload %s: %s", upload_id, file_path)
+            self._ensure_within_upload_root(file_path)
+            self._ensure_user_directory(asset_owner_id, file_path)
+
+            await self._mark_ingest_validating(
+                ingest,
+                filename=filename or file_path.name,
+                local_path=file_path,
             )
 
-        return response_payload
+            size_bytes = file_path.stat().st_size
+            validation_result, stream_info = await self._validate_upload(
+                file_path, size_bytes
+            )
+
+            enforcer = QuotaEnforcer(self.db, asset_owner_id)
+            await enforcer.check_assets_limit()
+            await enforcer.check_storage_limit(size_bytes)
+
+            created_asset = await self._persist_asset(
+                asset_owner_id=asset_owner_id,
+                filename_override=filename,
+                upload_id=upload_id,
+                file_path=file_path,
+                size_bytes=size_bytes,
+                validation_result=validation_result,
+                stream_info=stream_info,
+                meta_payload=meta_payload,
+            )
+
+            warning_messages = self._normalize_messages(stream_info.get("warnings", []))
+            ingest.asset_id = created_asset.id if created_asset else None
+            ingest.filename = filename or file_path.name
+            ingest.status = "finalized"
+            ingest.storage_backend = (
+                created_asset.storage_backend if created_asset else "filesystem"
+            )
+            ingest.storage_key = (
+                created_asset.storage_key if created_asset else str(file_path)
+            )
+            ingest.local_path = str(file_path)
+            ingest.error_code = None
+            ingest.error_message = None
+            ingest.validation_errors = self._normalize_messages(
+                validation_result.get("validation_errors", [])
+            )
+            ingest.warning_messages = warning_messages
+            ingest.failed_at = None
+            ingest.finalized_at = self._utcnow()
+
+            await self.db.commit()
+            await self.db.refresh(ingest)
+            if created_asset is not None:
+                await self.db.refresh(created_asset)
+
+            if created_asset and created_asset.asset_type == "video":
+                thumbnail_warning = await self._generate_thumbnail(
+                    created_asset, file_path
+                )
+                if thumbnail_warning:
+                    ingest.warning_messages = self._normalize_messages(
+                        [*warning_messages, thumbnail_warning]
+                    )
+                    await self.db.commit()
+                    await self.db.refresh(ingest)
+
+            return self._build_success_response(
+                ingest=ingest,
+                asset=created_asset,
+                file_path=file_path,
+                size_bytes=size_bytes,
+                validation_result=validation_result,
+                stream_info=stream_info,
+            )
+        except HTTPException as exc:
+            failed_ingest = await self._mark_ingest_failed(
+                upload_id=ingest.upload_id,
+                user_id=ingest.user_id,
+                received_at=ingest.received_at,
+                attempt_count=ingest.attempt_count,
+                filename=filename,
+                error=self._extract_error_detail(exc),
+                local_path=Path(ingest.local_path) if ingest.local_path else None,
+            )
+            return self._build_failed_response(failed_ingest)
+        except Exception as exc:
+            logger.exception("Failed to finalize upload %s", upload_id)
+            failed_ingest = await self._mark_ingest_failed(
+                upload_id=ingest.upload_id,
+                user_id=ingest.user_id,
+                received_at=ingest.received_at,
+                attempt_count=ingest.attempt_count,
+                filename=filename,
+                error={
+                    "error": "upload_finalize_failed",
+                    "message": str(exc) or "Upload finalization failed",
+                },
+                local_path=Path(ingest.local_path) if ingest.local_path else None,
+            )
+            return self._build_failed_response(failed_ingest)
+
+    async def get_upload_status(self, upload_id: str, user_id: UUID) -> UploadIngest:
+        result = await self.db.execute(
+            select(UploadIngest).where(
+                UploadIngest.upload_id == upload_id, UploadIngest.user_id == user_id
+            )
+        )
+        ingest = result.scalar_one_or_none()
+        if ingest is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Upload ingest not found",
+            )
+        ingest.validation_errors = self._normalize_messages(ingest.validation_errors)
+        ingest.warning_messages = self._normalize_messages(ingest.warning_messages)
+        return ingest
 
     async def _persist_asset(
         self,
@@ -199,25 +267,26 @@ class AssetUploadService:
 
         apply_stream_summary_fields(asset, summary_meta)
         self.db.add(asset)
-        await apply_storage_delta(self.db, asset_owner_id, size_bytes)
-        await self.db.commit()
-        await self.db.refresh(asset)
+        await self.db.flush()
         logger.info(
             "Created asset %s from tusd webhook for user %s", asset.id, asset_owner_id
         )
 
-        if resolved_asset_type == "video":
-            await self._generate_thumbnail(asset, file_path)
-
         return asset
 
-    async def _generate_thumbnail(self, asset: Asset, file_path: Path) -> None:
+    async def _generate_thumbnail(self, asset: Asset, file_path: Path) -> Optional[str]:
         thumbnails_dir = Path(settings.upload_dir) / "thumbnails"
-        thumbnail_url = await generate_video_thumbnail(
-            video_path=file_path,
-            output_dir=thumbnails_dir,
-            asset_id=asset.id,
-        )
+        try:
+            thumbnail_url = await generate_video_thumbnail(
+                video_path=file_path,
+                output_dir=thumbnails_dir,
+                asset_id=asset.id,
+            )
+        except Exception as exc:  # pragma: no cover - thumbnail runtime safety
+            logger.warning(
+                "Thumbnail generation crashed for asset %s: %s", asset.id, exc
+            )
+            return "Thumbnail generation failed."
 
         if thumbnail_url:
             existing_meta = asset.meta if isinstance(asset.meta, dict) else {}
@@ -227,8 +296,268 @@ class AssetUploadService:
             await self.db.commit()
             await self.db.refresh(asset)
             logger.info("Added thumbnail URL to asset %s: %s", asset.id, thumbnail_url)
-        else:
-            logger.warning("Failed to generate thumbnail for asset %s", asset.id)
+            return None
+
+        logger.warning("Failed to generate thumbnail for asset %s", asset.id)
+        return "Thumbnail generation failed."
+
+    async def _validate_upload(
+        self, file_path: Path, size_bytes: int
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        if validator is None:
+            validation_result = {
+                "compatible_for_copy": False,
+                "meta": {},
+                "validation_errors": [
+                    "ffprobe is not available on the server. Install FFmpeg or set FFPROBE_BIN."
+                ],
+            }
+            return validation_result, {
+                "duration": 0,
+                "size_bytes": size_bytes,
+                "bitrate": 0,
+            }
+
+        validation_result = await validator.validate_file(file_path)
+        meta = validation_result.get("meta", {})
+        return validation_result, validator.get_stream_info(meta)
+
+    async def _get_or_create_ingest(
+        self, *, upload_id: Optional[str], user_id: UUID, filename: Optional[str]
+    ) -> UploadIngest:
+        if not upload_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing upload id",
+            )
+
+        existing = await self._lookup_ingest(upload_id)
+        if existing is not None:
+            return existing
+
+        ingest = UploadIngest(
+            upload_id=upload_id,
+            user_id=user_id,
+            filename=filename,
+            status="received",
+            storage_backend="filesystem",
+            validation_errors=[],
+            warning_messages=[],
+            received_at=self._utcnow(),
+        )
+        self.db.add(ingest)
+        try:
+            await self.db.flush()
+            return ingest
+        except IntegrityError:
+            await self.db.rollback()
+            existing = await self._lookup_ingest(upload_id)
+            if existing is not None:
+                return existing
+            raise
+
+    async def _lookup_ingest(self, upload_id: str) -> Optional[UploadIngest]:
+        result = await self.db.execute(
+            select(UploadIngest).where(UploadIngest.upload_id == upload_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _mark_ingest_validating(
+        self, ingest: UploadIngest, *, filename: str, local_path: Path
+    ) -> None:
+        ingest.filename = filename
+        ingest.local_path = str(local_path)
+        ingest.status = "validating"
+        ingest.attempt_count = int(ingest.attempt_count or 0) + 1
+        ingest.received_at = ingest.received_at or self._utcnow()
+        ingest.failed_at = None
+        ingest.finalized_at = None
+        ingest.error_code = None
+        ingest.error_message = None
+        ingest.validation_errors = []
+        ingest.warning_messages = []
+        await self.db.flush()
+
+    async def _mark_ingest_failed(
+        self,
+        *,
+        upload_id: str,
+        user_id: UUID,
+        received_at,
+        attempt_count: int,
+        filename: Optional[str],
+        error: Dict[str, str],
+        local_path: Optional[Path],
+    ) -> UploadIngest:
+        await self.db.rollback()
+
+        failed_ingest = await self._lookup_ingest(upload_id)
+        if failed_ingest is None:
+            failed_ingest = UploadIngest(
+                upload_id=upload_id,
+                user_id=user_id,
+                received_at=received_at or self._utcnow(),
+            )
+            self.db.add(failed_ingest)
+
+        failed_ingest.filename = filename or failed_ingest.filename
+        failed_ingest.local_path = (
+            str(local_path) if local_path is not None else failed_ingest.local_path
+        )
+        failed_ingest.status = "failed"
+        failed_ingest.storage_backend = "filesystem"
+        failed_ingest.failed_at = self._utcnow()
+        failed_ingest.finalized_at = None
+        failed_ingest.error_code = error.get("error") or "upload_finalize_failed"
+        failed_ingest.error_message = (
+            error.get("message") or "Upload finalization failed"
+        )
+        failed_ingest.validation_errors = self._normalize_messages(
+            failed_ingest.validation_errors
+        )
+        failed_ingest.warning_messages = self._normalize_messages(
+            failed_ingest.warning_messages
+        )
+        failed_ingest.attempt_count = max(
+            int(failed_ingest.attempt_count or 0),
+            int(attempt_count or 0),
+            1,
+        )
+        await self.db.commit()
+        await self.db.refresh(failed_ingest)
+        return failed_ingest
+
+    async def _build_existing_response(self, ingest: UploadIngest) -> Dict[str, Any]:
+        asset = await self.db.get(Asset, ingest.asset_id) if ingest.asset_id else None
+        file_path = Path(ingest.local_path) if ingest.local_path else None
+        size_bytes = file_path.stat().st_size if file_path and file_path.exists() else 0
+        return self._build_success_response(
+            ingest=ingest,
+            asset=asset,
+            file_path=file_path,
+            size_bytes=size_bytes,
+            validation_result={
+                "compatible_for_copy": bool(
+                    getattr(asset, "compatible_for_copy", False)
+                ),
+                "validation_errors": getattr(asset, "validation_errors", []) or [],
+            },
+            stream_info=(asset.meta if asset and isinstance(asset.meta, dict) else {}),
+        )
+
+    def _build_success_response(
+        self,
+        *,
+        ingest: UploadIngest,
+        asset: Optional[Asset],
+        file_path: Optional[Path],
+        size_bytes: int,
+        validation_result: Dict[str, Any],
+        stream_info: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        response_payload: Dict[str, Any] = {
+            "success": True,
+            "upload_id": ingest.upload_id,
+            "status": ingest.status,
+            "ingest_id": str(ingest.id),
+            "file_path": str(file_path) if file_path else ingest.local_path,
+            "filename": ingest.filename or (file_path.name if file_path else None),
+            "size_bytes": size_bytes,
+            "compatible_for_copy": validation_result.get("compatible_for_copy", False),
+            "validation_errors": validation_result.get("validation_errors", []),
+            "meta": stream_info,
+            "warnings": ingest.warning_messages or stream_info.get("warnings", []),
+            "recommendation": stream_info.get("recommendation"),
+        }
+
+        if asset:
+            response_payload["asset_id"] = str(asset.id)
+            response_payload["asset_type"] = asset.asset_type
+        elif isinstance(stream_info, dict):
+            response_payload["asset_type"] = infer_asset_type(
+                stream_info,
+                "video",
+                filename=ingest.filename or (file_path.name if file_path else None),
+            )
+
+        return response_payload
+
+    def _build_failed_response(self, ingest: UploadIngest) -> Dict[str, Any]:
+        return {
+            "success": False,
+            "upload_id": ingest.upload_id,
+            "status": ingest.status,
+            "ingest_id": str(ingest.id),
+            "filename": ingest.filename,
+            "asset_id": str(ingest.asset_id) if ingest.asset_id else None,
+            "error_code": ingest.error_code,
+            "error_message": ingest.error_message,
+            "validation_errors": ingest.validation_errors or [],
+            "warnings": ingest.warning_messages or [],
+        }
+
+    async def _materialize_user_file(
+        self, *, user_id: UUID, upload_id: Optional[str], file_path: Path
+    ) -> Path:
+        self._ensure_within_upload_root(file_path)
+        upload_root = Path(settings.upload_dir).resolve()
+        user_dir = (upload_root / str(user_id)).resolve()
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        resolved_path = file_path.resolve()
+        if user_dir in resolved_path.parents:
+            return resolved_path
+
+        final_name = upload_id or file_path.name
+        final_path = (user_dir / final_name).resolve()
+        if final_path.exists():
+            return final_path
+
+        file_path.replace(final_path)
+        info_source = Path(f"{file_path}.info")
+        info_target = Path(f"{final_path}.info")
+        if info_source.exists() and not info_target.exists():
+            info_source.replace(info_target)
+        return final_path
+
+    def _extract_error_detail(self, exc: HTTPException) -> Dict[str, str]:
+        detail = getattr(exc, "detail", None)
+        if isinstance(detail, dict):
+            return {
+                "error": str(
+                    detail.get("error")
+                    or detail.get("code")
+                    or f"http_{exc.status_code}"
+                ),
+                "message": str(
+                    detail.get("message")
+                    or detail.get("detail")
+                    or f"HTTP {exc.status_code}"
+                ),
+            }
+        if isinstance(detail, str):
+            return {
+                "error": f"http_{exc.status_code}",
+                "message": detail,
+            }
+        return {
+            "error": f"http_{exc.status_code}",
+            "message": str(exc) or f"HTTP {exc.status_code}",
+        }
+
+    def _normalize_messages(self, raw_messages: Any) -> list[str]:
+        if not raw_messages:
+            return []
+        values = raw_messages if isinstance(raw_messages, list) else [raw_messages]
+        normalized: list[str] = []
+        for value in values:
+            text = str(value).strip()
+            if text and text not in normalized:
+                normalized.append(text)
+        return normalized
+
+    def _utcnow(self):
+        return datetime.now(timezone.utc)
 
     async def _resolve_file_path(
         self,
