@@ -338,7 +338,13 @@ registry_login
 guard_stream_runtime
 echo "Deploying services via registry images pinned to ${deploy_ref}: ${services[*]}"
 docker compose -f "$compose_file" pull "${services[@]}"
-docker compose -f "$compose_file" up -d --no-build --remove-orphans "${services[@]}"
+
+compose_up_args=(-d --no-build --remove-orphans)
+if [[ "${#services[@]}" -lt "${#all_services[@]}" ]]; then
+  compose_up_args=(--no-deps "${compose_up_args[@]}")
+fi
+
+docker compose -f "$compose_file" up "${compose_up_args[@]}" "${services[@]}"
 
 if service_selected backend; then
   wait_for_http "backend health endpoint" "http://127.0.0.1:8000/health" -fsS --max-time 5
