@@ -44,7 +44,10 @@ import {
 } from './asset-utils'
 import { applyAssetView, type AssetSortValue } from './asset-view'
 import {
+  applyUploadStatusEntries,
   buildUploadFailureOverrides,
+  resolveUploadFailureTargets,
+  summarizeUploadStatusEntries,
   UPLOAD_STATUS_POLL_SCHEDULE_MS,
   type TrackedUpload,
   type UploadModalStatusOverride,
@@ -356,6 +359,7 @@ export default function LibraryPage() {
       }
 
       const successfulUploads = result.successful
+      const successfulFileIds = successfulUploads.map((file) => file.id)
       setIsProcessingUpload(true)
       setUploadStatusOverrides((current) => {
         const next = { ...current }
@@ -391,6 +395,9 @@ export default function LibraryPage() {
             await sleep(delayMs)
           }
 
+          const defaultFailureMessage = libraryToasts('upload.failed', {
+            message: libraryToasts('generic.unknownError'),
+          })
           const statuses = await Promise.all(
             trackedUploads.map(async (upload) => {
               try {
@@ -405,51 +412,17 @@ export default function LibraryPage() {
             })
           )
 
-          let pendingCount = 0
-          let nextFinalizedCount = 0
-          let nextFailedCount = 0
-          let nextFailureMessage: string | null = null
+          const statusSummary = summarizeUploadStatusEntries(statuses, defaultFailureMessage)
 
           setUploadStatusOverrides((current) => {
-            const next = { ...current }
-
-            statuses.forEach((entry) => {
-              if (!entry) {
-                pendingCount += 1
-                return
-              }
-
-              if (entry.ingest.status === 'finalized') {
-                next[entry.upload.fileId] = { status: 'complete' }
-                nextFinalizedCount += 1
-                return
-              }
-
-              if (entry.ingest.status === 'failed') {
-                const failureMessage =
-                  entry.ingest.error_message ??
-                  libraryToasts('upload.failed', { message: libraryToasts('generic.unknownError') })
-                next[entry.upload.fileId] = {
-                  status: 'error',
-                  error: failureMessage,
-                }
-                nextFailedCount += 1
-                nextFailureMessage = nextFailureMessage ?? failureMessage
-                return
-              }
-
-              next[entry.upload.fileId] = { status: 'processing' }
-              pendingCount += 1
-            })
-
-            return next
+            return applyUploadStatusEntries(statuses, current, defaultFailureMessage)
           })
 
-          finalizedCount = nextFinalizedCount
-          failedCount = nextFailedCount
-          lastFailureMessage = nextFailureMessage
+          finalizedCount = statusSummary.finalizedCount
+          failedCount = statusSummary.failedCount
+          lastFailureMessage = statusSummary.failureMessage
 
-          if (pendingCount === 0) {
+          if (statusSummary.pendingCount === 0) {
             break
           }
         }
@@ -489,8 +462,9 @@ export default function LibraryPage() {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : libraryToasts('generic.unknownError')
+        const failureTargets = resolveUploadFailureTargets(trackedUploads, successfulFileIds)
         setUploadStatusOverrides((current) =>
-          buildUploadFailureOverrides(trackedUploads ?? [], current, message)
+          buildUploadFailureOverrides(failureTargets, current, message)
         )
         toast.error(libraryToasts('upload.refreshFailed', { message }), { id: toastId })
       } finally {
