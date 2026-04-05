@@ -12,8 +12,17 @@ describe('UPLOAD_STATUS_POLL_SCHEDULE_MS', () => {
   })
 
   it('keeps multiple retries for slower backend finalization', () => {
-    expect(UPLOAD_STATUS_POLL_SCHEDULE_MS).toHaveLength(7)
-    expect(UPLOAD_STATUS_POLL_SCHEDULE_MS.at(-1)).toBeGreaterThanOrEqual(20000)
+    expect(UPLOAD_STATUS_POLL_SCHEDULE_MS).toHaveLength(12)
+    expect(UPLOAD_STATUS_POLL_SCHEDULE_MS.at(-1)).toBeGreaterThanOrEqual(30000)
+  })
+
+  it('waits long enough for multi-gigabyte uploads to finish server-side validation', () => {
+    const totalWaitMs = UPLOAD_STATUS_POLL_SCHEDULE_MS.reduce(
+      (sum, delayMs) => sum + delayMs,
+      0
+    )
+
+    expect(totalWaitMs).toBeGreaterThanOrEqual(180000)
   })
 
   it('marks pending uploads as errored without overwriting completed ones', () => {
