@@ -7,7 +7,6 @@ import pytest
 
 import app.cli.run_stream as run_stream_cli
 import app.services.streams.control as streams_control
-from app.core.config import settings
 from app.core.database import async_session_maker
 from app.core.stream_runtime_heartbeat import write_runtime_heartbeat
 from app.core.quota import QuotaEnforcer
@@ -64,6 +63,49 @@ async def test_daily_usage_snapshot_includes_running_stream() -> None:
             (8 * 3600) - expected_used, abs=3.0
         )
         assert usage["limit_reached"] is False
+
+
+@pytest.mark.asyncio
+async def test_update_stream_status_after_exit_preserves_existing_error_without_manager_info(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    stream_id = uuid4()
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"error-state-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=stream_id,
+            user_id=user_id,
+            name="failed",
+            status="error",
+            error_message="Remote output disconnect evidence detected in FFmpeg logs.",
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+        monkeypatch.setattr(
+            run_stream_cli.ffmpeg_manager,
+            "get_stream_info",
+            lambda _stream_id: None,
+        )
+
+        await run_stream_cli._update_stream_status_after_exit(stream)
+
+    async with async_session_maker() as session:
+        refreshed = await session.get(Stream, stream_id)
+        assert refreshed is not None
+        assert refreshed.status == "error"
+        assert (
+            refreshed.error_message
+            == "Remote output disconnect evidence detected in FFmpeg logs."
+        )
 
 
 @pytest.mark.asyncio

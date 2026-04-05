@@ -49,8 +49,8 @@ describe('AlertsManagement', () => {
       items: [
         {
           alert_id: 'alert-1',
-          user_id: 'user-1',
-          user_email: 'owner@example.com',
+          user_id: null,
+          user_email: null,
           alert_type: 'collection_depleted',
           severity: 'warning',
           message: "Collection 'BG' no longer contains assets",
@@ -73,6 +73,6 @@ describe('AlertsManagement', () => {
 
     const card = container.querySelector('.ring-amber-500\\/10')
     expect(card).not.toBeNull()
-    expect(card?.textContent).toContain('owner@example.com')
+    expect(card?.textContent).toContain('Unknown user')
   })
 })

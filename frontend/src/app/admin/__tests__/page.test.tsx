@@ -127,4 +127,28 @@ describe('AdminDashboard', () => {
     expect(pushMock).toHaveBeenNthCalledWith(2, '/admin/streams')
     expect(pushMock).toHaveBeenNthCalledWith(3, '/admin/alerts')
   })
+
+  it('renders fallback text for alerts without a user email', async () => {
+    api.admin.alerts.list.mockResolvedValueOnce({
+      items: [
+        {
+          alert_id: 'alert-1',
+          user_id: null,
+          user_email: null,
+          alert_type: 'stream_failure',
+          severity: 'warning',
+          message: 'Recovered after retry',
+          resolved: false,
+          created_at: '2026-04-05T08:00:00Z',
+          resolved_at: null,
+          resolved_by: null,
+        },
+      ],
+      summary: { total: 1, unresolved: 1, critical: 0, resolved: 0 },
+    })
+
+    renderAdmin()
+
+    await waitFor(() => expect(screen.getByText(/Unknown user/i)).toBeInTheDocument())
+  })
 })

@@ -103,10 +103,16 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
                     db_stream.error_message = None
                     LOGGER.info("Stream %s stopped normally", stream.id)
             else:
-                # No info from manager - assume stopped
-                db_stream.status = "stopped"
-                db_stream.error_message = None
-                LOGGER.info("Stream %s stopped (no manager info)", stream.id)
+                # No info from manager usually means failure cleanup already ran.
+                if db_stream.status == "error":
+                    LOGGER.info(
+                        "Stream %s remains in error state after manager cleanup",
+                        stream.id,
+                    )
+                else:
+                    db_stream.status = "stopped"
+                    db_stream.error_message = None
+                    LOGGER.info("Stream %s stopped (no manager info)", stream.id)
 
             # Update timestamps
             db_stream.stopped_at = _utcnow()

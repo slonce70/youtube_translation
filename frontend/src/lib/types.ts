@@ -610,8 +610,8 @@ export interface AdminStreamListResponse {
 
 export interface AdminAlertListItem {
   alert_id: string
-  user_id: string
-  user_email: string
+  user_id: string | null
+  user_email: string | null
   alert_type: string
   severity: 'warning' | 'critical'
   message: string
