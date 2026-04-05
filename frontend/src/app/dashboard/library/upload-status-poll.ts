@@ -6,6 +6,11 @@ export const UPLOAD_STATUS_POLL_SCHEDULE_MS = [
   6400,
   12000,
   20000,
+  30000,
+  30000,
+  30000,
+  30000,
+  30000,
 ] as const
 
 export type UploadModalStatusOverride = {
