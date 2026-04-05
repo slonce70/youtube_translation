@@ -179,6 +179,7 @@ jobs:
           CURRENT_BACKEND_SHA: ${{ steps.prod_state.outputs.current_backend_sha }}
           CURRENT_FRONTEND_SHA: ${{ steps.prod_state.outputs.current_frontend_sha }}
           CURRENT_TUSD_SHA: ${{ steps.prod_state.outputs.current_tusd_sha }}
+          VPS_CHECKOUT_SHA: ${{ steps.prod_state.outputs.vps_checkout_sha }}
         run: |
           set -euo pipefail
 
@@ -217,19 +218,23 @@ jobs:
           tusd_needs_deploy=false
           infra_needs_deploy=false
 
-          if [[ "$CURRENT_FRONTEND_SHA" != "$TARGET_SHA" ]] && diff_has_paths "$CURRENT_FRONTEND_SHA" "$frontend_pattern"; then
+          effective_frontend_sha="${CURRENT_FRONTEND_SHA:-$VPS_CHECKOUT_SHA}"
+          effective_backend_sha="${CURRENT_BACKEND_SHA:-$VPS_CHECKOUT_SHA}"
+          effective_tusd_sha="${CURRENT_TUSD_SHA:-$VPS_CHECKOUT_SHA}"
+
+          if [[ "$effective_frontend_sha" != "$TARGET_SHA" ]] && diff_has_paths "$effective_frontend_sha" "$frontend_pattern"; then
             frontend_needs_deploy=true
           fi
 
-          if [[ "$CURRENT_BACKEND_SHA" != "$TARGET_SHA" ]] && diff_has_paths "$CURRENT_BACKEND_SHA" "$backend_pattern"; then
+          if [[ "$effective_backend_sha" != "$TARGET_SHA" ]] && diff_has_paths "$effective_backend_sha" "$backend_pattern"; then
             backend_needs_deploy=true
           fi
 
-          if [[ "$CURRENT_TUSD_SHA" != "$TARGET_SHA" ]] && diff_has_paths "$CURRENT_TUSD_SHA" "$tusd_pattern"; then
+          if [[ "$effective_tusd_sha" != "$TARGET_SHA" ]] && diff_has_paths "$effective_tusd_sha" "$tusd_pattern"; then
             tusd_needs_deploy=true
           fi
 
-          if diff_has_paths "$CURRENT_BACKEND_SHA" "$infra_pattern" || diff_has_paths "$CURRENT_TUSD_SHA" "$infra_pattern"; then
+          if diff_has_paths "$effective_backend_sha" "$infra_pattern" || diff_has_paths "$effective_tusd_sha" "$infra_pattern"; then
             infra_needs_deploy=true
           fi
 
