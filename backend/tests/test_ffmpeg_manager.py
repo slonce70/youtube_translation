@@ -4,12 +4,15 @@ Tests for FFmpeg stream manager (process management, cleanup).
 
 from collections import deque
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
+from sqlalchemy import select, text
 
 from app.core.config import settings
+from app.core.database import async_session_maker
+from app.models.database import Stream, SystemAlert, UserProfile
 from app.streaming.ffmpeg_manager import FFmpegStreamManager
 from app.streaming.playlist_builder import PlaylistFileSet
 
@@ -181,7 +184,7 @@ class TestFFmpegStreamManager:
         monkeypatch.setattr(settings, "ffmpeg_restart_backoff_seconds", 0)
         monkeypatch.setattr("app.streaming.ffmpeg_manager.asyncio.sleep", AsyncMock())
 
-        manager._create_system_alert = AsyncMock()
+        manager._create_restart_warning_alert = AsyncMock()
 
         restart_invocation = {}
 
@@ -209,7 +212,7 @@ class TestFFmpegStreamManager:
         )
 
         # Alert created at least once (warning for restart)
-        assert manager._create_system_alert.await_count >= 1
+        assert manager._create_restart_warning_alert.await_count >= 1
 
         # restart attempts incremented
         assert manager.stream_info[stream_id]["restart_attempts"] == 1
@@ -218,7 +221,7 @@ class TestFFmpegStreamManager:
     async def test_handle_stream_failure_exhausts_restarts(self, monkeypatch):
         """When no restarts remain, stream info is cleaned up and alert escalated."""
         manager = FFmpegStreamManager()
-        stream_id = "stream-no-restart"
+        stream_id = "22222222-2222-2222-2222-222222222222"
 
         manager.stream_info[stream_id] = {
             "metadata": {"user_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"},
@@ -228,15 +231,18 @@ class TestFFmpegStreamManager:
         manager.active_streams[stream_id] = AsyncMock()
 
         monkeypatch.setattr(settings, "ffmpeg_auto_restart_attempts", 0)
-        manager._create_system_alert = AsyncMock()
+        manager._create_restart_warning_alert = AsyncMock()
         manager.start_stream = AsyncMock()
+        marker = AsyncMock()
+        monkeypatch.setattr(manager, "_mark_stream_failed", marker)
 
         await manager._handle_stream_failure(stream_id, returncode=1)
 
         # start_stream should not be invoked when restart attempts exhausted
         manager.start_stream.assert_not_called()
-        # Alert recorded
-        assert manager._create_system_alert.await_count == 1
+        # Terminal alert persistence is delegated to the error-state writer.
+        manager._create_restart_warning_alert.assert_not_called()
+        marker.assert_awaited_once()
 
     def test_build_command_includes_bitrate_limits_for_transcoding(
         self, tmp_path, monkeypatch
@@ -542,7 +548,7 @@ class TestFFmpegStreamManager:
         manager.active_streams[stream_id] = AsyncMock()
 
         monkeypatch.setattr(settings, "ffmpeg_auto_restart_attempts", 0)
-        manager._create_system_alert = AsyncMock()
+        manager._create_restart_warning_alert = AsyncMock()
         manager.start_stream = AsyncMock()
 
         marker = AsyncMock()
@@ -552,6 +558,126 @@ class TestFFmpegStreamManager:
 
         marker.assert_awaited_once()
 
+
+@pytest.mark.asyncio
+async def test_handle_stream_failure_writes_one_terminal_critical_alert(monkeypatch):
+    async with async_session_maker() as session:
+        user_id = uuid4()
+        stream_id = uuid4()
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"owner-{uuid4()}@example.com",
+                subscription_tier="free",
+                subscription_status="active",
+            )
+        )
+        session.add(
+            Stream(
+                id=stream_id,
+                user_id=user_id,
+                name="terminal",
+                status="running",
+                started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            )
+        )
+        await session.commit()
+
+        await session.execute(
+            text(
+                """
+                CREATE OR REPLACE FUNCTION alert_on_stream_error()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    IF NEW.status = 'error' AND (OLD.status IS NULL OR OLD.status <> 'error') THEN
+                        INSERT INTO system_alerts (
+                            id, alert_type, severity, user_id, stream_id, message, details
+                        ) VALUES (
+                            uuid_generate_v4(),
+                            'stream_failure',
+                            'critical',
+                            NEW.user_id,
+                            NEW.id,
+                            COALESCE(NEW.error_message, 'Stream failed with unknown error'),
+                            jsonb_build_object(
+                                'stream_name', NEW.name,
+                                'stream_id', NEW.id,
+                                'error_message', NEW.error_message,
+                                'pid', NEW.pid
+                            )
+                        );
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                """
+            )
+        )
+        await session.execute(
+            text("DROP TRIGGER IF EXISTS trigger_alert_on_stream_error ON streams")
+        )
+        await session.execute(
+            text(
+                """
+                CREATE TRIGGER trigger_alert_on_stream_error
+                    AFTER UPDATE OF status ON streams
+                    FOR EACH ROW
+                    EXECUTE FUNCTION alert_on_stream_error();
+                """
+            )
+        )
+        await session.commit()
+
+    manager = FFmpegStreamManager()
+    stream_id_str = str(stream_id)
+    manager.stream_info[stream_id_str] = {
+        "metadata": {"user_id": str(user_id)},
+        "restart_attempts": 0,
+        "recent_errors": deque(
+            [
+                "Connection reset by peer",
+                "The specified session has been invalidated for some reason.",
+                "Conversion failed!",
+            ],
+            maxlen=20,
+        ),
+    }
+    manager.active_streams[stream_id_str] = AsyncMock()
+
+    monkeypatch.setattr(settings, "ffmpeg_auto_restart_attempts", 0)
+    monkeypatch.setattr(
+        "app.streaming.ffmpeg_manager.hot_swap_manager.unregister_stream",
+        AsyncMock(),
+    )
+
+    try:
+        await manager._handle_stream_failure(stream_id_str, returncode=152)
+
+        async with async_session_maker() as session:
+            alerts = (
+                (
+                    await session.execute(
+                        select(SystemAlert).where(SystemAlert.stream_id == stream_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(alerts) == 1
+            assert alerts[0].severity == "critical"
+            assert "Remote output disconnect evidence detected" in alerts[0].message
+    finally:
+        async with async_session_maker() as session:
+            await session.execute(
+                text("DROP TRIGGER IF EXISTS trigger_alert_on_stream_error ON streams")
+            )
+            await session.execute(
+                text("DROP FUNCTION IF EXISTS alert_on_stream_error()")
+            )
+            await session.commit()
+
+
+class TestFFmpegStreamManagerMonitor:
     @pytest.mark.asyncio
     async def test_monitor_process_manual_stop_skips_failure(self, monkeypatch):
         """Manual stop should not trigger failure handling or auto-restart."""

@@ -34,6 +34,8 @@ export default function AlertsManagement() {
   }
 
   const dateLocale = dateLocales[locale] ?? enUS
+  const getAlertUserLabel = (userEmail?: string | null) =>
+    userEmail?.trim() || t('list.fields.unknownUser')
 
   const { data: alertsData, isLoading, isError, error } = useQuery({
     queryKey: ['admin-alerts', filterSeverity, filterResolved, page],
@@ -77,7 +79,7 @@ export default function AlertsManagement() {
 
   const filteredAlerts = alertItems.filter(alert => {
     const matchesSearch = alert.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         alert.user_email.toLowerCase().includes(searchQuery.toLowerCase())
+                         getAlertUserLabel(alert.user_email).toLowerCase().includes(searchQuery.toLowerCase())
     return matchesSearch
   })
   const totalFetched = filteredAlerts.length
@@ -265,7 +267,7 @@ export default function AlertsManagement() {
                         >
                           <span><strong>{t('list.fields.type')}:</strong> {alert.alert_type.replace(/_/g, ' ')}</span>
                           <span className="hidden text-slate-400 sm:inline">•</span>
-                          <span className="break-all"><strong>{t('list.fields.user')}:</strong> {alert.user_email}</span>
+                          <span className="break-all"><strong>{t('list.fields.user')}:</strong> {getAlertUserLabel(alert.user_email)}</span>
                           <span className="hidden text-slate-400 sm:inline">•</span>
                           <span><strong>{t('list.fields.created')}:</strong> {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true, locale: dateLocale })}</span>
                         </div>

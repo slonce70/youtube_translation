@@ -153,6 +153,7 @@
       "fields": {
         "type": "Type",
         "user": "User",
+        "unknownUser": "Unknown user",
         "created": "Created",
         "resolved": "Resolved"
       },

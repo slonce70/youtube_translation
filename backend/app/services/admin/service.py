@@ -469,7 +469,11 @@ class AdminService:
                 SystemAlert.created_at,
                 SystemAlert.resolved_at,
                 SystemAlert.resolved_by,
-            ).join(UserProfile, SystemAlert.user_id == UserProfile.user_id)
+            ).join(
+                UserProfile,
+                SystemAlert.user_id == UserProfile.user_id,
+                isouter=True,
+            )
 
             if resolved is not None:
                 summary_query = summary_query.where(SystemAlert.resolved == resolved)
@@ -569,7 +573,7 @@ class AdminService:
             return AlertListItem(
                 alert_id=alert.id,
                 user_id=alert.user_id,
-                user_email=user_email or "Unknown user",
+                user_email=user_email,
                 alert_type=alert.alert_type,
                 severity=alert.severity,
                 message=alert.message,

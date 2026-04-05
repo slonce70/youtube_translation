@@ -102,6 +102,8 @@ export default function AdminDashboard() {
       ? tAlerts(`list.severity.${severity}` as any)
       : severity
   }
+  const getAlertUserLabel = (userEmail?: string | null) =>
+    userEmail?.trim() || tAlerts('list.fields.unknownUser')
 
   const storageUsedFormatted = diskMetrics
     ? formatBytes(diskMetrics.used_gb * 1024 ** 3)
@@ -322,7 +324,7 @@ export default function AdminDashboard() {
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         {tDashboard('recentAlerts.userTime', {
-                          user: alert.user_email,
+                          user: getAlertUserLabel(alert.user_email),
                           time: formatDistanceToNow(new Date(alert.created_at), { addSuffix: true, locale: dateLocale }),
                         })}
                       </p>

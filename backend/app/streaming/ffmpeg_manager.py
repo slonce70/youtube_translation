@@ -35,6 +35,11 @@ MAX_KEYFRAME_INTERVAL_SECONDS = 4.0
 
 
 _RTMP_URL_PATTERN = re.compile(r"rtmps?://[^\s'\"|]+", re.IGNORECASE)
+_REMOTE_OUTPUT_RESET_MARKERS = (
+    "connection reset by peer",
+    "the specified session has been invalidated",
+    "error writing trailer",
+)
 
 
 def _utcnow() -> datetime:
@@ -72,6 +77,36 @@ def _redact_rtmp_text(value: str) -> str:
         return _redact_rtmp_uri(match.group(0))
 
     return _RTMP_URL_PATTERN.sub(_replace, value)
+
+
+def _has_remote_output_reset_evidence(recent_errors: List[str]) -> bool:
+    for line in recent_errors:
+        lowered = str(line).lower()
+        if any(marker in lowered for marker in _REMOTE_OUTPUT_RESET_MARKERS):
+            return True
+    return False
+
+
+def _build_stream_failure_message(returncode: int, recent_errors: List[str]) -> str:
+    snippet = "; ".join(
+        _redact_rtmp_text(str(line).strip())
+        for line in recent_errors[-3:]
+        if str(line).strip()
+    )
+    if snippet and len(snippet) > 500:
+        snippet = f"{snippet[:497]}..."
+
+    base_message = f"FFmpeg exited with code {returncode}."
+    if snippet:
+        base_message = f"{base_message} Last errors: {snippet}"
+
+    if _has_remote_output_reset_evidence(recent_errors):
+        return (
+            "Remote output disconnect evidence detected in FFmpeg logs. "
+            f"{base_message}"
+        )[:500]
+
+    return base_message[:500]
 
 
 def _build_tee_destination(uri: str) -> str:
@@ -1092,14 +1127,14 @@ class FFmpegStreamManager:
         max_attempts = max(settings.ffmpeg_auto_restart_attempts, 0)
         will_restart = max_attempts > 0 and attempts < max_attempts
 
-        await self._create_system_alert(
-            stream_id=stream_id,
-            metadata=metadata,
-            returncode=returncode,
-            recent_errors=recent_errors,
-            restart_attempts=attempts,
-            will_restart=will_restart,
-        )
+        if will_restart:
+            await self._create_restart_warning_alert(
+                stream_id=stream_id,
+                metadata=metadata,
+                returncode=returncode,
+                recent_errors=recent_errors,
+                restart_attempts=attempts,
+            )
 
         if will_restart:
             info["restart_attempts"] = attempts + 1
@@ -1168,18 +1203,21 @@ class FFmpegStreamManager:
                 logger.error("Missing restart metadata for stream %s", stream_id)
 
             # Escalate if restart attempt failed or could not start
-            await self._create_system_alert(
-                stream_id=stream_id,
-                metadata=metadata,
+            self._capture_terminal_failure_observability(
                 returncode=returncode,
-                recent_errors=recent_errors,
                 restart_attempts=info.get("restart_attempts", attempts + 1),
-                will_restart=False,
+                recent_errors=recent_errors,
             )
             if stream_uuid:
                 await self._mark_stream_failed(stream_uuid, returncode, recent_errors)
 
-        elif stream_uuid:
+        else:
+            self._capture_terminal_failure_observability(
+                returncode=returncode,
+                restart_attempts=attempts,
+                recent_errors=recent_errors,
+            )
+        if not will_restart and stream_uuid:
             await self._mark_stream_failed(stream_uuid, returncode, recent_errors)
 
         async with self._cleanup_lock:
@@ -1288,30 +1326,35 @@ class FFmpegStreamManager:
             )
             return None
 
-    async def _create_system_alert(
+    def _capture_terminal_failure_observability(
+        self,
+        *,
+        returncode: int,
+        restart_attempts: int,
+        recent_errors: List[str],
+    ) -> None:
+        capture_alert(
+            "ffmpeg_stream_crash_loop",
+            level="error",
+            tags={"component": "ffmpeg", "event": "stream_failure"},
+            extra={
+                "restart_attempts": restart_attempts,
+                "returncode": returncode,
+                "remote_output_reset_evidence": _has_remote_output_reset_evidence(
+                    recent_errors
+                ),
+            },
+        )
+
+    async def _create_restart_warning_alert(
         self,
         stream_id: str,
         metadata: Dict[str, Any],
         returncode: int,
         recent_errors: List[str],
         restart_attempts: int,
-        will_restart: bool,
     ):
-        """Persist a system alert when FFmpeg exits unexpectedly."""
-        severity = "warning" if will_restart else "critical"
-
-        if severity == "critical":
-            capture_alert(
-                "ffmpeg_stream_crash_loop",
-                level="error",
-                tags={"component": "ffmpeg", "event": "stream_failure"},
-                extra={
-                    "restart_attempts": restart_attempts,
-                    "returncode": returncode,
-                    "will_restart": will_restart,
-                },
-            )
-
+        """Persist a restart-path system alert when FFmpeg exits unexpectedly."""
         user_uuid: Optional[UUID] = None
         raw_user_id = metadata.get("user_id")
         if raw_user_id:
@@ -1334,15 +1377,15 @@ class FFmpegStreamManager:
 
         alert = SystemAlert(
             alert_type="stream_failure",
-            severity=severity,
+            severity="warning",
             user_id=user_uuid,
             stream_id=stream_uuid,
-            message=f"FFmpeg process for stream {stream_id} exited with code {returncode}",
+            message=_build_stream_failure_message(returncode, recent_errors),
             details={
                 "returncode": returncode,
                 "recent_errors": recent_errors,
                 "restart_attempts": restart_attempts,
-                "will_restart": will_restart,
+                "will_restart": True,
             },
         )
 
@@ -1361,8 +1404,7 @@ class FFmpegStreamManager:
             )
         else:
             logger.info(
-                "Created %s alert for stream %s (attempt %s)",
-                severity,
+                "Created warning restart alert for stream %s (attempt %s)",
                 stream_id,
                 restart_attempts,
             )
@@ -1401,16 +1443,9 @@ class FFmpegStreamManager:
                 stream.pid = None
                 stream.stopped_at = now
 
-                snippet = "; ".join(recent_errors[-3:]) if recent_errors else ""
-                if snippet and len(snippet) > 500:
-                    snippet = f"{snippet[:497]}..."
-
-                if snippet:
-                    stream.error_message = (
-                        f"FFmpeg exited with code {returncode}. Last errors: {snippet}"
-                    )
-                else:
-                    stream.error_message = f"FFmpeg exited with code {returncode}."
+                stream.error_message = _build_stream_failure_message(
+                    returncode, recent_errors
+                )
 
         except SQLAlchemyError as exc:
             logger.exception(

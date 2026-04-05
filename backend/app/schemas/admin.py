@@ -117,8 +117,8 @@ class AlertListItem(BaseModel):
     """Model for representing alerts shown to admins."""
 
     alert_id: UUID
-    user_id: UUID
-    user_email: str
+    user_id: Optional[UUID]
+    user_email: Optional[str]
     alert_type: str
     severity: str
     message: str
