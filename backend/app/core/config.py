@@ -110,7 +110,7 @@ class Settings(BaseSettings):
     stream_runtime_heartbeat_interval_seconds: int = 10
     stream_runtime_heartbeat_ttl_seconds: int = 45
     stream_runtime_auto_restart_enabled: bool = True
-    stream_runtime_restart_max_attempts: int = 5
+    stream_runtime_restart_max_attempts: int = 0
     stream_runtime_restart_backoff_seconds: int = 5
     stream_runtime_restart_backoff_max_seconds: int = 300
     stream_runtime_restart_jitter_seconds: int = 3
