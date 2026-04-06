@@ -13,10 +13,17 @@ echo "📊 Dashboard: http://localhost:${FRONTEND_PORT}/dashboard"
 echo "🛡️  Admin: http://localhost:${FRONTEND_PORT}/admin"
 
 if [ -z "${NEXT_PUBLIC_API_URL:-}" ]; then
-  export NEXT_PUBLIC_API_URL="http://localhost:${API_PORT}/api"
-  echo "🔌 NEXT_PUBLIC_API_URL not set. Using default: $NEXT_PUBLIC_API_URL"
+  export NEXT_PUBLIC_API_URL="/api"
+  echo "🔌 NEXT_PUBLIC_API_URL not set. Using same-origin default: $NEXT_PUBLIC_API_URL"
 else
   echo "🔌 NEXT_PUBLIC_API_URL already set: $NEXT_PUBLIC_API_URL"
+fi
+
+if [ -z "${NEXT_PUBLIC_TUSD_URL:-}" ]; then
+  export NEXT_PUBLIC_TUSD_URL="http://localhost:1080"
+  echo "📦 NEXT_PUBLIC_TUSD_URL not set. Using local tusd default: $NEXT_PUBLIC_TUSD_URL"
+else
+  echo "📦 NEXT_PUBLIC_TUSD_URL already set: $NEXT_PUBLIC_TUSD_URL"
 fi
 
 if [ "${NEXT_PUBLIC_DEV_BYPASS_AUTH:-0}" = "1" ]; then

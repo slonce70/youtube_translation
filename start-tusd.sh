@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${ROOT_DIR}"
 
 TUSD_PORT="${TUSD_PORT:-1080}"
+API_PORT="${API_PORT:-8000}"
 
 echo "🚀 Starting tusd (upload server) with quota enforcement..."
 echo "📍 Upload endpoint: http://localhost:${TUSD_PORT}/files/"
@@ -20,6 +21,7 @@ TEMP_DIR="${UPLOAD_ROOT}/_temp"
 HOOKS_DIR="${ROOT_DIR}/backend/tusd-hooks"
 
 export TUSD_UPLOAD_ROOT="$UPLOAD_ROOT"
+export TUSD_BACKEND_URL="${TUSD_BACKEND_URL:-http://127.0.0.1:${API_PORT}}"
 
 # Загружаем переменные окружения для совместного секрета
 if [ -f "${ROOT_DIR}/backend/.env" ]; then
@@ -47,6 +49,7 @@ mkdir -p "${TEMP_DIR}"
 echo "📂 Upload root: ${UPLOAD_ROOT}"
 echo "📂 Temp directory: ${TEMP_DIR}"
 echo "📂 Hooks directory: ${HOOKS_DIR}"
+echo "🔗 Backend quota/finalize endpoint base: ${TUSD_BACKEND_URL}"
 echo "🔐 Using HMAC signature for tusd hooks"
 echo ""
 

@@ -392,6 +392,7 @@
         "queueHeading": "Порядок воспроизведения",
         "availableHeading": "Доступные ассеты",
         "availableEmpty": "Нет доступных файлов. Загрузите медиа в разделе «Файлы».",
+        "queued": "В очереди",
         "toggleLoop": "Зациклить",
         "toggleShuffle": "Перемешать",
         "queueing": "Добавляем…",

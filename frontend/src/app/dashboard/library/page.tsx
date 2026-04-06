@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable i18next/no-literal-string */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -97,7 +98,7 @@ export default function LibraryPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { user } = useDashboardContext()
+  const { user, quota } = useDashboardContext()
   const libraryToasts = useTranslations('library.toasts')
   const tLibrary = useTranslations('library.page')
   const tFolders = useTranslations('library.folders')
@@ -108,7 +109,7 @@ export default function LibraryPage() {
 
   const buildLibraryRoute = useCallback(
     (updates: Record<string, string | null | undefined>) => {
-      const nextParams = new URLSearchParams(searchParams.toString())
+      const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
       Object.entries(updates).forEach(([key, value]) => {
         if (!value) {
           nextParams.delete(key)
@@ -172,7 +173,7 @@ export default function LibraryPage() {
   }
 
   // Tab management with URL sync
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'assets')
+  const [activeTab, setActiveTab] = useState(searchParams?.get('tab') || 'assets')
   const deriveAssetFilter = useCallback((value: string | null): AssetFilterValue => {
     if (value === 'video' || value === 'audio') {
       return value
@@ -187,20 +188,20 @@ export default function LibraryPage() {
   }, [])
 
   const [assetFilter, setAssetFilter] = useState<AssetFilterValue>(
-    deriveAssetFilter(searchParams.get('type'))
+    deriveAssetFilter(searchParams?.get('type') ?? null)
   )
   const [selectedFolderId, setSelectedFolderId] = useState<string | 'all'>(
-    deriveFolderSelection(searchParams.get('folder'))
+    deriveFolderSelection(searchParams?.get('folder') ?? null)
   )
   const assetEmptyCopy = getAssetEmptyCopy((key) => tLibrary(key), assetFilter)
 
   useEffect(() => {
-    const tab = searchParams.get('tab')
+    const tab = searchParams?.get('tab')
     if (tab && (tab === 'assets' || tab === 'playlists')) {
       setActiveTab(tab)
     }
-    setAssetFilter(deriveAssetFilter(searchParams.get('type')))
-    setSelectedFolderId(deriveFolderSelection(searchParams.get('folder')))
+    setAssetFilter(deriveAssetFilter(searchParams?.get('type') ?? null))
+    setSelectedFolderId(deriveFolderSelection(searchParams?.get('folder') ?? null))
   }, [searchParams, deriveAssetFilter, deriveFolderSelection])
 
   const handleTabChange = (tab: string) => {
@@ -279,6 +280,7 @@ export default function LibraryPage() {
     { mode: 'create' | 'rename' | 'delete'; folder: MediaFolder | null } | null
   >(null)
   const [folderNameInput, setFolderNameInput] = useState('')
+  const [isGlobalDragOver, setIsGlobalDragOver] = useState(false)
 
   useEffect(() => {
     const density = window.localStorage.getItem('yt.library.assetDensity')
@@ -1477,6 +1479,22 @@ export default function LibraryPage() {
     toast.info(libraryToasts('generic.comingSoon', { feature }))
   }
 
+  const handleGlobalDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setIsGlobalDragOver(false)
+    const files = Array.from(event.dataTransfer.files || [])
+    if (!files.length) return
+    setIsUploadOpen(true)
+    uppy.addFiles(
+      files.map((file) => ({
+        name: file.name,
+        type: file.type,
+        data: file,
+        source: 'drag-drop',
+      })),
+    )
+  }
+
   const resetPlaylistForm = () => {
     setPlaylistForm({ name: '', description: '', loop: true, items: [] })
     setShowCreatePlaylist(false)
@@ -1603,21 +1621,42 @@ export default function LibraryPage() {
     return <LoadingState text={tLibrary('loading')} />
   }
 
+  const uploadStatusEntries = Object.entries(uploadStatusOverrides)
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div
+      className="page-shell"
+      onDragEnter={() => setIsGlobalDragOver(true)}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={(event) => {
+        if (event.currentTarget === event.target) setIsGlobalDragOver(false)
+      }}
+      onDrop={handleGlobalDrop}
+    >
+      <div className="page-header">
         <div>
-          <h2 className="text-3xl font-bold gradient-text mb-2">{tLibrary('header.title')}</h2>
-          <p className="text-slate-600 dark:text-slate-400">
-            {tLibrary('header.description')}
-          </p>
+          <div className="page-title">{tLibrary('header.title')}</div>
+          <div className="page-sub">{formatBytes(quota?.storage.used_bytes ?? 0)} використано з {quota?.storage.limit_gb ?? 0} ГБ</div>
+        </div>
+        <div className="page-actions">
+          <Button variant="outline" size="sm" onClick={() => setAssetDensity(assetDensity === 'compact' ? 'comfortable' : 'compact')}>⊞ {assetDensity === 'compact' ? 'Сітка' : 'Список'}</Button>
+          <Button onClick={() => setIsUploadOpen(true)} aria-label="Завантажити файли" title="Завантажити файли">⬆ Завантажити</Button>
         </div>
       </div>
 
+      {isGlobalDragOver ? (
+        <div className="drop-overlay">
+          <div className="empty-state" style={{ padding: 0 }}>
+            <div className="empty-icon">⬆️</div>
+            <div className="empty-title">Перетягніть файл сюди</div>
+            <div className="empty-sub">Ми додамо його у завантаження та обробимо для стріму.</div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="library-tabs-list w-full max-w-md">
           <TabsTrigger value="assets" className="flex items-center space-x-2">
             <Upload className="w-4 h-4" />
             <span>{tLibrary('tabs.assets', { count: totalAssets })}</span>
@@ -1632,180 +1671,63 @@ export default function LibraryPage() {
         <TabsContent value="assets" className="mt-6">
           <div className="space-y-4">
             {/* Breadcrumbs Navigation */}
-            <Breadcrumbs
-              currentFolderId={selectedFolderId}
-              folders={folders}
-              onNavigate={handleFolderSelect}
-              onDrop={handleFolderDrop}
-            />
+            {(selectedFolderId !== 'all' || currentFolders.length > 0) ? (
+              <Breadcrumbs
+                currentFolderId={selectedFolderId}
+                folders={folders}
+                onNavigate={handleFolderSelect}
+                onDrop={handleFolderDrop}
+              />
+            ) : null}
 
-            <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {tLibrary('summary.title')}
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    {tLibrary('summary.subtitle')}
-                  </p>
+            <div className="toolbar-panel library-toolbar-panel">
+              <div className="toolbar-row library-toolbar-row">
+                <div className="relative" style={{ flex: 1, maxWidth: 380 }}>
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={assetSearchQuery}
+                    onChange={(event) => setAssetSearchQuery(event.target.value)}
+                    placeholder={tLibrary('assets.search.placeholder')}
+                    aria-label={tLibrary('assets.search.placeholder')}
+                    className="pl-9 pr-10"
+                  />
+                  {assetSearchQuery.trim() ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setAssetSearchQuery('')}
+                      aria-label={tLibrary('assets.search.clear')}
+                      title={tLibrary('assets.search.clear')}
+                      className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  ) : null}
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={openCreateFolderModal}
-                    className="gap-2"
-                  >
-                    <FolderPlus className="w-4 h-4" />
-                    {tFolders('create')}
-                  </Button>
-                  <Button size="sm" onClick={() => setIsUploadOpen(true)} className="gap-2">
-                    <Plus className="w-4 h-4" />
-                    {tLibrary('assets.upload')}
-                  </Button>
+                <div className="toolbar-row library-filter-row">
+                  <button type="button" className={assetFilter === 'all' ? 'filter-pill active' : 'filter-pill'} onClick={() => handleAssetFilterChange('all')}>Всі</button>
+                  <button type="button" className={assetFilter === 'video' ? 'filter-pill active' : 'filter-pill'} onClick={() => handleAssetFilterChange('video')}>🎬 Відео</button>
+                  <button type="button" className={assetFilter === 'audio' ? 'filter-pill active' : 'filter-pill'} onClick={() => handleAssetFilterChange('audio')}>🎵 Аудіо</button>
+                  <button type="button" className={'filter-pill'} onClick={() => handleNotImplemented('Архіви')}>📦 Архіви</button>
                 </div>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
-                  <p className="text-2xl font-semibold text-slate-900 dark:text-white">
-                    {librarySummary.readyCount}
-                  </p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {tLibrary('summary.ready')}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
-                  <p className="text-2xl font-semibold text-slate-900 dark:text-white">
-                    {librarySummary.attentionCount}
-                  </p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {tLibrary('summary.attention')}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
-                  <p className="text-2xl font-semibold text-slate-900 dark:text-white">
-                    {librarySummary.folderCount}
-                  </p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {tLibrary('summary.folders')}
-                  </p>
-                </div>
+                <select
+                  value={assetSort}
+                  onChange={(event) => setAssetSort(event.target.value as AssetSortValue)}
+                  aria-label={tLibrary('assets.sort.ariaLabel')}
+                  className="input"
+                  style={{ width: 'auto', minWidth: 180 }}
+                >
+                  <option value="newest">Дата ↓</option>
+                  <option value="oldest">Дата ↑</option>
+                  <option value="nameAsc">Назва А-Я</option>
+                  <option value="sizeDesc">Розмір ↓</option>
+                </select>
               </div>
             </div>
 
-            {/* Header with Actions */}
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">{tLibrary('assets.title')}</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {tLibrary('assets.filters.label')}
-                </p>
-              </div>
-              <div className="flex w-full flex-col gap-2 lg:w-auto">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                  <div className="relative w-full sm:w-80">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      value={assetSearchQuery}
-                      onChange={(event) => setAssetSearchQuery(event.target.value)}
-                      placeholder={tLibrary('assets.search.placeholder')}
-                      aria-label={tLibrary('assets.search.placeholder')}
-                      className="pl-9 pr-10"
-                    />
-                    {assetSearchQuery.trim() ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setAssetSearchQuery('')}
-                        aria-label={tLibrary('assets.search.clear')}
-                        title={tLibrary('assets.search.clear')}
-                        className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    ) : null}
-                  </div>
-
-                  <select
-                    value={assetSort}
-                    onChange={(event) => setAssetSort(event.target.value as AssetSortValue)}
-                    aria-label={tLibrary('assets.sort.ariaLabel')}
-                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white sm:w-56"
-                  >
-                    <option value="newest">{tLibrary('assets.sort.options.newest')}</option>
-                    <option value="oldest">{tLibrary('assets.sort.options.oldest')}</option>
-                    <option value="nameAsc">{tLibrary('assets.sort.options.nameAsc')}</option>
-                    <option value="nameDesc">{tLibrary('assets.sort.options.nameDesc')}</option>
-                    <option value="sizeDesc">{tLibrary('assets.sort.options.sizeDesc')}</option>
-                    <option value="sizeAsc">{tLibrary('assets.sort.options.sizeAsc')}</option>
-                  </select>
-
-                  <div
-                    className="inline-flex w-full items-center justify-between gap-1 rounded-lg border border-slate-300 bg-white p-1 shadow-sm dark:border-slate-600 dark:bg-slate-800 sm:w-auto"
-                    role="group"
-                    aria-label={tLibrary('assets.view.ariaLabel')}
-                  >
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={assetDensity === 'compact' ? 'primary' : 'ghost'}
-                      onClick={() => setAssetDensity('compact')}
-                      className="gap-2"
-                    >
-                      <List className="h-4 w-4" />
-                      {tLibrary('assets.view.compact')}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={assetDensity === 'comfortable' ? 'primary' : 'ghost'}
-                      onClick={() => setAssetDensity('comfortable')}
-                      className="gap-2"
-                    >
-                      <ListVideo className="h-4 w-4" />
-                      {tLibrary('assets.view.comfortable')}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {(
-                    [
-                      { value: 'all', label: tLibrary('assets.filters.all') },
-                      { value: 'video', label: tLibrary('assets.filters.video') },
-                      { value: 'audio', label: tLibrary('assets.filters.audio') },
-                    ] as { value: AssetFilterValue; label: string }[]
-                  ).map((option) => (
-                    <Button
-                      key={option.value}
-                      size="sm"
-                      variant={assetFilter === option.value ? 'primary' : 'outline'}
-                      onClick={() => handleAssetFilterChange(option.value)}
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                  <Button
-                    size="sm"
-                    variant={inUseOnly ? 'primary' : 'outline'}
-                    onClick={() => setInUseOnly((prev) => !prev)}
-                  >
-                    {tLibrary('assets.quickFilters.inUse')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={warningsOnly ? 'primary' : 'outline'}
-                    onClick={() => setWarningsOnly((prev) => !prev)}
-                  >
-                    {tLibrary('assets.quickFilters.warnings')}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-              {displayedAssets.length > 0 && (
-                <div className="rounded-md border border-slate-200/80 bg-slate-50/60 px-4 py-3 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
+            {displayedAssets.length > 0 && (
+                <div className="selection-bar text-sm">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <button
                       type="button"
@@ -1816,7 +1738,7 @@ export default function LibraryPage() {
                           selectAllDisplayedAssets()
                         }
                       }}
-                      className="inline-flex items-center gap-2 text-left font-medium text-slate-700 transition-colors hover:text-slate-900 dark:text-slate-200 dark:hover:text-white"
+                      className="inline-flex items-center gap-2 text-left font-medium text-slate-200 transition-colors hover:text-white"
                     >
                       {allDisplayedSelected ? (
                         <CheckSquare className="h-4 w-4" />
@@ -1829,7 +1751,7 @@ export default function LibraryPage() {
                     </button>
                     {hasSelection && (
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-slate-900 dark:text-white">
+                        <span className="font-semibold text-white">
                           {tLibrary('assets.selection.count', { count: selectedAssetCount })}
                         </span>
                         <div className="flex flex-wrap items-center gap-2">
@@ -1855,7 +1777,7 @@ export default function LibraryPage() {
                     )}
                   </div>
                 </div>
-              )}
+            )}
 
             {isLoadingAssets || isLoadingFolders ? (
               <LoadingState />
@@ -1897,7 +1819,7 @@ export default function LibraryPage() {
                 {displayedAssets.length > 0 ? (
                   <div
                     className={assetDensity === 'compact'
-                      ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+                      ? 'grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'
                       : 'flex flex-col gap-3'}
                   >
                     {displayedAssets.map((asset) => (
@@ -1982,25 +1904,13 @@ export default function LibraryPage() {
 
                 {/* Empty state - shown when no folders and no assets */}
                 {!currentFolders.length && visibleAssets.length === 0 && (
-                  <Card className="text-center py-16">
-                    <div className="flex flex-col items-center space-y-4">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-100 to-accent-100 dark:from-primary-900/20 dark:to-accent-900/20 flex items-center justify-center">
-                        <Upload className="w-8 h-8 text-primary-500" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-                          {assetEmptyCopy.title}
-                        </h3>
-                        <p className="text-slate-500 dark:text-slate-400 mb-4">
-                          {assetEmptyCopy.description}
-                        </p>
-                      </div>
-                      <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
-                        <Upload className="w-4 h-4" />
-                        {assetEmptyCopy.cta}
-                      </Button>
+                  <button type="button" onClick={() => setIsUploadOpen(true)} className="library-upload-tile" style={{ margin: 0 }}>
+                    <div className="empty-state" style={{ padding: 0 }}>
+                      <div className="empty-icon">⬆</div>
+                      <div className="empty-title">Завантажити файл</div>
+                      <div className="empty-sub">або перетягніть сюди</div>
                     </div>
-                  </Card>
+                  </button>
                 )}
               </div>
             )}
@@ -2234,6 +2144,35 @@ export default function LibraryPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {uploadStatusEntries.length > 0 || isProcessingUpload ? (
+        <div className="floating-panel">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <strong style={{ fontSize: 13 }}>Завантаження</strong>
+            <button type="button" style={{ marginLeft: 'auto', color: 'var(--txt-3)', fontSize: 18 }} onClick={() => setUploadStatusOverrides({})}>×</button>
+          </div>
+          <div className="summary-list">
+            {uploadStatusEntries.map(([uploadId, status]) => (
+              <div key={uploadId} className="stream-row" style={{ alignItems: 'center' }}>
+                <div className="stream-thumb">⬆️</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{uploadId}</div>
+                  <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
+                    {status.status === 'processing'
+                      ? 'Обробляється'
+                      : status.status === 'complete'
+                        ? 'Завершено'
+                        : status.error || 'Помилка'}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {isProcessingUpload && uploadStatusEntries.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>Готуємо файли до обробки…</div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* Upload Modal */}
       <UploadModal

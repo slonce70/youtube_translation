@@ -392,6 +392,7 @@
         "queueHeading": "Порядок відтворення",
         "availableHeading": "Доступні файли",
         "availableEmpty": "Немає доступних файлів. Завантажте медіа у розділі «Файли».",
+        "queued": "У черзі",
         "toggleLoop": "Зациклити",
         "toggleShuffle": "Перемішати",
         "queueing": "Додаємо…",

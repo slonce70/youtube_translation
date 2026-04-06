@@ -1,37 +1,39 @@
 'use client'
+/* eslint-disable i18next/no-literal-string */
 
-import { useMemo, useCallback } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { AlertTriangle, Radio, Lightbulb, ChevronDown, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
-import { Card, CardContent } from '@/components/ui/Card'
-import { SubscriptionBanner } from '@/components/SubscriptionBanner'
-import { StreamControlWidget } from '@/components/StreamControlWidget'
-import { PlanLimitsCard } from '@/components/PlanLimitsCard'
-import { BroadcasterLevel } from '@/components/Gamification/BroadcasterLevel'
 import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { ProgressBar } from '@/components/ui/ProgressBar'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
+import { LiveDot } from '@/components/ui/LiveDot'
 import { useDashboardContext } from './dashboard-context'
 import { useStreamSocket } from './streaming/hooks/useStreamSocket'
-import type { Stream, Asset, SubscriptionTierKey } from '@/lib/types'
+import type { Asset, Stream, SubscriptionTierKey } from '@/lib/types'
 import { useStreamStatusMap } from './streaming/hooks/useStreamStatusMap'
-import { deriveDashboardNextAction, deriveStreamState, getStreamPriority } from '@/lib/stream-state'
+import { deriveStreamState, getStreamPriority } from '@/lib/stream-state'
+import { formatBytes, formatDuration } from '@/lib/utils'
+import { BroadcasterLevel } from '@/components/Gamification/BroadcasterLevel'
 
 export default function DashboardPage() {
-  const queryClient = useQueryClient()
   const router = useRouter()
-  const { user, quota, quotaLoading, currentTier, planDetail } = useDashboardContext()
   const dashboard = useTranslations('dashboard')
+  const nav = useTranslations('nav')
+  const { user, quota, quotaLoading, currentTier, planDetail } = useDashboardContext()
   useStreamSocket(user?.id)
 
   const { data: streams, isLoading: streamsLoading } = useQuery<Stream[]>({
     queryKey: ['streams', user?.id],
     queryFn: api.streams.list,
+    enabled: !!user,
     refetchInterval: typeof document !== 'undefined' && document.visibilityState === 'visible' ? 5000 : false,
     refetchOnWindowFocus: true,
-    enabled: !!user,
   })
 
   const { data: assets, isLoading: assetsLoading } = useQuery<Asset[]>({
@@ -41,20 +43,12 @@ export default function DashboardPage() {
     staleTime: 30_000,
     refetchOnWindowFocus: true,
   })
-  const liveStatusMap = useStreamStatusMap(streams, user?.id)
-  const planKey = (currentTier ?? 'free') as SubscriptionTierKey
-  const plan = planDetail
-  const planStorageLimitBytes = plan.storageGb * Math.pow(1024, 3)
-  const planDailyLimitHours = plan.dailyLimitHours ?? Infinity
-  const planStreamLimit = plan.streams
 
+  const liveStatusMap = useStreamStatusMap(streams, user?.id)
   const presentedStreams = useMemo(
     () =>
       (streams ?? [])
-        .map((stream) => ({
-          stream,
-          derived: deriveStreamState(stream, liveStatusMap.get(stream.id)),
-        }))
+        .map((stream) => ({ stream, derived: deriveStreamState(stream, liveStatusMap.get(stream.id)) }))
         .sort((a, b) => getStreamPriority(b.derived) - getStreamPriority(a.derived)),
     [liveStatusMap, streams],
   )
@@ -64,10 +58,7 @@ export default function DashboardPage() {
     const storageUsedBytes =
       quota?.storage.used_bytes ?? (assets ?? []).reduce((total, asset) => total + (asset.size_bytes ?? 0), 0)
     const hoursUsed = quota?.streaming_hours.used ?? 0
-
-    const totalLifetimeHours = (streams ?? []).reduce((total, stream) => {
-      return total + ((stream.total_duration_seconds ?? 0) / 3600)
-    }, 0)
+    const totalLifetimeHours = (streams ?? []).reduce((total, stream) => total + ((stream.total_duration_seconds ?? 0) / 3600), 0)
 
     return {
       activeStreams,
@@ -78,204 +69,298 @@ export default function DashboardPage() {
     }
   }, [assets, presentedStreams, quota, streams])
 
+  const storageBreakdown = useMemo(() => {
+    const totals = (assets ?? []).reduce(
+      (acc, asset) => {
+        if (asset.asset_type === 'audio') {
+          acc.audio += asset.size_bytes ?? 0
+        } else {
+          acc.video += asset.size_bytes ?? 0
+        }
+        return acc
+      },
+      { video: 0, audio: 0 },
+    )
+
+    return {
+      video: totals.video,
+      audio: totals.audio,
+      other: Math.max(0, usage.storageUsedBytes - totals.video - totals.audio),
+    }
+  }, [assets, usage.storageUsedBytes])
+
   const liveCount = presentedStreams.filter(({ derived }) => derived.isRunning).length
   const attentionCount = presentedStreams.filter(({ derived }) => derived.requiresAttention).length
   const scheduledCount = presentedStreams.filter(({ derived }) => derived.group === 'scheduled').length
-  const nextAction = useMemo(
-    () =>
-      deriveDashboardNextAction({
-        assetCount: usage.assetsCount,
-        destinationCount: quota?.destinations.count ?? 0,
-        streams: streams ?? [],
-        liveStatusMap,
-      }),
-    [liveStatusMap, quota?.destinations.count, streams, usage.assetsCount],
-  )
-  const isFirstRun = nextAction.key === 'upload' || nextAction.key === 'connect' || nextAction.key === 'create'
+  const initialLoading = (!streams && !assets && (streamsLoading || assetsLoading)) || (quotaLoading && !quota)
+  if (initialLoading) return <LoadingState />
 
-  const hero = useMemo(() => {
-    switch (nextAction.key) {
-      case 'upload':
-        return {
-          title: dashboard('hero.upload.title'),
-          description: dashboard('hero.upload.description'),
-          primary: dashboard('hero.upload.primary'),
-          primaryHref: '/dashboard/library?tab=assets',
-        }
-      case 'connect':
-        return {
-          title: dashboard('hero.connect.title'),
-          description: dashboard('hero.connect.description'),
-          primary: dashboard('hero.connect.primary'),
-          primaryHref: '/dashboard/streaming',
-        }
-      case 'create':
-        return {
-          title: dashboard('hero.create.title'),
-          description: dashboard('hero.create.description'),
-          primary: dashboard('hero.create.primary'),
-          primaryHref: '/dashboard/streaming',
-        }
-      case 'attention':
-        return {
-          title: dashboard('hero.attention.title', { count: attentionCount }),
-          description: dashboard('hero.attention.description'),
-          primary: dashboard('hero.attention.primary'),
-          primaryHref: '/dashboard/streaming',
-        }
-      case 'resume':
-        return {
-          title: dashboard('hero.resume.title'),
-          description: dashboard('hero.resume.description'),
-          primary: dashboard('hero.resume.primary'),
-          primaryHref: '/dashboard/streaming',
-        }
-      default:
-        return {
-          title: dashboard('hero.live.title', { count: liveCount }),
-          description: dashboard('hero.live.description'),
-          primary: dashboard('hero.live.primary'),
-          primaryHref: '/dashboard/streaming',
-        }
-    }
-  }, [attentionCount, dashboard, liveCount, nextAction.key])
-
-  const initialLoading =
-    (!streams && !assets && (streamsLoading || assetsLoading)) ||
-    (quotaLoading && !quota)
-
-  if (initialLoading) {
-    return <LoadingState />
-  }
+  const storageLimitBytes = planDetail.storageGb * 1024 * 1024 * 1024
+  const storagePercent = storageLimitBytes > 0 ? Math.min(100, (usage.storageUsedBytes / storageLimitBytes) * 100) : 0
+  const remainingStorage = Math.max(0, storageLimitBytes - usage.storageUsedBytes)
+  const sortedAssets = [...(assets ?? [])].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+  const recentAssets = sortedAssets.slice(0, 3)
+  const liveStreams = presentedStreams.filter(({ derived }) => derived.isRunning).slice(0, 3)
+  const scheduledStreams = presentedStreams.filter(({ derived }) => derived.group === 'scheduled').slice(0, 2)
+  const userLabel = user?.user_metadata?.display_name || user?.email || 'Стример'
+  const subtitle = `Привіт, ${userLabel} 👋 — сьогодні ${new Intl.DateTimeFormat('uk-UA', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date())}`
+  const currentPlanLabel = currentTier ? dashboard('quota.tiers.' + (currentTier as SubscriptionTierKey)) : 'Free'
 
   return (
-    <div className="space-y-6">
-      <SubscriptionBanner
-        tier={planKey}
-        onUpgrade={() => window.location.assign('/dashboard/plans')}
-      />
-
-      {/* Compact hero banner */}
-      <Card className="overflow-hidden border-l-4 border-l-primary-500">
-        <CardContent className="p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{hero.title}</h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{hero.description}</p>
-            </div>
-            <div className="flex items-center gap-6">
-              <div className="hidden sm:flex items-center gap-5">
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-success-600">{liveCount}</p>
-                  <p className="text-[11px] uppercase tracking-wide text-slate-400">{dashboard('hero.metrics.live')}</p>
-                </div>
-                {attentionCount > 0 && (
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-amber-500">{attentionCount}</p>
-                    <p className="text-[11px] uppercase tracking-wide text-slate-400">{dashboard('hero.metrics.attention')}</p>
-                  </div>
-                )}
-                {scheduledCount > 0 && (
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-primary-500">{scheduledCount}</p>
-                    <p className="text-[11px] uppercase tracking-wide text-slate-400">{dashboard('overview.cards.planned')}</p>
-                  </div>
-                )}
-              </div>
-              <Button onClick={() => router.push(hero.primaryHref)} className="shrink-0">
-                {hero.primary}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Inline mobile metrics */}
-      <div className="grid grid-cols-3 gap-3 sm:hidden">
-        <div className="rounded-xl border border-slate-200 bg-white p-3 text-center dark:border-slate-800 dark:bg-slate-900/50">
-          <p className="text-xl font-bold text-success-600">{liveCount}</p>
-          <p className="text-[10px] uppercase tracking-wide text-slate-400">{dashboard('hero.metrics.live')}</p>
+    <div className="page-shell">
+      <div className="page-header">
+        <div>
+          <div className="page-title">Дашборд</div>
+          <div className="page-sub">{subtitle}</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3 text-center dark:border-slate-800 dark:bg-slate-900/50">
-          <p className="text-xl font-bold text-amber-500">{attentionCount}</p>
-          <p className="text-[10px] uppercase tracking-wide text-slate-400">{dashboard('hero.metrics.attention')}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3 text-center dark:border-slate-800 dark:bg-slate-900/50">
-          <p className="text-xl font-bold text-primary-500">{scheduledCount}</p>
-          <p className="text-[10px] uppercase tracking-wide text-slate-400">{dashboard('overview.cards.planned')}</p>
+        <div className="page-actions">
+          <Button variant="outline" size="sm" className="hero-action-btn" onClick={() => router.push('/dashboard/schedule')}>
+            🗓️ Запланувати
+          </Button>
+          <Button className="hero-action-btn" onClick={() => router.push('/dashboard/streaming?new=1')}>
+            🎙️ Почати трансляцію
+          </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="space-y-6 xl:col-span-2">
-          <StreamControlWidget
-            streams={streams}
-            liveStatusMap={liveStatusMap}
-            loading={streamsLoading}
-            onRefresh={() => {
-              queryClient.invalidateQueries({ queryKey: ['streams'] })
-            }}
-          />
+      <div className="live-banner">
+        <LiveDot />
+        <span style={{ fontWeight: 600, color: 'var(--green)' }}>{liveCount} активні трансляції</span>
+        <span style={{ color: 'var(--txt-2)', fontSize: 13 }}>
+          {scheduledCount > 0 ? `· ${scheduledCount} заплановано` : `· ${attentionCount} потребують уваги`} · План {currentPlanLabel}
+        </span>
+        <Button variant="outline" size="sm" className="ml-auto" onClick={() => router.push('/dashboard/streaming')}>
+          Перейти →
+        </Button>
+      </div>
+
+      <div className="stats-row">
+        <div className="stat-card" style={{ ['--accent' as string]: 'var(--indigo)', ['--icon-bg' as string]: 'rgba(99,102,241,.15)' }}>
+          <div className="stat-icon">📁</div>
+          <div className="stat-value">{usage.assetsCount}</div>
+          <div className="stat-label">Файлів у бібліотеці</div>
+          <div className="stat-delta delta-up">▲ {recentAssets.length} нових останнім часом</div>
+        </div>
+        <div className="stat-card" style={{ ['--accent' as string]: 'var(--green)', ['--icon-bg' as string]: 'rgba(34,197,94,.12)' }}>
+          <div className="stat-icon">📡</div>
+          <div className="stat-value">{liveCount}</div>
+          <div className="stat-label">{dashboard('stats.activeStreams')}</div>
+          <div className="stat-delta delta-up">▲ {scheduledCount} заплановано</div>
+        </div>
+        <div className="stat-card" style={{ ['--accent' as string]: 'var(--amber)', ['--icon-bg' as string]: 'rgba(245,158,11,.12)' }}>
+          <div className="stat-icon">⚡</div>
+          <div className="stat-value">{formatBytes(usage.storageUsedBytes)}</div>
+          <div className="stat-label">Сховище використано</div>
+          <div style={{ marginTop: 8 }}>
+            <ProgressBar value={storagePercent} tone="amber" />
+            <div className="page-sub" style={{ marginTop: 4 }}>{Math.round(storagePercent)}% з {planDetail.storageGb} ГБ</div>
+          </div>
+        </div>
+        <div className="stat-card" style={{ ['--accent' as string]: '#a855f7', ['--icon-bg' as string]: 'rgba(168,85,247,.12)' }}>
+          <div className="stat-icon">⏱️</div>
+          <div className="stat-value">{formatDuration(Math.round((usage.hoursUsed || 0) * 3600))}</div>
+          <div className="stat-label">Час трансляцій сьогодні</div>
+          <div className="stat-delta delta-up">▲ Усього {usage.totalLifetimeHours.toFixed(1)} год</div>
+        </div>
+      </div>
+
+      <div className="dashboard-grid">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Card>
+            <CardHeader className="mb-4 flex-row items-center justify-between">
+              <CardTitle>🔴 Активні трансляції</CardTitle>
+              <Badge variant="live"><LiveDot />Live</Badge>
+            </CardHeader>
+            <CardContent className="summary-list">
+              {liveStreams.length > 0 ? liveStreams.map(({ stream, derived }) => (
+                <div key={stream.id} className="stream-row active" style={{ alignItems: 'stretch' }}>
+                  <div className="stream-thumb">🎬</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || 'Без назви'}</div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                      <Badge variant="live"><LiveDot />{formatDuration(derived.liveDurationSeconds ?? 0)}</Badge>
+                      {(stream.destinations ?? []).slice(0, 2).map((destination) => (
+                        <Badge key={destination.id} variant="indigo">{destination.name}</Badge>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{ color: 'var(--txt-3)', fontSize: 12 }}>Здоров’я потоку</span>
+                        <span style={{ color: 'var(--green)', fontSize: 12, fontWeight: 600, marginLeft: 'auto' }}>
+                          {derived.requiresAttention ? 'Потрібна увага' : 'Відмінне'}
+                        </span>
+                      </div>
+                      <ProgressBar value={derived.requiresAttention ? 62 : 92} tone={derived.requiresAttention ? 'amber' : 'green'} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/streaming')}>Стат.</Button>
+                    <Button size="sm" variant="danger" onClick={() => router.push('/dashboard/streaming')}>■ Зупинити</Button>
+                  </div>
+                </div>
+              )) : (
+                <>
+                  <div className="stream-row" style={{ alignItems: 'stretch' }}>
+                    <div className="stream-thumb">📡</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>Ще немає live-ефірів</div>
+                      <div style={{ fontSize: 12, color: 'var(--txt-2)', marginTop: 4 }}>
+                        Створіть нову трансляцію, щоб керувати нею з дашборду.
+                      </div>
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ color: 'var(--txt-3)', fontSize: 12 }}>Здоров’я потоку</span>
+                          <span style={{ color: 'var(--txt-2)', fontSize: 12, fontWeight: 600, marginLeft: 'auto' }}>
+                            Очікує запуску
+                          </span>
+                        </div>
+                        <ProgressBar value={0} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/library?tab=assets')}>Файли</Button>
+                      <Button size="sm" onClick={() => router.push('/dashboard/streaming?new=1')}>Запустити</Button>
+                    </div>
+                  </div>
+                  <div className="stream-row">
+                    <div className="stream-thumb">🗓️</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>Або заплануйте ефір</div>
+                      <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
+                        Використайте розклад, щоб підготувати події наперед.
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/schedule')}>Розклад</Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="mb-4 flex-row items-center justify-between">
+              <CardTitle>📁 Останні файли</CardTitle>
+              <Link href="/dashboard/library" className="btn btn-ghost btn-sm">Всі файли →</Link>
+            </CardHeader>
+            <CardContent className="table-wrap">
+              {recentAssets.length > 0 ? (
+                <table className="table">
+                  <thead>
+                    <tr><th>Файл</th><th>Розмір</th><th>Тривалість</th><th>Дія</th></tr>
+                  </thead>
+                  <tbody>
+                    {recentAssets.map((asset) => (
+                      <tr key={asset.id}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="table-thumb">{asset.asset_type === 'audio' ? '🎵' : '🎬'}</div>
+                            <span>{asset.filename}</span>
+                          </div>
+                        </td>
+                        <td style={{ color: 'var(--txt-2)' }}>{formatBytes(asset.size_bytes)}</td>
+                        <td style={{ color: 'var(--txt-2)' }}>{asset.duration_seconds ? formatDuration(asset.duration_seconds) : '—'}</td>
+                        <td><Button size="sm" variant="ghost" onClick={() => router.push('/dashboard/library')}>Відкрити</Button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-state" style={{ padding: '28px 12px 20px' }}>
+                  <div className="empty-icon">📁</div>
+                  <div className="empty-title">Бібліотека поки порожня</div>
+                  <div className="empty-sub">Завантажте перший файл, щоб швидко запускати трансляції зі стріму.</div>
+                  <Button size="sm" style={{ marginTop: 12 }} onClick={() => router.push('/dashboard/library?tab=assets')}>
+                    ⬆ Завантажити файл
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="space-y-6">
-          <PlanLimitsCard
-            planKey={planKey}
-            plan={plan}
-            storageUsedBytes={usage.storageUsedBytes}
-            hoursUsed={usage.hoursUsed}
-            activeStreams={usage.activeStreams.length}
-            assetsCount={usage.assetsCount}
-            onUpgrade={() => window.location.assign('/dashboard/plans')}
-          />
+        <div className="dashboard-side">
+          <Card className="card-sm">
+            <CardTitle>⚡ Швидкі дії</CardTitle>
+            <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+              <Button fullWidth onClick={() => router.push('/dashboard/streaming?new=1')}>🎙️ Розпочати трансляцію</Button>
+              <Button fullWidth variant="outline" onClick={() => router.push('/dashboard/library?tab=assets')}>📁 Завантажити файл</Button>
+              <Button fullWidth variant="outline" onClick={() => router.push('/dashboard/streaming')}>🗓️ Запланувати стрім</Button>
+            </CardContent>
+          </Card>
 
-          <BroadcasterLevel
-            totalStreamHours={usage.totalLifetimeHours + usage.hoursUsed}
-            totalAssets={usage.assetsCount}
-          />
-
-          {isFirstRun && (
-            <Card>
-            <details className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
-                <span className="text-base font-semibold text-slate-900 dark:text-white">
-                  {dashboard('checklist.heading')}
-                </span>
-                <ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
-              </summary>
-              <div className="space-y-4 px-6 pb-6 text-sm text-slate-600 dark:text-slate-400">
-                <div className="flex items-start space-x-3">
-                  <Lightbulb className="mt-0.5 h-4 w-4 text-primary-500" />
-                  <div>
-                    <p className="font-medium text-slate-700 dark:text-slate-200">
-                      {dashboard('checklist.items.warmup.title')}
-                    </p>
-                    <p>{dashboard('checklist.items.warmup.description')}</p>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <Lightbulb className="mt-0.5 h-4 w-4 text-primary-500" />
-                  <div>
-                    <p className="font-medium text-slate-700 dark:text-slate-200">
-                      {dashboard('checklist.items.rotate.title')}
-                    </p>
-                    <p>{dashboard('checklist.items.rotate.description')}</p>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <Lightbulb className="mt-0.5 h-4 w-4 text-primary-500" />
-                  <div>
-                    <p className="font-medium text-slate-700 dark:text-slate-200">
-                      {dashboard('checklist.items.upgrade.title')}
-                    </p>
-                    <p>{dashboard('checklist.items.upgrade.description')}</p>
-                  </div>
+          <Card className="card-sm">
+            <CardTitle>💾 Сховище</CardTitle>
+            <CardContent style={{ textAlign: 'center', marginTop: 12 }}>
+              <div className="storage-ring">
+                <svg viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)', width: 80, height: 80 }}>
+                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--bg-3)" strokeWidth="3" />
+                  <circle
+                    cx="18"
+                    cy="18"
+                    r="15.9"
+                    fill="none"
+                    stroke="var(--amber)"
+                    strokeWidth="3"
+                    strokeDasharray={`${storagePercent} ${100 - storagePercent}`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                  {Math.round(storagePercent)}%
                 </div>
               </div>
-            </details>
-            </Card>
-          )}
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{formatBytes(usage.storageUsedBytes)} / {planDetail.storageGb} ГБ</div>
+              <div style={{ fontSize: 12, color: 'var(--txt-3)', marginTop: 4 }}>~ {formatBytes(remainingStorage)} вільно</div>
+              <div className="storage-breakdown">
+                <div className="storage-breakdown-row">
+                  <span>🎬 Відео</span>
+                  <span>{formatBytes(storageBreakdown.video)}</span>
+                </div>
+                <div className="storage-breakdown-row">
+                  <span>🎵 Аудіо</span>
+                  <span>{formatBytes(storageBreakdown.audio)}</span>
+                </div>
+                <div className="storage-breakdown-row">
+                  <span>📦 Інше</span>
+                  <span>{formatBytes(storageBreakdown.other)}</span>
+                </div>
+              </div>
+              <Button fullWidth variant="ghost" size="sm" style={{ marginTop: 12 }} onClick={() => router.push('/dashboard/library')}>
+                Керувати файлами →
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="card-sm">
+            <CardTitle>🗓️ Сьогодні в розкладі</CardTitle>
+            <CardContent className="summary-list" style={{ marginTop: 12 }}>
+              {scheduledStreams.length > 0 ? scheduledStreams.map(({ stream }) => (
+                <div key={stream.id} className="stream-row">
+                  <div className="stream-thumb">🗓️</div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{stream.name || 'Без назви'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>{stream.scheduled_start_time ? new Date(stream.scheduled_start_time).toLocaleString() : 'Заплановано'}</div>
+                  </div>
+                </div>
+              )) : (
+                <div className="empty-state" style={{ padding: '24px 12px' }}>
+                  <div className="empty-icon">🗓️</div>
+                  <div className="empty-title">Немає запланованих подій</div>
+                  <div className="empty-sub">Створіть стрім і оберіть запланований старт.</div>
+                </div>
+              )}
+              <Button fullWidth variant="ghost" size="sm" onClick={() => router.push('/dashboard/schedule')}>
+                Повний розклад →
+              </Button>
+            </CardContent>
+          </Card>
+
+          <BroadcasterLevel totalStreamHours={usage.totalLifetimeHours + usage.hoursUsed} totalAssets={usage.assetsCount} />
         </div>
       </div>
     </div>

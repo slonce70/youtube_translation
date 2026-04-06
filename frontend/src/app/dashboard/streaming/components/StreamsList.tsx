@@ -418,6 +418,15 @@ export function StreamsList({
                             {/* Actions: primary button + overflow menu */}
                             <div className="flex items-center gap-2 xl:flex-col xl:items-end">
                               {primaryButton}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onOpenLiveEditor(stream)}
+                                disabled={isRowPending}
+                              >
+                                <Pencil className="w-4 h-4 mr-2" />
+                                {t('streams.liveEdit.button')}
+                              </Button>
                               <DropdownMenu disabled={isRowPending}>
                                 <DropdownItem onClick={() => onViewLogs(stream.id)} disabled={isRowPending}>
                                   <FileText className="h-4 w-4" />

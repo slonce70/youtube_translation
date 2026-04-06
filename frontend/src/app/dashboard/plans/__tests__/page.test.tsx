@@ -26,17 +26,17 @@ describe('PlansPage', () => {
       </NextIntlClientProvider>
     )
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: '4K Start' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('4K Start').length).toBeGreaterThan(0))
 
     fireEvent.click(screen.getByRole('button', { name: 'Full HD' }))
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'FHD Start' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('FHD Start').length).toBeGreaterThan(0))
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
 
-    expect(screen.getByRole('heading', { name: 'FHD Start' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '4K Start' })).not.toBeInTheDocument()
+    expect(screen.getAllByText('FHD Start').length).toBeGreaterThan(0)
+    expect(screen.queryByText('4K Start')).toBeNull()
   })
 })

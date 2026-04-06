@@ -5,7 +5,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { supabase, waitForAuth } from '@/lib/supabase'
-import { NavBar } from '@/components/NavBar'
 import { LoadingState } from '@/components/LoadingState'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { DashboardContext } from './dashboard-context'
@@ -13,6 +12,7 @@ import { api } from '@/lib/api'
 import type { QuotaUsageResponse, SubscriptionTierKey } from '@/lib/types'
 import { PLAN_DETAILS } from '@/lib/plans'
 import { readDevBypassDisplayName } from '@/lib/devBypassUser'
+import { DashboardShell } from '@/components/layout/DashboardShell'
 
 type Props = {
   children: React.ReactNode
@@ -56,9 +56,7 @@ export default function DashboardLayout({ children }: Props) {
     }
 
     const loadSession = async () => {
-      // Wait for auth to be fully initialized
       await waitForAuth()
-      
       const { data } = await supabase.auth.getSession()
       const sessionUser = data.session?.user
 
@@ -119,29 +117,25 @@ export default function DashboardLayout({ children }: Props) {
   }
 
   const currentTier = quota?.tier ? (quota.tier as SubscriptionTierKey) : null
-  const planDetail = currentTier ? PLAN_DETAILS[currentTier] : PLAN_DETAILS['free']
+  const planDetail = currentTier ? PLAN_DETAILS[currentTier] : PLAN_DETAILS.free
+  const userName = user?.user_metadata?.display_name ?? user?.email ?? ''
 
   return (
     <ErrorBoundary>
-      <DashboardContext.Provider value={{
-        user,
-        signOut: handleSignOut,
-        refreshUser,
-        quota,
-        quotaLoading,
-        currentTier,
-        planDetail,
-      }}>
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-          <NavBar
-            userEmail={user?.email ?? ''}
-            userName={user?.user_metadata?.display_name ?? user?.email ?? ''}
-            onSignOut={handleSignOut}
-          />
-          <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-            {children}
-          </main>
-        </div>
+      <DashboardContext.Provider
+        value={{
+          user,
+          signOut: handleSignOut,
+          refreshUser,
+          quota,
+          quotaLoading,
+          currentTier,
+          planDetail,
+        }}
+      >
+        <DashboardShell userName={userName} userEmail={user?.email ?? ''} onSignOut={handleSignOut}>
+          {children}
+        </DashboardShell>
       </DashboardContext.Provider>
     </ErrorBoundary>
   )

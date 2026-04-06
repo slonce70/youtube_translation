@@ -22,7 +22,7 @@ const adminNavItems = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const layout = useTranslations('admin.layout')
   const devBypass = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
   const [loading, setLoading] = useState(true)

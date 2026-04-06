@@ -92,11 +92,12 @@ describe('DashboardPage', () => {
     api.assets.list.mockResolvedValue([])
   })
 
-  it('renders without crashing and requests dashboard data', async () => {
+  it('renders dashboard shell content and requests dashboard data', async () => {
     renderWithProviders(<DashboardPage />)
 
     await waitFor(() => expect(api.streams.list).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(api.assets.list).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(screen.getByText('Upload files')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Дашборд')).toBeInTheDocument())
+    expect(screen.getByText('🎙️ Почати трансляцію')).toBeInTheDocument()
   })
 })
