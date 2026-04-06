@@ -7,7 +7,7 @@ import type {
   StreamStatusValue,
 } from './types'
 
-export type StreamGroup = 'live' | 'attention' | 'scheduled' | 'stopped'
+export type StreamGroup = 'live' | 'transitioning' | 'attention' | 'scheduled' | 'stopped'
 export type StreamPrimaryAction = 'stop' | 'start' | 'edit_schedule' | 'view_issue' | 'pending'
 
 export type StreamStatusQuery = Pick<
@@ -18,6 +18,9 @@ export type StreamStatusQuery = Pick<
 export type DerivedStreamState = {
   derivedStatus: StreamStatusValue
   isRunning: boolean
+  isStarting: boolean
+  isStopping: boolean
+  isTransitioning: boolean
   statusUnavailable: boolean
   statusFetching: boolean
   liveDurationSeconds: number | null
@@ -32,7 +35,7 @@ export type DerivedStreamState = {
 }
 
 export function getStreamPriority(state: Pick<DerivedStreamState, 'isRunning' | 'requiresAttention' | 'derivedStatus'>): number {
-  if (state.isRunning) return 3
+  if (state.isRunning || state.derivedStatus === 'starting' || state.derivedStatus === 'stopping') return 3
   if (state.requiresAttention) return 2
   if (state.derivedStatus === 'scheduled') return 1
   return 0
@@ -46,6 +49,9 @@ export function deriveStreamState(
   const statusData = statusQuery?.data
   const derivedStatus = statusData?.status ?? stream.status
   const isRunning = statusData?.is_running ?? stream.status === 'running'
+  const isStarting = derivedStatus === 'starting'
+  const isStopping = derivedStatus === 'stopping'
+  const isTransitioning = isStarting || isStopping
   const statusUpdatedAtMs = statusQuery?.dataUpdatedAt ?? 0
   const statusAgeSeconds =
     isRunning && statusUpdatedAtMs > 0
@@ -97,18 +103,20 @@ export function deriveStreamState(
     runtimeRestart.state === 'exhausted' ||
     quotaReached
 
-  const group = isRunning
-    ? 'live'
-    : requiresAttention
-      ? 'attention'
-      : derivedStatus === 'scheduled'
-        ? 'scheduled'
-        : 'stopped'
+  const group = isTransitioning
+    ? 'transitioning'
+    : isRunning
+      ? 'live'
+      : requiresAttention
+        ? 'attention'
+        : derivedStatus === 'scheduled'
+          ? 'scheduled'
+          : 'stopped'
 
-  const primaryAction = isRunning
-    ? 'stop'
-    : derivedStatus === 'starting' || derivedStatus === 'stopping'
-      ? 'pending'
+  const primaryAction = isTransitioning
+    ? 'pending'
+    : isRunning
+      ? 'stop'
       : derivedStatus === 'scheduled'
         ? 'edit_schedule'
         : requiresAttention
@@ -118,6 +126,9 @@ export function deriveStreamState(
   return {
     derivedStatus,
     isRunning,
+    isStarting,
+    isStopping,
+    isTransitioning,
     statusUnavailable: Boolean(statusQuery?.isError),
     statusFetching: Boolean(statusQuery?.isFetching && !statusData),
     liveDurationSeconds,

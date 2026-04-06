@@ -426,6 +426,7 @@
         "runningHint": "The stream is running — you can schedule the next start after stopping it."
       },
       "sections": {
+        "transitioning": "Transitioning",
         "live": "Live now",
         "attention": "Needs attention",
         "scheduled": "Scheduled",
@@ -528,7 +529,7 @@
       "stopped": "stopped"
     },
     "status": {
-      "live": "YouTube live",
+        "live": "YouTube live",
       "offline": "YouTube offline",
       "stale": "YouTube stale",
       "unknown": "YouTube unknown"

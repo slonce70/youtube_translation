@@ -118,7 +118,7 @@ export function useStreamSocket(userId?: string) {
                 if (update) {
                   return {
                     ...stream,
-                    status: update.is_running ? 'running' : 'stopped',
+                    status: typeof update.status === 'string' ? update.status : stream.status,
                     uptime_seconds: update.uptime_seconds ?? stream.uptime_seconds,
                     started_at: update.started_at ?? stream.started_at,
                   }

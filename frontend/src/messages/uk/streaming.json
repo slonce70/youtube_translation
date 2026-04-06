@@ -426,6 +426,7 @@
         "runningHint": "Стрім уже запущено — старт можна планувати тільки після зупинки."
       },
       "sections": {
+        "transitioning": "Запускаються/зупиняються",
         "live": "У ефірі",
         "attention": "Потребують уваги",
         "scheduled": "Заплановані",
@@ -528,7 +529,7 @@
       "stopped": "stopped"
     },
     "status": {
-      "live": "YouTube live",
+        "live": "YouTube live",
       "offline": "YouTube offline",
       "stale": "YouTube stale",
       "unknown": "YouTube unknown"

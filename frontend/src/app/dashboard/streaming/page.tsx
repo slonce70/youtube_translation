@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Play, Loader2, X, Info, ChevronDown } from 'lucide-react'
+import { Play, Loader2, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -37,6 +37,7 @@ import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamStatusMap } from './hooks/useStreamStatusMap'
 import { AddChannelModal } from '@/components/streaming/AddChannelModal'
 import { deriveStreamState } from '@/lib/stream-state'
+import { getDestinationPlatformPresentation } from './platform'
 import { formatDuration } from '@/lib/utils'
 import {
   getProviderStatusKey,
@@ -85,6 +86,7 @@ export default function StreamingPage() {
   const [scheduleModalStream, setScheduleModalStream] = useState<Stream | null>(null)
   const [activeStreamTab, setActiveStreamTab] = useState<'live' | 'scheduled' | 'archive'>('live')
   const [optimisticRunningStreamIds, setOptimisticRunningStreamIds] = useState<string[]>([])
+  const [optimisticStoppingStreamIds, setOptimisticStoppingStreamIds] = useState<string[]>([])
 
   const { data: destinations, isLoading: isLoadingDestinations } = useQuery<Destination[]>({
     queryKey: ['destinations', user?.id],
@@ -170,15 +172,24 @@ export default function StreamingPage() {
   const shouldShowProviderBadge = (destination: Destination) =>
     Boolean(destination.provider_connection_id && destination.provider_status && destination.provider_status !== 'unknown')
   const getStreamSourceLabel = (stream: Stream) => {
-    const primaryDestinationUrl = stream.destinations?.[0]?.rtmps_url?.trim()
-    if (primaryDestinationUrl) {
-      const normalizedUrl = primaryDestinationUrl.toLowerCase()
-      if (normalizedUrl.includes('youtube.com')) return 'YouTube'
-      return 'RTMPS'
-    }
+    if (stream.video_collection_id) return videoCollectionMap.get(stream.video_collection_id)?.name ?? 'Відеоряд'
     if (stream.playlist_id) return playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист'
     if (stream.stream_assets?.length) return `Черга (${stream.stream_assets.length})`
-    return 'YouTube'
+    return 'Джерело не вказано'
+  }
+  const getStreamSourceTotalSeconds = (stream: Stream) => {
+    const collection = stream.video_collection_id ? videoCollectionMap.get(stream.video_collection_id) : null
+    if (collection?.items?.length) {
+      const total = collection.items.reduce((sum, item) => sum + (item.asset?.duration_seconds ?? 0), 0)
+      return total > 0 ? total : null
+    }
+    if (stream.stream_assets?.length && assets?.length) {
+      const assetDurations = stream.stream_assets
+        .map((link) => assets.find((asset) => asset.id === link.asset_id)?.duration_seconds ?? 0)
+        .reduce((sum, duration) => sum + duration, 0)
+      return assetDurations > 0 ? assetDurations : null
+    }
+    return null
   }
   const formatProviderSummary = (destination: Destination) => {
     if (!destination.provider_connection_id) return null
@@ -336,14 +347,25 @@ export default function StreamingPage() {
 
   const stopStreamMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.stop(streamId),
+    onMutate: (streamId) => {
+      setActiveStreamTab('live')
+      setOptimisticStoppingStreamIds((current) =>
+        current.includes(streamId) ? current : [...current, streamId]
+      )
+    },
     onSuccess: (_, streamId) => {
       toast.info(streamingToasts('stream.stopped'))
       setOptimisticRunningStreamIds((current) => current.filter((id) => id !== streamId))
       queryClient.invalidateQueries({ queryKey: ['stream-status', user?.id, streamId] })
       queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
     },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
+    onError: (error: Error, streamId) => {
+      setOptimisticStoppingStreamIds((current) => current.filter((id) => id !== streamId))
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message }))
+    },
+    onSettled: (_, __, streamId) => {
+      setOptimisticStoppingStreamIds((current) => current.filter((id) => id !== streamId))
+    },
   })
 
   const deleteStreamMutation = useMutation({
@@ -504,10 +526,11 @@ export default function StreamingPage() {
       presentedStreams.filter(
         ({ stream, derived }) =>
           optimisticRunningStreamIds.includes(stream.id) ||
+          optimisticStoppingStreamIds.includes(stream.id) ||
           derived.isRunning ||
-          derived.group === 'attention',
+          derived.group === 'transitioning',
       ),
-    [optimisticRunningStreamIds, presentedStreams],
+    [optimisticRunningStreamIds, optimisticStoppingStreamIds, presentedStreams],
   )
   const runningStreams = useMemo(
     () =>
@@ -528,11 +551,12 @@ export default function StreamingPage() {
     () =>
       presentedStreams.filter(
         ({ stream, derived }) =>
-          derived.group === 'stopped' && !optimisticRunningStreamIds.includes(stream.id),
+          (derived.group === 'stopped' || derived.group === 'attention') &&
+          !optimisticRunningStreamIds.includes(stream.id) &&
+          !optimisticStoppingStreamIds.includes(stream.id),
       ),
-    [optimisticRunningStreamIds, presentedStreams],
+    [optimisticRunningStreamIds, optimisticStoppingStreamIds, presentedStreams],
   )
-  const readyEntries = archiveEntries
 
   if (!user) {
     return <LoadingState text={tStreaming('loading')} />
@@ -595,7 +619,9 @@ export default function StreamingPage() {
           {isLoadingDestinations ? (
             <LoadingState />
           ) : destinations && destinations.length > 0 ? (
-            destinations.map((destination) => (
+            destinations.map((destination) => {
+              const platform = getDestinationPlatformPresentation(destination)
+              return (
               <div
                 key={destination.id}
                 className={`channel-row${selectedChannel === destination.id ? ' active' : ''}`}
@@ -603,7 +629,7 @@ export default function StreamingPage() {
                 role="button"
                 tabIndex={0}
               >
-                <div className="channel-logo">{destination.name.toLowerCase().includes('twitch') ? '🎮' : '▶'}</div>
+                <div className={platform.className} aria-label={platform.label}>{platform.icon}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{destination.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>
@@ -644,7 +670,8 @@ export default function StreamingPage() {
                   Видалити
                 </Button>
               </div>
-            ))
+              )
+            })
           ) : (
             <div className="empty-state" style={{ padding: '32px 12px' }}>
               <div className="empty-icon">📡</div>
@@ -677,128 +704,89 @@ export default function StreamingPage() {
         <div className="summary-list">
           {liveEntries.length > 0 ? liveEntries.map(({ stream, derived }) => {
             const sourceName = getStreamSourceLabel(stream)
+            const sourceTotalSeconds = getStreamSourceTotalSeconds(stream)
             const destinationLabel = (stream.destinations ?? []).map((d) => d.name).join(', ') || 'Канал не вказано'
             const quotaLabel = derived.quotaReached
               ? '0'
               : formatLimitValue(derived.remainingDailySeconds ?? null)
             const isOptimisticallyStarting = pendingStartStreamId === stream.id || (optimisticRunningStreamIds.includes(stream.id) && !derived.isRunning)
+            const isOptimisticallyStopping = pendingStopStreamId === stream.id || optimisticStoppingStreamIds.includes(stream.id) || derived.isStopping
+            const isTransitioning = isOptimisticallyStarting || isOptimisticallyStopping || derived.isTransitioning
+            const statusLabel = isOptimisticallyStopping
+              ? 'Зупиняється'
+              : isOptimisticallyStarting || derived.isStarting
+                ? 'Запускається'
+                : 'У ЕФІРІ'
+            const progressPercent = sourceTotalSeconds && derived.liveDurationSeconds != null
+              ? Math.min(100, Math.round((derived.liveDurationSeconds / sourceTotalSeconds) * 100))
+              : null
 
             return (
-              <article key={stream.id} className="card stream-summary-card" style={{ borderColor: 'rgba(34,197,94,.25)' }}>
+              <article key={stream.id} className="card stream-summary-card" style={{ borderColor: isTransitioning ? 'rgba(245,158,11,.35)' : 'rgba(34,197,94,.25)' }}>
                 <div className="card-content">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                    <Badge variant={isOptimisticallyStarting ? 'warn' : 'live'}>
-                      {isOptimisticallyStarting ? 'Запускається' : 'У ЕФІРІ'}
+                  <div className="stream-card-header">
+                    <Badge variant={isTransitioning ? 'warn' : 'live'} style={{ fontSize: 12 }}>
+                      {isTransitioning ? null : <span className="live-dot" />}{statusLabel}
                     </Badge>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
-                    <span className="page-sub" style={{ marginLeft: 'auto' }}>{destinationLabel}</span>
-                    <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)} disabled={isOptimisticallyStarting}>
-                      {isOptimisticallyStarting ? '⏳ Запускається' : '■ Зупинити'}
+                    <span className="page-sub ml-auto">{destinationLabel} · {derived.isRunning && stream.started_at ? `Розпочато ${new Date(stream.started_at).toLocaleTimeString()}` : statusLabel}</span>
+                    <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)} disabled={isTransitioning}>
+                      {isOptimisticallyStopping ? '⏳ Зупиняється' : isOptimisticallyStarting || derived.isStarting ? '⏳ Запускається' : '■ Зупинити'}
                     </Button>
                   </div>
 
-                  <div className="stream-row active" style={{ marginBottom: 14 }}>
-                    <div className="stream-thumb">🎬</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--txt-3)' }}>
-                        Відеоряд / джерело
+                  <div className="stream-playback-panel">
+                    <div className="flex items-center gap-8 mb-10">
+                      <span style={{ fontSize: 18 }}>🎬</span>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--txt-3)' }}>
+                          Відеоряд (зараз програється)
+                        </div>
+                        <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{sourceName}</div>
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{sourceName}</div>
+                      <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                        <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>Прогрес файлу</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: progressPercent == null ? 'var(--txt-2)' : 'var(--green)' }}>
+                          {progressPercent == null ? '—' : `${progressPercent}%`}
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      {hasProviderConnection(stream) && stream.provider_viewers != null ? (
-                        <>
-                          <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>{tStreaming('provider.viewersLabel')}</div>
-                          <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>
-                            {stream.provider_viewers}
-                          </div>
-                        </>
-                      ) : null}
+                    <div className="progress-bar" style={{ height: 6 }}>
+                      <div className="progress-fill green" style={{ width: `${progressPercent ?? 0}%` }} />
+                    </div>
+                    <div className="flex items-center gap-8 mt-6">
+                      <span className="page-sub">{progressPercent == null ? 'Прогрес буде доступний після старту' : `${progressPercent}% відтворено`}</span>
+                      <Badge variant="indigo" style={{ fontSize: 10, marginLeft: 'auto' }}>🔄 Цикл увімк.</Badge>
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: hasProviderConnection(stream) && stream.provider_viewers != null ? 'repeat(4,1fr)' : 'repeat(3,1fr)', gap: 10 }}>
-                    {hasProviderConnection(stream) && stream.provider_viewers != null ? (
-                      <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
-                        <div>
-                          <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>
-                            {stream.provider_viewers}
-                          </div>
-                          <div className="page-sub">{tStreaming('provider.viewersLabel')}</div>
-                        </div>
+                  <div className="stream-metrics-grid">
+                    <div className="stream-metric-tile">
+                      <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>
+                        {formatDuration(Math.round(derived.totalDurationSeconds ?? 0))}
                       </div>
-                    ) : null}
-                    <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 700 }}>
-                          {formatDuration(Math.round(derived.totalDurationSeconds ?? 0))}
-                        </div>
-                        <div className="page-sub">Загальна тривалість</div>
-                      </div>
+                      <div className="page-sub">Загальна тривалість</div>
                     </div>
-                    <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--amber)' }}>{quotaLabel}</div>
-                        <div className="page-sub">Залишок ліміту</div>
+                    <div className="stream-metric-tile">
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>
+                        {sourceTotalSeconds ? formatDuration(Math.round(sourceTotalSeconds)) : '—'}
                       </div>
+                      <div className="page-sub">Відеоряд всього</div>
                     </div>
-                    <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 700 }}>{activePlanLabel}</div>
-                        <div className="page-sub">Поточний тариф</div>
-                      </div>
+                    <div className="stream-metric-tile">
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--amber)' }}>{quotaLabel}</div>
+                      <div className="page-sub">Залишок ліміту</div>
+                    </div>
+                    <div className="stream-metric-tile">
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>{planQualityLimits?.max_resolution ?? activePlanLabel}</div>
+                      <div className="page-sub">Якість потоку</div>
                     </div>
                   </div>
 
                   <div className="page-actions" style={{ marginTop: 14, marginLeft: 0 }}>
+                    <Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(stream.provider_video_id ? `https://www.youtube.com/watch?v=${stream.provider_video_id}` : window.location.href)}>🔗 Посилання</Button>
                     <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
-                    <Button size="sm" variant="ghost" onClick={() => openLiveEditor(stream)}>✏️ Редагувати</Button>
-                    <Button size="sm" variant="outline" className="ml-auto" onClick={() => handleOpenSchedule(stream)}>🗓️ Розклад</Button>
-                  </div>
-                </div>
-              </article>
-            )
-          }) : readyEntries.length > 0 ? readyEntries.map(({ stream }) => {
-            const sourceName = getStreamSourceLabel(stream)
-            const destinationLabel = (stream.destinations ?? []).map((d) => d.name).join(', ') || 'Канал не вказано'
-            const isOptimisticallyLive = optimisticRunningStreamIds.includes(stream.id)
-
-            return (
-              <article key={stream.id} className="card stream-summary-card">
-                <div className="card-content">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                    <Badge variant={isOptimisticallyLive ? 'live' : 'idle'}>
-                      {isOptimisticallyLive ? 'У ЕФІРІ' : 'Готово'}
-                    </Badge>
-                    <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
-                    <span className="page-sub" style={{ marginLeft: 'auto' }}>{destinationLabel}</span>
-                    {isOptimisticallyLive ? (
-                      <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)} disabled>
-                        ⏳ Запускається
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => handleStartStream(stream)}
-                        disabled={pendingStartStreamId === stream.id}
-                      >
-                        {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '▶ Запустити'}
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="stream-row">
-                    <div className="stream-thumb">🎬</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--txt-3)' }}>
-                        Джерело
-                      </div>
-                      <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{sourceName}</div>
-                    </div>
-                    <div className="page-actions" style={{ marginLeft: 'auto' }}>
-                      <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
-                      <Button size="sm" variant="ghost" onClick={() => openLiveEditor(stream)}>✏️ Редагувати</Button>
-                    </div>
+                    <Button size="sm" variant="outline" className="ml-auto" onClick={() => openLiveEditor(stream)}>Більше дій ▾</Button>
                   </div>
                 </div>
               </article>

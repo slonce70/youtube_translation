@@ -36,6 +36,45 @@ class MockWebSocket {
   }
 }
 
+
+function createStream(overrides: Partial<Stream> = {}): Stream {
+  return {
+    id: 'stream-1',
+    playlist_id: null,
+    source_type: 'assets',
+    name: 'Running stream',
+    status: 'running',
+    pid: 123,
+    log_path: null,
+    error_message: null,
+    started_at: '2026-04-03T16:58:30.812952Z',
+    stopped_at: null,
+    video_collection_id: null,
+    audio_collection_id: null,
+    mix_mode: 'video_only',
+    settings_json: {},
+    total_duration_seconds: 0,
+    created_at: '2026-04-03T16:58:18.337229Z',
+    updated_at: '2026-04-03T16:58:18.337229Z',
+    stream_assets: [],
+    destinations: [],
+    scheduled_start_enabled: false,
+    scheduled_start_time: null,
+    scheduled_stop_time: null,
+    uptime_seconds: 42,
+    runtime_restart: {
+      enabled: true,
+      state: 'idle',
+      attempts: 0,
+      max_attempts: 5,
+      next_restart_at: null,
+      last_restart_at: null,
+      last_failure_at: null,
+    },
+    ...overrides,
+  }
+}
+
 function TestHarness() {
   useStreamSocket('user-1')
   return null
@@ -82,43 +121,39 @@ describe('useStreamSocket', () => {
     expect(setQueryData).toHaveBeenCalledTimes(1)
     const updater = setQueryData.mock.calls[0][1] as (streams: Stream[] | undefined) => Stream[] | undefined
 
-    const originalStream: Stream = {
-      id: 'stream-1',
-      playlist_id: null,
-      source_type: 'assets',
-      name: 'Running stream',
-      status: 'running',
-      pid: 123,
-      log_path: null,
-      error_message: null,
-      started_at: '2026-04-03T16:58:30.812952Z',
-      stopped_at: null,
-      video_collection_id: null,
-      audio_collection_id: null,
-      mix_mode: 'video_only',
-      settings_json: {},
-      total_duration_seconds: 0,
-      created_at: '2026-04-03T16:58:18.337229Z',
-      updated_at: '2026-04-03T16:58:18.337229Z',
-      stream_assets: [],
-      destinations: [],
-      scheduled_start_enabled: false,
-      scheduled_start_time: null,
-      scheduled_stop_time: null,
-      uptime_seconds: 42,
-      runtime_restart: {
-        enabled: true,
-        state: 'idle',
-        attempts: 0,
-        max_attempts: 5,
-        next_restart_at: null,
-        last_restart_at: null,
-        last_failure_at: null,
-      },
-    }
+    const originalStream = createStream()
 
     const updated = updater([originalStream])
 
     expect(updated).toEqual([originalStream])
   })
+
+  it('preserves transitional status when websocket payload has no canonical status', async () => {
+    render(<TestHarness />)
+
+    await waitFor(() => expect(createWsToken).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+
+    const socket = MockWebSocket.instances[0]
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: 'stream_update',
+        payload: {
+          'stream-1': {
+            is_running: false,
+            uptime_seconds: 45,
+          },
+        },
+      }),
+    })
+
+    const updater = setQueryData.mock.calls[0][1] as (streams: Stream[] | undefined) => Stream[] | undefined
+    const originalStream = createStream({ status: 'stopping' })
+
+    expect(updater([originalStream])?.[0]).toMatchObject({
+      status: 'stopping',
+      uptime_seconds: 45,
+    })
+  })
+
 })

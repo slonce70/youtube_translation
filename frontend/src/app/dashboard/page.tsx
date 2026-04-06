@@ -176,7 +176,11 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="mb-4 flex-row items-center justify-between">
               <CardTitle>🔴 Активні трансляції</CardTitle>
-              <Badge variant="live"><LiveDot />Live</Badge>
+              {liveStreams.length > 0 ? (
+                <Badge variant="live"><LiveDot />Live</Badge>
+              ) : (
+                <Badge variant="idle">Немає live</Badge>
+              )}
             </CardHeader>
             <CardContent className="summary-list">
               {liveStreams.length > 0 ? liveStreams.map(({ stream, derived }) => (
@@ -206,40 +210,16 @@ export default function DashboardPage() {
                   </div>
                 </div>
               )) : (
-                <>
-                  <div className="stream-row" style={{ alignItems: 'stretch' }}>
-                    <div className="stream-thumb">📡</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>Ще немає live-ефірів</div>
-                      <div style={{ fontSize: 12, color: 'var(--txt-2)', marginTop: 4 }}>
-                        Створіть нову трансляцію, щоб керувати нею з дашборду.
-                      </div>
-                      <div style={{ marginTop: 10 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <span style={{ color: 'var(--txt-3)', fontSize: 12 }}>Здоров’я потоку</span>
-                          <span style={{ color: 'var(--txt-2)', fontSize: 12, fontWeight: 600, marginLeft: 'auto' }}>
-                            Очікує запуску
-                          </span>
-                        </div>
-                        <ProgressBar value={0} />
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/library?tab=assets')}>Файли</Button>
-                      <Button size="sm" onClick={() => router.push('/dashboard/streaming?new=1')}>Запустити</Button>
-                    </div>
-                  </div>
-                  <div className="stream-row">
-                    <div className="stream-thumb">🗓️</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>Або заплануйте ефір</div>
-                      <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
-                        Використайте розклад, щоб підготувати події наперед.
-                      </div>
-                    </div>
+                <div className="empty-state" style={{ padding: '28px 16px' }}>
+                  <div className="empty-icon">📡</div>
+                  <div className="empty-title">Активних live-ефірів немає</div>
+                  <div className="empty-sub">Створіть трансляцію або заплануйте ефір — активні стріми з’являться тут тільки після запуску.</div>
+                  <div className="page-actions" style={{ marginTop: 14, marginLeft: 0, justifyContent: 'center' }}>
+                    <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/library?tab=assets')}>Файли</Button>
+                    <Button size="sm" onClick={() => router.push('/dashboard/streaming?new=1')}>Запустити</Button>
                     <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/schedule')}>Розклад</Button>
                   </div>
-                </>
+                </div>
               )}
             </CardContent>
           </Card>

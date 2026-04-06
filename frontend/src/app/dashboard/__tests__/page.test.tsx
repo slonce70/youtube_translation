@@ -100,4 +100,14 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('Дашборд')).toBeInTheDocument())
     expect(screen.getByText('🎙️ Почати трансляцію')).toBeInTheDocument()
   })
+
+  it('does not render an empty live placeholder as an active live stream', async () => {
+    renderWithProviders(<DashboardPage />)
+
+    await waitFor(() => expect(screen.getByText('Активних live-ефірів немає')).toBeInTheDocument())
+    expect(screen.getByText('Немає live')).toBeInTheDocument()
+    expect(screen.queryByText('Ще немає live-ефірів')).not.toBeInTheDocument()
+    expect(screen.queryByText('Очікує запуску')).not.toBeInTheDocument()
+  })
+
 })
