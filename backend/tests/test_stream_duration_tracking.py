@@ -346,6 +346,11 @@ async def test_supervisor_status_fails_closed_when_heartbeat_is_stale(
             "stream_runtime_restart_jitter_seconds",
             0,
         )
+        monkeypatch.setattr(
+            streams_control.default_settings,
+            "stream_runtime_restart_max_attempts",
+            5,
+        )
 
         async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
             return {"state": "RUNNING", "details": "pid 654"}

@@ -21,6 +21,7 @@ async def test_periodic_reconciliation_marks_running_stream_error_when_heartbeat
     monkeypatch.setattr(settings, "stream_dir", str(tmp_path))
     monkeypatch.setattr(settings, "stream_runtime_mode", "supervisor")
     monkeypatch.setattr(settings, "stream_runtime_auto_restart_enabled", True)
+    monkeypatch.setattr(settings, "stream_runtime_restart_max_attempts", 5)
     monkeypatch.setattr(settings, "stream_runtime_heartbeat_ttl_seconds", 15)
     monkeypatch.setattr(settings, "stream_runtime_restart_backoff_seconds", 0)
     monkeypatch.setattr(settings, "stream_runtime_restart_backoff_max_seconds", 0)
@@ -91,6 +92,7 @@ async def test_periodic_reconciliation_repairs_runtime_lease_from_fresh_heartbea
     monkeypatch.setattr(settings, "stream_dir", str(tmp_path))
     monkeypatch.setattr(settings, "stream_runtime_mode", "supervisor")
     monkeypatch.setattr(settings, "stream_runtime_auto_restart_enabled", True)
+    monkeypatch.setattr(settings, "stream_runtime_restart_max_attempts", 5)
     monkeypatch.setattr(settings, "stream_runtime_heartbeat_ttl_seconds", 15)
     monkeypatch.setattr("app.core.stream_reconciler.supervisor_enabled", lambda: True)
     monkeypatch.setattr("app.core.stream_reconciler.systemd_enabled", lambda: False)
@@ -148,6 +150,7 @@ async def test_periodic_reconciliation_schedules_restart_when_runtime_exits(
 
     monkeypatch.setattr(settings, "stream_runtime_mode", "supervisor")
     monkeypatch.setattr(settings, "stream_runtime_auto_restart_enabled", True)
+    monkeypatch.setattr(settings, "stream_runtime_restart_max_attempts", 5)
     monkeypatch.setattr(settings, "stream_runtime_restart_backoff_seconds", 0)
     monkeypatch.setattr(settings, "stream_runtime_restart_backoff_max_seconds", 0)
     monkeypatch.setattr(settings, "stream_runtime_restart_jitter_seconds", 0)
