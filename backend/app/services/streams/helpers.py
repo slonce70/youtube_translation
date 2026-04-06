@@ -265,6 +265,9 @@ async def collect_live_output_compatibility_violations(
     violations: List[Dict[str, Any]] = []
 
     for index, asset in enumerate(selection.all_assets()):
+        if not asset.get("compatible_for_copy", False):
+            continue
+
         asset_path = asset.get("path")
         if not asset_path:
             continue
