@@ -262,16 +262,22 @@ export default function StreamingPage() {
       }
       return api.streams.start(streamId)
     },
-    onSuccess: (_, variables) => {
-      toast.success(streamingToasts('stream.started'))
+    onMutate: async (variables) => {
       setActiveStreamTab('live')
       setOptimisticRunningStreamIds((current) =>
         current.includes(variables.streamId) ? current : [...current, variables.streamId]
       )
+      toast.info('Запускаємо трансляцію...')
+    },
+    onSuccess: (_, variables) => {
+      toast.success(streamingToasts('stream.started'))
       queryClient.invalidateQueries({ queryKey: ['stream-status', user?.id, variables.streamId] })
       queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
     },
     onError: (error: Error & { quality?: StreamQualityResponse }, variables) => {
+      if (variables?.streamId) {
+        setOptimisticRunningStreamIds((current) => current.filter((id) => id !== variables.streamId))
+      }
       if (error.quality && !error.quality.ok) {
         openQualityGate({ streamName: variables?.streamName, quality: error.quality })
         return
@@ -492,23 +498,37 @@ export default function StreamingPage() {
     () =>
       presentedStreams.filter(
         ({ stream, derived }) =>
+          optimisticRunningStreamIds.includes(stream.id) ||
+          derived.isRunning ||
           isProviderLive(stream.provider_status) ||
           Boolean(stream.provider_mismatch) ||
           derived.group === 'attention',
       ),
-    [presentedStreams],
+    [optimisticRunningStreamIds, presentedStreams],
   )
   const runningStreams = useMemo(
-    () => presentedStreams.filter(({ stream }) => isProviderLive(stream.provider_status)).map(({ stream }) => stream),
-    [presentedStreams],
+    () =>
+      presentedStreams
+        .filter(
+          ({ stream, derived }) =>
+            optimisticRunningStreamIds.includes(stream.id) ||
+            derived.isRunning ||
+            isProviderLive(stream.provider_status),
+        )
+        .map(({ stream }) => stream),
+    [optimisticRunningStreamIds, presentedStreams],
   )
   const scheduledEntries = useMemo(
     () => presentedStreams.filter(({ derived }) => derived.group === 'scheduled'),
     [presentedStreams],
   )
   const archiveEntries = useMemo(
-    () => presentedStreams.filter(({ derived }) => derived.group === 'stopped'),
-    [presentedStreams],
+    () =>
+      presentedStreams.filter(
+        ({ stream, derived }) =>
+          derived.group === 'stopped' && !optimisticRunningStreamIds.includes(stream.id),
+      ),
+    [optimisticRunningStreamIds, presentedStreams],
   )
   const readyEntries = archiveEntries
 
@@ -659,15 +679,20 @@ export default function StreamingPage() {
             const quotaLabel = derived.quotaReached
               ? '0'
               : formatLimitValue(derived.remainingDailySeconds ?? null)
+            const isOptimisticallyStarting = pendingStartStreamId === stream.id || (optimisticRunningStreamIds.includes(stream.id) && !derived.isRunning)
 
             return (
               <article key={stream.id} className="card stream-summary-card" style={{ borderColor: 'rgba(34,197,94,.25)' }}>
                 <div className="card-content">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                    <Badge variant={getProviderBadgeVariant(stream.provider_status)}>{formatProviderStatus(stream.provider_status)}</Badge>
+                    <Badge variant={isOptimisticallyStarting ? 'warn' : getProviderBadgeVariant(stream.provider_status)}>
+                      {isOptimisticallyStarting ? 'Запускається' : formatProviderStatus(stream.provider_status)}
+                    </Badge>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
                     <span className="page-sub" style={{ marginLeft: 'auto' }}>{destinationLabel}</span>
-                    <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)}>■ Зупинити</Button>
+                    <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)} disabled={isOptimisticallyStarting}>
+                      {isOptimisticallyStarting ? '⏳ Запускається' : '■ Зупинити'}
+                    </Button>
                   </div>
 
                   <div className="stream-row active" style={{ marginBottom: 14 }}>
@@ -750,13 +775,16 @@ export default function StreamingPage() {
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
                     <span className="page-sub" style={{ marginLeft: 'auto' }}>{destinationLabel}</span>
                     {isOptimisticallyLive ? (
-                      <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)}>■ Зупинити</Button>
+                      <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)} disabled>
+                        ⏳ Запускається
+                      </Button>
                     ) : (
                       <Button
                         size="sm"
                         onClick={() => handleStartStream(stream)}
+                        disabled={pendingStartStreamId === stream.id}
                       >
-                        ▶ Запустити
+                        {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '▶ Запустити'}
                       </Button>
                     )}
                   </div>
