@@ -1689,7 +1689,8 @@ export default function LibraryPage() {
                     onChange={(event) => setAssetSearchQuery(event.target.value)}
                     placeholder={tLibrary('assets.search.placeholder')}
                     aria-label={tLibrary('assets.search.placeholder')}
-                    className="pl-9 pr-10"
+                    className="pr-10"
+                    style={{ paddingLeft: 40, paddingRight: 40 }}
                   />
                   {assetSearchQuery.trim() ? (
                     <Button
