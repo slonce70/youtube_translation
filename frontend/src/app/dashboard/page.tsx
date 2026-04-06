@@ -58,7 +58,10 @@ export default function DashboardPage() {
     const storageUsedBytes =
       quota?.storage.used_bytes ?? (assets ?? []).reduce((total, asset) => total + (asset.size_bytes ?? 0), 0)
     const hoursUsed = quota?.streaming_hours.used ?? 0
-    const totalLifetimeHours = (streams ?? []).reduce((total, stream) => total + ((stream.total_duration_seconds ?? 0) / 3600), 0)
+    const totalLifetimeHours = presentedStreams.reduce(
+      (total, { derived }) => total + ((derived.totalDurationSeconds ?? 0) / 3600),
+      0,
+    )
 
     return {
       activeStreams,
@@ -67,7 +70,7 @@ export default function DashboardPage() {
       totalLifetimeHours,
       storageUsedBytes,
     }
-  }, [assets, presentedStreams, quota, streams])
+  }, [assets, presentedStreams, quota])
 
   const storageBreakdown = useMemo(() => {
     const totals = (assets ?? []).reduce(
