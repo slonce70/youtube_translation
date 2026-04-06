@@ -5,7 +5,7 @@ import type { FormEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
-import { CopyField } from '@/components/ui/CopyField'
+import { Badge } from '@/components/ui/Badge'
 import type { DestinationFormState, TranslationFn } from '@/app/dashboard/streaming/types'
 
 interface AddChannelModalProps {
@@ -83,24 +83,42 @@ export function AddChannelModal({
           </div>
         </div>
 
-        {editingChannelId ? (
-          <CopyField value={channelForm.rtmps_url} copyLabel="Копіювати URL" copiedMessage="RTMPS URL скопійовано" />
-        ) : null}
-
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt-3)', marginBottom: 8 }}>
             АБО — швидке підключення через OAuth
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Button type="button" variant="outline" size="sm" className="flex-1 min-w-[180px]">
-              <span style={{ color: '#ff0000' }}>▶</span> YouTube OAuth
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="flex-1 min-w-[180px] justify-between"
+              disabled
+              title="Скоро"
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#ff0000' }}>▶</span>
+                <span>YouTube OAuth</span>
+              </span>
+              <Badge variant="warn" style={{ fontSize: 10, padding: '2px 6px' }}>Скоро</Badge>
             </Button>
-            <Button type="button" variant="outline" size="sm" className="flex-1 min-w-[180px]">
-              <span style={{ color: '#9146ff' }}>🎮</span> Twitch OAuth
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="flex-1 min-w-[180px] justify-between"
+              disabled
+              title="Скоро"
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#9146ff' }}>🎮</span>
+                <span>Twitch OAuth</span>
+              </span>
+              <Badge variant="warn" style={{ fontSize: 10, padding: '2px 6px' }}>Скоро</Badge>
             </Button>
           </div>
           <div style={{ color: 'var(--txt-3)', fontSize: 12, marginTop: 8 }}>
-            OAuth заповнить URL і ключ автоматично — рекомендовано для початківців.
+            OAuth-підключення скоро з’явиться. Поки що додайте канал вручну через RTMPS URL і stream key.
           </div>
         </div>
 
