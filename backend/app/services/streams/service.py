@@ -41,6 +41,7 @@ from app.schemas.api import (
     StreamQueueAppend,
     StreamScheduleUpdate,
 )
+from app.services.youtube import YoutubeProviderStatusService
 
 from .helpers import (
     ALLOWED_MIX_MODES,
@@ -77,7 +78,9 @@ class StreamService:
             .options(*_load_stream_list_options())
         )
         result = await self.db.execute(query)
-        return result.scalars().all()
+        streams = result.scalars().all()
+        await self._enrich_streams(streams)
+        return streams
 
     async def create_stream(self, stream_data: StreamCreate) -> Stream:
         playlist = None
@@ -208,6 +211,7 @@ class StreamService:
                 detail="Stream created but could not be loaded",
             )
 
+        await self._enrich_streams([loaded_stream])
         return loaded_stream
 
     async def get_stream(self, stream_id: UUID) -> Stream:
@@ -217,6 +221,7 @@ class StreamService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Stream not found",
             )
+        await self._enrich_streams([stream])
         return stream
 
     async def delete_stream(
@@ -301,6 +306,7 @@ class StreamService:
                 detail="Stream updated but could not be loaded",
             )
 
+        await self._enrich_streams([updated_stream])
         return updated_stream
 
     async def _build_schedule_config(
@@ -484,6 +490,7 @@ class StreamService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Stream not found after update",
             )
+        await self._enrich_streams([updated_stream])
         return updated_stream
 
     async def enqueue_stream_asset(
@@ -698,6 +705,9 @@ class StreamService:
                 detail="Stream not found",
             )
         return stream
+
+    async def _enrich_streams(self, streams: Sequence[Stream]) -> None:
+        await YoutubeProviderStatusService(self.db).enrich_streams(list(streams))
 
 
 def load_stream_with_relations_options():  # pragma: no cover - helper for readability

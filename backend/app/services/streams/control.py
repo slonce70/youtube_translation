@@ -60,6 +60,7 @@ from app.schemas.api import (
     StreamStatus,
     _stream_runtime_restart_state,
 )
+from app.services.youtube import YoutubeProviderStatusService
 from app.streaming.ffmpeg_manager import ffmpeg_manager as default_ffmpeg_manager
 from app.streaming.hot_swap import hot_swap_manager
 
@@ -132,9 +133,7 @@ class StreamControlService:
         )
         destinations = gather_stream_destinations(stream)
         quality["violations"].extend(
-            await collect_live_output_compatibility_violations(
-                selection, destinations
-            )
+            await collect_live_output_compatibility_violations(selection, destinations)
         )
         if quality["violations"]:
             quality["ok"] = False
@@ -508,7 +507,13 @@ class StreamControlService:
         self._clear_schedule(stream)
 
     async def get_stream_status(self, stream_id: UUID) -> StreamStatus:
-        stream = await self._get_stream_basic(stream_id)
+        stream = await load_stream_with_relations(self.db, self.user_id, stream_id)
+        if not stream:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Stream not found",
+            )
+        await YoutubeProviderStatusService(self.db).enrich_streams([stream])
 
         if systemd_enabled():
             is_running = await systemd_is_active(stream_id)
@@ -855,6 +860,7 @@ class StreamControlService:
 
         status_value = status_override or stream.status
         error_value = stream.error_message if error_message is None else error_message
+        provider_summary = _provider_summary_for_stream(stream)
 
         return StreamStatus(
             id=stream.id,
@@ -867,6 +873,14 @@ class StreamControlService:
             daily_limit_seconds=daily_limit_seconds,
             remaining_daily_seconds=remaining_daily_seconds,
             quota_limit_reached=quota_limit_reached,
+            provider_status=provider_summary["provider_status"],
+            provider_viewers=provider_summary["provider_viewers"],
+            provider_last_checked_at=provider_summary["provider_last_checked_at"],
+            provider_video_id=provider_summary["provider_video_id"],
+            provider_mismatch=(
+                provider_summary["provider_status"] != "unknown"
+                and (is_running != (provider_summary["provider_status"] == "live"))
+            ),
             runtime_restart=_runtime_restart_payload(stream, status_value=status_value),
         )
 
@@ -1105,6 +1119,73 @@ def _uptime_seconds(stream: Stream) -> int:
 
 def _has_pending_runtime_restart(stream: Stream) -> bool:
     return _aware(stream.runtime_next_restart_at) is not None
+
+
+def _provider_summary_for_stream(stream: Stream) -> dict[str, object]:
+    loaded_destinations = getattr(stream, "__dict__", {}).get("stream_destinations")
+    if loaded_destinations is None:
+        return {
+            "provider_status": "unknown",
+            "provider_viewers": None,
+            "provider_last_checked_at": None,
+            "provider_video_id": None,
+        }
+
+    connected_destinations = []
+    for link in loaded_destinations or []:
+        destination = link.destination
+        if destination is not None and getattr(
+            destination, "provider_connection_id", None
+        ):
+            connected_destinations.append(destination)
+
+    if not connected_destinations:
+        return {
+            "provider_status": "unknown",
+            "provider_viewers": None,
+            "provider_last_checked_at": None,
+            "provider_video_id": None,
+        }
+
+    statuses = {
+        getattr(destination, "_provider_status", "unknown")
+        for destination in connected_destinations
+    }
+    if "live" in statuses:
+        provider_status = "live"
+    elif "stale" in statuses:
+        provider_status = "stale"
+    elif statuses == {"offline"}:
+        provider_status = "offline"
+    else:
+        provider_status = "unknown"
+
+    viewer_pairs = {
+        (
+            str(getattr(destination, "provider_connection_id", "")),
+            getattr(destination, "_provider_viewers", None),
+        )
+        for destination in connected_destinations
+        if getattr(destination, "_provider_viewers", None) is not None
+    }
+    last_checked = [
+        getattr(destination, "_provider_last_checked_at", None)
+        for destination in connected_destinations
+        if getattr(destination, "_provider_last_checked_at", None) is not None
+    ]
+    video_ids = {
+        getattr(destination, "_provider_video_id", None)
+        for destination in connected_destinations
+        if getattr(destination, "_provider_video_id", None)
+    }
+    return {
+        "provider_status": provider_status,
+        "provider_viewers": (
+            sum(viewer for _, viewer in viewer_pairs) if viewer_pairs else None
+        ),
+        "provider_last_checked_at": max(last_checked) if last_checked else None,
+        "provider_video_id": next(iter(video_ids)) if len(video_ids) == 1 else None,
+    }
 
 
 __all__ = ["StreamControlService"]

@@ -32,6 +32,30 @@
     "passwordTooShort": "Пароль має містити щонайменше 8 символів",
     "passwordMismatch": "Паролі не збігаються",
     "missingEmail": "В акаунті відсутня електронна адреса",
-    "currentIncorrect": "Поточний пароль неправильний"
+    "currentIncorrect": "Поточний пароль неправильний",
+    "youtubeConnected": "YouTube підключено",
+    "youtubeConnectFailed": "Не вдалося підключити YouTube",
+    "youtubeDisconnected": "YouTube connection видалено"
+  },
+  "provider": {
+    "title": "📺 YouTube connections",
+    "description": "Тут показуємо лише реальний YouTube provider status. Twitch навмисно виключено з MVP.",
+    "connectCta": "▶ Підключити YouTube",
+    "disconnectCta": "Відключити",
+    "emptyTitle": "Ще немає YouTube connection",
+    "emptyDescription": "Підключіть власний канал через OAuth, а потім прив’яжіть його до RTMPS destination на сторінці «Трансляції».",
+    "emptyHint": "Без provider link dashboard і topbar не показуватимуть фейковий live-статус.",
+    "notConnected": "Не підключено",
+    "channelId": "Channel ID: {id}",
+    "lastSync": "Останній sync {value}",
+    "lastError": "Остання помилка: {value}",
+    "viewers": "{count} глядачів",
+    "startFailed": "Не вдалося почати YouTube OAuth",
+    "status": {
+      "live": "YouTube live",
+      "offline": "YouTube offline",
+      "stale": "YouTube stale",
+      "unknown": "YouTube unknown"
+    }
   }
 }

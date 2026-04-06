@@ -92,4 +92,26 @@ describe('api client', () => {
     )
     expect(result).toEqual({ upload_id: 'upload-1', status: 'validating' })
   })
+
+  it('maps youtube oauth start params to the API query string', async () => {
+    getAccessToken.mockResolvedValue('token')
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ auth_url: 'https://accounts.google.com/o/oauth2/v2/auth?state=test' }),
+    })
+
+    const result = await api.youtube.oauthStart({
+      redirect_origin: 'http://localhost:3000',
+      redirect_path: '/dashboard/profile',
+    })
+
+    const url = new URL((global.fetch as jest.Mock).mock.calls[0][0], 'http://localhost')
+    expect(url.pathname).toContain('/api/youtube/oauth/start')
+    expect(url.searchParams.get('redirect_origin')).toBe('http://localhost:3000')
+    expect(url.searchParams.get('redirect_path')).toBe('/dashboard/profile')
+    expect(result).toEqual({
+      auth_url: 'https://accounts.google.com/o/oauth2/v2/auth?state=test',
+    })
+  })
 })

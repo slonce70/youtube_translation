@@ -211,6 +211,13 @@ export interface Destination {
   name: string
   rtmps_url: string
   enabled: boolean
+  provider_connection_id?: string | null
+  provider_kind?: 'youtube' | null
+  provider_channel_id?: string | null
+  provider_status?: 'live' | 'offline' | 'unknown' | 'stale'
+  provider_viewers?: number | null
+  provider_last_checked_at?: string | null
+  provider_video_id?: string | null
   stream_key_masked: string
   created_at: string
   updated_at: string
@@ -221,6 +228,7 @@ export interface DestinationCreatePayload {
   rtmps_url: string
   stream_key: string
   enabled: boolean
+  provider_connection_id?: string | null
 }
 
 export interface DestinationUpdatePayload {
@@ -228,6 +236,7 @@ export interface DestinationUpdatePayload {
   rtmps_url?: string
   stream_key?: string
   enabled?: boolean
+  provider_connection_id?: string | null
 }
 
 export interface StreamDestinationSummary {
@@ -235,6 +244,13 @@ export interface StreamDestinationSummary {
   name: string
   rtmps_url: string
   enabled: boolean
+  provider_connection_id?: string | null
+  provider_kind?: 'youtube' | null
+  provider_channel_id?: string | null
+  provider_status?: 'live' | 'offline' | 'unknown' | 'stale'
+  provider_viewers?: number | null
+  provider_last_checked_at?: string | null
+  provider_video_id?: string | null
 }
 
 export type StreamStatusValue =
@@ -302,6 +318,11 @@ export interface Stream {
   updated_at: string
   stream_assets?: StreamAssetLink[]
   destinations?: StreamDestinationSummary[]
+  provider_status?: 'live' | 'offline' | 'unknown' | 'stale'
+  provider_viewers?: number | null
+  provider_last_checked_at?: string | null
+  provider_video_id?: string | null
+  provider_mismatch?: boolean
   scheduled_start_enabled?: boolean
   scheduled_start_time?: string | null
   scheduled_stop_time?: string | null
@@ -320,7 +341,31 @@ export interface StreamStatusResponse {
   daily_limit_seconds?: number | null
   remaining_daily_seconds?: number | null
   quota_limit_reached?: boolean | null
+  provider_status?: 'live' | 'offline' | 'unknown' | 'stale'
+  provider_viewers?: number | null
+  provider_last_checked_at?: string | null
+  provider_video_id?: string | null
+  provider_mismatch?: boolean
   runtime_restart: StreamRuntimeRestartInfo
+}
+
+export interface YoutubeConnection {
+  id: string
+  youtube_channel_id: string
+  youtube_channel_title?: string | null
+  scopes: string[]
+  created_at: string
+  updated_at: string
+  last_sync_at?: string | null
+  last_sync_error?: string | null
+  provider_status?: 'live' | 'offline' | 'unknown' | 'stale'
+  provider_viewers?: number | null
+  provider_last_checked_at?: string | null
+  provider_video_id?: string | null
+}
+
+export interface YoutubeOAuthStartResponse {
+  auth_url: string
 }
 
 export interface StreamLogsResponse {

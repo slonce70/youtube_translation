@@ -40,6 +40,8 @@ import type {
   StreamQueueResponse,
   UploadTokenResponse,
   UploadIngest,
+  YoutubeConnection,
+  YoutubeOAuthStartResponse,
 } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api'
@@ -300,6 +302,14 @@ export const api = {
     update: (id: string, data: DestinationUpdatePayload) =>
       apiRequest<Destination>(`/destinations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiRequest<void>(`/destinations/${id}`, { method: 'DELETE' }),
+  },
+
+  youtube: {
+    oauthStart: (params: { redirect_origin: string; redirect_path?: string }) =>
+      apiRequest<YoutubeOAuthStartResponse>('/youtube/oauth/start', { params }),
+    listConnections: () => apiRequest<YoutubeConnection[]>('/youtube/connections'),
+    deleteConnection: (id: string) =>
+      apiRequest<void>(`/youtube/connections/${id}`, { method: 'DELETE' }),
   },
 
   streams: {

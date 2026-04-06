@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class StreamKeyEncryption:
-    """Handle encryption/decryption of YouTube stream keys"""
+    """Handle encryption/decryption of sensitive provider secrets."""
 
     def __init__(self, encryption_key: str, salt: Optional[bytes] = None):
         """
@@ -39,7 +39,7 @@ class StreamKeyEncryption:
 
     def encrypt(self, stream_key: str) -> str:
         """
-        Encrypt YouTube stream key.
+        Encrypt a sensitive provider value.
 
         Args:
             stream_key: Plain text stream key
@@ -56,7 +56,7 @@ class StreamKeyEncryption:
 
     def decrypt(self, encrypted_key: str) -> str:
         """
-        Decrypt YouTube stream key.
+        Decrypt a sensitive provider value.
 
         Args:
             encrypted_key: Base64 encoded encrypted key
@@ -109,3 +109,13 @@ def decrypt_stream_key(encrypted_key: str) -> str:
 def mask_stream_key(key: str) -> str:
     """Helper function to mask stream key"""
     return encryption.mask_key(key)
+
+
+def encrypt_secret(value: str) -> str:
+    """Encrypt a generic provider secret/token."""
+    return encryption.encrypt(value)
+
+
+def decrypt_secret(value: str) -> str:
+    """Decrypt a generic provider secret/token."""
+    return encryption.decrypt(value)
