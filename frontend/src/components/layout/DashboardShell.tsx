@@ -6,6 +6,8 @@ import { api } from '@/lib/api'
 import type { Stream } from '@/lib/types'
 import { useDashboardContext } from '@/app/dashboard/dashboard-context'
 import { CommandPalette } from '@/components/ui/CommandPalette'
+import { useStreamStatusMap } from '@/app/dashboard/streaming/hooks/useStreamStatusMap'
+import { deriveStreamState } from '@/lib/stream-state'
 import { Sidebar, readSidebarCollapsed, writeSidebarCollapsed } from './Sidebar'
 import { Topbar } from './Topbar'
 
@@ -27,6 +29,7 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
     refetchInterval: 10000,
     refetchOnWindowFocus: true,
   })
+  const liveStatusMap = useStreamStatusMap(streams, user?.id)
 
   useEffect(() => {
     setCollapsed(readSidebarCollapsed())
@@ -44,8 +47,11 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
   }, [])
 
   const liveCount = useMemo(
-    () => (streams ?? []).filter((stream) => ['running', 'starting', 'stopping'].includes(stream.status)).length,
-    [streams],
+    () =>
+      (streams ?? []).filter((stream) =>
+        deriveStreamState(stream, liveStatusMap.get(stream.id)).isRunning,
+      ).length,
+    [liveStatusMap, streams],
   )
 
   const commandItems = useMemo(

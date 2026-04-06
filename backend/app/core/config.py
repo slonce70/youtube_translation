@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # FFmpeg
     ffmpeg_bin: str = "/usr/bin/ffmpeg"
     ffprobe_bin: str = "/usr/bin/ffprobe"
-    ffmpeg_auto_restart_attempts: int = 1
+    ffmpeg_auto_restart_attempts: int = 0
     ffmpeg_restart_backoff_seconds: int = 5
     ffmpeg_restart_backoff_max_seconds: int = 60
     placeholder_video_path: Optional[str] = None
