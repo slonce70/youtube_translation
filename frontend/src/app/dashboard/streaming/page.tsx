@@ -40,7 +40,6 @@ import { deriveStreamState } from '@/lib/stream-state'
 import {
   getProviderStatusKey,
   getProviderBadgeVariant,
-  isProviderLive,
 } from '@/lib/provider-status'
 
 type DestinationFormState = {
@@ -163,8 +162,12 @@ export default function StreamingPage() {
   }, [audioCollections])
 
   const formatLimitValue = (value?: number | null) => (value == null ? '∞' : value.toString())
+  const hasProviderConnection = (stream: Stream) =>
+    Boolean(stream.destinations?.some((destination) => destination.provider_connection_id))
   const formatProviderStatus = (status?: string | null) =>
     tStreaming(`provider.status.${getProviderStatusKey(status)}`)
+  const shouldShowProviderBadge = (destination: Destination) =>
+    Boolean(destination.provider_connection_id && destination.provider_status && destination.provider_status !== 'unknown')
   const getStreamSourceLabel = (stream: Stream) => {
     const primaryDestinationUrl = stream.destinations?.[0]?.rtmps_url?.trim()
     if (primaryDestinationUrl) {
@@ -178,6 +181,7 @@ export default function StreamingPage() {
   }
   const formatProviderSummary = (destination: Destination) => {
     if (!destination.provider_connection_id) return null
+    if (!destination.provider_viewers && (!destination.provider_status || destination.provider_status === 'unknown')) return null
     const base = formatProviderStatus(destination.provider_status)
     if (typeof destination.provider_viewers === 'number') {
       return `${base} · ${tStreaming('provider.viewers', { count: destination.provider_viewers })}`
@@ -500,8 +504,6 @@ export default function StreamingPage() {
         ({ stream, derived }) =>
           optimisticRunningStreamIds.includes(stream.id) ||
           derived.isRunning ||
-          isProviderLive(stream.provider_status) ||
-          Boolean(stream.provider_mismatch) ||
           derived.group === 'attention',
       ),
     [optimisticRunningStreamIds, presentedStreams],
@@ -512,8 +514,7 @@ export default function StreamingPage() {
         .filter(
           ({ stream, derived }) =>
             optimisticRunningStreamIds.includes(stream.id) ||
-            derived.isRunning ||
-            isProviderLive(stream.provider_status),
+            derived.isRunning,
         )
         .map(({ stream }) => stream),
     [optimisticRunningStreamIds, presentedStreams],
@@ -556,7 +557,7 @@ export default function StreamingPage() {
           <div style={{ fontSize: 24 }}>🔴</div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{runningStreams.length}</div>
-            <div className="page-sub">{tStreaming('provider.liveLabel')}</div>
+            <div className="page-sub">Активних ефірів</div>
           </div>
         </div>
         <div className="stat-strip-card">
@@ -616,7 +617,7 @@ export default function StreamingPage() {
                 <Badge variant={destination.enabled ? 'live' : 'idle'}>
                   {destination.enabled ? 'Активний' : 'Не використовується'}
                 </Badge>
-                {destination.provider_connection_id ? (
+                {shouldShowProviderBadge(destination) ? (
                   <Badge variant={getProviderBadgeVariant(destination.provider_status)}>
                     {formatProviderStatus(destination.provider_status)}
                   </Badge>
@@ -685,8 +686,8 @@ export default function StreamingPage() {
               <article key={stream.id} className="card stream-summary-card" style={{ borderColor: 'rgba(34,197,94,.25)' }}>
                 <div className="card-content">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                    <Badge variant={isOptimisticallyStarting ? 'warn' : getProviderBadgeVariant(stream.provider_status)}>
-                      {isOptimisticallyStarting ? 'Запускається' : formatProviderStatus(stream.provider_status)}
+                    <Badge variant={isOptimisticallyStarting ? 'warn' : 'live'}>
+                      {isOptimisticallyStarting ? 'Запускається' : 'У ЕФІРІ'}
                     </Badge>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
                     <span className="page-sub" style={{ marginLeft: 'auto' }}>{destinationLabel}</span>
@@ -704,22 +705,28 @@ export default function StreamingPage() {
                       <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{sourceName}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>{tStreaming('provider.viewersLabel')}</div>
-                      <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>
-                        {stream.provider_viewers ?? '—'}
-                      </div>
+                      {hasProviderConnection(stream) && stream.provider_viewers != null ? (
+                        <>
+                          <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>{tStreaming('provider.viewersLabel')}</div>
+                          <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>
+                            {stream.provider_viewers}
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-                    <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
-                      <div>
-                        <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>
-                          {stream.provider_viewers ?? '—'}
+                  <div style={{ display: 'grid', gridTemplateColumns: hasProviderConnection(stream) && stream.provider_viewers != null ? 'repeat(4,1fr)' : 'repeat(3,1fr)', gap: 10 }}>
+                    {hasProviderConnection(stream) && stream.provider_viewers != null ? (
+                      <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
+                        <div>
+                          <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>
+                            {stream.provider_viewers}
+                          </div>
+                          <div className="page-sub">{tStreaming('provider.viewersLabel')}</div>
                         </div>
-                        <div className="page-sub">{tStreaming('provider.viewersLabel')}</div>
                       </div>
-                    </div>
+                    ) : null}
                     <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
                       <div>
                         <div style={{ fontSize: 15, fontWeight: 700 }}>{formatLimitValue(derived.totalDurationSeconds ?? 0)}</div>
@@ -739,18 +746,6 @@ export default function StreamingPage() {
                       </div>
                     </div>
                   </div>
-
-                  {stream.provider_mismatch ? (
-                    <div className="stream-row" style={{ marginTop: 12, borderColor: 'rgba(245,158,11,.2)' }}>
-                      <div style={{ color: 'var(--amber)', fontWeight: 600 }}>{tStreaming('provider.runtimeMismatchTitle')}</div>
-                      <div className="page-sub" style={{ marginLeft: 'auto' }}>
-                        {tStreaming('provider.runtimeMismatchBody', {
-                          runtime: derived.isRunning ? tStreaming('provider.runtime.running') : tStreaming('provider.runtime.stopped'),
-                          provider: formatProviderStatus(stream.provider_status),
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
 
                   <div className="page-actions" style={{ marginTop: 14, marginLeft: 0 }}>
                     <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
