@@ -18,12 +18,6 @@ import { useStreamSocket } from './streaming/hooks/useStreamSocket'
 import type { Asset, Stream, SubscriptionTierKey } from '@/lib/types'
 import { useStreamStatusMap } from './streaming/hooks/useStreamStatusMap'
 import { deriveStreamState, getStreamPriority } from '@/lib/stream-state'
-import {
-  countLiveProviders,
-  getProviderStatusKey,
-  getProviderBadgeVariant,
-  isProviderLive,
-} from '@/lib/provider-status'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { BroadcasterLevel } from '@/components/Gamification/BroadcasterLevel'
 
@@ -95,7 +89,7 @@ export default function DashboardPage() {
     }
   }, [assets, usage.storageUsedBytes])
 
-  const liveCount = countLiveProviders(streams ?? [])
+  const liveCount = presentedStreams.filter(({ derived }) => derived.isRunning).length
   const attentionCount = presentedStreams.filter(({ derived }) => derived.requiresAttention).length
   const scheduledCount = presentedStreams.filter(({ derived }) => derived.group === 'scheduled').length
   const initialLoading = (!streams && !assets && (streamsLoading || assetsLoading)) || (quotaLoading && !quota)
@@ -106,7 +100,7 @@ export default function DashboardPage() {
   const remainingStorage = Math.max(0, storageLimitBytes - usage.storageUsedBytes)
   const sortedAssets = [...(assets ?? [])].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
   const recentAssets = sortedAssets.slice(0, 3)
-  const liveStreams = presentedStreams.filter(({ stream }) => isProviderLive(stream.provider_status)).slice(0, 3)
+  const liveStreams = presentedStreams.filter(({ derived }) => derived.isRunning).slice(0, 3)
   const scheduledStreams = presentedStreams.filter(({ derived }) => derived.group === 'scheduled').slice(0, 2)
   const userLabel = user?.user_metadata?.display_name || user?.email || 'Стример'
   const subtitle = `Привіт, ${userLabel} 👋 — сьогодні ${new Intl.DateTimeFormat('uk-UA', {
@@ -136,9 +130,7 @@ export default function DashboardPage() {
 
       <div className="live-banner">
         <LiveDot />
-        <span style={{ fontWeight: 600, color: 'var(--green)' }}>
-          {dashboard('provider.liveCount', { count: liveCount })}
-        </span>
+        <span style={{ fontWeight: 600, color: 'var(--green)' }}>{liveCount} активні трансляції</span>
         <span style={{ color: 'var(--txt-2)', fontSize: 13 }}>
           {scheduledCount > 0 ? `· ${scheduledCount} заплановано` : `· ${attentionCount} потребують уваги`} · План {currentPlanLabel}
         </span>
@@ -191,20 +183,10 @@ export default function DashboardPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || 'Без назви'}</div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                      <Badge variant={getProviderBadgeVariant(stream.provider_status)}>
-                        {dashboard(`provider.status.${getProviderStatusKey(stream.provider_status)}`)}
-                      </Badge>
-                      {stream.provider_viewers != null ? (
-                        <Badge variant="indigo">
-                          {dashboard('provider.viewers', { count: stream.provider_viewers })}
-                        </Badge>
-                      ) : null}
+                      <Badge variant="live"><LiveDot />{formatDuration(derived.liveDurationSeconds ?? 0)}</Badge>
                       {(stream.destinations ?? []).slice(0, 2).map((destination) => (
                         <Badge key={destination.id} variant="indigo">{destination.name}</Badge>
                       ))}
-                      {stream.provider_mismatch ? (
-                        <Badge variant="warn">{dashboard('provider.runtimeMismatchBadge')}</Badge>
-                      ) : null}
                     </div>
                     <div style={{ marginTop: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
