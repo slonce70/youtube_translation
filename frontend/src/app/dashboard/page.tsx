@@ -19,7 +19,6 @@ import type { Asset, Stream, SubscriptionTierKey } from '@/lib/types'
 import { useStreamStatusMap } from './streaming/hooks/useStreamStatusMap'
 import { deriveStreamState, getStreamPriority } from '@/lib/stream-state'
 import { formatBytes, formatDuration } from '@/lib/utils'
-import { BroadcasterLevel } from '@/components/Gamification/BroadcasterLevel'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -363,7 +362,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <BroadcasterLevel totalStreamHours={usage.totalLifetimeHours + usage.hoursUsed} totalAssets={usage.assetsCount} />
         </div>
       </div>
     </div>
