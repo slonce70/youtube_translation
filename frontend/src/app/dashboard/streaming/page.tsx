@@ -37,6 +37,7 @@ import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamStatusMap } from './hooks/useStreamStatusMap'
 import { AddChannelModal } from '@/components/streaming/AddChannelModal'
 import { deriveStreamState } from '@/lib/stream-state'
+import { formatDuration } from '@/lib/utils'
 import {
   getProviderStatusKey,
   getProviderBadgeVariant,
@@ -729,8 +730,10 @@ export default function StreamingPage() {
                     ) : null}
                     <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
                       <div>
-                        <div style={{ fontSize: 15, fontWeight: 700 }}>{formatLimitValue(derived.totalDurationSeconds ?? 0)}</div>
-                        <div className="page-sub">Відеоряд всього</div>
+                        <div style={{ fontSize: 15, fontWeight: 700 }}>
+                          {formatDuration(Math.round(derived.totalDurationSeconds ?? 0))}
+                        </div>
+                        <div className="page-sub">Загальна тривалість</div>
                       </div>
                     </div>
                     <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
