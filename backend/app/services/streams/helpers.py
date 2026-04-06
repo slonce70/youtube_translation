@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -252,6 +253,15 @@ async def collect_live_output_compatibility_violations(
         return []
 
     validator = VideoValidator()
+    ffprobe_candidate = str(getattr(validator, "ffprobe_bin", "") or "").strip()
+    if ffprobe_candidate and not Path(ffprobe_candidate).exists() and not shutil.which(
+        ffprobe_candidate
+    ):
+        logger.warning(
+            "Skipping fresh RTMP copy-safety revalidation because ffprobe is unavailable"
+        )
+        return []
+
     violations: List[Dict[str, Any]] = []
 
     for index, asset in enumerate(selection.all_assets()):
@@ -266,6 +276,15 @@ async def collect_live_output_compatibility_violations(
         reasons = result.get("validation_errors") or [
             "Asset requires re-encoding before direct RTMP/RTMPS streaming."
         ]
+
+        if asset.get("compatible_for_copy") and all(
+            "ffprobe" in str(reason).lower() for reason in reasons
+        ):
+            logger.warning(
+                "Skipping fresh RTMP copy-safety failure for %s because ffprobe did not return usable media data",
+                asset.get("filename") or asset.get("asset_id") or asset_path,
+            )
+            continue
 
         violations.append(
             {
