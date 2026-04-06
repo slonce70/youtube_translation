@@ -26,6 +26,7 @@ from app.models.database import (
     StreamAsset,
     StreamDestination,
 )
+from app.streaming.validator import VideoValidator
 from app.services.assets.storage import (
     get_asset_storage_backend,
     get_asset_storage_key,
@@ -227,6 +228,63 @@ def gather_stream_destinations(stream: Stream) -> List[Dict[str, str]]:
     return destinations
 
 
+def _requires_rtmp_copy_safety(destinations: List[Dict[str, str]]) -> bool:
+    for destination in destinations:
+        url = (destination.get("url") or "").lower()
+        if url.startswith("rtmp://") or url.startswith("rtmps://"):
+            return True
+    return False
+
+
+async def collect_live_output_compatibility_violations(
+    selection: StreamAssetSelection,
+    destinations: List[Dict[str, str]],
+) -> List[Dict[str, Any]]:
+    """Revalidate source assets before direct RTMP/RTMPS launch.
+
+    We intentionally run a fresh ffprobe-based validation here instead of relying
+    solely on stored `compatible_for_copy`, so older uploaded assets pick up
+    stricter live-output requirements (for example keyframe cadence checks)
+    without requiring manual re-upload.
+    """
+
+    if not _requires_rtmp_copy_safety(destinations):
+        return []
+
+    validator = VideoValidator()
+    violations: List[Dict[str, Any]] = []
+
+    for index, asset in enumerate(selection.all_assets()):
+        asset_path = asset.get("path")
+        if not asset_path:
+            continue
+
+        result = await validator.validate_file(Path(asset_path))
+        if result.get("compatible_for_copy", False):
+            continue
+
+        reasons = result.get("validation_errors") or [
+            "Asset requires re-encoding before direct RTMP/RTMPS streaming."
+        ]
+
+        violations.append(
+            {
+                "code": "copy_source_not_live_safe",
+                "message": (
+                    "Direct RTMP/RTMPS streaming requires source media that matches "
+                    "encoder guidance, including safe keyframe cadence."
+                ),
+                "asset_id": asset.get("asset_id"),
+                "filename": asset.get("filename"),
+                "position": index,
+                "current": "; ".join(str(reason) for reason in reasons),
+                "allowed": "H.264 video, AAC audio, yuv420p, keyframes <= 4 seconds",
+            }
+        )
+
+    return violations
+
+
 async def prepare_stream_launch(
     db: AsyncSession,
     user_id: UUID,
@@ -270,6 +328,12 @@ async def validate_stream_launch_prerequisites(
         audio_assets=selection.audio_assets,
         mix_mode=selection.mix_mode,
     )
+    destinations = gather_stream_destinations(stream)
+    quality["violations"].extend(
+        await collect_live_output_compatibility_violations(selection, destinations)
+    )
+    if quality["violations"]:
+        quality["ok"] = False
     if not quality["ok"]:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -307,7 +371,6 @@ async def validate_stream_launch_prerequisites(
     stream_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = Path(stream.log_path) if stream.log_path else stream_dir / "stream.log"
-    destinations = gather_stream_destinations(stream)
     if not destinations:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -350,4 +413,5 @@ __all__ = [
     "validate_stream_launch_prerequisites",
     "fetch_destinations",
     "build_asset_payload",
+    "collect_live_output_compatibility_violations",
 ]

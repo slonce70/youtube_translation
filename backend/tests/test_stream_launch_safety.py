@@ -7,9 +7,10 @@ from httpx import AsyncClient
 
 import app.api.routes.destinations as destinations_routes
 import app.services.streams.control as streams_control
+import app.services.streams.helpers as streams_helpers
 from app.core.config import settings
 from app.core.database import async_session_maker
-from app.core.security import mask_stream_key
+from app.core.security import encrypt_stream_key, mask_stream_key
 from app.main import app
 from app.models.database import (
     Asset,
@@ -89,7 +90,7 @@ async def _create_stream_fixture(
             user_id=user_id,
             name="Primary",
             rtmps_url="rtmps://a.rtmp.youtube.com/live2",
-            stream_key_encrypted="encrypted-placeholder",
+            stream_key_encrypted=encrypt_stream_key("stream-key-placeholder"),
             enabled=destination_enabled,
         )
         session.add_all([asset, stream, destination])
@@ -244,7 +245,8 @@ async def test_quality_and_supervisor_start_reject_incompatible_copy_first_media
         quality = await service.evaluate_quality(stream_id)
         assert quality.ok is False
         assert {violation.code for violation in quality.violations} == {
-            "incompatible_codecs"
+            "incompatible_codecs",
+            "copy_source_not_live_safe",
         }
 
         with pytest.raises(HTTPException) as exc_info:
@@ -252,7 +254,10 @@ async def test_quality_and_supervisor_start_reject_incompatible_copy_first_media
 
         assert exc_info.value.status_code == 422
         assert exc_info.value.detail["error"] == "quality_rejected"
-        assert exc_info.value.detail["violations"][0]["code"] == "incompatible_codecs"
+        assert {item["code"] for item in exc_info.value.detail["violations"]} == {
+            "incompatible_codecs",
+            "copy_source_not_live_safe",
+        }
 
 
 @pytest.mark.asyncio
@@ -300,7 +305,71 @@ async def test_http_start_route_rejects_incompatible_media_for_dev_auth_user(
 
     assert response.status_code == 422
     assert response.json()["detail"]["error"] == "quality_rejected"
-    assert response.json()["detail"]["violations"][0]["code"] == "incompatible_codecs"
+    assert {item["code"] for item in response.json()["detail"]["violations"]} == {
+        "incompatible_codecs",
+        "copy_source_not_live_safe",
+    }
+
+
+@pytest.mark.asyncio
+async def test_quality_and_start_reject_stale_copy_safe_asset_for_rtmp(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
+    user_id, stream_id = await _create_stream_fixture(
+        tmp_path,
+        asset_copy_ready=True,
+        validation_errors=[],
+    )
+
+    async def fake_validate_file(self, _file_path: Path) -> dict:
+        return {
+            "compatible_for_copy": False,
+            "meta": {},
+            "validation_errors": ["Keyframe interval too long: 5.20s (max 4.00s)"],
+            "keyframe_stats": {"max_interval_seconds": 5.2},
+        }
+
+    monkeypatch.setattr(
+        streams_helpers.VideoValidator,
+        "validate_file",
+        fake_validate_file,
+    )
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+    monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+
+    async def fake_supervisor_program_status(_stream_id):
+        return {"state": "STOPPED"}
+
+    async def fake_supervisor_start_program(_stream_id):
+        raise AssertionError("supervisor start should not be called for stale copy-safe media")
+
+    monkeypatch.setattr(
+        streams_control, "supervisor_program_status", fake_supervisor_program_status
+    )
+    monkeypatch.setattr(
+        streams_control, "supervisor_start_program", fake_supervisor_start_program
+    )
+
+    async with async_session_maker() as session:
+        service = StreamControlService(session, user_id)
+
+        quality = await service.evaluate_quality(stream_id)
+        assert quality.ok is False
+        assert {violation.code for violation in quality.violations} == {
+            "copy_source_not_live_safe"
+        }
+
+        with pytest.raises(HTTPException) as exc_info:
+            await service.start_stream(stream_id)
+
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.detail["error"] == "quality_rejected"
+        assert exc_info.value.detail["violations"][0]["code"] == "copy_source_not_live_safe"
 
 
 @pytest.mark.asyncio

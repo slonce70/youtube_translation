@@ -262,11 +262,14 @@ class VideoValidator:
             if keyframe_stats:
                 max_interval = keyframe_stats.get("max_interval_seconds")
                 if max_interval and max_interval > self.MAX_KEYFRAME_INTERVAL_SECONDS:
-                    logger.debug(
-                        "Keyframe interval %.2fs exceeds recommended limit %.2fs",
+                    # YouTube's RTMP/RTMPS encoder guidance says keyframes are
+                    # recommended every 2 seconds and must not exceed 4 seconds.
+                    logger.warning(
+                        "Keyframe interval %.2fs exceeds supported limit %.2fs",
                         max_interval,
                         self.MAX_KEYFRAME_INTERVAL_SECONDS,
                     )
+                    return False, media_kind
 
             profile = (video_stream.get("profile") or "").lower()
             if profile and profile not in ["high", "main"]:
@@ -324,9 +327,9 @@ class VideoValidator:
             if keyframe_stats:
                 max_interval = keyframe_stats.get("max_interval_seconds")
                 if max_interval and max_interval > self.MAX_KEYFRAME_INTERVAL_SECONDS:
-                    logger.debug(
-                        "Treating keyframe interval %.2fs as advisory warning only",
-                        max_interval,
+                    errors.append(
+                        "Keyframe interval too long: "
+                        f"{max_interval:.2f}s (max {self.MAX_KEYFRAME_INTERVAL_SECONDS:.2f}s)"
                     )
 
         if not audio_stream:

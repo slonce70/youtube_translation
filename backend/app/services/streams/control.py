@@ -64,7 +64,9 @@ from app.streaming.ffmpeg_manager import ffmpeg_manager as default_ffmpeg_manage
 from app.streaming.hot_swap import hot_swap_manager
 
 from .helpers import (
+    collect_live_output_compatibility_violations,
     extract_stream_assets,
+    gather_stream_destinations,
     load_stream_with_relations,
     prepare_stream_launch,
     validate_stream_launch_prerequisites,
@@ -128,6 +130,14 @@ class StreamControlService:
             audio_assets=selection.audio_assets,
             mix_mode=selection.mix_mode,
         )
+        destinations = gather_stream_destinations(stream)
+        quality["violations"].extend(
+            await collect_live_output_compatibility_violations(
+                selection, destinations
+            )
+        )
+        if quality["violations"]:
+            quality["ok"] = False
 
         return StreamQualityResponse(
             ok=quality["ok"],
