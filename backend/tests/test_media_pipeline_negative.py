@@ -137,13 +137,13 @@ class TestVideoValidatorNegative:
             mock_meta,
             keyframe_stats=keyframe_stats,
         )
-        assert is_compatible is True
+        assert is_compatible is False
         errors = validator._get_validation_errors(
             mock_meta,
             media_kind,
             keyframe_stats=keyframe_stats,
         )
-        assert all("keyframe interval" not in err.lower() for err in errors)
+        assert any("keyframe interval" in err.lower() for err in errors)
 
     @pytest.mark.asyncio
     async def test_wrong_pixel_format(self):

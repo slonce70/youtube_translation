@@ -734,12 +734,14 @@ class TestFFmpegStreamManagerMonitor:
         fake_process.pid = 4321
         fake_process.stdout = AsyncMock()
         fake_process.stderr = AsyncMock()
+        captured_cmd = []
 
         # _monitor_process is scheduled asynchronously – replace with noop to avoid background execution
         monitor_stub = AsyncMock()
         monkeypatch.setattr(manager, "_monitor_process", monitor_stub)
 
         async def fake_exec(*args, **kwargs):
+            captured_cmd[:] = list(args)
             return fake_process
 
         monkeypatch.setattr(
@@ -777,6 +779,12 @@ class TestFFmpegStreamManagerMonitor:
         assert plan["tee_onfail_policy"] is None
         assert plan["uses_video_placeholder"] is False
         assert plan["uses_audio_placeholder"] is False
+        assert "fifo" in captured_cmd
+        assert "-fifo_format" in captured_cmd and captured_cmd[captured_cmd.index("-fifo_format") + 1] == "flv"
+        assert "-attempt_recovery" in captured_cmd and captured_cmd[captured_cmd.index("-attempt_recovery") + 1] == "1"
+        assert "-recover_any_error" in captured_cmd and captured_cmd[captured_cmd.index("-recover_any_error") + 1] == "1"
+        assert "-restart_with_keyframe" in captured_cmd and captured_cmd[captured_cmd.index("-restart_with_keyframe") + 1] == "1"
+        assert "-max_recovery_attempts" in captured_cmd and captured_cmd[captured_cmd.index("-max_recovery_attempts") + 1] == "3"
 
         # ensure telemetry persisted even after retrieving info
         assert (
