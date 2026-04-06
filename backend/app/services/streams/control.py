@@ -907,6 +907,7 @@ class StreamControlService:
     async def _stop_for_runtime(self, stream: Stream) -> None:
         if systemd_enabled():
             if await systemd_is_active(stream.id):
+                await self._mark_stop_requested(stream)
                 try:
                     await systemd_stop_unit(stream.id)
                 except RuntimeError as err:
@@ -916,6 +917,7 @@ class StreamControlService:
                     ) from err
         elif supervisor_enabled():
             if await supervisor_is_running(stream.id):
+                await self._mark_stop_requested(stream)
                 try:
                     await supervisor_stop_program(stream.id)
                 except RuntimeError as err:
@@ -932,8 +934,21 @@ class StreamControlService:
                 ) from err
         else:
             if self.manager.is_running(str(stream.id)):
+                stream.status = "stopping"
+                stream.pid = None
+                await self.db.flush()
                 await self.manager.stop_stream(str(stream.id))
 
+        self._finalize_stopped(stream)
+
+    async def _mark_stop_requested(self, stream: Stream) -> None:
+        if stream.status != "stopping":
+            stream.status = "stopping"
+            stream.pid = None
+            await self.db.commit()
+
+    @staticmethod
+    def _finalize_stopped(stream: Stream) -> None:
         stream.status = "stopped"
         stream.pid = None
         stream.stopped_at = _utcnow()

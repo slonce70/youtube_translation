@@ -76,7 +76,7 @@ type PresentedStream = {
   derived: ReturnType<typeof deriveStreamState>
 }
 
-const GROUP_ORDER: Array<PresentedStream['derived']['group']> = ['live', 'attention', 'scheduled', 'stopped']
+const GROUP_ORDER: Array<PresentedStream['derived']['group']> = ['live', 'transitioning', 'attention', 'scheduled', 'stopped']
 
 const STREAM_AVATAR_COLORS = [
   'bg-blue-500',
@@ -163,6 +163,7 @@ export function StreamsList({
   const groupedStreams = useMemo(() => {
     const groups: Record<PresentedStream['derived']['group'], PresentedStream[]> = {
       live: [],
+      transitioning: [],
       attention: [],
       scheduled: [],
       stopped: [],

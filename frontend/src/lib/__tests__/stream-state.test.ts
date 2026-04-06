@@ -81,6 +81,30 @@ describe('deriveStreamState', () => {
     expect(result.primaryAction).toBe('view_issue')
   })
 
+
+
+  it('routes starting streams into transitioning with pending primary action', () => {
+    const stream = createStream({ status: 'starting' })
+
+    const result = deriveStreamState(stream)
+
+    expect(result.isStarting).toBe(true)
+    expect(result.isTransitioning).toBe(true)
+    expect(result.group).toBe('transitioning')
+    expect(result.primaryAction).toBe('pending')
+  })
+
+  it('routes stopping streams into transitioning with pending primary action', () => {
+    const stream = createStream({ status: 'stopping' })
+
+    const result = deriveStreamState(stream)
+
+    expect(result.isStopping).toBe(true)
+    expect(result.isTransitioning).toBe(true)
+    expect(result.group).toBe('transitioning')
+    expect(result.primaryAction).toBe('pending')
+  })
+
   it('uses edit schedule as primary action for scheduled streams', () => {
     const stream = createStream({
       status: 'scheduled',

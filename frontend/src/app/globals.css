@@ -2257,6 +2257,44 @@
     font-size: 18px;
   }
 
+
+  .dashboard-v2 .stream-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .dashboard-v2 .stream-playback-panel {
+    background: var(--bg-3);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .dashboard-v2 .stream-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .dashboard-v2 .stream-metric-tile {
+    background: var(--bg-3);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    min-width: 0;
+  }
+  .dashboard-v2 .channel-logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    font-size: 18px;
+    color: #fff;
+    font-weight: 700;
+  }
+  .dashboard-v2 .channel-logo-youtube { background: #ff0000; }
+  .dashboard-v2 .channel-logo-twitch { background: #9146ff; }
+  .dashboard-v2 .channel-logo-rtmps { background: var(--bg-2); color: var(--txt); }
+
   .dashboard-v2 .stat-strip {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -2382,7 +2420,8 @@
       border-bottom: 1px solid var(--border);
     }
     .dashboard-v2 .page-shell { padding: 20px 18px 28px; }
-    .dashboard-v2 .stat-strip { grid-template-columns: 1fr; }
+    .dashboard-v2 .stat-strip,
+    .dashboard-v2 .stream-metrics-grid { grid-template-columns: 1fr; }
     .dashboard-v2 .library-filter-row { margin-left: 0; }
   }
 }

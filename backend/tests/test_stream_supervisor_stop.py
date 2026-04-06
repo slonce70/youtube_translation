@@ -121,3 +121,62 @@ async def test_stop_stream_ignores_racy_removed_process_group_error(
 
         assert status.status == "stopped"
         assert removed["stream_id"] == stream.id
+
+
+@pytest.mark.asyncio
+async def test_stop_stream_marks_supervisor_stream_stopping_while_stop_is_in_flight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"supervisor-stopping-{user_id}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        session.add(profile)
+
+        stream = Stream(
+            id=uuid4(),
+            user_id=user_id,
+            name="slow stop stream",
+            status="running",
+            started_at=datetime.now(timezone.utc),
+        )
+        session.add(stream)
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+
+        async def fake_is_running(stream_id):
+            assert stream_id == stream.id
+            return True
+
+        observed = {"status": None}
+
+        async def fake_stop_program(stream_id):
+            assert stream_id == stream.id
+            await session.refresh(stream)
+            observed["status"] = stream.status
+
+        removed = {"stream_id": None}
+
+        async def fake_remove_program(stream_id):
+            removed["stream_id"] = stream_id
+
+        async def fake_usage_snapshot(self, enforcer=None):
+            return {}
+
+        monkeypatch.setattr(streams_control, "supervisor_is_running", fake_is_running)
+        monkeypatch.setattr(streams_control, "supervisor_stop_program", fake_stop_program)
+        monkeypatch.setattr(streams_control, "supervisor_remove_program", fake_remove_program)
+        monkeypatch.setattr(StreamControlService, "_get_usage_snapshot", fake_usage_snapshot, raising=False)
+
+        service = StreamControlService(session, user_id)
+        status = await service.stop_stream(stream.id)
+
+        assert observed["status"] == "stopping"
+        assert status.status == "stopped"
+        assert removed["stream_id"] == stream.id
