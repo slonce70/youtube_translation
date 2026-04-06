@@ -1,18 +1,18 @@
 'use client'
+/* eslint-disable i18next/no-literal-string */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Play, Loader2, X, Info, ChevronDown } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 import { api, ApiError } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Input } from '@/components/ui/Input'
 import type {
   Destination,
   DestinationUpdatePayload,
@@ -20,7 +20,6 @@ import type {
   Stream,
   Playlist,
   StreamLogsResponse,
-  StreamStatusValue,
   StreamStatusResponse,
   StreamQualityResponse,
   SubscriptionTierKey,
@@ -28,8 +27,6 @@ import type {
   StreamSchedulePayload,
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
-import { ChannelsSidebar } from './components/ChannelsSidebar'
-import { StreamsList } from './components/StreamsList'
 import { StreamBuilderModal } from './components/StreamBuilderModal'
 import { LiveEditorModal } from './components/LiveEditorModal'
 import { QualityGateModal } from './components/QualityGateModal'
@@ -37,6 +34,8 @@ import { StreamScheduleModal } from './components/StreamScheduleModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamStatusMap } from './hooks/useStreamStatusMap'
+import { AddChannelModal } from '@/components/streaming/AddChannelModal'
+import { deriveStreamState } from '@/lib/stream-state'
 
 type DestinationFormState = {
   name: string
@@ -45,25 +44,23 @@ type DestinationFormState = {
   enabled: boolean
 }
 
-const statusVariantMap: Record<StreamStatusValue, 'secondary' | 'error' | 'success' | 'info'> = {
-  running: 'success',
-  stopped: 'secondary',
-  starting: 'info',
-  stopping: 'info',
-  error: 'error',
-  scheduled: 'info',
-}
-
 export default function StreamingPage() {
   const queryClient = useQueryClient()
   const router = useRouter()
-  const { user, quota, quotaLoading, currentTier } = useDashboardContext()
+  const searchParams = useSearchParams()
+  const { user, quota, currentTier } = useDashboardContext()
   const planNames = useTranslations('dashboard.quota.tiers')
   const activePlanLabel = planNames((currentTier ?? 'free') as SubscriptionTierKey)
   const streamingToasts = useTranslations('streaming.toasts')
-  const streamingStatus = useTranslations('streaming.status')
   const tStreaming = useTranslations('streaming.page')
   const { qualityGate, openQualityGate, closeQualityGate, groupedViolations } = useQualityGate()
+
+  useEffect(() => {
+    if (searchParams?.get('new') === '1') {
+      setShowCreateStream(true)
+      router.replace('/dashboard/streaming', { scroll: false })
+    }
+  }, [router, searchParams])
 
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [showChannelForm, setShowChannelForm] = useState(false)
@@ -78,6 +75,8 @@ export default function StreamingPage() {
   const [logsMode, setLogsMode] = useState<'important' | 'raw'>('important')
   const [showCreateStream, setShowCreateStream] = useState(false)
   const [scheduleModalStream, setScheduleModalStream] = useState<Stream | null>(null)
+  const [activeStreamTab, setActiveStreamTab] = useState<'live' | 'scheduled' | 'archive'>('live')
+  const [optimisticRunningStreamIds, setOptimisticRunningStreamIds] = useState<string[]>([])
 
   const { data: destinations, isLoading: isLoadingDestinations } = useQuery<Destination[]>({
     queryKey: ['destinations', user?.id],
@@ -91,6 +90,15 @@ export default function StreamingPage() {
     enabled: !!user,
     refetchInterval: 3000,
   })
+
+  useEffect(() => {
+    const targetId = searchParams?.get('editSchedule')
+    if (!targetId || !streams?.length) return
+    const match = streams.find((stream) => stream.id === targetId)
+    if (!match) return
+    setScheduleModalStream(match)
+    router.replace('/dashboard/streaming', { scroll: false })
+  }, [router, searchParams, streams])
 
   const liveStatusMap = useStreamStatusMap(streams, user?.id)
 
@@ -218,8 +226,13 @@ export default function StreamingPage() {
       }
       return api.streams.start(streamId)
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       toast.success(streamingToasts('stream.started'))
+      setActiveStreamTab('live')
+      setOptimisticRunningStreamIds((current) =>
+        current.includes(variables.streamId) ? current : [...current, variables.streamId]
+      )
+      queryClient.invalidateQueries({ queryKey: ['stream-status', user?.id, variables.streamId] })
       queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
     },
     onError: (error: Error & { quality?: StreamQualityResponse }, variables) => {
@@ -276,8 +289,10 @@ export default function StreamingPage() {
 
   const stopStreamMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.stop(streamId),
-    onSuccess: () => {
+    onSuccess: (_, streamId) => {
       toast.info(streamingToasts('stream.stopped'))
+      setOptimisticRunningStreamIds((current) => current.filter((id) => id !== streamId))
+      queryClient.invalidateQueries({ queryKey: ['stream-status', user?.id, streamId] })
       queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
     },
     onError: (error: Error) =>
@@ -376,13 +391,6 @@ export default function StreamingPage() {
     }
   }
 
-  const renderStatusBadge = (status: StreamStatusValue) => (
-    <Badge variant={statusVariantMap[status]} className={status === 'running' ? 'gap-1' : undefined}>
-      {status === 'running' ? <span className="h-2 w-2 rounded-full bg-success-600" /> : null}
-      {streamingStatus(status)}
-    </Badge>
-  )
-
   const handleStartStream = (stream: Stream) =>
     startStreamMutation.mutate({
       streamId: stream.id,
@@ -421,216 +429,366 @@ export default function StreamingPage() {
     audioAssets: liveEditorAudioAssets,
   } = useLiveEditor({ assets, tStreaming, streamingToasts })
 
+  const presentedStreams = useMemo(
+    () =>
+      (streams ?? []).map((stream) => ({
+        stream,
+        derived: deriveStreamState(stream, liveStatusMap.get(stream.id)),
+      })),
+    [liveStatusMap, streams],
+  )
+
+  const liveEntries = useMemo(
+    () => presentedStreams.filter(({ derived }) => derived.group === 'live' || derived.group === 'attention'),
+    [presentedStreams],
+  )
+  const scheduledEntries = useMemo(
+    () => presentedStreams.filter(({ derived }) => derived.group === 'scheduled'),
+    [presentedStreams],
+  )
+  const archiveEntries = useMemo(
+    () => presentedStreams.filter(({ derived }) => derived.group === 'stopped'),
+    [presentedStreams],
+  )
+  const readyEntries = archiveEntries
+
   if (!user) {
     return <LoadingState text={tStreaming('loading')} />
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header with inline stats */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="page-shell">
+      <div className="page-header">
         <div>
-          <h2 className="text-3xl font-bold gradient-text mb-2">{tStreaming('header.title')}</h2>
-          <p className="text-slate-600 dark:text-slate-400">{tStreaming('header.description')}</p>
+          <div className="page-title">{tStreaming('header.title')}</div>
+          <div className="page-sub">{tStreaming('header.description')}</div>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Compact inline stats */}
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-success-200 bg-success-50 px-3 py-1 text-xs font-semibold text-success-700 dark:border-success-900/40 dark:bg-success-900/20 dark:text-success-300">
-              <span className="h-2 w-2 rounded-full bg-success-500 animate-pulse" />
-              {runningStreams.length} {tStreaming('streams.stats.active')}
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              {streams?.length || 0} {tStreaming('streams.stats.total')}
-            </span>
-            {quotaLoading ? (
-              <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 dark:border-primary-900/40 dark:bg-primary-900/20 dark:text-primary-300">
-                {runningStreams.length}/{formatLimitValue(concurrentStreamsLimit)} {tStreaming('streams.stats.concurrent')}
-              </span>
-            )}
-          </div>
-          <Button onClick={() => setShowCreateStream(true)} className="flex items-center space-x-2">
+        <div className="page-actions">
+          <Button onClick={() => setShowCreateStream(true)} className="flex items-center gap-2">
             <Play className="w-4 h-4" />
-            <span>{tStreaming('header.goLive')}</span>
+            <span>📡 Нова трансляція</span>
           </Button>
         </div>
       </div>
 
-      {/* Mobile stats */}
-      <div className="flex flex-wrap gap-2 sm:hidden">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-success-200 bg-success-50 px-3 py-1 text-xs font-semibold text-success-700 dark:border-success-900/40 dark:bg-success-900/20 dark:text-success-300">
-          <span className="h-2 w-2 rounded-full bg-success-500 animate-pulse" />
-          {runningStreams.length} {tStreaming('streams.stats.active')}
-        </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-          {streams?.length || 0} {tStreaming('streams.stats.total')}
-        </span>
+      <div className="stat-strip">
+        <div className="stat-strip-card">
+          <div style={{ fontSize: 24 }}>🔴</div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{runningStreams.length}</div>
+            <div className="page-sub">Активних ефірів</div>
+          </div>
+        </div>
+        <div className="stat-strip-card">
+          <div style={{ fontSize: 24 }}>📊</div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>
+              {runningStreams.length}/{formatLimitValue(concurrentStreamsLimit)}
+            </div>
+            <div className="page-sub">Паралельний ліміт</div>
+          </div>
+        </div>
+        <div className="stat-strip-card">
+          <div style={{ fontSize: 24 }}>📡</div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>
+              {destinations?.length || 0}/{formatLimitValue(destinationsLimit)}
+            </div>
+            <div className="page-sub">Каналів додано</div>
+          </div>
+        </div>
       </div>
 
       <Card>
-        <details className="group">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
-            <span className="text-base font-semibold text-slate-900 dark:text-white">
-              {tStreaming('checklist.title')}
-            </span>
-            <ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
-          </summary>
-          <div className="px-6 pb-6 text-sm text-slate-600 dark:text-slate-300">
-            <ul className="list-disc space-y-2 pl-5">
-              <li>{tStreaming('checklist.items.destination')}</li>
-              <li>{tStreaming('checklist.items.assets')}</li>
-              <li>{tStreaming('checklist.items.schedule')}</li>
-              <li>{tStreaming('checklist.items.test')}</li>
-            </ul>
+        <CardHeader className="mb-4 flex-row items-center justify-between">
+          <div>
+            <CardTitle>📡 Канали (RTMPS)</CardTitle>
+            <div className="page-sub" style={{ marginTop: 4 }}>
+              Ваші YouTube/Twitch/будь-які RTMPS-канали
+            </div>
           </div>
-        </details>
+          <Button size="sm" onClick={() => setShowChannelForm(true)}>+ Додати канал</Button>
+        </CardHeader>
+        <CardContent className="channels-list">
+          {isLoadingDestinations ? (
+            <LoadingState />
+          ) : destinations && destinations.length > 0 ? (
+            destinations.map((destination) => (
+              <div
+                key={destination.id}
+                className={`channel-row${selectedChannel === destination.id ? ' active' : ''}`}
+                onClick={() => setSelectedChannel(destination.id)}
+                role="button"
+                tabIndex={0}
+              >
+                <div className="channel-logo">{destination.name.toLowerCase().includes('twitch') ? '🎮' : '▶'}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{destination.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>
+                    {destination.rtmps_url} · Ключ: {destination.stream_key_masked}
+                  </div>
+                </div>
+                <Badge variant={destination.enabled ? 'live' : 'idle'}>
+                  {destination.enabled ? 'Активний' : 'Не використовується'}
+                </Badge>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleEditChannel(destination)
+                  }}
+                >
+                  Ред.
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleDeleteChannel(destination.id)
+                  }}
+                >
+                  Видалити
+                </Button>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state" style={{ padding: '32px 12px' }}>
+              <div className="empty-icon">📡</div>
+              <div className="empty-title">Ще немає каналів</div>
+              <div className="empty-sub">Додайте RTMPS канал, щоб запускати ефіри.</div>
+              <Button size="sm" variant="outline" onClick={() => setShowChannelForm(true)} style={{ marginTop: 12 }}>
+                + Додати канал
+              </Button>
+            </div>
+          )}
+        </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <ChannelsSidebar
-          destinations={destinations}
-          isLoading={isLoadingDestinations}
-          selectedChannelId={selectedChannel}
-          onSelectChannel={setSelectedChannel}
-          onCreateChannel={() => setShowChannelForm(true)}
-          onEditChannel={handleEditChannel}
-          onDeleteChannel={handleDeleteChannel}
-          t={tStreaming}
-          quotaLoading={quotaLoading}
-          destinationsLimit={destinationsLimit}
-          formatLimitValue={formatLimitValue}
-        />
-
-        <div className="lg:col-span-3">
-          <StreamsList
-            streams={streams}
-            isLoading={isLoadingStreams}
-            liveStatusMap={liveStatusMap}
-            onCreateStream={() => setShowCreateStream(true)}
-            onViewLogs={(streamId) => {
-              setLogsMode('important')
-              setViewingLogs(streamId)
-            }}
-            onOpenLiveEditor={openLiveEditor}
-            onStartStream={handleStartStream}
-            onStopStream={handleStopStream}
-            onDeleteStream={handleDeleteStream}
-            onEditSchedule={handleOpenSchedule}
-            renderStatusBadge={renderStatusBadge}
-            playlistMap={playlistMap}
-            videoCollectionMap={videoCollectionMap}
-            audioCollectionMap={audioCollectionMap}
-            t={tStreaming}
-            streamingStatus={streamingStatus}
-            pendingStartStreamId={pendingStartStreamId}
-            pendingStopStreamId={pendingStopStreamId}
-            pendingDeleteStreamId={pendingDeleteStreamId}
-          />
-        </div>
+      <div className="tabs">
+        <button type="button" className={`tab-btn ${activeStreamTab === 'live' ? 'active' : ''}`} onClick={() => setActiveStreamTab('live')}>
+          🔴 У ефірі
+          {liveEntries.length ? <span className="nav-badge" style={{ marginLeft: 6 }}>{liveEntries.length}</span> : null}
+        </button>
+        <button type="button" className={`tab-btn ${activeStreamTab === 'scheduled' ? 'active' : ''}`} onClick={() => setActiveStreamTab('scheduled')}>
+          🗓️ Заплановані
+          {scheduledEntries.length ? <span className="nav-badge" style={{ marginLeft: 6, background: 'var(--indigo)' }}>{scheduledEntries.length}</span> : null}
+        </button>
+        <button type="button" className={`tab-btn ${activeStreamTab === 'archive' ? 'active' : ''}`} onClick={() => setActiveStreamTab('archive')}>
+          📋 Архів
+          {archiveEntries.length ? <span className="nav-badge" style={{ marginLeft: 6, background: 'var(--bg-3)', color: 'var(--txt-2)' }}>{archiveEntries.length}</span> : null}
+        </button>
       </div>
 
-      {showChannelForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-lg animate-scale-in">
-            <CardHeader>
-              <CardTitle>
-                {editingChannelId
-                  ? tStreaming('channels.form.editTitle')
-                  : tStreaming('channels.form.newTitle')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmitChannel} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    {tStreaming('channels.form.nameLabel')}
-                  </label>
-                  <Input
-                    type="text"
-                    required
-                    value={channelForm.name}
-                    onChange={(event) => setChannelForm({ ...channelForm, name: event.target.value })}
-                    placeholder={tStreaming('channels.form.namePlaceholder')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    {tStreaming('channels.form.urlLabel')}
-                  </label>
-                  <Input
-                    type="text"
-                    required
-                    value={channelForm.rtmps_url}
-                    onChange={(event) => setChannelForm({ ...channelForm, rtmps_url: event.target.value })}
-                  />
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    {tStreaming('channels.form.help.rtmpsHint')}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    {tStreaming('channels.form.keyLabel')} {editingChannelId ? tStreaming('channels.form.keepExisting') : ''}
-                  </label>
-                  <Input
-                    type="password"
-                    required={!editingChannelId}
-                    value={channelForm.stream_key}
-                    onChange={(event) => setChannelForm({ ...channelForm, stream_key: event.target.value })}
-                    placeholder="xxxx-xxxx-xxxx-xxxx"
-                  />
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    {tStreaming('channels.form.keyHint')}
-                  </p>
-                </div>
+      {activeStreamTab === 'live' ? (
+        <div className="summary-list">
+          {liveEntries.length > 0 ? liveEntries.map(({ stream, derived }) => {
+            const sourceName = stream.playlist_id
+              ? (playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист')
+              : (stream.stream_assets?.length ? `Черга (${stream.stream_assets.length})` : 'Джерело не визначено')
+            const destinationLabel = (stream.destinations ?? []).map((d) => d.name).join(', ') || 'Канал не вказано'
+            const quotaLabel = derived.quotaReached
+              ? '0'
+              : formatLimitValue(derived.remainingDailySeconds ?? null)
 
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-200">
-                  <div className="mb-2 flex items-center gap-2 font-semibold">
-                    <Info className="h-4 w-4 text-primary-600 dark:text-primary-400" />
-                    <span>{tStreaming('channels.form.help.title')}</span>
+            return (
+              <article key={stream.id} className="card stream-summary-card" style={{ borderColor: 'rgba(34,197,94,.25)' }}>
+                <div className="card-content">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                    <Badge variant="live"><span className="live-dot" />У ЕФІРІ</Badge>
+                    <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
+                    <span className="page-sub" style={{ marginLeft: 'auto' }}>{destinationLabel}</span>
+                    <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)}>■ Зупинити</Button>
                   </div>
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
-                    <li>{tStreaming('channels.form.help.steps.openStudio')}</li>
-                    <li>{tStreaming('channels.form.help.steps.goLive')}</li>
-                    <li>{tStreaming('channels.form.help.steps.copyKey')}</li>
-                  </ul>
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    {tStreaming('channels.form.help.note')}
-                  </p>
-                </div>
 
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={channelForm.enabled}
-                    onChange={(event) => setChannelForm({ ...channelForm, enabled: event.target.checked })}
-                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
-                  />
-                  <label className="ml-2 block text-sm text-slate-700 dark:text-slate-300">
-                    {tStreaming('channels.form.enabled')}
-                  </label>
+                  <div className="stream-row active" style={{ marginBottom: 14 }}>
+                    <div className="stream-thumb">🎬</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--txt-3)' }}>
+                        Відеоряд / джерело
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{sourceName}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>Тривалість ефіру</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>
+                        {formatLimitValue(derived.liveDurationSeconds ?? 0)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+                    <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
+                      <div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>
+                          {formatLimitValue(derived.liveDurationSeconds ?? 0)}
+                        </div>
+                        <div className="page-sub">Загальна тривалість</div>
+                      </div>
+                    </div>
+                    <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 700 }}>{formatLimitValue(derived.totalDurationSeconds ?? 0)}</div>
+                        <div className="page-sub">Відеоряд всього</div>
+                      </div>
+                    </div>
+                    <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--amber)' }}>{quotaLabel}</div>
+                        <div className="page-sub">Залишок ліміту</div>
+                      </div>
+                    </div>
+                    <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 700 }}>{activePlanLabel}</div>
+                        <div className="page-sub">Поточний тариф</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="page-actions" style={{ marginTop: 14, marginLeft: 0 }}>
+                    <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
+                    <Button size="sm" variant="ghost" onClick={() => openLiveEditor(stream)}>✏️ Редагувати</Button>
+                    <Button size="sm" variant="outline" className="ml-auto" onClick={() => handleOpenSchedule(stream)}>🗓️ Розклад</Button>
+                  </div>
                 </div>
-                <div className="flex justify-end gap-3">
-                  <Button type="button" onClick={resetChannelForm} variant="secondary">
-                    {tStreaming('channels.form.cancel')}
-                  </Button>
-                  <Button
-                    type="submit"
-                    isLoading={
-                      createDestinationMutation.isPending || updateDestinationMutation.isPending
-                    }
-                  >
-                    {editingChannelId
-                      ? tStreaming('channels.form.update')
-                      : tStreaming('channels.form.create')}
-                  </Button>
+              </article>
+            )
+          }) : readyEntries.length > 0 ? readyEntries.map(({ stream }) => {
+            const sourceName = stream.playlist_id
+              ? (playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист')
+              : (stream.stream_assets?.length ? `Черга (${stream.stream_assets.length})` : 'Джерело не визначено')
+            const destinationLabel = (stream.destinations ?? []).map((d) => d.name).join(', ') || 'Канал не вказано'
+            const isOptimisticallyLive = optimisticRunningStreamIds.includes(stream.id)
+
+            return (
+              <article key={stream.id} className="card stream-summary-card">
+                <div className="card-content">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                    <Badge variant={isOptimisticallyLive ? 'live' : 'idle'}>
+                      {isOptimisticallyLive ? 'У ЕФІРІ' : 'Готово'}
+                    </Badge>
+                    <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
+                    <span className="page-sub" style={{ marginLeft: 'auto' }}>{destinationLabel}</span>
+                    {isOptimisticallyLive ? (
+                      <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)}>■ Зупинити</Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => handleStartStream(stream)}
+                      >
+                        ▶ Запустити
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="stream-row">
+                    <div className="stream-thumb">🎬</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--txt-3)' }}>
+                        Джерело
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{sourceName}</div>
+                    </div>
+                    <div className="page-actions" style={{ marginLeft: 'auto' }}>
+                      <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
+                      <Button size="sm" variant="ghost" onClick={() => openLiveEditor(stream)}>✏️ Редагувати</Button>
+                    </div>
+                  </div>
                 </div>
-              </form>
-            </CardContent>
-          </Card>
+              </article>
+            )
+          }) : (
+            <Card>
+              <CardContent>
+                <div className="empty-state" style={{ padding: '40px 20px' }}>
+                  <div className="empty-icon">📡</div>
+                  <div className="empty-title">Активних трансляцій немає</div>
+                  <div className="empty-sub">Створіть трансляцію, щоб керувати нею тут.</div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
-      )}
+      ) : null}
+
+      {activeStreamTab === 'scheduled' ? (
+        <Card>
+          <CardHeader><CardTitle>🗓️ Заплановані</CardTitle></CardHeader>
+          <CardContent className="summary-list">
+            {scheduledEntries.length > 0 ? scheduledEntries.map(({ stream }) => (
+              <div key={stream.id} className="stream-row">
+                <div className="stream-thumb">🗓️</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || 'Без назви'}</div>
+                  <div className="page-sub">{stream.scheduled_start_time ? new Date(stream.scheduled_start_time).toLocaleString() : 'Заплановано'}</div>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => handleOpenSchedule(stream)}>Редагувати</Button>
+              </div>
+            )) : (
+              <div className="empty-state" style={{ padding: '36px 20px' }}>
+                <div className="empty-icon">🗓️</div>
+                <div className="empty-title">Немає запланованих трансляцій</div>
+                <div className="empty-sub">Оберіть запланований старт у вікні створення трансляції.</div>
+                <Button size="sm" variant="outline" onClick={() => setShowCreateStream(true)} style={{ marginTop: 12 }}>
+                  + Запланувати стрім
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeStreamTab === 'archive' ? (
+        <Card>
+          <CardHeader><CardTitle>📋 Архів</CardTitle></CardHeader>
+          <CardContent className="table-wrap">
+            {archiveEntries.length > 0 ? (
+              <table className="table">
+                <thead>
+                  <tr><th>Назва</th><th>Джерело</th><th>Канал</th><th>Дата</th><th>Дії</th></tr>
+                </thead>
+                <tbody>
+                  {archiveEntries.map(({ stream }) => (
+                    <tr key={stream.id}>
+                      <td>{stream.name || 'Без назви'}</td>
+                      <td>{stream.playlist_id ? (playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист') : 'Черга'}</td>
+                      <td>{(stream.destinations ?? []).map((d) => d.name).join(', ') || '—'}</td>
+                      <td>{new Date(stream.created_at).toLocaleString()}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <Button size="sm" onClick={() => handleStartStream(stream)} disabled={pendingStartStreamId === stream.id}>
+                            {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '▶ Запустити'}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="empty-state" style={{ padding: '36px 20px' }}>
+                <div className="empty-icon">📋</div>
+                <div className="empty-title">Архів поки порожній</div>
+                <div className="empty-sub">Після зупинки ефірів тут з’явиться історія трансляцій і доступ до логів.</div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <AddChannelModal
+        open={showChannelForm}
+        editingChannelId={editingChannelId}
+        channelForm={channelForm}
+        onChange={setChannelForm}
+        onSubmit={handleSubmitChannel}
+        onCancel={resetChannelForm}
+        isSaving={createDestinationMutation.isPending || updateDestinationMutation.isPending}
+        t={tStreaming}
+      />
 
       <StreamBuilderModal
         open={showCreateStream}

@@ -5,17 +5,18 @@ import { Toaster as Sonner } from 'sonner'
 export function Toaster() {
   return (
     <Sonner
-      position="top-right"
+      position="bottom-right"
       expand={false}
-      richColors
       closeButton
       toastOptions={{
+        className: 'dashboard-toast',
         style: {
-          background: 'hsl(var(--card))',
-          color: 'hsl(var(--card-foreground))',
-          border: '1px solid hsl(var(--border))',
+          background: '#1e2639',
+          color: '#e2e8f0',
+          border: '1px solid #3d4a6b',
+          borderRadius: '10px',
+          boxShadow: '0 4px 24px rgba(0,0,0,.4)',
         },
-        className: 'glass',
       }}
     />
   )

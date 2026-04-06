@@ -57,14 +57,7 @@ install-frontend: ## Install frontend dependencies only
 
 dev: ## Start all services (local only)
 	@echo "$(BLUE)Starting services (local only)...$(NC)"
-	@echo "Backend: http://localhost:8000"
-	@echo "Frontend: http://localhost:3000"
-	@echo "tusd: http://localhost:1080"
-	@trap 'kill 0' INT; \
-		./start-backend.sh & \
-		./start-frontend.sh & \
-		./start-tusd.sh & \
-		wait
+	./start-local-dev.sh
 
 dev-local: dev ## Start all services (local only)
 

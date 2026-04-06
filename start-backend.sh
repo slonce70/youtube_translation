@@ -7,6 +7,7 @@ BACKEND_DIR="${ROOT_DIR}/backend"
 cd "${ROOT_DIR}"
 
 CLI_API_PORT="${API_PORT:-}"
+CLI_STREAM_RUNTIME_MODE="${STREAM_RUNTIME_MODE:-}"
 DOCKER_RUNNER_NAME="${DOCKER_RUNNER_NAME:-youtube-streaming-runner}"
 DOCKER_SUPERVISOR_CONF_PATH="${BACKEND_DIR}/supervisord.host-docker.conf"
 
@@ -146,7 +147,7 @@ esac
 export SUPERVISOR_CONF_PATH
 SUPERVISOR_SOCKET_PATH="${BACKEND_DIR}/supervisord/supervisor.sock"
 
-REQUESTED_RUNTIME_MODE="${STREAM_RUNTIME_MODE:-manager}"
+REQUESTED_RUNTIME_MODE="${CLI_STREAM_RUNTIME_MODE:-${STREAM_RUNTIME_MODE:-manager}}"
 SUPERVISOR_CTL_BIN="$(resolve_tool_bin "${SUPERVISOR_CTL_PATH:-}" "${BACKEND_DIR}/.venv/bin/supervisorctl" "supervisorctl")"
 SUPERVISORD_BIN="$(resolve_tool_bin "${SUPERVISORD_PATH:-}" "${BACKEND_DIR}/.venv/bin/supervisord" "supervisord")"
 

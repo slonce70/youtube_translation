@@ -303,8 +303,8 @@ if [ -f "$TEMP_FILE" ] && [ "$TEMP_FILE" != "$FINAL_FILE" ]; then
         --arg info_path "$FINAL_INFO" \
         '.Storage.Path = $path
         | .Storage.InfoPath = $info_path
-        | .Upload.Storage.Path = $path
-        | .Upload.Storage.InfoPath = $info_path')
+        | .Event.Upload.Storage.Path = $path
+        | .Event.Upload.Storage.InfoPath = $info_path')
     
     echo "[post-finish] File moved successfully" >&2
 else
@@ -318,8 +318,8 @@ else
             --arg info_path "$FINAL_INFO" \
             '.Storage.Path = $path
             | .Storage.InfoPath = $info_path
-            | .Upload.Storage.Path = $path
-            | .Upload.Storage.InfoPath = $info_path')
+            | .Event.Upload.Storage.Path = $path
+            | .Event.Upload.Storage.InfoPath = $info_path')
     else
         echo "[post-finish] ERROR: File not found in temp or user directory!" >&2
         write_failure_manifest "upload_file_missing" "Uploaded file not found in temp or user directory"

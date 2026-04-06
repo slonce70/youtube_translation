@@ -125,12 +125,16 @@ const EditorPanel = ({
                   <div className="flex items-center gap-3">
                     <GripVertical className="w-4 h-4 text-slate-400" />
                     <div>
-                      <p className="font-medium text-slate-900 dark:text-white">
+                      <button
+                        type="button"
+                        disabled
+                        className="font-medium text-slate-900 disabled:cursor-not-allowed disabled:opacity-100 dark:text-white"
+                      >
                         {asset?.filename ??
                           (target === 'video'
                             ? t('streams.builder.video.unknownAsset')
                             : t('streams.builder.audio.unknownAsset'))}
-                      </p>
+                      </button>
                       <p className="text-xs text-slate-500 dark:text-slate-400">#{index + 1}</p>
                     </div>
                   </div>
@@ -176,6 +180,19 @@ const EditorPanel = ({
               const alreadySelected = editor.items.some((item) => item.asset_id === asset.id)
               const isQueueing = queueingAssetId === asset.id
               const queueingBusy = queueingAssetId !== null
+              if (alreadySelected) {
+                return (
+                  <div
+                    key={asset.id}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-left text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate">{asset.filename}</span>
+                      <span className="text-[11px] uppercase tracking-wide">{t('streams.liveEdit.queued')}</span>
+                    </div>
+                  </div>
+                )
+              }
               return (
                 <button
                   key={asset.id}
@@ -184,11 +201,9 @@ const EditorPanel = ({
                     queueingBusy
                       ? 'cursor-not-allowed opacity-50'
                       : 'cursor-pointer',
-                    alreadySelected
-                      ? 'border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-800'
-                      : 'border-slate-200 hover:border-primary-500 hover:text-primary-600 dark:border-slate-700',
+                    'border-slate-200 hover:border-primary-500 hover:text-primary-600 dark:border-slate-700',
                   )}
-                  disabled={alreadySelected || queueingBusy}
+                  disabled={queueingBusy}
                   onClick={() => onAddAsset(target, asset.id)}
                 >
                   <div className="flex items-center justify-between gap-2">

@@ -33,10 +33,7 @@ function lookupMessage(source: Record<string, unknown>, key: string): string {
 
 function t(key: string, values?: TranslationValues): string {
   const template = lookupMessage(streamingPageMessages, key)
-  if (!values) {
-    return template
-  }
-
+  if (!values) return template
   return template.replace(/\{(\w+)\}/g, (_, token) => String(values[token] ?? ''))
 }
 
@@ -89,24 +86,13 @@ function createBuilderState(overrides: Record<string, unknown> = {}) {
     handleBuilderSubmit: jest.fn(),
     isBuilderSubmitting: false,
     createPending: false,
-    videoAssets: [
-      { id: 'video-1', filename: 'video.mp4', asset_type: 'video' },
-    ],
-    audioAssets: [
-      { id: 'audio-1', filename: 'track.mp3', asset_type: 'audio' },
-    ],
+    videoAssets: [{ id: 'video-1', filename: 'video.mp4', asset_type: 'video', size_bytes: 0, created_at: '', updated_at: '', storage_path: '', compatible_for_copy: true, optimization: { status: 'not_requested', recommended_strategy: 'copy', can_stream_from_source: true } }],
+    audioAssets: [{ id: 'audio-1', filename: 'track.mp3', asset_type: 'audio', size_bytes: 0, created_at: '', updated_at: '', storage_path: '', compatible_for_copy: true, optimization: { status: 'not_requested', recommended_strategy: 'copy', can_stream_from_source: true } }],
     assetMap: new Map([
       ['video-1', { id: 'video-1', filename: 'video.mp4', asset_type: 'video' }],
       ['audio-1', { id: 'audio-1', filename: 'track.mp3', asset_type: 'audio' }],
     ]),
-    destinations: [
-      {
-        id: 'dest-1',
-        name: 'Main channel',
-        rtmps_url: 'rtmps://example.test/live',
-        enabled: true,
-      },
-    ],
+    destinations: [{ id: 'dest-1', name: 'Main channel', rtmps_url: 'rtmps://example.test/live', enabled: true, stream_key_masked: '****', created_at: '', updated_at: '' }],
     resetBuilderState: jest.fn(),
     runningStreams: [],
     errorStreams: [],
@@ -149,175 +135,64 @@ describe('StreamBuilderModal', () => {
     jest.clearAllMocks()
   })
 
-  it('renders the guided wizard steps instead of the old expert tab set', () => {
+  it('renders the new single-screen 3-step layout', () => {
     renderModal()
 
-    expect(screen.getByText('Content')).toBeInTheDocument()
-    expect(screen.getByText('Channels')).toBeInTheDocument()
-    expect(screen.getByText('Schedule')).toBeInTheDocument()
-    expect(screen.getByText('Review & Launch')).toBeInTheDocument()
-    expect(screen.queryByText('Studio timeline')).not.toBeInTheDocument()
+    expect(screen.getByText('📡 Нова трансляція')).toBeInTheDocument()
+    expect(screen.getByText('1 · Оберіть канал')).toBeInTheDocument()
+    expect(screen.getByText('2 · Джерело відео')).toBeInTheDocument()
+    expect(screen.getByText('3 · Налаштування')).toBeInTheDocument()
+    expect(screen.getByText('📋 Підсумок трансляції')).toBeInTheDocument()
+    expect(screen.getByText('✅ Готовність')).toBeInTheDocument()
   })
 
-  it('keeps timeline editing behind advanced disclosure on the content step', () => {
+  it('shows selected destination and source in the sticky summary', () => {
     renderModal()
 
-    expect(screen.queryByText('Studio timeline')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByText('Advanced timeline'))
-
-    expect(screen.getByText('Studio timeline')).toBeInTheDocument()
-    expect(screen.getByText('Visual overview of your stream content')).toBeInTheDocument()
+    expect(screen.getAllByText('Main channel').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('video.mp4').length).toBeGreaterThan(0)
+    expect(screen.getByText('Одразу після запуску')).toBeInTheDocument()
   })
 
-  it('keeps the guided content flow stacked in playback-first order', () => {
-    renderModal()
-
-    const playbackOrder = screen.getByText('Playback order')
-    const videoAssets = screen.getByText('Available video assets')
-    const audioPlaylist = screen.getByText('Audio playlist')
-    const advancedTimeline = screen.getByText('Advanced timeline')
-
-    expect(playbackOrder.compareDocumentPosition(videoAssets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(videoAssets.compareDocumentPosition(audioPlaylist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(audioPlaylist.compareDocumentPosition(advancedTimeline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
-  it('treats audio as opt-in in the guided content step', () => {
+  it('switches between file and playlist source tabs', () => {
+    const handleSelectCollection = jest.fn()
     renderModal({
-      audioEnabled: false,
-      audioEditor: {
+      handleSelectCollection,
+      videoCollections: [{ id: 'collection-1', name: 'Saved playlist', items: [{ asset_id: 'video-1' }] }],
+      videoEditor: {
         selectedCollectionId: null,
         items: [],
         mode: 'custom',
         loop: true,
-        shuffle: true,
+        shuffle: false,
         name: '',
       },
     })
 
-    expect(screen.getByRole('button', { name: 'Enable audio' })).toBeInTheDocument()
-    expect(screen.getByText('Audio is disabled. Enable it to add playlists.')).toBeInTheDocument()
-    expect(screen.queryByText('No audio tracks selected')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '📋 Плейлист' }))
+
+    expect(handleSelectCollection).not.toHaveBeenCalled()
   })
 
-  it('shows a review summary with jump-back actions before launch', () => {
+  it('shows readiness errors when required fields are missing', () => {
     renderModal({
-      activeBuilderTab: 'review',
-      currentTabIndex: 3,
-      isFinalTab: true,
-      scheduleState: {
-        startMode: 'schedule',
-        startAt: '2026-04-04T09:00',
-        stopAt: '2026-04-04T21:00',
-        loopStream: true,
-        videoVolume: 80,
-        audioVolume: 55,
-      },
+      streamForm: { name: '', destination_ids: [] },
+      videoEditor: { selectedCollectionId: null, items: [], mode: 'custom', loop: true, shuffle: false, name: '' },
+      audioEditor: { selectedCollectionId: null, items: [], mode: 'custom', loop: true, shuffle: true, name: '' },
+      audioEnabled: false,
     })
 
-    expect(screen.getAllByText('Review & Launch')).toHaveLength(2)
-    expect(screen.getByText('Content setup')).toBeInTheDocument()
-    expect(screen.getByText('Selected channels')).toBeInTheDocument()
-    expect(screen.getByText('Schedule & playback')).toBeInTheDocument()
-    expect(screen.getByText('Edit content')).toBeInTheDocument()
-    expect(screen.getByText('Edit channels')).toBeInTheDocument()
-    expect(screen.getByText('Edit schedule')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Create stream' })).toBeInTheDocument()
+    expect(screen.getByText('✗ Оберіть канал')).toBeInTheDocument()
+    expect(screen.getByText('✗ Файл обрано')).toBeInTheDocument()
+    expect(screen.getByText('✗ Введіть назву')).toBeInTheDocument()
   })
 
-  it('derives the review timeline summary from builder state rather than disclosure visibility', () => {
-    renderModal({
-      activeBuilderTab: 'review',
-      currentTabIndex: 3,
-      isFinalTab: true,
-      videoEditor: {
-        selectedCollectionId: 'video-collection',
-        items: [{ asset_id: 'video-1' }],
-        mode: 'existing',
-        loop: true,
-        shuffle: false,
-        name: 'Saved video collection',
-      },
-      audioEditor: {
-        selectedCollectionId: 'audio-collection',
-        items: [{ asset_id: 'audio-1' }],
-        mode: 'existing',
-        loop: true,
-        shuffle: true,
-        name: 'Saved audio collection',
-      },
-    })
+  it('calls audio toggle via the new settings section button', () => {
+    const handleAudioToggle = jest.fn()
+    renderModal({ audioEnabled: false, handleAudioToggle })
 
-    expect(screen.getByText('Using the default playback order')).toBeInTheDocument()
-    expect(screen.queryByText('Timeline was customised')).not.toBeInTheDocument()
-  })
+    fireEvent.click(screen.getByRole('button', { name: '🎵 Додати аудіо' }))
 
-  it('clears saved video collection bindings when the queue is reset', () => {
-    const updateEditor = jest.fn()
-
-    renderModal({
-      updateEditor,
-      videoEditor: {
-        selectedCollectionId: 'video-collection',
-        items: [{ asset_id: 'video-1' }],
-        mode: 'existing',
-        loop: true,
-        shuffle: false,
-        name: 'Saved video collection',
-      },
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
-
-    expect(updateEditor).toHaveBeenCalledWith('video', expect.any(Function))
-
-    const updater = updateEditor.mock.calls[0][1] as (state: Record<string, unknown>) => Record<string, unknown>
-    expect(
-      updater({
-        selectedCollectionId: 'video-collection',
-        items: [{ asset_id: 'video-1' }],
-        mode: 'existing',
-        loop: true,
-        shuffle: false,
-        name: 'Saved video collection',
-      }),
-    ).toEqual({
-      selectedCollectionId: null,
-      items: [],
-      mode: 'custom',
-      loop: true,
-      shuffle: false,
-      name: 'Saved video collection',
-    })
-  })
-
-  it('shows item counts in review when a saved collection was customised', () => {
-    renderModal({
-      activeBuilderTab: 'review',
-      currentTabIndex: 3,
-      isFinalTab: true,
-      videoEditor: {
-        selectedCollectionId: 'video-collection',
-        items: [{ asset_id: 'video-1' }],
-        mode: 'custom',
-        loop: false,
-        shuffle: false,
-        name: 'Saved video collection',
-      },
-      audioEditor: {
-        selectedCollectionId: 'audio-collection',
-        items: [{ asset_id: 'audio-1' }],
-        mode: 'custom',
-        loop: true,
-        shuffle: false,
-        name: 'Saved audio collection',
-      },
-    })
-
-    expect(screen.getByText('Video assets: 1')).toBeInTheDocument()
-    expect(screen.getByText('Audio tracks: 1')).toBeInTheDocument()
-    expect(screen.queryByText('Video: saved collection')).not.toBeInTheDocument()
-    expect(screen.queryByText('Audio: saved playlist')).not.toBeInTheDocument()
+    expect(handleAudioToggle).toHaveBeenCalledWith(true)
   })
 })

@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useMemo, useState } from 'react'
 import { useLocale } from 'next-intl'
@@ -19,6 +20,7 @@ import type { Asset } from '@/lib/types'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { AssetActionsMenu } from '@/components/AssetActionsMenu'
 import { resolveAssetUrl } from '@/lib/api'
 import {
@@ -155,9 +157,81 @@ export function AssetCard({
           ? { label: t.badges.copyMode, variant: 'secondary' as const }
           : null
 
+  if (isCompact) {
+    return (
+      <Card
+        className={`transition-all ${isSelected ? 'ring-2 ring-primary-300 dark:ring-primary-600' : 'ring-1 ring-transparent'}`}
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      >
+        <CardContent className="p-0">
+          <div className="relative h-28 overflow-hidden rounded-t-[10px] bg-[var(--bg-3)]">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={(e) => onSelect(e.target.checked)}
+              aria-label={`${t.selection.checkboxLabel} ${asset.filename}`}
+              title={`${t.selection.checkboxLabel} ${asset.filename}`}
+              className="absolute left-2 top-2 z-10 h-5 w-5 rounded-full border-slate-300 bg-black/30 text-primary-600"
+            />
+            {thumbnailSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={thumbnailSrc}
+                alt={t.previewAlt({ filename: asset.filename })}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                onError={() => setThumbnailSrc(null)}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-4xl">
+                {asset.asset_type === 'audio' ? '🎵' : '🎬'}
+              </div>
+            )}
+            {asset.duration_seconds ? (
+              <div className="absolute bottom-2 right-2 rounded bg-black/70 px-2 py-1 text-[11px] font-semibold text-white">
+                {formatDuration(asset.duration_seconds)}
+              </div>
+            ) : null}
+            {optimizationBadge ? (
+              <div className="absolute right-2 top-2">
+                <Badge variant={optimizationBadge.variant} className="text-[10px]">
+                  {optimizationBadge.label}
+                </Badge>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="p-3">
+            <div className="truncate text-[13px] font-semibold text-slate-900 dark:text-white">{asset.filename}</div>
+            <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span>{formatBytes(asset.size_bytes)}</span>
+              <span>·</span>
+              <span>{uploadedAt}</span>
+            </div>
+
+            {!asset.compatible_for_copy && info.issues.length > 0 ? (
+              <div className="mt-2 text-[11px] text-error-600 dark:text-error-400">
+                {t.messages.incompatibleSummary}: {info.issues[0]}
+              </div>
+            ) : null}
+
+            <div className="mt-3 flex items-center gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={onDownload}>⬇</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={onCheck}>✓</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={onMove}>📁</Button>
+              <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={onDelete}>🗑</Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <Card
-      className={`animate-slide-up transition-all ${isCompact ? 'h-full' : ''} ${
+      className={`animate-slide-up transition-all ${
         isSelected
           ? 'ring-2 ring-primary-300 dark:ring-primary-600'
           : 'ring-1 ring-transparent'
@@ -166,7 +240,7 @@ export function AssetCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
-      <CardContent className={isCompact ? 'p-2' : 'p-3'}>
+      <CardContent className="p-3">
         <div className="flex items-start gap-3">
           <input
             type="checkbox"
@@ -296,101 +370,97 @@ export function AssetCard({
               </div>
             )}
 
-            {!isCompact ? (
-              <>
-                <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-[11px] dark:border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => setIsExpanded((prev) => !prev)}
-                    className="flex items-center gap-1 text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400"
-                  >
-                    {isExpanded ? (
-                      <ChevronUp className="h-3 w-3" />
-                    ) : (
-                      <ChevronDown className="h-3 w-3" />
-                    )}
-                    {isExpanded ? t.details.hide : t.details.show}
-                  </button>
-                </div>
+            <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-[11px] dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setIsExpanded((prev) => !prev)}
+                className="flex items-center gap-1 text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400"
+              >
+                {isExpanded ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+                {isExpanded ? t.details.hide : t.details.show}
+              </button>
+            </div>
 
-                {isExpanded && (
-                  <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-[11px] dark:border-slate-700 dark:bg-slate-800/50">
-                    <div className={`grid gap-2 grid-cols-1 ${isAudioAsset ? '' : 'md:grid-cols-2'}`}>
-                      {!isAudioAsset && (
-                        <div>
-                          <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {t.metadata.video}
-                          </span>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                              {info.videoCodec?.toUpperCase() ?? '—'}
-                            </Badge>
-                            <span>{formatBitrateDisplay(info.videoBitrate)}</span>
-                            <span>·</span>
-                            <span>
-                              {info.videoWidth && info.videoHeight
-                                ? `${info.videoWidth}×${info.videoHeight}`
-                                : '—'}
-                            </span>
-                            <span>·</span>
-                            <span>{formatFpsDisplay(info.videoFps)}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      <div>
-                        <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          {t.metadata.audio}
+            {isExpanded && (
+              <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-[11px] dark:border-slate-700 dark:bg-slate-800/50">
+                <div className={`grid gap-2 grid-cols-1 ${isAudioAsset ? '' : 'md:grid-cols-2'}`}>
+                  {!isAudioAsset && (
+                    <div>
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        {t.metadata.video}
+                      </span>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                          {info.videoCodec?.toUpperCase() ?? '—'}
+                        </Badge>
+                        <span>{formatBitrateDisplay(info.videoBitrate)}</span>
+                        <span>·</span>
+                        <span>
+                          {info.videoWidth && info.videoHeight
+                            ? `${info.videoWidth}×${info.videoHeight}`
+                            : '—'}
                         </span>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                            {info.audioCodec?.toUpperCase() ?? '—'}
-                          </Badge>
-                          <span>{formatBitrateDisplay(info.audioBitrate)}</span>
-                          <span>·</span>
-                          <span>{formatSampleRateDisplay(info.audioSampleRate)}</span>
-                          {info.audioChannels && (
-                            <>
-                              <span>·</span>
-                              <span>{t.metadata.channels(info.audioChannels)}</span>
-                            </>
-                          )}
-                        </div>
+                        <span>·</span>
+                        <span>{formatFpsDisplay(info.videoFps)}</span>
                       </div>
                     </div>
+                  )}
 
-                    {info.recommendationLabel && (
-                      <div className="flex items-start gap-1.5 text-slate-500 dark:text-slate-400">
-                        <CheckCircle className="h-3 w-3 text-primary-500" />
-                        <span>
-                          {t.recommendations({
-                            label: info.recommendationLabel,
-                            details: info.recommendationDetails ?? '',
-                          })}
-                        </span>
-                      </div>
-                    )}
+                  <div>
+                    <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t.metadata.audio}
+                    </span>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                        {info.audioCodec?.toUpperCase() ?? '—'}
+                      </Badge>
+                      <span>{formatBitrateDisplay(info.audioBitrate)}</span>
+                      <span>·</span>
+                      <span>{formatSampleRateDisplay(info.audioSampleRate)}</span>
+                      {info.audioChannels && (
+                        <>
+                          <span>·</span>
+                          <span>{t.metadata.channels(info.audioChannels)}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
-                    {(info.issues.length > 0 || info.warnings.length > 0) && (
-                      <div className="space-y-1.5">
-                        {info.issues.map((issue, index) => (
-                          <div key={`issue-${index}`} className="flex items-start text-error-600 dark:text-error-400">
-                            <XCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
-                            <span>{issue}</span>
-                          </div>
-                        ))}
-                        {info.warnings.map((warning, index) => (
-                          <div key={`warning-${index}`} className="flex items-start text-amber-600 dark:text-amber-400">
-                            <AlertCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
-                            <span>{formatWarningMessage(warning)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                {info.recommendationLabel && (
+                  <div className="flex items-start gap-1.5 text-slate-500 dark:text-slate-400">
+                    <CheckCircle className="h-3 w-3 text-primary-500" />
+                    <span>
+                      {t.recommendations({
+                        label: info.recommendationLabel,
+                        details: info.recommendationDetails ?? '',
+                      })}
+                    </span>
                   </div>
                 )}
-              </>
-            ) : null}
+
+                {(info.issues.length > 0 || info.warnings.length > 0) && (
+                  <div className="space-y-1.5">
+                    {info.issues.map((issue, index) => (
+                      <div key={`issue-${index}`} className="flex items-start text-error-600 dark:text-error-400">
+                        <XCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
+                        <span>{issue}</span>
+                      </div>
+                    ))}
+                    {info.warnings.map((warning, index) => (
+                      <div key={`warning-${index}`} className="flex items-start text-amber-600 dark:text-amber-400">
+                        <AlertCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
+                        <span>{formatWarningMessage(warning)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </CardContent>

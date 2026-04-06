@@ -392,6 +392,7 @@
         "queueHeading": "Playback order",
         "availableHeading": "Available assets",
         "availableEmpty": "No assets available. Upload media in Files.",
+        "queued": "Queued",
         "toggleLoop": "Loop",
         "toggleShuffle": "Shuffle",
         "queueing": "Adding…",
