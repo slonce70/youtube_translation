@@ -165,6 +165,13 @@ export default function StreamingPage() {
   const formatLimitValue = (value?: number | null) => (value == null ? '∞' : value.toString())
   const formatProviderStatus = (status?: string | null) =>
     tStreaming(`provider.status.${getProviderStatusKey(status)}`)
+  const getStreamSourceLabel = (stream: Stream) => {
+    const primaryDestinationUrl = stream.destinations?.[0]?.rtmps_url?.trim()
+    if (primaryDestinationUrl) return primaryDestinationUrl
+    if (stream.playlist_id) return playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист'
+    if (stream.stream_assets?.length) return `Черга (${stream.stream_assets.length})`
+    return 'RTMPS URL не вказано'
+  }
   const formatProviderSummary = (destination: Destination) => {
     if (!destination.provider_connection_id) return null
     const base = formatProviderStatus(destination.provider_status)
@@ -643,9 +650,7 @@ export default function StreamingPage() {
       {activeStreamTab === 'live' ? (
         <div className="summary-list">
           {liveEntries.length > 0 ? liveEntries.map(({ stream, derived }) => {
-            const sourceName = stream.playlist_id
-              ? (playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист')
-              : (stream.stream_assets?.length ? `Черга (${stream.stream_assets.length})` : 'Джерело не визначено')
+            const sourceName = getStreamSourceLabel(stream)
             const destinationLabel = (stream.destinations ?? []).map((d) => d.name).join(', ') || 'Канал не вказано'
             const quotaLabel = derived.quotaReached
               ? '0'
@@ -727,9 +732,7 @@ export default function StreamingPage() {
               </article>
             )
           }) : readyEntries.length > 0 ? readyEntries.map(({ stream }) => {
-            const sourceName = stream.playlist_id
-              ? (playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист')
-              : (stream.stream_assets?.length ? `Черга (${stream.stream_assets.length})` : 'Джерело не визначено')
+            const sourceName = getStreamSourceLabel(stream)
             const destinationLabel = (stream.destinations ?? []).map((d) => d.name).join(', ') || 'Канал не вказано'
             const isOptimisticallyLive = optimisticRunningStreamIds.includes(stream.id)
 
@@ -824,7 +827,7 @@ export default function StreamingPage() {
                   {archiveEntries.map(({ stream }) => (
                     <tr key={stream.id}>
                       <td>{stream.name || 'Без назви'}</td>
-                      <td>{stream.playlist_id ? (playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист') : 'Черга'}</td>
+                      <td>{getStreamSourceLabel(stream)}</td>
                       <td>{(stream.destinations ?? []).map((d) => d.name).join(', ') || '—'}</td>
                       <td>{new Date(stream.created_at).toLocaleString()}</td>
                       <td>
