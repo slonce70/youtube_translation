@@ -481,6 +481,38 @@
           ]
         }
       }
+    },
+    "provider": {
+      "liveLabel": "YouTube live",
+      "channelsDescription": "Your RTMPS channels with optional YouTube provider linkage",
+      "channelsEmpty": "Add an RTMPS channel and link a YouTube OAuth connection when you need real provider status.",
+      "viewersLabel": "YouTube viewers",
+      "viewers": "{count} viewers",
+      "runtimeMismatchTitle": "Runtime / YouTube mismatch",
+      "runtimeMismatchBody": "Runtime: {runtime} · Provider: {provider}",
+      "runtime": {
+        "running": "running",
+        "stopped": "stopped"
+      },
+      "status": {
+        "live": "YouTube live",
+        "offline": "YouTube offline",
+        "stale": "YouTube stale",
+        "unknown": "YouTube unknown"
+      },
+      "modalDescription": "Paste the RTMPS URL and stream key. If you already connected YouTube over OAuth, link that connection to get real provider status.",
+      "linkLabel": "YouTube provider link",
+      "linkNone": "No provider link",
+      "linkHint": "Use this to show honest YouTube live, offline, and viewer data in the dashboard and topbar.",
+      "oauthTitle": "OR — connect quickly with OAuth",
+      "youtubeCta": "Connect YouTube OAuth",
+      "youtubeBadge": "Live",
+      "twitchCta": "Twitch OAuth",
+      "twitchBadge": "Out of scope",
+      "scopeHint": "Only YouTube OAuth is active in this MVP. Twitch is intentionally excluded from this release.",
+      "oauth": {
+        "startFailed": "Failed to start YouTube OAuth"
+      }
     }
   },
   "provider": {
