@@ -147,10 +147,6 @@ export default function StreamingPage() {
     return new Map(audioCollections.map((collection) => [collection.id, collection]))
   }, [audioCollections])
 
-  const runningStreams = useMemo(
-    () => (streams ?? []).filter((stream) => stream.status === 'running'),
-    [streams],
-  )
   const formatLimitValue = (value?: number | null) => (value == null ? '∞' : value.toString())
   const destinationsLimit = quota?.destinations?.limit ?? null
   const concurrentStreamsLimit = quota?.streams?.limit ?? null
@@ -440,6 +436,10 @@ export default function StreamingPage() {
 
   const liveEntries = useMemo(
     () => presentedStreams.filter(({ derived }) => derived.group === 'live' || derived.group === 'attention'),
+    [presentedStreams],
+  )
+  const runningStreams = useMemo(
+    () => presentedStreams.filter(({ derived }) => derived.isRunning).map(({ stream }) => stream),
     [presentedStreams],
   )
   const scheduledEntries = useMemo(
