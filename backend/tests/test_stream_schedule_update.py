@@ -193,7 +193,9 @@ async def test_update_stream_schedule_sets_recurring_timezone_and_window_default
         await session.commit()
 
         service = StreamService(session, user_id)
-        local_start = datetime(2026, 4, 6, 17, 30, tzinfo=zone)
+        local_start = (
+            datetime.now(zone) + timedelta(days=7)
+        ).replace(hour=17, minute=30, second=0, microsecond=0)
         start_at = local_start.astimezone(timezone.utc).replace(microsecond=0)
 
         payload = StreamScheduleUpdate(
@@ -208,10 +210,12 @@ async def test_update_stream_schedule_sets_recurring_timezone_and_window_default
 
         assert updated.schedule_timezone == "Europe/Kyiv"
         assert updated.schedule_repeat == "weekly"
-        assert updated.schedule_weekdays == [0]
+        assert updated.schedule_weekdays == [local_start.weekday()]
         assert updated.schedule_window_end_time == time(18, 0)
         assert updated.schedule_stop_after_seconds == 7200
-        assert updated.scheduled_stop_time == datetime(2026, 4, 6, 15, 0, tzinfo=timezone.utc)
+        assert updated.scheduled_stop_time == (
+            local_start.replace(hour=18, minute=0).astimezone(timezone.utc)
+        )
 
 
 @pytest.mark.asyncio
