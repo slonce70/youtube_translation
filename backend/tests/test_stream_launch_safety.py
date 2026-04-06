@@ -335,6 +335,7 @@ async def test_quality_and_start_reject_stale_copy_safe_asset_for_rtmp(
         "validate_file",
         fake_validate_file,
     )
+    monkeypatch.setattr(streams_helpers.shutil, "which", lambda _value: "/usr/bin/ffprobe")
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
     monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
     monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
