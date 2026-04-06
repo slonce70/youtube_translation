@@ -167,10 +167,14 @@ export default function StreamingPage() {
     tStreaming(`provider.status.${getProviderStatusKey(status)}`)
   const getStreamSourceLabel = (stream: Stream) => {
     const primaryDestinationUrl = stream.destinations?.[0]?.rtmps_url?.trim()
-    if (primaryDestinationUrl) return primaryDestinationUrl
+    if (primaryDestinationUrl) {
+      const normalizedUrl = primaryDestinationUrl.toLowerCase()
+      if (normalizedUrl.includes('youtube.com')) return 'YouTube'
+      return 'RTMPS'
+    }
     if (stream.playlist_id) return playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист'
     if (stream.stream_assets?.length) return `Черга (${stream.stream_assets.length})`
-    return 'RTMPS URL не вказано'
+    return 'YouTube'
   }
   const formatProviderSummary = (destination: Destination) => {
     if (!destination.provider_connection_id) return null
