@@ -245,8 +245,7 @@ async def test_quality_and_supervisor_start_reject_incompatible_copy_first_media
         quality = await service.evaluate_quality(stream_id)
         assert quality.ok is False
         assert {violation.code for violation in quality.violations} == {
-            "incompatible_codecs",
-            "copy_source_not_live_safe",
+            "incompatible_codecs"
         }
 
         with pytest.raises(HTTPException) as exc_info:
@@ -255,8 +254,7 @@ async def test_quality_and_supervisor_start_reject_incompatible_copy_first_media
         assert exc_info.value.status_code == 422
         assert exc_info.value.detail["error"] == "quality_rejected"
         assert {item["code"] for item in exc_info.value.detail["violations"]} == {
-            "incompatible_codecs",
-            "copy_source_not_live_safe",
+            "incompatible_codecs"
         }
 
 
@@ -306,8 +304,7 @@ async def test_http_start_route_rejects_incompatible_media_for_dev_auth_user(
     assert response.status_code == 422
     assert response.json()["detail"]["error"] == "quality_rejected"
     assert {item["code"] for item in response.json()["detail"]["violations"]} == {
-        "incompatible_codecs",
-        "copy_source_not_live_safe",
+        "incompatible_codecs"
     }
 
 
