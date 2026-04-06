@@ -12,6 +12,7 @@ from app.core.stream_schedule import (
 )
 
 ALLOWED_ASSET_TYPES = {"video", "audio"}
+ProviderStatusValue = Literal["live", "offline", "unknown", "stale"]
 
 
 # Asset schemas
@@ -229,6 +230,7 @@ class DestinationBase(BaseModel):
     name: str
     rtmps_url: str = "rtmps://a.rtmp.youtube.com/live2"
     enabled: bool = True
+    provider_connection_id: Optional[UUID] = None
 
 
 class DestinationCreate(DestinationBase):
@@ -242,12 +244,19 @@ class DestinationUpdate(BaseModel):
     rtmps_url: Optional[str] = None
     stream_key: Optional[str] = None
     enabled: Optional[bool] = None
+    provider_connection_id: Optional[UUID] = None
 
 
 class DestinationResponse(DestinationBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    provider_kind: Optional[Literal["youtube"]] = None
+    provider_channel_id: Optional[str] = None
+    provider_status: ProviderStatusValue = "unknown"
+    provider_viewers: Optional[int] = None
+    provider_last_checked_at: Optional[datetime] = None
+    provider_video_id: Optional[str] = None
     stream_key_masked: str = Field(default="****")  # Never expose real key
     created_at: datetime
     updated_at: datetime
@@ -465,6 +474,13 @@ class DestinationSummary(BaseModel):
     name: str
     rtmps_url: str
     enabled: bool
+    provider_connection_id: Optional[UUID] = None
+    provider_kind: Optional[Literal["youtube"]] = None
+    provider_channel_id: Optional[str] = None
+    provider_status: ProviderStatusValue = "unknown"
+    provider_viewers: Optional[int] = None
+    provider_last_checked_at: Optional[datetime] = None
+    provider_video_id: Optional[str] = None
 
 
 class StreamDestinationLink(BaseModel):
@@ -548,15 +564,100 @@ class StreamResponse(StreamBase):
     runtime_last_restart_at: Optional[datetime] = Field(default=None, exclude=True)
     runtime_last_failure_at: Optional[datetime] = Field(default=None, exclude=True)
 
+    @staticmethod
+    def _destination_summary_from_link(
+        link: "StreamDestinationLink",
+    ) -> Optional[DestinationSummary]:
+        destination = link.destination
+        if not destination:
+            return None
+        return DestinationSummary(
+            id=destination.id,
+            name=destination.name,
+            rtmps_url=destination.rtmps_url,
+            enabled=destination.enabled,
+            provider_connection_id=getattr(destination, "provider_connection_id", None),
+            provider_kind=getattr(destination, "provider_kind", None),
+            provider_channel_id=getattr(destination, "provider_channel_id", None),
+            provider_status=getattr(destination, "_provider_status", "unknown"),
+            provider_viewers=getattr(destination, "_provider_viewers", None),
+            provider_last_checked_at=getattr(
+                destination, "_provider_last_checked_at", None
+            ),
+            provider_video_id=getattr(destination, "_provider_video_id", None),
+        )
+
     @computed_field  # type: ignore[misc]
     @property
     def destinations(self) -> List[DestinationSummary]:
         summaries: List[DestinationSummary] = []
         for link in self.stream_destinations:
-            destination = link.destination
+            destination = self._destination_summary_from_link(link)
             if destination:
                 summaries.append(destination)
         return summaries
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def provider_status(self) -> ProviderStatusValue:
+        connected = [
+            destination
+            for destination in self.destinations
+            if destination.provider_connection_id
+        ]
+        if not connected:
+            return "unknown"
+        statuses = {destination.provider_status for destination in connected}
+        if "live" in statuses:
+            return "live"
+        if "stale" in statuses:
+            return "stale"
+        if statuses == {"offline"}:
+            return "offline"
+        return "unknown"
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def provider_viewers(self) -> Optional[int]:
+        viewers = {
+            (str(destination.provider_connection_id), destination.provider_viewers)
+            for destination in self.destinations
+            if destination.provider_connection_id
+            and destination.provider_viewers is not None
+        }
+        total = sum(viewer for _, viewer in viewers)
+        return total if viewers else None
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def provider_last_checked_at(self) -> Optional[datetime]:
+        timestamps = [
+            destination.provider_last_checked_at
+            for destination in self.destinations
+            if destination.provider_last_checked_at is not None
+        ]
+        return max(timestamps) if timestamps else None
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def provider_video_id(self) -> Optional[str]:
+        video_ids = {
+            destination.provider_video_id
+            for destination in self.destinations
+            if destination.provider_video_id
+        }
+        if len(video_ids) == 1:
+            return next(iter(video_ids))
+        return None
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def provider_mismatch(self) -> bool:
+        if self.provider_status == "unknown":
+            return False
+        runtime_running = self.status == "running"
+        provider_live = self.provider_status == "live"
+        return runtime_running != provider_live
 
     @computed_field  # type: ignore[misc]
     @property
@@ -589,12 +690,38 @@ class StreamStatus(BaseModel):
     daily_limit_seconds: Optional[int] = None
     remaining_daily_seconds: Optional[int] = None
     quota_limit_reached: Optional[bool] = None
+    provider_status: ProviderStatusValue = "unknown"
+    provider_viewers: Optional[int] = None
+    provider_last_checked_at: Optional[datetime] = None
+    provider_video_id: Optional[str] = None
+    provider_mismatch: bool = False
     runtime_restart: StreamRuntimeRestartInfo
 
 
 class StreamWsTokenResponse(BaseModel):
     token: str
     expires_at: int
+
+
+class YoutubeConnectionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    youtube_channel_id: str
+    youtube_channel_title: Optional[str] = None
+    scopes: List[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    last_sync_at: Optional[datetime] = None
+    last_sync_error: Optional[str] = None
+    provider_status: ProviderStatusValue = "unknown"
+    provider_viewers: Optional[int] = None
+    provider_last_checked_at: Optional[datetime] = None
+    provider_video_id: Optional[str] = None
+
+
+class YoutubeOAuthStartResponse(BaseModel):
+    auth_url: str
 
 
 class StreamAssetLink(BaseModel):

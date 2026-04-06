@@ -2,6 +2,7 @@
 /* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { translateSupabaseError } from '@/i18n/errorMessages'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -9,9 +10,11 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { writeDevBypassDisplayName } from '@/lib/devBypassUser'
 import { useDashboardContext } from '../dashboard-context'
 import { toast } from 'sonner'
+import { getProviderBadgeVariant, getProviderStatusKey } from '@/lib/provider-status'
 
 const LANGUAGE_OPTIONS = ['🇺🇦 Українська', '🇬🇧 English', '🇷🇺 Русский']
 const TIMEZONE_OPTIONS = ['UTC+3 (Київ)', 'UTC+0 (Лондон)', 'UTC-5 (Нью-Йорк)']
@@ -19,6 +22,7 @@ const TIMEZONE_OPTIONS = ['UTC+3 (Київ)', 'UTC+0 (Лондон)', 'UTC-5 (Н
 export default function ProfilePage() {
   const devBypass = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
   const { user, refreshUser } = useDashboardContext()
+  const queryClient = useQueryClient()
   const t = useTranslations('profile')
   const toasts = useTranslations('profile.toasts')
   const supabaseErrors = useTranslations('errors.supabase')
@@ -31,6 +35,24 @@ export default function ProfilePage() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordLoading, setPasswordLoading] = useState(false)
+
+  const { data: youtubeConnections } = useQuery({
+    queryKey: ['youtube-connections', user?.id],
+    queryFn: () => api.youtube.listConnections(),
+    enabled: !!user,
+    staleTime: 30_000,
+  })
+
+  const disconnectYoutubeMutation = useMutation({
+    mutationFn: (connectionId: string) => api.youtube.deleteConnection(connectionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['youtube-connections', user?.id] })
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
+      queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
+      toast.success(t('toasts.youtubeDisconnected'))
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
 
   useEffect(() => {
     if (!user) return
@@ -47,7 +69,49 @@ export default function ProfilePage() {
     } catch {}
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const status = params.get('youtube_oauth')
+    const message = params.get('youtube_message')
+    if (!status) return
+    if (status === 'success') {
+      toast.success(t('toasts.youtubeConnected'))
+      queryClient.invalidateQueries({ queryKey: ['youtube-connections', user?.id] })
+    } else {
+      toast.error(message || t('toasts.youtubeConnectFailed'))
+    }
+    params.delete('youtube_oauth')
+    params.delete('youtube_message')
+    const next = params.toString()
+    window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`)
+  }, [queryClient, t, user?.id])
+
   const initials = useMemo(() => (displayName || user?.email || 'U').charAt(0).toUpperCase(), [displayName, user?.email])
+  const formatProviderStatus = (status?: string | null) => t(`provider.status.${getProviderStatusKey(status)}`)
+  const formatConnectionSummary = (connection: {
+    provider_status?: string | null
+    provider_viewers?: number | null
+  }) => {
+    const base = formatProviderStatus(connection.provider_status)
+    if (typeof connection.provider_viewers === 'number') {
+      return `${base} · ${t('provider.viewers', { count: connection.provider_viewers })}`
+    }
+    return base
+  }
+
+  const handleStartYouTubeConnect = async () => {
+    try {
+      const response = await api.youtube.oauthStart({
+        redirect_origin: window.location.origin,
+        redirect_path: '/dashboard/profile',
+      })
+      window.location.href = response.auth_url
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('provider.startFailed')
+      toast.error(message)
+    }
+  }
 
   const handleProfileSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -191,19 +255,58 @@ export default function ProfilePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>📺 Підключені платформи</CardTitle>
-            <div className="card-description">Підключення через OAuth 2.0 буде додано у Phase 2. Фейкові статуси не показуємо.</div>
+            <CardTitle>{t('provider.title')}</CardTitle>
+            <div className="card-description">{t('provider.description')}</div>
           </CardHeader>
           <CardContent>
-            <div className="stream-row" style={{ opacity: 0.85, alignItems: 'flex-start' }}>
-              <div className="stream-thumb">📡</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>YouTube / Twitch / Facebook</div>
-                <div style={{ fontSize: 13, color: 'var(--txt-2)' }}>Підключення платформ буде доступне після реалізації реального OAuth backend flow.</div>
-                <div style={{ fontSize: 12, color: 'var(--txt-3)', marginTop: 6 }}>Поки що використовуйте Custom RTMP у розділі «Трансляції».</div>
-              </div>
-              <Badge variant="idle">Відкладено</Badge>
+            <div className="page-actions" style={{ marginLeft: 0, marginBottom: 16 }}>
+              <Button onClick={handleStartYouTubeConnect}>{t('provider.connectCta')}</Button>
             </div>
+            {(youtubeConnections?.length ?? 0) > 0 ? (
+              <div className="summary-list">
+                {youtubeConnections?.map((connection) => (
+                  <div key={connection.id} className="stream-row" style={{ alignItems: 'flex-start' }}>
+                    <div className="stream-thumb">▶</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600 }}>{connection.youtube_channel_title || connection.youtube_channel_id}</div>
+                      <div style={{ fontSize: 13, color: 'var(--txt-2)' }}>{formatConnectionSummary(connection)}</div>
+                      <div style={{ fontSize: 12, color: 'var(--txt-3)', marginTop: 6 }}>
+                        {t('provider.channelId', { id: connection.youtube_channel_id })}
+                        {connection.last_sync_at
+                          ? ` · ${t('provider.lastSync', { value: new Date(connection.last_sync_at).toLocaleString() })}`
+                          : ''}
+                      </div>
+                      {connection.last_sync_error ? (
+                        <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 6 }}>
+                          {t('provider.lastError', { value: connection.last_sync_error })}
+                        </div>
+                      ) : null}
+                    </div>
+                    <Badge variant={getProviderBadgeVariant(connection.provider_status)}>
+                      {formatProviderStatus(connection.provider_status)}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => disconnectYoutubeMutation.mutate(connection.id)}
+                      isLoading={disconnectYoutubeMutation.isPending && disconnectYoutubeMutation.variables === connection.id}
+                    >
+                      {t('provider.disconnectCta')}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="stream-row" style={{ opacity: 0.85, alignItems: 'flex-start' }}>
+                <div className="stream-thumb">📡</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600 }}>{t('provider.emptyTitle')}</div>
+                  <div style={{ fontSize: 13, color: 'var(--txt-2)' }}>{t('provider.emptyDescription')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--txt-3)', marginTop: 6 }}>{t('provider.emptyHint')}</div>
+                </div>
+                <Badge variant="idle">{t('provider.notConnected')}</Badge>
+              </div>
+            )}
           </CardContent>
         </Card>
 

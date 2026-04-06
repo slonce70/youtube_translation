@@ -254,8 +254,10 @@ async def collect_live_output_compatibility_violations(
 
     validator = VideoValidator()
     ffprobe_candidate = str(getattr(validator, "ffprobe_bin", "") or "").strip()
-    if ffprobe_candidate and not Path(ffprobe_candidate).exists() and not shutil.which(
+    if (
         ffprobe_candidate
+        and not Path(ffprobe_candidate).exists()
+        and not shutil.which(ffprobe_candidate)
     ):
         logger.warning(
             "Skipping fresh RTMP copy-safety revalidation because ffprobe is unavailable"

@@ -311,5 +311,16 @@
       "description": "FHD Start unlocks additional destinations, storage, and all-day streaming.",
       "button": "Review plans"
     }
+  },
+  "provider": {
+    "liveCount": "{count} YouTube live",
+    "viewers": "{count} viewers",
+    "runtimeMismatchBadge": "Runtime mismatch",
+    "status": {
+      "live": "YouTube live",
+      "offline": "YouTube offline",
+      "stale": "YouTube stale",
+      "unknown": "YouTube unknown"
+    }
   }
 }

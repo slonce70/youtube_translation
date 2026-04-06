@@ -35,9 +35,9 @@ export function Topbar({ userName, userEmail, liveCount, onOpenPalette, onSignOu
   }, [menuOpen])
 
   const liveLabel = useMemo(() => {
-    if (liveCount <= 0) return 'Немає live'
-    return `${liveCount} Live`
-  }, [liveCount])
+    if (liveCount <= 0) return nav('provider.offline')
+    return nav('provider.liveCount', { count: liveCount })
+  }, [liveCount, nav])
 
   return (
     <header className="topbar">

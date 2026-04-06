@@ -1,5 +1,6 @@
 import React from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl'
 
 import ProfilePage from '../page'
@@ -12,6 +13,9 @@ const updateUserMock = jest.fn()
 const signInWithPasswordMock = jest.fn()
 const toastErrorMock = jest.fn()
 const toastSuccessMock = jest.fn()
+const youtubeListConnectionsMock = jest.fn()
+const youtubeDeleteConnectionMock = jest.fn()
+const youtubeOauthStartMock = jest.fn()
 
 jest.mock('@/lib/supabase', () => {
   return {
@@ -33,6 +37,16 @@ jest.mock('sonner', () => {
   }
 })
 
+jest.mock('@/lib/api', () => ({
+  api: {
+    youtube: {
+      listConnections: (...args: unknown[]) => youtubeListConnectionsMock(...args),
+      deleteConnection: (...args: unknown[]) => youtubeDeleteConnectionMock(...args),
+      oauthStart: (...args: unknown[]) => youtubeOauthStartMock(...args),
+    },
+  },
+}))
+
 function renderProfilePage(overrides?: Partial<React.ContextType<typeof DashboardContext>>) {
   const refreshUser = jest.fn().mockResolvedValue(undefined)
   const dashboardValue = {
@@ -52,20 +66,24 @@ function renderProfilePage(overrides?: Partial<React.ContextType<typeof Dashboar
   return {
     refreshUser,
     ...render(
-    React.createElement(
-      NextIntlClientProvider as any,
-      {
-        locale: 'en',
-        messages: enMessages as unknown as AbstractIntlMessages,
-      }
-      ,
       React.createElement(
-        DashboardContext.Provider as any,
-        { value: dashboardValue },
-        React.createElement(ProfilePage)
+        QueryClientProvider,
+        { client: new QueryClient() },
+        React.createElement(
+          NextIntlClientProvider as any,
+          {
+            locale: 'en',
+            messages: enMessages as unknown as AbstractIntlMessages,
+          },
+          React.createElement(
+            DashboardContext.Provider as any,
+            { value: dashboardValue },
+            React.createElement(ProfilePage)
+          )
+        )
       )
-    )
-  )}
+    ),
+  }
 }
 
 describe('ProfilePage password change', () => {
@@ -75,6 +93,9 @@ describe('ProfilePage password change', () => {
     jest.clearAllMocks()
     updateUserMock.mockResolvedValue({ error: null })
     signInWithPasswordMock.mockResolvedValue({ error: null })
+    youtubeListConnectionsMock.mockResolvedValue([])
+    youtubeDeleteConnectionMock.mockResolvedValue(undefined)
+    youtubeOauthStartMock.mockResolvedValue({ auth_url: 'https://accounts.google.com/' })
     process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH = '0'
     window.localStorage.clear()
   })
@@ -125,6 +146,35 @@ describe('ProfilePage password change', () => {
       expect(updateUserMock).not.toHaveBeenCalled()
       expect(refreshUser).toHaveBeenCalled()
       expect(toastSuccessMock).toHaveBeenCalledWith('Profile updated')
+    })
+  })
+
+  it('disconnects a YouTube connection from the provider card', async () => {
+    youtubeListConnectionsMock.mockResolvedValue([
+      {
+        id: 'conn-1',
+        youtube_channel_id: 'channel-1',
+        youtube_channel_title: 'Main channel',
+        scopes: ['https://www.googleapis.com/auth/youtube.readonly'],
+        created_at: '2026-04-06T11:00:00Z',
+        updated_at: '2026-04-06T11:00:00Z',
+        last_sync_at: null,
+        last_sync_error: null,
+        provider_status: 'unknown',
+        provider_viewers: null,
+        provider_last_checked_at: null,
+        provider_video_id: null,
+      },
+    ])
+
+    renderProfilePage()
+
+    const disconnectButton = await screen.findByRole('button', { name: 'Disconnect' })
+    fireEvent.click(disconnectButton)
+
+    await waitFor(() => {
+      expect(youtubeDeleteConnectionMock).toHaveBeenCalledWith('conn-1')
+      expect(toastSuccessMock).toHaveBeenCalledWith('YouTube connection removed')
     })
   })
 })

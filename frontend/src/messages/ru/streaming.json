@@ -482,5 +482,37 @@
         }
       }
     }
+  },
+  "provider": {
+    "liveLabel": "YouTube live",
+    "channelsDescription": "Ваши RTMPS-каналы с optional YouTube provider link",
+    "channelsEmpty": "Добавьте RTMPS-канал и при необходимости привяжите YouTube OAuth connection для реального provider status.",
+    "viewersLabel": "YouTube viewers",
+    "viewers": "{count} зрителей",
+    "runtimeMismatchTitle": "Runtime / YouTube mismatch",
+    "runtimeMismatchBody": "Runtime: {runtime} · Provider: {provider}",
+    "runtime": {
+      "running": "running",
+      "stopped": "stopped"
+    },
+    "status": {
+      "live": "YouTube live",
+      "offline": "YouTube offline",
+      "stale": "YouTube stale",
+      "unknown": "YouTube unknown"
+    },
+    "modalDescription": "Вставьте RTMPS URL и stream key. Если YouTube уже подключён через OAuth, привяжите connection для реального provider status.",
+    "linkLabel": "YouTube provider link",
+    "linkNone": "Без provider link",
+    "linkHint": "Нужно для честного YouTube live, offline и viewers в dashboard и topbar.",
+    "oauthTitle": "ИЛИ — быстрое подключение через OAuth",
+    "youtubeCta": "Подключить YouTube OAuth",
+    "youtubeBadge": "Live",
+    "twitchCta": "Twitch OAuth",
+    "twitchBadge": "Out of scope",
+    "scopeHint": "В этом MVP активен только YouTube OAuth. Twitch намеренно исключён из релиза.",
+    "oauth": {
+      "startFailed": "Не удалось начать YouTube OAuth"
+    }
   }
 }

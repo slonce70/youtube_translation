@@ -334,7 +334,14 @@ async def _apply_schema_changes(conn):
     )
 
     # Add missing statistics columns to destinations table
-    destination_columns = ["total_streams", "total_stream_hours", "last_used_at"]
+    destination_columns = [
+        "total_streams",
+        "total_stream_hours",
+        "last_used_at",
+        "provider_kind",
+        "provider_connection_id",
+        "provider_channel_id",
+    ]
     if await _missing_columns(conn, "destinations", destination_columns):
         await conn.execute(
             text(
@@ -342,10 +349,98 @@ async def _apply_schema_changes(conn):
                 ALTER TABLE destinations
                 ADD COLUMN IF NOT EXISTS total_streams INTEGER DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS total_stream_hours FLOAT DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP WITH TIME ZONE
+                ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP WITH TIME ZONE,
+                ADD COLUMN IF NOT EXISTS provider_kind TEXT,
+                ADD COLUMN IF NOT EXISTS provider_connection_id UUID,
+                ADD COLUMN IF NOT EXISTS provider_channel_id TEXT
                 """
             )
         )
+
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS youtube_connections (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id UUID NOT NULL REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+                youtube_channel_id TEXT NOT NULL,
+                youtube_channel_title TEXT,
+                access_token_encrypted TEXT NOT NULL,
+                refresh_token_encrypted TEXT,
+                token_expires_at TIMESTAMPTZ,
+                scopes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+                created_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
+                updated_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
+                last_sync_at TIMESTAMPTZ,
+                last_sync_error TEXT
+            )
+            """
+        )
+    )
+    await conn.execute(
+        text(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_youtube_connections_user_channel
+            ON youtube_connections(user_id, youtube_channel_id)
+            """
+        )
+    )
+    await conn.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS idx_destinations_provider_connection_id
+            ON destinations(provider_connection_id)
+            """
+        )
+    )
+    await conn.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS idx_destinations_provider_channel_id
+            ON destinations(provider_channel_id)
+            """
+        )
+    )
+
+    await conn.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints
+                    WHERE table_name = 'destinations'
+                      AND constraint_name = 'destinations_provider_connection_id_fkey'
+                ) THEN
+                    ALTER TABLE destinations
+                        ADD CONSTRAINT destinations_provider_connection_id_fkey
+                        FOREIGN KEY (provider_connection_id)
+                        REFERENCES youtube_connections(id)
+                        ON DELETE SET NULL;
+                END IF;
+            END $$;
+            """
+        )
+    )
+
+    await conn.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'check_destination_provider_kind'
+                ) THEN
+                    ALTER TABLE destinations
+                        ADD CONSTRAINT check_destination_provider_kind
+                        CHECK (provider_kind IS NULL OR provider_kind IN ('youtube'));
+                END IF;
+            END $$;
+            """
+        )
+    )
 
     await conn.execute(
         text(

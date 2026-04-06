@@ -72,6 +72,9 @@ class UserProfile(Base):
     destinations = relationship(
         "Destination", back_populates="user", cascade="all, delete-orphan"
     )
+    youtube_connections = relationship(
+        "YoutubeConnection", back_populates="user", cascade="all, delete-orphan"
+    )
     streams = relationship(
         "Stream", back_populates="user", cascade="all, delete-orphan"
     )
@@ -330,6 +333,42 @@ class PlaylistItem(Base):
 # ==================================================
 
 
+class YoutubeConnection(Base):
+    __tablename__ = "youtube_connections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_profiles.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    youtube_channel_id = Column(Text, nullable=False, index=True)
+    youtube_channel_title = Column(Text)
+    access_token_encrypted = Column(Text, nullable=False)
+    refresh_token_encrypted = Column(Text)
+    token_expires_at = Column(TIMESTAMP(timezone=True))
+    scopes_json = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(
+        TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    last_sync_at = Column(TIMESTAMP(timezone=True))
+    last_sync_error = Column(Text)
+
+    user = relationship("UserProfile", back_populates="youtube_connections")
+    destinations = relationship("Destination", back_populates="provider_connection")
+
+    __table_args__ = (
+        Index(
+            "idx_youtube_connections_user_channel",
+            "user_id",
+            "youtube_channel_id",
+            unique=True,
+        ),
+    )
+
+
 class Destination(Base):
     __tablename__ = "destinations"
 
@@ -345,6 +384,14 @@ class Destination(Base):
     rtmps_url = Column(Text, nullable=False, default="rtmps://a.rtmp.youtube.com/live2")
     stream_key_encrypted = Column(Text, nullable=False)
     enabled = Column(Boolean, default=True, index=True)
+    provider_kind = Column(Text, index=True)
+    provider_connection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("youtube_connections.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    provider_channel_id = Column(Text, index=True)
 
     # Statistics (auto-updated by triggers)
     total_streams = Column(Integer, default=0)
@@ -358,8 +405,18 @@ class Destination(Base):
 
     # Relationships
     user = relationship("UserProfile", back_populates="destinations")
+    provider_connection = relationship(
+        "YoutubeConnection", back_populates="destinations"
+    )
     stream_destinations = relationship(
         "StreamDestination", back_populates="destination", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "provider_kind IS NULL OR provider_kind IN ('youtube')",
+            name="check_destination_provider_kind",
+        ),
     )
 
 

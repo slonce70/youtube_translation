@@ -127,6 +127,20 @@ class Settings(BaseSettings):
     redis_url: Optional[str] = None
     redis_rate_limit_prefix: str = "rate-limit"
 
+    # YouTube OAuth / provider status
+    google_oauth_client_id: Optional[str] = None
+    google_oauth_client_secret: Optional[str] = None
+    google_oauth_redirect_uri: Optional[str] = None
+    google_oauth_authorize_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    google_oauth_token_url: str = "https://oauth2.googleapis.com/token"
+    google_oauth_scopes: Union[List[str], str] = [
+        "https://www.googleapis.com/auth/youtube.readonly"
+    ]
+    youtube_api_base_url: str = "https://www.googleapis.com/youtube/v3"
+    youtube_oauth_state_secret: Optional[str] = None
+    youtube_provider_status_ttl_seconds: int = 30
+    youtube_provider_http_timeout_seconds: int = 15
+
     @property
     def cors_origins(self) -> List[str]:
         origins = []
@@ -150,6 +164,21 @@ class Settings(BaseSettings):
                 proxy.strip() for proxy in self.trusted_proxy_ips if proxy.strip()
             ]
         return proxies
+
+    @property
+    def google_oauth_scope_list(self) -> List[str]:
+        scopes: List[str]
+        if isinstance(self.google_oauth_scopes, str):
+            scopes = [
+                scope.strip()
+                for scope in self.google_oauth_scopes.split(",")
+                if scope.strip()
+            ]
+        else:
+            scopes = [
+                scope.strip() for scope in self.google_oauth_scopes if scope.strip()
+            ]
+        return scopes or ["https://www.googleapis.com/auth/youtube.readonly"]
 
     @field_validator("database_url")
     @classmethod

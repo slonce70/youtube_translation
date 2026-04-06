@@ -44,6 +44,7 @@ from app.api.routes import (
     monitoring,
     media_folders,
     media_collections,
+    youtube,
 )
 from app.middleware.rate_limiter import RateLimitMiddleware, global_rate_limiter
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -126,6 +127,7 @@ app.include_router(
     prefix="/api/media-collections",
     tags=["media-collections"],
 )
+app.include_router(youtube.router, prefix="/api/youtube", tags=["youtube"])
 app.include_router(metrics.router, prefix="/api", tags=["metrics"])
 app.include_router(monitoring.router, prefix="/api/monitoring", tags=["monitoring"])
 

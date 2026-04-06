@@ -773,7 +773,9 @@ class AssetUploadService:
         if not isinstance(payload, dict):
             return None
 
-        upload_block = payload.get("Upload") or payload.get("Event", {}).get("Upload") or {}
+        upload_block = (
+            payload.get("Upload") or payload.get("Event", {}).get("Upload") or {}
+        )
         meta = upload_block.get("MetaData") or {}
         user_id_raw = meta.get("user_id")
         if user_id_raw != str(user_id):
@@ -793,7 +795,8 @@ class AssetUploadService:
             local_path=storage.get("Path"),
             error_code=str(manifest.get("reason") or "upload_finalize_failed"),
             error_message=str(
-                manifest.get("details") or "Upload finalization failed before ingest creation"
+                manifest.get("details")
+                or "Upload finalization failed before ingest creation"
             ),
             validation_errors=[],
             warning_messages=[],

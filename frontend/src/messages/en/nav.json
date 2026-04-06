@@ -21,5 +21,9 @@
   },
   "language": {
     "label": "Language"
+  },
+  "provider": {
+    "offline": "YouTube offline",
+    "liveCount": "{count} YouTube live"
   }
 }

@@ -32,6 +32,30 @@
     "passwordTooShort": "Password must be at least 8 characters long",
     "passwordMismatch": "Passwords do not match",
     "missingEmail": "Missing email on account",
-    "currentIncorrect": "Current password is incorrect"
+    "currentIncorrect": "Current password is incorrect",
+    "youtubeConnected": "YouTube connected",
+    "youtubeConnectFailed": "YouTube connection failed",
+    "youtubeDisconnected": "YouTube connection removed"
+  },
+  "provider": {
+    "title": "📺 YouTube connections",
+    "description": "Only real YouTube provider status is shown here. Twitch is intentionally excluded from this MVP.",
+    "connectCta": "▶ Connect YouTube",
+    "disconnectCta": "Disconnect",
+    "emptyTitle": "No YouTube connection yet",
+    "emptyDescription": "Connect your own channel over OAuth, then link it to an RTMPS destination on the Streaming page.",
+    "emptyHint": "Without a provider link, the dashboard and topbar will not claim a fake live state.",
+    "notConnected": "Not connected",
+    "channelId": "Channel ID: {id}",
+    "lastSync": "Last sync {value}",
+    "lastError": "Last error: {value}",
+    "viewers": "{count} viewers",
+    "startFailed": "Failed to start YouTube OAuth",
+    "status": {
+      "live": "YouTube live",
+      "offline": "YouTube offline",
+      "stale": "YouTube stale",
+      "unknown": "YouTube unknown"
+    }
   }
 }

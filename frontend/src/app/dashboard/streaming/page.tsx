@@ -25,6 +25,7 @@ import type {
   SubscriptionTierKey,
   MediaCollection,
   StreamSchedulePayload,
+  YoutubeConnection,
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
 import { StreamBuilderModal } from './components/StreamBuilderModal'
@@ -36,12 +37,18 @@ import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamStatusMap } from './hooks/useStreamStatusMap'
 import { AddChannelModal } from '@/components/streaming/AddChannelModal'
 import { deriveStreamState } from '@/lib/stream-state'
+import {
+  getProviderStatusKey,
+  getProviderBadgeVariant,
+  isProviderLive,
+} from '@/lib/provider-status'
 
 type DestinationFormState = {
   name: string
   rtmps_url: string
   stream_key: string
   enabled: boolean
+  provider_connection_id: string | null
 }
 
 export default function StreamingPage() {
@@ -70,6 +77,7 @@ export default function StreamingPage() {
     rtmps_url: 'rtmps://a.rtmp.youtube.com/live2',
     stream_key: '',
     enabled: true,
+    provider_connection_id: null,
   })
   const [viewingLogs, setViewingLogs] = useState<string | null>(null)
   const [logsMode, setLogsMode] = useState<'important' | 'raw'>('important')
@@ -82,6 +90,13 @@ export default function StreamingPage() {
     queryKey: ['destinations', user?.id],
     queryFn: () => api.destinations.list(),
     enabled: !!user,
+  })
+
+  const { data: youtubeConnections } = useQuery<YoutubeConnection[]>({
+    queryKey: ['youtube-connections', user?.id],
+    queryFn: () => api.youtube.listConnections(),
+    enabled: !!user,
+    staleTime: 30_000,
   })
 
   const { data: streams, isLoading: isLoadingStreams } = useQuery<Stream[]>({
@@ -148,6 +163,16 @@ export default function StreamingPage() {
   }, [audioCollections])
 
   const formatLimitValue = (value?: number | null) => (value == null ? '∞' : value.toString())
+  const formatProviderStatus = (status?: string | null) =>
+    tStreaming(`provider.status.${getProviderStatusKey(status)}`)
+  const formatProviderSummary = (destination: Destination) => {
+    if (!destination.provider_connection_id) return null
+    const base = formatProviderStatus(destination.provider_status)
+    if (typeof destination.provider_viewers === 'number') {
+      return `${base} · ${tStreaming('provider.viewers', { count: destination.provider_viewers })}`
+    }
+    return base
+  }
   const destinationsLimit = quota?.destinations?.limit ?? null
   const concurrentStreamsLimit = quota?.streams?.limit ?? null
   const planQualityLimits = quota?.quality
@@ -156,6 +181,7 @@ export default function StreamingPage() {
     mutationFn: (data: DestinationFormState) => api.destinations.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
       toast.success(streamingToasts('destination.created'))
       resetChannelForm()
     },
@@ -173,10 +199,12 @@ export default function StreamingPage() {
       if (data.stream_key.trim()) {
         payload.stream_key = data.stream_key.trim()
       }
+      payload.provider_connection_id = data.provider_connection_id
       return api.destinations.update(id, payload)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
       toast.success(streamingToasts('destination.updated'))
       resetChannelForm()
     },
@@ -188,6 +216,7 @@ export default function StreamingPage() {
     mutationFn: (destinationId: string) => api.destinations.delete(destinationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
+      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
       toast.success(streamingToasts('destination.deleted'))
     },
     onError: (error: Error) =>
@@ -314,6 +343,7 @@ export default function StreamingPage() {
       rtmps_url: 'rtmps://a.rtmp.youtube.com/live2',
       stream_key: '',
       enabled: true,
+      provider_connection_id: null,
     })
     setEditingChannelId(null)
     setShowChannelForm(false)
@@ -335,6 +365,7 @@ export default function StreamingPage() {
       rtmps_url: destination.rtmps_url,
       stream_key: '',
       enabled: destination.enabled,
+      provider_connection_id: destination.provider_connection_id ?? null,
     })
     setShowChannelForm(true)
   }
@@ -387,6 +418,18 @@ export default function StreamingPage() {
     }
   }
 
+  const handleStartYouTubeConnect = async () => {
+    try {
+      const redirect_origin = window.location.origin
+      const redirect_path = '/dashboard/streaming'
+      const response = await api.youtube.oauthStart({ redirect_origin, redirect_path })
+      window.location.href = response.auth_url
+    } catch (error) {
+      const message = error instanceof Error ? error.message : tStreaming('provider.oauth.startFailed')
+      toast.error(streamingToasts('generic.errorWithMessage', { message }))
+    }
+  }
+
   const handleStartStream = (stream: Stream) =>
     startStreamMutation.mutate({
       streamId: stream.id,
@@ -435,11 +478,17 @@ export default function StreamingPage() {
   )
 
   const liveEntries = useMemo(
-    () => presentedStreams.filter(({ derived }) => derived.group === 'live' || derived.group === 'attention'),
+    () =>
+      presentedStreams.filter(
+        ({ stream, derived }) =>
+          isProviderLive(stream.provider_status) ||
+          Boolean(stream.provider_mismatch) ||
+          derived.group === 'attention',
+      ),
     [presentedStreams],
   )
   const runningStreams = useMemo(
-    () => presentedStreams.filter(({ derived }) => derived.isRunning).map(({ stream }) => stream),
+    () => presentedStreams.filter(({ stream }) => isProviderLive(stream.provider_status)).map(({ stream }) => stream),
     [presentedStreams],
   )
   const scheduledEntries = useMemo(
@@ -476,7 +525,7 @@ export default function StreamingPage() {
           <div style={{ fontSize: 24 }}>🔴</div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{runningStreams.length}</div>
-            <div className="page-sub">Активних ефірів</div>
+            <div className="page-sub">{tStreaming('provider.liveLabel')}</div>
           </div>
         </div>
         <div className="stat-strip-card">
@@ -504,7 +553,7 @@ export default function StreamingPage() {
           <div>
             <CardTitle>📡 Канали (RTMPS)</CardTitle>
             <div className="page-sub" style={{ marginTop: 4 }}>
-              Ваші YouTube/Twitch/будь-які RTMPS-канали
+              {tStreaming('provider.channelsDescription')}
             </div>
           </div>
           <Button size="sm" onClick={() => setShowChannelForm(true)}>+ Додати канал</Button>
@@ -527,10 +576,20 @@ export default function StreamingPage() {
                   <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>
                     {destination.rtmps_url} · Ключ: {destination.stream_key_masked}
                   </div>
+                  {formatProviderSummary(destination) ? (
+                    <div style={{ fontSize: 12, color: 'var(--txt-2)', marginTop: 4 }}>
+                      {formatProviderSummary(destination)}
+                    </div>
+                  ) : null}
                 </div>
                 <Badge variant={destination.enabled ? 'live' : 'idle'}>
                   {destination.enabled ? 'Активний' : 'Не використовується'}
                 </Badge>
+                {destination.provider_connection_id ? (
+                  <Badge variant={getProviderBadgeVariant(destination.provider_status)}>
+                    {formatProviderStatus(destination.provider_status)}
+                  </Badge>
+                ) : null}
                 <Button
                   size="sm"
                   variant="ghost"
@@ -557,7 +616,7 @@ export default function StreamingPage() {
             <div className="empty-state" style={{ padding: '32px 12px' }}>
               <div className="empty-icon">📡</div>
               <div className="empty-title">Ще немає каналів</div>
-              <div className="empty-sub">Додайте RTMPS канал, щоб запускати ефіри.</div>
+              <div className="empty-sub">{tStreaming('provider.channelsEmpty')}</div>
               <Button size="sm" variant="outline" onClick={() => setShowChannelForm(true)} style={{ marginTop: 12 }}>
                 + Додати канал
               </Button>
@@ -596,7 +655,7 @@ export default function StreamingPage() {
               <article key={stream.id} className="card stream-summary-card" style={{ borderColor: 'rgba(34,197,94,.25)' }}>
                 <div className="card-content">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                    <Badge variant="live"><span className="live-dot" />У ЕФІРІ</Badge>
+                    <Badge variant={getProviderBadgeVariant(stream.provider_status)}>{formatProviderStatus(stream.provider_status)}</Badge>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
                     <span className="page-sub" style={{ marginLeft: 'auto' }}>{destinationLabel}</span>
                     <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)}>■ Зупинити</Button>
@@ -611,9 +670,9 @@ export default function StreamingPage() {
                       <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{sourceName}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>Тривалість ефіру</div>
+                      <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>{tStreaming('provider.viewersLabel')}</div>
                       <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>
-                        {formatLimitValue(derived.liveDurationSeconds ?? 0)}
+                        {stream.provider_viewers ?? '—'}
                       </div>
                     </div>
                   </div>
@@ -622,9 +681,9 @@ export default function StreamingPage() {
                     <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
                       <div>
                         <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>
-                          {formatLimitValue(derived.liveDurationSeconds ?? 0)}
+                          {stream.provider_viewers ?? '—'}
                         </div>
-                        <div className="page-sub">Загальна тривалість</div>
+                        <div className="page-sub">{tStreaming('provider.viewersLabel')}</div>
                       </div>
                     </div>
                     <div className="stream-row" style={{ justifyContent: 'center', textAlign: 'center' }}>
@@ -646,6 +705,18 @@ export default function StreamingPage() {
                       </div>
                     </div>
                   </div>
+
+                  {stream.provider_mismatch ? (
+                    <div className="stream-row" style={{ marginTop: 12, borderColor: 'rgba(245,158,11,.2)' }}>
+                      <div style={{ color: 'var(--amber)', fontWeight: 600 }}>{tStreaming('provider.runtimeMismatchTitle')}</div>
+                      <div className="page-sub" style={{ marginLeft: 'auto' }}>
+                        {tStreaming('provider.runtimeMismatchBody', {
+                          runtime: derived.isRunning ? tStreaming('provider.runtime.running') : tStreaming('provider.runtime.stopped'),
+                          provider: formatProviderStatus(stream.provider_status),
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="page-actions" style={{ marginTop: 14, marginLeft: 0 }}>
                     <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
@@ -783,9 +854,11 @@ export default function StreamingPage() {
         open={showChannelForm}
         editingChannelId={editingChannelId}
         channelForm={channelForm}
+        youtubeConnections={youtubeConnections}
         onChange={setChannelForm}
         onSubmit={handleSubmitChannel}
         onCancel={resetChannelForm}
+        onStartYouTubeConnect={handleStartYouTubeConnect}
         isSaving={createDestinationMutation.isPending || updateDestinationMutation.isPending}
         t={tStreaming}
       />
