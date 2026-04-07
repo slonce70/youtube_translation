@@ -853,6 +853,7 @@ export default function StreamingPage() {
                           <Button size="sm" onClick={() => handleStartStream(stream)} disabled={pendingStartStreamId === stream.id}>
                             {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '▶ Запустити'}
                           </Button>
+                          <Button size="sm" variant="outline" onClick={() => openLiveEditor(stream)}>✏️ Редагувати</Button>
                           <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
                         </div>
                       </td>
