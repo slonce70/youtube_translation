@@ -12,12 +12,14 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { LoadingState } from '@/components/LoadingState'
 import { cn } from '@/lib/utils'
-import type { Asset, Stream } from '@/lib/types'
+import type { Asset, Destination, Stream } from '@/lib/types'
 
 import type { CollectionEditorState } from '../builder-helpers'
+import { applyDurationPreset, DURATION_PRESETS, type ScheduleDraft } from '../schedule-utils'
 
 type Translator = (key: string, values?: TranslationValues) => string
 
@@ -33,6 +35,13 @@ type LiveEditorModalProps = {
   audioAssets: Asset[]
   onClose: () => void
   onApply: () => void | Promise<void>
+  scheduleDraft?: ScheduleDraft | null
+  onScheduleChange?: (draft: ScheduleDraft) => void
+  nameDraft?: string
+  onNameChange?: (name: string) => void
+  destinations?: Destination[]
+  selectedDestinationIds?: string[]
+  onDestinationToggle?: (destinationId: string) => void
   onAddAsset: (target: 'video' | 'audio', assetId: string) => void | Promise<void>
   onRemoveItem: (target: 'video' | 'audio', index: number) => void
   onMoveItem: (target: 'video' | 'audio', from: number, to: number) => void
@@ -246,6 +255,13 @@ export function LiveEditorModal({
   onRemoveItem,
   onMoveItem,
   onToggleOption,
+  scheduleDraft,
+  onScheduleChange,
+  nameDraft,
+  onNameChange,
+  destinations,
+  selectedDestinationIds,
+  onDestinationToggle,
   t,
 }: LiveEditorModalProps) {
   const [confirming, setConfirming] = useState(false)
@@ -285,6 +301,50 @@ export function LiveEditorModal({
               <p className="text-sm text-slate-600 dark:text-slate-300">
                 {t('streams.liveEdit.restartNotice')}
               </p>
+              {(onNameChange || onDestinationToggle) ? (
+                <div className="rounded-xl border border-slate-200 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-900/70 space-y-4">
+                  {onNameChange ? (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                        {t('streams.form.nameLabel')}
+                      </label>
+                      <Input
+                        value={nameDraft ?? ''}
+                        onChange={(event) => onNameChange(event.target.value)}
+                        placeholder={t('streams.form.namePlaceholder')}
+                        disabled={applying}
+                      />
+                    </div>
+                  ) : null}
+                  {onDestinationToggle && destinations ? (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                        {t('streams.builder.destinations.title')}
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {destinations.map((destination) => {
+                          const selected = selectedDestinationIds?.includes(destination.id) ?? false
+                          return (
+                            <button
+                              key={destination.id}
+                              type="button"
+                              className={`channel-row${selected ? ' active' : ''}`}
+                              onClick={() => onDestinationToggle(destination.id)}
+                              disabled={applying}
+                            >
+                              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                                <div style={{ fontWeight: 600, fontSize: 13 }}>{destination.name}</div>
+                                <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>{destination.rtmps_url}</div>
+                              </div>
+                              <span className={`toggle${selected ? ' on' : ''}`} />
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="grid gap-4 md:grid-cols-2">
                 <EditorPanel
                   target="video"
@@ -320,6 +380,70 @@ export function LiveEditorModal({
                   </div>
                 )}
               </div>
+
+              {scheduleDraft && onScheduleChange ? (
+                <div className="rounded-xl border border-slate-200 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-900/70 space-y-4">
+                  <div>
+                    <h4 className="font-semibold text-slate-900 dark:text-white">{t('streams.builder.schedule.title')}</h4>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('streams.scheduleModal.description')}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant={scheduleDraft.startMode === 'now' ? 'primary' : 'secondary'}
+                        onClick={() => onScheduleChange({ ...scheduleDraft, startMode: 'now', startAt: '' })}
+                        disabled={applying}
+                      >
+                        {t('streams.builder.schedule.startNow')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={scheduleDraft.startMode === 'schedule' ? 'primary' : 'secondary'}
+                        onClick={() => onScheduleChange({ ...scheduleDraft, startMode: 'schedule' })}
+                        disabled={applying}
+                      >
+                        {t('streams.builder.schedule.startLater')}
+                      </Button>
+                    </div>
+                    {scheduleDraft.startMode === 'schedule' ? (
+                      <Input
+                        type="datetime-local"
+                        value={scheduleDraft.startAt}
+                        onChange={(event) => onScheduleChange({ ...scheduleDraft, startAt: event.target.value })}
+                        disabled={applying}
+                      />
+                    ) : null}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {t('streams.builder.schedule.stopLabel')}
+                    </label>
+                    <Input
+                      type="datetime-local"
+                      value={scheduleDraft.stopAt}
+                      onChange={(event) => onScheduleChange({ ...scheduleDraft, stopAt: event.target.value })}
+                      disabled={applying}
+                    />
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {t('streams.builder.schedule.stopHint')}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {DURATION_PRESETS.map((hours) => (
+                        <Button
+                          key={`live-editor-duration-${hours}`}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onScheduleChange({ ...scheduleDraft, ...applyDurationPreset(scheduleDraft, hours) })}
+                          disabled={applying}
+                        >
+                          {t(`streams.builder.schedule.durationOptions.${hours}h`)}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">

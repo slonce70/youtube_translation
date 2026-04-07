@@ -487,6 +487,8 @@ export interface StreamSchedulePayload {
   schedule_start_at?: string | null
   schedule_stop_at?: string | null
   name?: string | null
+  destination_ids?: string[]
+  settings_json?: Record<string, unknown>
 }
 
 export interface StreamLiveUpdatePayload {

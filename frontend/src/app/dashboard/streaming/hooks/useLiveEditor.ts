@@ -231,15 +231,15 @@ export const useLiveEditor = ({ assets, tStreaming, streamingToasts }: UseLiveEd
     [updateEditorState],
   )
 
-  const applyLiveEditorChanges = useCallback(async () => {
-    if (!liveEditingStream) return
+  const applyLiveEditorChanges = useCallback(async (): Promise<boolean> => {
+    if (!liveEditingStream) return false
 
     const targets: Array<{ target: 'video' | 'audio'; editor: CollectionEditorState }> = []
 
     if (liveEditorState.video) {
       if (liveEditorState.video.items.length === 0) {
         toast.error(streamingToasts('generic.errorWithMessage', { message: tStreaming('streams.liveEdit.errors.videoEmpty') }))
-        return
+        return false
       }
       targets.push({ target: 'video', editor: liveEditorState.video })
     }
@@ -247,14 +247,14 @@ export const useLiveEditor = ({ assets, tStreaming, streamingToasts }: UseLiveEd
     if (liveEditorState.audio) {
       if (liveEditorState.audio.items.length === 0) {
         toast.error(streamingToasts('generic.errorWithMessage', { message: tStreaming('streams.liveEdit.errors.audioEmpty') }))
-        return
+        return false
       }
       targets.push({ target: 'audio', editor: liveEditorState.audio })
     }
 
     if (targets.length === 0) {
       toast.error(streamingToasts('generic.errorWithMessage', { message: tStreaming('streams.liveEdit.empty') }))
-      return
+      return false
     }
 
     setLiveEditorApplying(true)
@@ -275,10 +275,12 @@ export const useLiveEditor = ({ assets, tStreaming, streamingToasts }: UseLiveEd
 
       toast.success(streamingToasts('stream.liveEdited'))
       queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
+      return true
     } catch (error) {
       const message =
         error instanceof Error ? error.message : streamingToasts('errors.updateStreamFailed')
       toast.error(streamingToasts('generic.errorWithMessage', { message }))
+      return false
     } finally {
       setLiveEditorApplying(false)
     }
