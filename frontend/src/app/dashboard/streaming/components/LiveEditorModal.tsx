@@ -276,8 +276,8 @@ export function LiveEditorModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-      <Card className="w-full max-w-5xl animate-scale-in">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/70 px-4 py-6 backdrop-blur-sm">
+      <Card className="w-full max-w-5xl max-h-[calc(100vh-3rem)] overflow-y-auto animate-scale-in">
         <CardHeader className="flex items-start justify-between space-y-0">
           <div>
             <CardTitle>
