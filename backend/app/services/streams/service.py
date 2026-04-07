@@ -253,6 +253,19 @@ class StreamService:
         stream = await self._get_stream_basic(stream_id)
         schedule_mode = (payload.schedule_mode or "now").lower()
         schedule_config = await self._build_schedule_config(payload)
+        update_fields = getattr(payload, "model_fields_set", set())
+        updates_runtime_config = bool(
+            {"destination_ids", "settings_json"} & update_fields
+        )
+        if updates_runtime_config and stream.status in {
+            "running",
+            "starting",
+            "stopping",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot edit stream configuration while stream is running",
+            )
 
         if schedule_mode == "schedule":
             from .control import StreamControlService  # local import to avoid cycle
@@ -294,6 +307,38 @@ class StreamService:
         else:
             stream.scheduled_stop_time = None
             stream.scheduled_stop_attempted_at = None
+
+        if "name" in update_fields:
+            stream.name = payload.name
+
+        if "settings_json" in update_fields:
+            if payload.settings_json is not None and not isinstance(
+                payload.settings_json, dict
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="settings_json must be an object",
+                )
+            stream.settings_json = payload.settings_json or {}
+
+        if "destination_ids" in update_fields:
+            if not payload.destination_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="At least one destination is required",
+                )
+            destinations = await fetch_destinations(
+                self.db, self.user_id, payload.destination_ids
+            )
+            await self.db.execute(
+                delete(StreamDestination).where(
+                    StreamDestination.stream_id == stream.id
+                )
+            )
+            for dest in destinations:
+                self.db.add(
+                    StreamDestination(stream_id=stream.id, destination_id=dest.id)
+                )
 
         await self.db.commit()
 

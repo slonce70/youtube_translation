@@ -378,6 +378,9 @@ class StreamCreate(StreamBase):
 class StreamScheduleUpdate(BaseModel):
     schedule_mode: Literal["now", "schedule"] = "now"
     schedule_start_at: Optional[datetime] = None
+    name: Optional[str] = None
+    destination_ids: Optional[List[UUID]] = None
+    settings_json: Optional[dict] = None
     schedule_stop_at: Optional[datetime] = None
     schedule_repeat: Literal["none", "daily", "weekly"] = "none"
     schedule_timezone: Optional[str] = None

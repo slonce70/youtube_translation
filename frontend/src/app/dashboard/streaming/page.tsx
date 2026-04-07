@@ -39,6 +39,7 @@ import { AddChannelModal } from '@/components/streaming/AddChannelModal'
 import { deriveStreamState } from '@/lib/stream-state'
 import { getDestinationPlatformPresentation } from './platform'
 import { formatDuration } from '@/lib/utils'
+import { formatDateTimeLocal, type ScheduleDraft } from './schedule-utils'
 import {
   getProviderStatusKey,
   getProviderBadgeVariant,
@@ -87,6 +88,9 @@ export default function StreamingPage() {
   const [activeStreamTab, setActiveStreamTab] = useState<'live' | 'scheduled' | 'archive'>('live')
   const [optimisticRunningStreamIds, setOptimisticRunningStreamIds] = useState<string[]>([])
   const [optimisticStoppingStreamIds, setOptimisticStoppingStreamIds] = useState<string[]>([])
+  const [liveEditorScheduleDraft, setLiveEditorScheduleDraft] = useState<ScheduleDraft | null>(null)
+  const [liveEditorNameDraft, setLiveEditorNameDraft] = useState('')
+  const [liveEditorDestinationIds, setLiveEditorDestinationIds] = useState<string[]>([])
 
   const { data: destinations, isLoading: isLoadingDestinations } = useQuery<Destination[]>({
     queryKey: ['destinations', user?.id],
@@ -418,6 +422,17 @@ export default function StreamingPage() {
     setScheduleModalStream(stream)
   }
 
+  const handleEditArchivedStream = (stream: Stream) => {
+    setLiveEditorScheduleDraft({
+      startMode: stream.scheduled_start_enabled ? 'schedule' : 'now',
+      startAt: stream.scheduled_start_time ? formatDateTimeLocal(new Date(stream.scheduled_start_time)) : '',
+      stopAt: stream.scheduled_stop_time ? formatDateTimeLocal(new Date(stream.scheduled_stop_time)) : '',
+    })
+    setLiveEditorNameDraft(stream.name ?? '')
+    setLiveEditorDestinationIds((stream.destinations ?? []).map((destination) => destination.id))
+    openLiveEditor(stream)
+  }
+
   const handleSaveSchedule = (draft: { startMode: 'now' | 'schedule'; startAt: string; stopAt: string }) => {
     if (!scheduleModalStream) return
 
@@ -482,6 +497,66 @@ export default function StreamingPage() {
 
   const handleStopStream = (streamId: string) => stopStreamMutation.mutate(streamId)
   const handleDeleteStream = (streamId: string) => deleteStreamMutation.mutate(streamId)
+  const handleCloseLiveEditor = () => {
+    setLiveEditorScheduleDraft(null)
+    setLiveEditorNameDraft('')
+    setLiveEditorDestinationIds([])
+    closeLiveEditor()
+  }
+  const handleLiveEditorDestinationToggle = (destinationId: string) => {
+    setLiveEditorDestinationIds((current) =>
+      current.includes(destinationId)
+        ? current.filter((id) => id !== destinationId)
+        : [...current, destinationId],
+    )
+  }
+  const handleApplyLiveEditorChanges = async () => {
+    const contentUpdated = await applyLiveEditorChanges()
+    if (!contentUpdated || !liveEditingStream || !liveEditorScheduleDraft) return
+
+    if (liveEditorScheduleDraft.startMode === 'schedule' && !liveEditorScheduleDraft.startAt) {
+      toast.error(streamingToasts('errors.scheduleTime'))
+      return
+    }
+
+    const now = new Date()
+    const startAtIso =
+      liveEditorScheduleDraft.startMode === 'schedule' && liveEditorScheduleDraft.startAt
+        ? new Date(liveEditorScheduleDraft.startAt).toISOString()
+        : null
+    const stopAtIso = liveEditorScheduleDraft.stopAt ? new Date(liveEditorScheduleDraft.stopAt).toISOString() : null
+
+    if (liveEditorScheduleDraft.stopAt) {
+      const stopAt = new Date(liveEditorScheduleDraft.stopAt)
+      if (Number.isNaN(stopAt.getTime()) || stopAt <= now) {
+        toast.error(streamingToasts('errors.scheduleStopTime'))
+        return
+      }
+      if (liveEditorScheduleDraft.startMode === 'schedule' && liveEditorScheduleDraft.startAt) {
+        const startAt = new Date(liveEditorScheduleDraft.startAt)
+        if (stopAt <= startAt) {
+          toast.error(streamingToasts('errors.scheduleStopAfterStart'))
+          return
+        }
+      }
+    }
+
+    if (liveEditorDestinationIds.length === 0) {
+      toast.error(streamingToasts('errors.selectDestination'))
+      return
+    }
+
+    await updateScheduleMutation.mutateAsync({
+      streamId: liveEditingStream.id,
+      payload: {
+        name: liveEditorNameDraft.trim() || null,
+        destination_ids: liveEditorDestinationIds,
+        schedule_mode: liveEditorScheduleDraft.startMode,
+        schedule_start_at: startAtIso,
+        schedule_stop_at: stopAtIso,
+      },
+    })
+  }
   const pendingStartStreamId = startStreamMutation.isPending ? startStreamMutation.variables?.streamId ?? null : null
   const pendingStopStreamId = stopStreamMutation.isPending ? stopStreamMutation.variables ?? null : null
   const pendingDeleteStreamId = deleteStreamMutation.isPending ? deleteStreamMutation.variables ?? null : null
@@ -853,8 +928,7 @@ export default function StreamingPage() {
                           <Button size="sm" onClick={() => handleStartStream(stream)} disabled={pendingStartStreamId === stream.id}>
                             {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '▶ Запустити'}
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => openLiveEditor(stream)}>✏️ Редагувати</Button>
-                          <Button size="sm" variant="outline" onClick={() => handleOpenSchedule(stream)}>🗓️ Розклад</Button>
+                          <Button size="sm" variant="outline" onClick={() => handleEditArchivedStream(stream)}>✏️ Редагувати</Button>
                           <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
                         </div>
                       </td>
@@ -981,8 +1055,15 @@ export default function StreamingPage() {
         assetMap={liveEditorAssetMap}
         videoAssets={liveEditorVideoAssets}
         audioAssets={liveEditorAudioAssets}
-        onClose={closeLiveEditor}
-        onApply={applyLiveEditorChanges}
+        onClose={handleCloseLiveEditor}
+        onApply={handleApplyLiveEditorChanges}
+        scheduleDraft={liveEditorScheduleDraft}
+        onScheduleChange={setLiveEditorScheduleDraft}
+        nameDraft={liveEditorNameDraft}
+        onNameChange={setLiveEditorNameDraft}
+        destinations={destinations}
+        selectedDestinationIds={liveEditorDestinationIds}
+        onDestinationToggle={handleLiveEditorDestinationToggle}
         onAddAsset={addAssetToLiveEditor}
         onRemoveItem={removeLiveEditorItem}
         onMoveItem={moveLiveEditorItem}
