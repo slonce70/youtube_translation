@@ -978,9 +978,11 @@ class StreamControlService:
             try:
                 await supervisor_remove_program(stream.id)
             except RuntimeError as err:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err)
-                ) from err
+                if not _is_removed_process_group_error(err):
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=str(err),
+                    ) from err
         else:
             if self.manager.is_running(str(stream.id)):
                 stream.status = "stopping"
