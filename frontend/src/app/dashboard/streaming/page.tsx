@@ -40,6 +40,7 @@ import { deriveStreamState } from '@/lib/stream-state'
 import { getDestinationPlatformPresentation } from './platform'
 import { formatDuration } from '@/lib/utils'
 import { formatDateTimeLocal, type ScheduleDraft } from './schedule-utils'
+import { extractStopAuditEntries } from './log-audit'
 import {
   getProviderStatusKey,
   getProviderBadgeVariant,
@@ -579,6 +580,10 @@ export default function StreamingPage() {
     enabled: !!viewingLogs,
     refetchInterval: 2000,
   })
+  const stopAuditEntries = useMemo(
+    () => extractStopAuditEntries(logsResponse?.logs ?? []).slice(-4).reverse(),
+    [logsResponse?.logs],
+  )
 
   const {
     liveEditingStream,
@@ -1042,15 +1047,37 @@ export default function StreamingPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
+              {stopAuditEntries.length ? (
+                <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-50">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-200">
+                    {tStreaming('streams.logs.stopAuditTitle')}
+                  </div>
+                  <div className="space-y-2">
+                    {stopAuditEntries.map((entry) => (
+                      <div
+                        key={`${entry.timestamp ?? 'unknown'}-${entry.message}`}
+                        className="rounded-md border border-white/10 bg-slate-950/30 px-3 py-2"
+                      >
+                        <div className="text-[11px] uppercase tracking-[0.08em] text-amber-200/80">
+                          {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : tStreaming('streams.logs.unknownTime')}
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-white">{entry.message}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs max-h-96 overflow-y-auto">
                 {logsResponse?.logs?.length ? (
                   logsResponse.logs.map((line, index) => (
                     <p
                       key={index}
                       className={
-                        /error|failed|forbidden|invalid|denied|fatal/i.test(line)
-                          ? 'text-error-300'
-                          : 'text-slate-300'
+                        /\[audit\]/i.test(line)
+                          ? 'text-amber-200'
+                          : /error|failed|forbidden|invalid|denied|fatal/i.test(line)
+                            ? 'text-error-300'
+                            : 'text-slate-300'
                       }
                     >
                       {line}

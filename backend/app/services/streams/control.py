@@ -1199,6 +1199,10 @@ def _filter_important_ffmpeg_logs(lines: list[str]) -> list[str]:
             continue
 
         lowered = line.lower()
+        if "[audit]" in lowered:
+            filtered.append(line)
+            continue
+
         if any(token in lowered for token in keywords):
             filtered.append(line)
 

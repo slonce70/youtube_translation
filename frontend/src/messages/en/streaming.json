@@ -188,7 +188,9 @@
         "empty": "No logs available",
         "emptyImportant": "No important messages. Enable \"Show all\" to view the full log.",
         "showAll": "Show all",
-        "showImportant": "Important only"
+        "showImportant": "Important only",
+        "stopAuditTitle": "Latest stop events",
+        "unknownTime": "Unknown time"
       },
       "quota": {
         "limitReached": "Daily streaming limit reached"
