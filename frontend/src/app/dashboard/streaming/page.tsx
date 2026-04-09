@@ -496,7 +496,19 @@ export default function StreamingPage() {
     })
 
   const handleStopStream = (streamId: string) => stopStreamMutation.mutate(streamId)
-  const handleDeleteStream = (streamId: string) => deleteStreamMutation.mutate(streamId)
+  const handleDeleteStream = (stream: Stream) => {
+    const confirmed = window.confirm(
+      `${tStreaming('streams.deleteConfirm.title')}\n\n${tStreaming('streams.deleteConfirm.description', {
+        name: stream.name || tStreaming('streams.untitled'),
+      })}`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    deleteStreamMutation.mutate(stream.id)
+  }
   const handleCloseLiveEditor = () => {
     setLiveEditorScheduleDraft(null)
     setLiveEditorNameDraft('')
@@ -930,6 +942,18 @@ export default function StreamingPage() {
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => handleEditArchivedStream(stream)}>✏️ Редагувати</Button>
                           <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => handleDeleteStream(stream)}
+                            disabled={pendingDeleteStreamId === stream.id}
+                          >
+                            {pendingDeleteStreamId === stream.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              `🗑 ${tStreaming('streams.buttons.delete')}`
+                            )}
+                          </Button>
                         </div>
                       </td>
                     </tr>

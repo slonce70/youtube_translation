@@ -410,7 +410,13 @@ class AdminService:
                 )
 
             control = StreamControlService(self.db, stream.user_id)
-            status_payload = await control.stop_stream(stream_id)
+            status_payload = await control.stop_stream(
+                stream_id,
+                source="admin_force_stop",
+                actor_user_id=self.admin_user_id,
+                reason="admin_force_stop",
+                metadata={"admin_user_id": str(self.admin_user_id)},
+            )
 
             await self._log_admin_action(
                 action_type="force_stop_stream",

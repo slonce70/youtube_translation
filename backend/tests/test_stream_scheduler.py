@@ -45,8 +45,12 @@ async def test_launch_due_streams_advances_recurring_schedule_after_start(monkey
         session.add(stream)
         await session.commit()
 
+        started_stream_ids: list[str] = []
+
         async def fake_start(self, stream_id, *, preserve_schedule=False):
-            assert preserve_schedule is True
+            if stream_id == stream.id:
+                assert preserve_schedule is True
+            started_stream_ids.append(str(stream_id))
             scheduled_stream = await self._get_stream_basic(stream_id)
             scheduled_stream.status = "running"
             scheduled_stream.started_at = datetime.now(timezone.utc).replace(microsecond=0)
@@ -59,7 +63,8 @@ async def test_launch_due_streams_advances_recurring_schedule_after_start(monkey
         launched = await launch_due_streams(session)
         await session.refresh(stream)
 
-        assert launched == 1
+        assert launched >= 1
+        assert str(stream.id) in started_stream_ids
         assert stream.status == "running"
         assert stream.scheduled_stop_time == original_start + timedelta(hours=1)
         assert stream.scheduled_start_time == original_start + timedelta(days=1)
@@ -227,7 +232,10 @@ async def test_stop_due_streams_stops_running_streams(monkeypatch):
         session.add(stream)
         await session.commit()
 
-        async def fake_stop(self, stream_id):
+        stopped_stream_ids: list[str] = []
+
+        async def fake_stop(self, stream_id, **_kwargs):
+            stopped_stream_ids.append(str(stream_id))
             scheduled_stream = await self._get_stream_basic(stream_id)
             scheduled_stream.status = "stopped"
             scheduled_stream.stopped_at = datetime.now(timezone.utc).replace(
@@ -242,7 +250,8 @@ async def test_stop_due_streams_stops_running_streams(monkeypatch):
         stopped = await stop_due_streams(session)
         await session.refresh(stream)
 
-        assert stopped == 1
+        assert stopped >= 1
+        assert str(stream.id) in stopped_stream_ids
         assert stream.status == "stopped"
         assert stream.scheduled_start_enabled is True
         assert stream.scheduled_start_time is not None

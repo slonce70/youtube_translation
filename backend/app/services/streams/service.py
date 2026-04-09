@@ -236,7 +236,12 @@ class StreamService:
 
             control = StreamControlService(self.db, self.user_id)
 
-        await control.ensure_stopped(stream)
+        await control.ensure_stopped(
+            stream,
+            source="stream_delete",
+            actor_user_id=self.user_id,
+            reason="stream_deleted",
+        )
 
         stream_dir = Path(self.settings.stream_dir) / str(stream_id)
         if stream_dir.exists():

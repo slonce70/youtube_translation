@@ -133,6 +133,7 @@ function renderModal(builderStateOverrides: Record<string, unknown> = {}) {
 describe('StreamBuilderModal', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    document.body.style.overflow = ''
   })
 
   it('renders the new single-screen 3-step layout', () => {
@@ -194,5 +195,15 @@ describe('StreamBuilderModal', () => {
     fireEvent.click(screen.getByRole('button', { name: '🎵 Додати аудіо' }))
 
     expect(handleAudioToggle).toHaveBeenCalledWith(true)
+  })
+
+  it('locks body scroll while the builder modal is open', () => {
+    const view = renderModal()
+
+    expect(document.body.style.overflow).toBe('hidden')
+
+    view.unmount()
+
+    expect(document.body.style.overflow).toBe('')
   })
 })

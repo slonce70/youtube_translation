@@ -103,6 +103,18 @@ export function StreamBuilderModal({
     }
   }, [open, resetBuilderState])
 
+  useEffect(() => {
+    if (!open) return
+
+    const { body } = document
+    const previousOverflow = body.style.overflow
+    body.style.overflow = 'hidden'
+
+    return () => {
+      body.style.overflow = previousOverflow
+    }
+  }, [open])
+
   if (!open) return null
 
   const handleClose = () => {
@@ -123,9 +135,9 @@ export function StreamBuilderModal({
   const canLaunch = Boolean(selectedDestinations.length && hasVideoSelection && streamForm.name.trim())
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/70 px-4 py-6 backdrop-blur-sm">
-      <div className="mx-auto flex max-h-[92vh] w-full max-w-7xl gap-6 overflow-hidden">
-        <Card className="flex-1 overflow-y-auto">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 px-4 py-6 backdrop-blur-sm">
+      <div className="mx-auto flex w-full max-w-7xl gap-6 overflow-visible max-lg:flex-col lg:max-h-[calc(100vh-3rem)]">
+        <Card className="flex-1 overflow-y-auto lg:max-h-[calc(100vh-3rem)]">
           <CardHeader className="flex items-start justify-between space-y-0">
             <div>
               <CardTitle>📡 Нова трансляція</CardTitle>
@@ -392,7 +404,10 @@ export function StreamBuilderModal({
           </CardContent>
         </Card>
 
-        <div className="sticky-summary" style={{ width: 340 }}>
+        <div
+          className="sticky-summary lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto"
+          style={{ width: '100%', maxWidth: 340 }}
+        >
           <Card className="summary-card" style={{ borderColor: 'rgba(99,102,241,.3)' }}>
             <CardHeader><CardTitle>📋 Підсумок трансляції</CardTitle></CardHeader>
             <CardContent className="summary-list" style={{ fontSize: 13 }}>
