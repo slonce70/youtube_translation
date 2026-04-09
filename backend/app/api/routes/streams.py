@@ -163,7 +163,12 @@ async def live_update_stream(
 async def stop_stream(stream_id: UUID, user_deps: tuple = Depends(require_user)):
     db, user_id = user_deps
     _, control = _build_services(db, user_id)
-    return await control.stop_stream(stream_id)
+    return await control.stop_stream(
+        stream_id,
+        source="user_api",
+        actor_user_id=user_id,
+        reason="user_requested_stop",
+    )
 
 
 @router.post("/{stream_id}/queue", response_model=StreamQueueResponse)

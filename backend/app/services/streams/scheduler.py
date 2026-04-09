@@ -178,7 +178,11 @@ async def stop_due_streams(db: AsyncSession, *, batch_size: int = 10) -> int:
             stream.scheduled_stop_attempted_at = now
             await db.flush()
             control = StreamControlService(db, stream.user_id)
-            await control.stop_stream(stream.id)
+            await control.stop_stream(
+                stream.id,
+                source="scheduler",
+                reason="scheduled_stop_due",
+            )
             stream.scheduled_stop_time = None
             stream.scheduled_stop_attempted_at = None
             stopped += 1

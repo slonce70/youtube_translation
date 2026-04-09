@@ -72,6 +72,7 @@ from .helpers import (
     prepare_stream_launch,
     validate_stream_launch_prerequisites,
 )
+from .audit import record_stream_audit_event
 
 
 def _is_removed_process_group_error(exc: RuntimeError) -> bool:
@@ -314,13 +315,34 @@ class StreamControlService:
             {"lock_key": lock_key},
         )
 
-    async def stop_stream(self, stream_id: UUID) -> StreamStatus:
+    async def stop_stream(
+        self,
+        stream_id: UUID,
+        *,
+        source: str = "user_api",
+        actor_user_id: UUID | None = None,
+        reason: str | None = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> StreamStatus:
         stream = await self._get_stream_basic(stream_id)
         was_scheduled = stream.status == "scheduled"
+        audit_metadata = self._build_stop_audit_metadata(
+            stream,
+            source=source,
+            actor_user_id=actor_user_id,
+            reason=reason,
+            metadata=metadata,
+        )
+        await self._record_stop_audit(
+            stream, phase="requested", metadata=audit_metadata
+        )
         await self._stop_for_runtime(stream)
         self._clear_stop_schedule(stream)
         if was_scheduled:
             self._clear_start_schedule(stream)
+        await self._record_stop_audit(
+            stream, phase="completed", metadata=audit_metadata
+        )
         await self.db.commit()
         usage = await self._get_usage_snapshot()
         return self._status_payload(stream, False, usage=usage)
@@ -453,7 +475,25 @@ class StreamControlService:
             ) from exc
         return True
 
-    async def ensure_stopped(self, stream: Stream) -> None:
+    async def ensure_stopped(
+        self,
+        stream: Stream,
+        *,
+        source: str = "ensure_stopped",
+        actor_user_id: UUID | None = None,
+        reason: str | None = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        audit_metadata = self._build_stop_audit_metadata(
+            stream,
+            source=source,
+            actor_user_id=actor_user_id,
+            reason=reason,
+            metadata=metadata,
+        )
+        await self._record_stop_audit(
+            stream, phase="requested", metadata=audit_metadata
+        )
         if systemd_enabled():
             if await systemd_is_active(stream.id):
                 try:
@@ -469,6 +509,9 @@ class StreamControlService:
             clear_stream_runtime_lease(stream)
             clear_stream_runtime_restart_state(stream)
             self._clear_schedule(stream)
+            await self._record_stop_audit(
+                stream, phase="completed", metadata=audit_metadata
+            )
             return
 
         if supervisor_enabled():
@@ -495,6 +538,9 @@ class StreamControlService:
             clear_stream_runtime_lease(stream)
             clear_stream_runtime_restart_state(stream)
             self._clear_schedule(stream)
+            await self._record_stop_audit(
+                stream, phase="completed", metadata=audit_metadata
+            )
             return
 
         if self.manager.is_running(str(stream.id)):
@@ -505,6 +551,9 @@ class StreamControlService:
         clear_stream_runtime_lease(stream)
         clear_stream_runtime_restart_state(stream)
         self._clear_schedule(stream)
+        await self._record_stop_audit(
+            stream, phase="completed", metadata=audit_metadata
+        )
 
     async def get_stream_status(self, stream_id: UUID) -> StreamStatus:
         stream = await load_stream_with_relations(self.db, self.user_id, stream_id)
@@ -946,6 +995,55 @@ class StreamControlService:
             stream.status = "stopping"
             stream.pid = None
             await self.db.commit()
+
+    @staticmethod
+    def _build_stop_audit_metadata(
+        stream: Stream,
+        *,
+        source: str,
+        actor_user_id: UUID | None,
+        reason: str | None,
+        metadata: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "category": "stream_stop",
+            "source": source,
+            "stream_status": stream.status,
+        }
+        if actor_user_id is not None:
+            payload["actor_user_id"] = str(actor_user_id)
+        if reason:
+            payload["reason"] = reason
+        if metadata:
+            payload.update(metadata)
+        return payload
+
+    async def _record_stop_audit(
+        self,
+        stream: Stream,
+        *,
+        phase: str,
+        metadata: Dict[str, Any],
+    ) -> None:
+        event_metadata = dict(metadata)
+        event_metadata["phase"] = phase
+        event_metadata["status"] = stream.status
+
+        if phase == "requested":
+            message = f"Stop requested via {metadata['source']}."
+        else:
+            message = f"Stream stopped via {metadata['source']}."
+
+        if metadata.get("reason"):
+            message = f"{message[:-1]} (reason: {metadata['reason']})."
+
+        await record_stream_audit_event(
+            self.db,
+            stream,
+            level="info",
+            message=message,
+            metadata=event_metadata,
+        )
 
     @staticmethod
     def _finalize_stopped(stream: Stream) -> None:

@@ -28,6 +28,7 @@ from app.core.stream_runtime_lease import (
 )
 from app.core.stream_runtime_restart import clear_stream_runtime_restart_state
 from app.models.database import Stream
+from app.services.streams.audit import record_stream_audit_event
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.services.streams.helpers import (
     load_stream_with_relations,
@@ -261,6 +262,25 @@ async def _handle_signal(sig: signal.Signals) -> None:
             "Signal %s received. Stopping stream %s", sig.name, CURRENT_STREAM_ID
         )
         try:
+            async with async_session_maker() as db:
+                stream_uuid = UUID(CURRENT_STREAM_ID)
+                stream = await db.get(Stream, stream_uuid)
+                if stream is not None:
+                    await record_stream_audit_event(
+                        db,
+                        stream,
+                        level="warning",
+                        message=f"Runner received {sig.name} and initiated stream stop.",
+                        metadata={
+                            "category": "stream_stop",
+                            "phase": "signal",
+                            "source": "runner_signal",
+                            "signal": sig.name,
+                            "node_id": settings.stream_runtime_node_id,
+                            "launcher": "cli",
+                        },
+                    )
+                    await db.commit()
             await ffmpeg_manager.stop_stream(CURRENT_STREAM_ID)
         except Exception as exc:  # pylint: disable=broad-except
             LOGGER.error(

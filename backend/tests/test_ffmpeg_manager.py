@@ -4,6 +4,7 @@ Tests for FFmpeg stream manager (process management, cleanup).
 
 from collections import deque
 from datetime import datetime, timedelta, timezone
+import signal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from app.core.config import settings
 from app.core.database import async_session_maker
 from app.models.database import Stream, SystemAlert, UserProfile
 from app.streaming.ffmpeg_manager import FFmpegStreamManager
+from app.streaming.hot_swap import hot_swap_manager
 from app.streaming.playlist_builder import PlaylistFileSet
 
 
@@ -81,6 +83,44 @@ class TestFFmpegStreamManager:
 
         # But should cleanup the orphaned info
         assert "orphaned-stream" not in manager.stream_info
+
+    @pytest.mark.asyncio
+    async def test_stop_stream_preserves_manual_stop_until_monitor_cleanup(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Managed stop metadata must survive until the monitor task observes exit."""
+
+        manager = FFmpegStreamManager()
+        stream_id = "manual-stop-cleanup"
+
+        process = MagicMock()
+        process.pid = 4242
+        process.send_signal = MagicMock()
+
+        manager.active_streams[stream_id] = process
+        manager.stream_info[stream_id] = {"started_at": "2024-01-01"}
+
+        wait_for_exit = AsyncMock(return_value=255)
+        monkeypatch.setattr(manager, "_await_process_exit", wait_for_exit)
+
+        observed: dict[str, bool] = {}
+
+        async def fake_await_monitor_task(target_stream_id: str) -> None:
+            observed["manual_stop"] = bool(
+                manager.stream_info[target_stream_id]["manual_stop"]
+            )
+
+        monkeypatch.setattr(manager, "_await_monitor_task", fake_await_monitor_task)
+        monkeypatch.setattr(hot_swap_manager, "unregister_stream", AsyncMock())
+
+        result = await manager.stop_stream(stream_id)
+
+        assert result is True
+        process.send_signal.assert_called_once_with(signal.SIGINT)
+        assert wait_for_exit.await_count == 1
+        assert observed == {"manual_stop": True}
+        assert stream_id not in manager.active_streams
+        assert stream_id not in manager.stream_info
 
     def test_is_running_returns_false_for_nonexistent_stream(self):
         """Test is_running returns False for streams that don't exist"""

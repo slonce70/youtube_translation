@@ -467,11 +467,12 @@ class FFmpegStreamManager:
 
                     if stream_id in self.active_streams:
                         del self.active_streams[stream_id]
-                    if stream_id in self.stream_info:
-                        del self.stream_info[stream_id]
                     stopped = True
 
             await self._await_monitor_task(stream_id)
+            async with self._cleanup_lock:
+                self.active_streams.pop(stream_id, None)
+                self.stream_info.pop(stream_id, None)
             await hot_swap_manager.unregister_stream(stream_id)
             return stopped
 
