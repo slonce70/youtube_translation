@@ -7,10 +7,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
+from uuid import UUID
 
+from app.core.database import async_session_maker
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.database import Stream, StreamEvent
+from app.models.database import Stream, StreamEvent, UserActivityLog
 
 
 def _utcnow() -> datetime:
@@ -85,3 +87,47 @@ async def record_stream_audit_event(
         Path(stream.log_path),
         _format_log_line(timestamp, level, message, normalized_metadata),
     )
+
+
+async def persist_stream_audit_event(
+    stream_id: UUID,
+    *,
+    level: str,
+    message: str,
+    metadata: Mapping[str, Any] | None = None,
+    log_path: str | None = None,
+    activity_payload: Mapping[str, Any] | None = None,
+) -> None:
+    timestamp = _utcnow()
+    normalized_metadata = _normalize_metadata(metadata)
+
+    async with async_session_maker() as db:
+        db.add(
+            StreamEvent(
+                stream_id=stream_id,
+                level=level,
+                message=message,
+                event_metadata=normalized_metadata,
+                created_at=timestamp,
+            )
+        )
+
+        if activity_payload:
+            db.add(
+                UserActivityLog(
+                    user_id=UUID(str(activity_payload["user_id"])),
+                    activity_type=str(activity_payload["activity_type"]),
+                    ip_address=activity_payload.get("ip_address"),
+                    user_agent=activity_payload.get("user_agent"),
+                    details=dict(activity_payload.get("details") or {}),
+                )
+            )
+
+        await db.commit()
+
+    if log_path:
+        await asyncio.to_thread(
+            _append_line,
+            Path(log_path),
+            _format_log_line(timestamp, level, message, normalized_metadata),
+        )
