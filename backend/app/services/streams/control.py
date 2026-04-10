@@ -64,6 +64,7 @@ from app.services.youtube import YoutubeProviderStatusService
 from app.streaming.ffmpeg_manager import ffmpeg_manager as default_ffmpeg_manager
 from app.streaming.hot_swap import hot_swap_manager
 
+from .audit import persist_stream_audit_event
 from .helpers import (
     collect_live_output_compatibility_violations,
     extract_stream_assets,
@@ -333,17 +334,29 @@ class StreamControlService:
             reason=reason,
             metadata=metadata,
         )
-        await self._record_stop_audit(
-            stream, phase="requested", metadata=audit_metadata
-        )
-        await self._stop_for_runtime(stream)
-        self._clear_stop_schedule(stream)
-        if was_scheduled:
-            self._clear_start_schedule(stream)
-        await self._record_stop_audit(
-            stream, phase="completed", metadata=audit_metadata
-        )
-        await self.db.commit()
+        await self._persist_stop_request_attribution(stream, metadata=audit_metadata)
+        try:
+            await self._stop_for_runtime(stream)
+            self._clear_stop_schedule(stream)
+            if was_scheduled:
+                self._clear_start_schedule(stream)
+            await self._record_stop_audit(
+                stream, phase="completed", metadata=audit_metadata
+            )
+            await self.db.commit()
+        except Exception as exc:
+            stream_snapshot = {
+                "stream_id": stream.id,
+                "status": stream.status,
+                "log_path": stream.log_path,
+            }
+            await self.db.rollback()
+            await self._persist_stop_failure_attribution(
+                stream_snapshot=stream_snapshot,
+                metadata=audit_metadata,
+                error_message=str(getattr(exc, "detail", exc)),
+            )
+            raise
         usage = await self._get_usage_snapshot()
         return self._status_payload(stream, False, usage=usage)
 
@@ -1045,6 +1058,89 @@ class StreamControlService:
             level="info",
             message=message,
             metadata=event_metadata,
+        )
+
+    def _build_stop_activity_payload(
+        self, stream: Stream, *, metadata: Dict[str, Any]
+    ) -> Dict[str, Any] | None:
+        actor_user_id = metadata.get("actor_user_id")
+        if not actor_user_id:
+            return None
+
+        details: Dict[str, Any] = {
+            "stream_id": str(stream.id),
+            "stream_name": stream.name,
+            "source": metadata.get("source"),
+            "reason": metadata.get("reason"),
+            "request_id": metadata.get("request_id"),
+            "session_id": metadata.get("session_id"),
+            "jwt_jti": metadata.get("jwt_jti"),
+            "route_path": metadata.get("route_path"),
+            "origin": metadata.get("origin"),
+            "referer": metadata.get("referer"),
+            "sec_fetch_site": metadata.get("sec_fetch_site"),
+        }
+
+        return {
+            "user_id": str(actor_user_id),
+            "activity_type": "stream_stop_requested",
+            "ip_address": metadata.get("client_ip"),
+            "user_agent": metadata.get("user_agent"),
+            "details": {
+                key: value for key, value in details.items() if value is not None
+            },
+        }
+
+    async def _persist_stop_request_attribution(
+        self,
+        stream: Stream,
+        *,
+        metadata: Dict[str, Any],
+    ) -> None:
+        event_metadata = dict(metadata)
+        event_metadata["phase"] = "requested"
+        event_metadata["status"] = stream.status
+
+        message = f"Stop requested via {metadata['source']}."
+        if metadata.get("reason"):
+            message = f"{message[:-1]} (reason: {metadata['reason']})."
+
+        await persist_stream_audit_event(
+            stream.id,
+            level="info",
+            message=message,
+            metadata=event_metadata,
+            log_path=stream.log_path,
+            activity_payload=self._build_stop_activity_payload(
+                stream, metadata=metadata
+            ),
+        )
+
+    async def _persist_stop_failure_attribution(
+        self,
+        *,
+        stream_snapshot: Dict[str, Any],
+        metadata: Dict[str, Any],
+        error_message: str,
+    ) -> None:
+        event_metadata = dict(metadata)
+        event_metadata["phase"] = "failed"
+        event_metadata["status"] = stream_snapshot["status"]
+        event_metadata["error"] = error_message[:500]
+
+        message = f"Stop via {metadata['source']} failed before completion."
+        if metadata.get("reason"):
+            message = (
+                f"{message[:-1]} (reason: {metadata['reason']}, "
+                f"error: {error_message[:160]})."
+            )
+
+        await persist_stream_audit_event(
+            stream_snapshot["stream_id"],
+            level="error",
+            message=message,
+            metadata=event_metadata,
+            log_path=stream_snapshot["log_path"],
         )
 
     @staticmethod

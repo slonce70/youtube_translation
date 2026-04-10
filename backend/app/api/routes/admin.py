@@ -8,9 +8,10 @@ Only accessible by users with is_admin=True.
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query, Request
 
-from app.api.deps import require_admin
+from app.api.deps import get_current_user, require_admin
+from app.api.request_context import extract_request_audit_metadata
 from app.schemas.admin import (
     AdminAccessResponse,
     AdminActionLog,
@@ -152,6 +153,8 @@ async def list_all_streams(
 @router.post("/streams/{stream_id}/stop")
 async def force_stop_stream(
     stream_id: UUID,
+    request: Request,
+    authorization: str | None = Header(None),
     service: AdminService = Depends(get_admin_service),
 ):
     """
@@ -159,7 +162,13 @@ async def force_stop_stream(
 
     Admin only endpoint.
     """
-    return await service.force_stop_stream(stream_id)
+    user_payload = await get_current_user(authorization)
+    metadata = extract_request_audit_metadata(
+        request,
+        route_path=f"/api/admin/streams/{stream_id}/stop",
+        user_payload=user_payload,
+    )
+    return await service.force_stop_stream(stream_id, metadata=metadata)
 
 
 # ==========================================

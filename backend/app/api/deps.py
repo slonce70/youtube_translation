@@ -328,6 +328,8 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
             "email": user.user.email,
             "user_metadata": user.user.user_metadata,
             "exp": exp,
+            "session_id": payload.get("session_id"),
+            "jti": payload.get("jti"),
         }
 
         _set_cached_user(token, user_payload, exp)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -398,7 +398,9 @@ class AdminService:
                 detail=f"Failed to list streams: {exc}",
             ) from exc
 
-    async def force_stop_stream(self, stream_id: UUID) -> dict:
+    async def force_stop_stream(
+        self, stream_id: UUID, metadata: Optional[dict[str, Any]] = None
+    ) -> dict:
         try:
             stream_result = await self.db.execute(
                 select(Stream).where(Stream.id == stream_id)
@@ -415,7 +417,10 @@ class AdminService:
                 source="admin_force_stop",
                 actor_user_id=self.admin_user_id,
                 reason="admin_force_stop",
-                metadata={"admin_user_id": str(self.admin_user_id)},
+                metadata={
+                    "admin_user_id": str(self.admin_user_id),
+                    **(metadata or {}),
+                },
             )
 
             await self._log_admin_action(

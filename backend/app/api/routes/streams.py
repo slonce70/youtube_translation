@@ -10,13 +10,17 @@ from fastapi import (
     Depends,
     Query,
     HTTPException,
+    Header,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_user
+from app.api.deps import get_current_user, require_user
+from app.api.request_context import extract_request_audit_metadata
 from app.core.config import settings  # noqa: F401 - compatibility for tests
+from app.core.logging_config import get_logger
 from app.core.quota import QuotaEnforcer  # noqa: F401 - compatibility for tests
 from app.schemas.api import (
     StreamCreate,
@@ -39,6 +43,7 @@ from app.streaming.ffmpeg_manager import (
 
 router = APIRouter()
 WS_STATUS_POLL_SECONDS = 3
+logger = get_logger(__name__)
 
 
 def _build_services(db: AsyncSession, user_id: UUID):
@@ -160,15 +165,37 @@ async def live_update_stream(
 
 
 @router.post("/{stream_id}/stop", response_model=StreamStatus)
-async def stop_stream(stream_id: UUID, user_deps: tuple = Depends(require_user)):
+async def stop_stream(
+    stream_id: UUID,
+    request: Request,
+    authorization: str | None = Header(None),
+    user_deps: tuple = Depends(require_user),
+):
     db, user_id = user_deps
+    user_payload = await get_current_user(authorization)
     _, control = _build_services(db, user_id)
-    return await control.stop_stream(
+    metadata = extract_request_audit_metadata(
+        request, route_path=f"/api/streams/{stream_id}/stop", user_payload=user_payload
+    )
+    status_payload = await control.stop_stream(
         stream_id,
         source="user_api",
         actor_user_id=user_id,
         reason="user_requested_stop",
+        metadata=metadata,
     )
+    logger.info(
+        "Stream stop request completed",
+        extra={
+            "path": f"/api/streams/{stream_id}/stop",
+            "method": "POST",
+            "request_id": metadata["request_id"],
+            "user_id": str(user_id),
+            "stream_id": str(stream_id),
+            "status_code": 200,
+        },
+    )
+    return status_payload
 
 
 @router.post("/{stream_id}/queue", response_model=StreamQueueResponse)
