@@ -260,10 +260,13 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
 
+    from app.core.uvicorn_config import build_uvicorn_run_kwargs
+
     uvicorn.run(
         "app.main:app",
-        host=settings.api_host,
-        port=settings.api_port,
-        reload=True,
-        log_level="info",
+        **build_uvicorn_run_kwargs(
+            host=settings.api_host,
+            port=settings.api_port,
+            reload=True,
+        ),
     )

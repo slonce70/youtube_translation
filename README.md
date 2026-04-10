@@ -173,6 +173,7 @@ make verify-v0
 | `WS_TOKEN_TTL_SECONDS` | TTL для WS-токенів у секундах | `60` |
 | `METRICS_ACCESS_TOKEN` | Спільний токен для доступу до `/api/metrics/prometheus` | `openssl rand -hex 16` |
 | `TRUSTED_PROXY_IPS` | Довірені проксі IP/CIDR (для X-Forwarded-For) | `10.0.0.0/8,127.0.0.1` |
+| `FORWARDED_ALLOW_IPS` | Довірені IP/CIDR для `X-Forwarded-*` на рівні Uvicorn; залиште порожнім, щоб використати `TRUSTED_PROXY_IPS` або приватні Docker bridge ranges | `127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
 | `TUSD_FAIL_OPEN` | Дозволити upload при помилках backend (1=так, 0=ні) | `0` |
 
 ### FFmpeg
