@@ -310,4 +310,4 @@ if [ ! -x "$PYTHON_BIN" ]; then
     PYTHON_BIN="python3"
 fi
 
-"$PYTHON_BIN" -m uvicorn app.main:app --reload --host 0.0.0.0 --port "${API_PORT}"
+"$PYTHON_BIN" -m app.run_server --reload --host 0.0.0.0 --port "${API_PORT}"

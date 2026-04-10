@@ -19,4 +19,4 @@ if [ "${RUN_MIGRATIONS:-1}" != "0" ]; then
   fi
 fi
 
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+exec python -m app.run_server
