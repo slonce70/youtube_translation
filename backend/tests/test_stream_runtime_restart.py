@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from app.core.stream_runtime_restart import (
     clear_stream_runtime_restart_state,
+    managed_runtime_restart_enabled,
     mark_stream_runtime_restart_dispatched,
     runtime_restart_backoff_seconds,
     runtime_restart_is_due,
@@ -85,3 +86,10 @@ def test_runtime_restart_is_due_and_dispatch_marks_state(monkeypatch) -> None:
     assert stream.runtime_restart_attempts == 0
     assert stream.runtime_last_restart_at is None
     assert stream.runtime_last_failure_at is None
+
+
+def test_managed_runtime_restart_disabled_when_attempt_budget_is_zero(monkeypatch) -> None:
+    monkeypatch.setattr("app.core.stream_runtime_restart.settings.stream_runtime_auto_restart_enabled", True)
+    monkeypatch.setattr("app.core.stream_runtime_restart.settings.stream_runtime_restart_max_attempts", 0)
+
+    assert managed_runtime_restart_enabled() is False

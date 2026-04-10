@@ -202,6 +202,7 @@ make verify-v0
 | `STREAM_RUNTIME_RESTART_BACKOFF_MAX_SECONDS` | Максимальний backoff (сек) | `300` |
 | `STREAM_RUNTIME_RESTART_JITTER_SECONDS` | Детермінований jitter між нодами (сек) | `3` |
 | `STREAM_RUNTIME_RESTART_RESET_AFTER_SECONDS` | Після скількох секунд стабільної роботи retry budget обнуляється | `900` |
+| `FFMPEG_OUTPUT_RECOVERY_MAX_ATTEMPTS` | Ліміт fifo-recovery для publish outputs; `0` залишає безлімітний budget FFmpeg | `0` |
 | `MEDIAMTX_ENABLED` | `true` \| `false` | `false` за замовчуванням; увімкніть для optional media-plane summary |
 | `MEDIAMTX_RTMP_PUBLISH_URL` | Internal RTMP relay URL | `rtmp://mediamtx:1935` |
 | `MEDIAMTX_CONTROL_API_URL` | Control API URL | `http://mediamtx:9997` |

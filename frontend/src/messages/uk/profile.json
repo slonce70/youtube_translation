@@ -50,6 +50,8 @@
     "lastSync": "Останній sync {value}",
     "lastError": "Остання помилка: {value}",
     "viewers": "{count} глядачів",
+    "healthIssues": "{count} проблем ingest",
+    "healthDegraded": "Проблеми ingest",
     "startFailed": "Не вдалося почати YouTube OAuth",
     "status": {
       "live": "YouTube live",

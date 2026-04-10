@@ -111,6 +111,7 @@ def _build_stream_failure_message(returncode: int, recent_errors: List[str]) -> 
 
 def _build_tee_destination(uri: str) -> str:
     tee_fail_policy = settings.ffmpeg_tee_onfail_policy
+    max_recovery_attempts = max(int(settings.ffmpeg_output_recovery_max_attempts), 0)
     # FFmpeg's fifo muxer is explicitly recommended for network outputs when
     # temporary failures should be recovered transparently; see ffmpeg-formats
     # "fifo" muxer docs (attempt_recovery / recovery_wait_time).
@@ -122,7 +123,7 @@ def _build_tee_destination(uri: str) -> str:
         "recovery_wait_time=5:"
         "recover_any_error=1:"
         "restart_with_keyframe=1:"
-        "max_recovery_attempts=3]" + uri
+        f"max_recovery_attempts={max_recovery_attempts}]" + uri
     )
 
 
@@ -819,6 +820,9 @@ class FFmpegStreamManager:
 
         if len(normalized_destinations) == 1:
             target = normalized_destinations[0]["uri"]
+            max_recovery_attempts = max(
+                int(settings.ffmpeg_output_recovery_max_attempts), 0
+            )
             # Even a single RTMP(S) destination benefits from fifo-based recovery,
             # otherwise a transient remote disconnect immediately tears down the
             # FFmpeg process.
@@ -837,7 +841,7 @@ class FFmpegStreamManager:
                     "-restart_with_keyframe",
                     "1",
                     "-max_recovery_attempts",
-                    "3",
+                    str(max_recovery_attempts),
                     target,
                 ]
             )

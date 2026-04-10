@@ -24,6 +24,7 @@ async def db_session():
         await conn.execute(
             text("DROP TABLE IF EXISTS subscription_tier_limits CASCADE")
         )
+        await conn.execute(text("DROP TABLE IF EXISTS media_folders CASCADE"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(

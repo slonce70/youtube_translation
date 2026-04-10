@@ -50,6 +50,8 @@
     "lastSync": "Last sync {value}",
     "lastError": "Last error: {value}",
     "viewers": "{count} viewers",
+    "healthIssues": "{count} ingest issues",
+    "healthDegraded": "Ingest degraded",
     "startFailed": "Failed to start YouTube OAuth",
     "status": {
       "live": "YouTube live",

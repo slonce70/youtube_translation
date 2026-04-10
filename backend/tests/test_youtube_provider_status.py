@@ -38,11 +38,24 @@ async def test_provider_status_service_reports_live_viewers(monkeypatch) -> None
         await session.commit()
 
         async def fake_active_broadcast(_self, _token: str):
-            return {"id": "video-123"}
+            return {"id": "video-123", "contentDetails": {"boundStreamId": "stream-abc"}}
 
         async def fake_live_details(_self, _token: str, video_id: str):
             assert video_id == "video-123"
             return {"concurrentViewers": "42"}
+
+        async def fake_live_stream_status(_self, _token: str, stream_id: str):
+            assert stream_id == "stream-abc"
+            return {
+                "streamStatus": "active",
+                "healthStatus": {
+                    "status": "ok",
+                    "configurationIssues": [
+                        {"type": "gopSizeOver"},
+                        {"type": "videoBitrateLow"},
+                    ],
+                },
+            }
 
         monkeypatch.setattr(
             "app.services.youtube.provider_status.YoutubeClient.fetch_active_broadcast",
@@ -52,6 +65,10 @@ async def test_provider_status_service_reports_live_viewers(monkeypatch) -> None
             "app.services.youtube.provider_status.YoutubeClient.fetch_video_live_details",
             fake_live_details,
         )
+        monkeypatch.setattr(
+            "app.services.youtube.provider_status.YoutubeClient.fetch_live_stream_status",
+            fake_live_stream_status,
+        )
 
         service = YoutubeProviderStatusService(session)
         snapshots = await service.enrich_connections([connection])
@@ -60,6 +77,9 @@ async def test_provider_status_service_reports_live_viewers(monkeypatch) -> None
         assert snapshot.provider_status == "live"
         assert snapshot.provider_viewers == 42
         assert snapshot.provider_video_id == "video-123"
+        assert snapshot.provider_stream_status == "active"
+        assert snapshot.provider_health_status == "ok"
+        assert snapshot.provider_health_issues == ["gopSizeOver", "videoBitrateLow"]
         assert snapshot.provider_last_checked_at is not None
 
 
@@ -108,6 +128,9 @@ async def test_destination_service_returns_provider_metadata(monkeypatch) -> Non
                     destination, "_provider_last_checked_at", datetime.now(timezone.utc)
                 )
                 setattr(destination, "_provider_video_id", "video-xyz")
+                setattr(destination, "_provider_stream_status", "active")
+                setattr(destination, "_provider_health_status", "bad")
+                setattr(destination, "_provider_health_issues", ["noAudioStream"])
 
         monkeypatch.setattr(
             YoutubeProviderStatusService, "enrich_destinations", fake_enrich
@@ -124,6 +147,9 @@ async def test_destination_service_returns_provider_metadata(monkeypatch) -> Non
         assert response.provider_status == "live"
         assert response.provider_viewers == 7
         assert response.provider_video_id == "video-xyz"
+        assert response.provider_stream_status == "active"
+        assert response.provider_health_status == "bad"
+        assert response.provider_health_issues == ["noAudioStream"]
 
 
 async def _ensure_youtube_provider_schema(session) -> None:

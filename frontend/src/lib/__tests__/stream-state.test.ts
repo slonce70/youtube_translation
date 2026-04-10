@@ -81,6 +81,19 @@ describe('deriveStreamState', () => {
     expect(result.primaryAction).toBe('view_issue')
   })
 
+  it('treats provider health degradation as attention-worthy', () => {
+    const stream = createStream({
+      status: 'running',
+      provider_health_status: 'ok',
+      provider_health_issues: ['gopSizeOver'],
+    })
+
+    const result = deriveStreamState(stream)
+
+    expect(result.requiresAttention).toBe(true)
+    expect(result.group).toBe('live')
+  })
+
 
 
   it('routes starting streams into transitioning with pending primary action', () => {

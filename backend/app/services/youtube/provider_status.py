@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Iterable, Optional, Sequence
 from uuid import UUID
@@ -31,6 +31,9 @@ class ProviderStatusSnapshot:
     provider_viewers: Optional[int] = None
     provider_last_checked_at: Optional[datetime] = None
     provider_video_id: Optional[str] = None
+    provider_stream_status: Optional[str] = None
+    provider_health_status: Optional[str] = None
+    provider_health_issues: list[str] = field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -114,11 +117,31 @@ class YoutubeProviderStatusService:
                 )
             else:
                 video_id = active_broadcast.get("id")
+                bound_stream_id = (active_broadcast.get("contentDetails") or {}).get(
+                    "boundStreamId"
+                )
                 live_details = (
                     await self.client.fetch_video_live_details(access_token, video_id)
                     if video_id
                     else {}
                 )
+                live_stream_status = (
+                    await self.client.fetch_live_stream_status(
+                        access_token, str(bound_stream_id)
+                    )
+                    if bound_stream_id
+                    else {}
+                )
+                health_status = live_stream_status.get("healthStatus") or {}
+                configuration_issues = [
+                    issue_type
+                    for issue_type in (
+                        issue.get("type")
+                        for issue in (health_status.get("configurationIssues") or [])
+                        if isinstance(issue, dict)
+                    )
+                    if issue_type
+                ]
                 viewers_raw = live_details.get("concurrentViewers")
                 viewers = int(viewers_raw) if viewers_raw is not None else None
                 snapshot = ProviderStatusSnapshot(
@@ -126,6 +149,9 @@ class YoutubeProviderStatusService:
                     provider_viewers=viewers,
                     provider_last_checked_at=checked_at,
                     provider_video_id=video_id,
+                    provider_stream_status=live_stream_status.get("streamStatus"),
+                    provider_health_status=health_status.get("status"),
+                    provider_health_issues=configuration_issues,
                 )
             connection.last_sync_at = snapshot.provider_last_checked_at
             connection.last_sync_error = None
@@ -177,6 +203,9 @@ class YoutubeProviderStatusService:
             destination, "_provider_last_checked_at", snapshot.provider_last_checked_at
         )
         setattr(destination, "_provider_video_id", snapshot.provider_video_id)
+        setattr(destination, "_provider_stream_status", snapshot.provider_stream_status)
+        setattr(destination, "_provider_health_status", snapshot.provider_health_status)
+        setattr(destination, "_provider_health_issues", snapshot.provider_health_issues)
 
     async def _cache_get(self, key: str) -> Optional[ProviderStatusSnapshot]:
         raw: Optional[str] = None

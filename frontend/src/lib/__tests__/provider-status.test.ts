@@ -1,8 +1,10 @@
 import type { Stream } from '../types'
 import {
   countLiveProviders,
+  getProviderHealthIssueCount,
   getProviderStatusKey,
   getProviderBadgeVariant,
+  hasProviderHealthAttention,
 } from '../provider-status'
 
 function makeStream(overrides: Partial<Stream> = {}): Stream {
@@ -54,5 +56,12 @@ describe('provider-status helpers', () => {
     expect(getProviderBadgeVariant('live')).toBe('live')
     expect(getProviderStatusKey('stale')).toBe('stale')
     expect(getProviderBadgeVariant('stale')).toBe('warn')
+  })
+
+  it('flags provider health degradation and counts issues', () => {
+    expect(hasProviderHealthAttention({ provider_health_status: 'ok' })).toBe(true)
+    expect(hasProviderHealthAttention({ provider_health_status: 'bad' })).toBe(true)
+    expect(hasProviderHealthAttention({ provider_health_status: 'good' })).toBe(false)
+    expect(getProviderHealthIssueCount({ provider_health_issues: ['gopSizeOver', 'noAudioStream'] })).toBe(2)
   })
 })

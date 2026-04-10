@@ -44,7 +44,10 @@ def utcnow() -> datetime:
 
 
 def managed_runtime_restart_enabled() -> bool:
-    return bool(settings.stream_runtime_auto_restart_enabled)
+    return (
+        bool(settings.stream_runtime_auto_restart_enabled)
+        and max(int(settings.stream_runtime_restart_max_attempts or 0), 0) > 0
+    )
 
 
 def clear_stream_runtime_restart_state(stream: Stream) -> None:

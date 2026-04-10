@@ -166,6 +166,15 @@ class DestinationService:
                 destination, "_provider_last_checked_at", None
             ),
             provider_video_id=getattr(destination, "_provider_video_id", None),
+            provider_stream_status=getattr(
+                destination, "_provider_stream_status", None
+            ),
+            provider_health_status=getattr(
+                destination, "_provider_health_status", None
+            ),
+            provider_health_issues=list(
+                getattr(destination, "_provider_health_issues", None) or []
+            ),
             stream_key_masked=stream_key_masked,
             created_at=destination.created_at,
             updated_at=destination.updated_at,
