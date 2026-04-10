@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     ffmpeg_audio_bitrate_kbps: int = 160
     ffmpeg_keyframe_interval_seconds: float = 2.0  # YouTube/Twitch recommend 2s, max 4s
     ffmpeg_tee_onfail_policy: str = "ignore"
+    # 0 keeps FFmpeg's default unlimited fifo recovery budget for transient output faults.
+    ffmpeg_output_recovery_max_attempts: int = 0
     ffmpeg_cleanup_interval_seconds: int = 60
     stream_log_max_bytes: int = 52428800  # 50MB
     stream_log_max_backups: int = 5
@@ -110,7 +112,7 @@ class Settings(BaseSettings):
     stream_runtime_heartbeat_interval_seconds: int = 10
     stream_runtime_heartbeat_ttl_seconds: int = 45
     stream_runtime_auto_restart_enabled: bool = True
-    stream_runtime_restart_max_attempts: int = 0
+    stream_runtime_restart_max_attempts: int = 5
     stream_runtime_restart_backoff_seconds: int = 5
     stream_runtime_restart_backoff_max_seconds: int = 300
     stream_runtime_restart_jitter_seconds: int = 3
@@ -323,6 +325,7 @@ class Settings(BaseSettings):
         "stream_runtime_lease_ttl_seconds",
         "stream_runtime_heartbeat_interval_seconds",
         "stream_runtime_heartbeat_ttl_seconds",
+        "ffmpeg_output_recovery_max_attempts",
         "stream_runtime_restart_backoff_seconds",
         "stream_runtime_restart_backoff_max_seconds",
         "stream_runtime_restart_max_attempts",
@@ -338,6 +341,7 @@ class Settings(BaseSettings):
             0
             if field_name
             in {
+                "ffmpeg_output_recovery_max_attempts",
                 "stream_runtime_restart_max_attempts",
                 "stream_runtime_restart_backoff_seconds",
                 "stream_runtime_restart_backoff_max_seconds",

@@ -2,10 +2,11 @@
 /* eslint-disable i18next/no-literal-string */
 
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
 import { Button } from '@/components/ui/Button'
@@ -22,8 +23,10 @@ import { formatBytes, formatDuration } from '@/lib/utils'
 
 export default function DashboardPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const dashboard = useTranslations('dashboard')
   const nav = useTranslations('nav')
+  const streamingToasts = useTranslations('streaming.toasts')
   const { user, quota, quotaLoading, currentTier, planDetail } = useDashboardContext()
   useStreamSocket(user?.id)
 
@@ -44,6 +47,19 @@ export default function DashboardPage() {
   })
 
   const liveStatusMap = useStreamStatusMap(streams, user?.id)
+  const stopStreamMutation = useMutation({
+    mutationFn: (streamId: string) => api.streams.stop(streamId),
+    onSuccess: async (_, streamId) => {
+      toast.info(streamingToasts('stream.stopped'))
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['stream-status', user?.id, streamId] }),
+        queryClient.invalidateQueries({ queryKey: ['streams', user?.id] }),
+      ])
+    },
+    onError: (error: Error) => {
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message }))
+    },
+  })
   const presentedStreams = useMemo(
     () =>
       (streams ?? [])
@@ -104,6 +120,7 @@ export default function DashboardPage() {
   const recentAssets = sortedAssets.slice(0, 3)
   const liveStreams = presentedStreams.filter(({ derived }) => derived.isRunning).slice(0, 3)
   const scheduledStreams = presentedStreams.filter(({ derived }) => derived.group === 'scheduled').slice(0, 2)
+  const pendingStopStreamId = stopStreamMutation.isPending ? stopStreamMutation.variables : null
   const userLabel = user?.user_metadata?.display_name || user?.email || 'Стример'
   const subtitle = `Привіт, ${userLabel} 👋 — сьогодні ${new Intl.DateTimeFormat('uk-UA', {
     weekday: 'long',
@@ -206,7 +223,14 @@ export default function DashboardPage() {
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/streaming')}>Стат.</Button>
-                    <Button size="sm" variant="danger" onClick={() => router.push('/dashboard/streaming')}>■ Зупинити</Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      disabled={pendingStopStreamId === stream.id}
+                      onClick={() => stopStreamMutation.mutate(stream.id)}
+                    >
+                      ■ Зупинити
+                    </Button>
                   </div>
                 </div>
               )) : (

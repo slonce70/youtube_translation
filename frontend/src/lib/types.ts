@@ -218,6 +218,9 @@ export interface Destination {
   provider_viewers?: number | null
   provider_last_checked_at?: string | null
   provider_video_id?: string | null
+  provider_stream_status?: string | null
+  provider_health_status?: string | null
+  provider_health_issues?: string[]
   stream_key_masked: string
   created_at: string
   updated_at: string
@@ -251,6 +254,9 @@ export interface StreamDestinationSummary {
   provider_viewers?: number | null
   provider_last_checked_at?: string | null
   provider_video_id?: string | null
+  provider_stream_status?: string | null
+  provider_health_status?: string | null
+  provider_health_issues?: string[]
 }
 
 export type StreamStatusValue =
@@ -322,6 +328,9 @@ export interface Stream {
   provider_viewers?: number | null
   provider_last_checked_at?: string | null
   provider_video_id?: string | null
+  provider_stream_status?: string | null
+  provider_health_status?: string | null
+  provider_health_issues?: string[]
   provider_mismatch?: boolean
   scheduled_start_enabled?: boolean
   scheduled_start_time?: string | null
@@ -345,6 +354,9 @@ export interface StreamStatusResponse {
   provider_viewers?: number | null
   provider_last_checked_at?: string | null
   provider_video_id?: string | null
+  provider_stream_status?: string | null
+  provider_health_status?: string | null
+  provider_health_issues?: string[]
   provider_mismatch?: boolean
   runtime_restart: StreamRuntimeRestartInfo
 }
@@ -362,6 +374,9 @@ export interface YoutubeConnection {
   provider_viewers?: number | null
   provider_last_checked_at?: string | null
   provider_video_id?: string | null
+  provider_stream_status?: string | null
+  provider_health_status?: string | null
+  provider_health_issues?: string[]
 }
 
 export interface YoutubeOAuthStartResponse {

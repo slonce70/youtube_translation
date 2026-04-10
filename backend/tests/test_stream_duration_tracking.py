@@ -185,6 +185,65 @@ async def test_stream_status_reports_live_and_total_duration(
 
 
 @pytest.mark.asyncio
+async def test_stream_status_disables_runtime_restart_when_attempt_budget_is_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"restart-disabled-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=uuid4(),
+            user_id=user_id,
+            name="restart-disabled",
+            status="error",
+            runtime_restart_attempts=1,
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
+        monkeypatch.setattr(
+            streams_control.default_settings,
+            "stream_runtime_auto_restart_enabled",
+            True,
+        )
+        monkeypatch.setattr(
+            streams_control.default_settings,
+            "stream_runtime_restart_max_attempts",
+            0,
+        )
+        monkeypatch.setattr(
+            "app.schemas.api.settings.stream_runtime_auto_restart_enabled",
+            True,
+        )
+        monkeypatch.setattr(
+            "app.schemas.api.settings.stream_runtime_restart_max_attempts",
+            0,
+        )
+
+        class DummyManager:
+            def is_running(self, stream_id: str) -> bool:
+                return False
+
+            def get_stream_info(self, stream_id: str) -> Dict[str, Any]:
+                return {}
+
+        service = StreamControlService(session, user_id, manager=DummyManager())
+
+        status = await service.get_stream_status(stream.id)
+
+        assert status.runtime_restart.enabled is False
+        assert status.runtime_restart.state == "disabled"
+
+
+@pytest.mark.asyncio
 async def test_scheduled_stream_status_stays_scheduled_when_supervisor_has_not_started_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

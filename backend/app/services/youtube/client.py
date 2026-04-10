@@ -103,7 +103,7 @@ class YoutubeClient:
             "/liveBroadcasts",
             access_token,
             {
-                "part": "id,snippet,status",
+                "part": "id,snippet,status,contentDetails",
                 "broadcastStatus": "active",
                 "mine": "true",
                 "maxResults": "1",
@@ -124,6 +124,19 @@ class YoutubeClient:
         if not items:
             raise YoutubeApiError("YouTube video live details were not returned")
         return items[0].get("liveStreamingDetails") or {}
+
+    async def fetch_live_stream_status(
+        self, access_token: str, stream_id: str
+    ) -> dict[str, Any]:
+        data = await self._get_json(
+            "/liveStreams",
+            access_token,
+            {"part": "status", "id": stream_id},
+        )
+        items = data.get("items") or []
+        if not items:
+            raise YoutubeApiError("YouTube live stream status was not returned")
+        return items[0].get("status") or {}
 
     async def _post_form(self, url: str, payload: dict[str, str]) -> dict[str, Any]:
         async with httpx.AsyncClient(

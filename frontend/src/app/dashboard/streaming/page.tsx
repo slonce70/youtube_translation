@@ -44,6 +44,8 @@ import { extractStopAuditEntries } from './log-audit'
 import {
   getProviderStatusKey,
   getProviderBadgeVariant,
+  getProviderHealthIssueCount,
+  hasProviderHealthAttention,
 } from '@/lib/provider-status'
 
 type DestinationFormState = {
@@ -199,11 +201,17 @@ export default function StreamingPage() {
   const formatProviderSummary = (destination: Destination) => {
     if (!destination.provider_connection_id) return null
     if (!destination.provider_viewers && (!destination.provider_status || destination.provider_status === 'unknown')) return null
-    const base = formatProviderStatus(destination.provider_status)
+    const parts = [formatProviderStatus(destination.provider_status)]
     if (typeof destination.provider_viewers === 'number') {
-      return `${base} · ${tStreaming('provider.viewers', { count: destination.provider_viewers })}`
+      parts.push(tStreaming('provider.viewers', { count: destination.provider_viewers }))
     }
-    return base
+    const issueCount = getProviderHealthIssueCount(destination)
+    if (issueCount > 0) {
+      parts.push(tStreaming('provider.healthIssues', { count: issueCount }))
+    } else if (hasProviderHealthAttention(destination)) {
+      parts.push(tStreaming('provider.healthDegraded'))
+    }
+    return parts.join(' · ')
   }
   const destinationsLimit = quota?.destinations?.limit ?? null
   const concurrentStreamsLimit = quota?.streams?.limit ?? null

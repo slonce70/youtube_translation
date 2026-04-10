@@ -13,6 +13,23 @@ from app.core.stream_schedule import (
 
 ALLOWED_ASSET_TYPES = {"video", "audio"}
 ProviderStatusValue = Literal["live", "offline", "unknown", "stale"]
+ProviderHealthStatusValue = Literal["good", "ok", "bad", "noData"]
+_PROVIDER_HEALTH_PRIORITY = {"bad": 3, "ok": 2, "good": 1, "noData": 0}
+
+
+def _aggregate_provider_health_status(statuses: List[str]) -> Optional[str]:
+    if not statuses:
+        return None
+    return max(
+        statuses, key=lambda status: (_PROVIDER_HEALTH_PRIORITY.get(status, 2), status)
+    )
+
+
+def _runtime_restart_enabled() -> bool:
+    return (
+        bool(settings.stream_runtime_auto_restart_enabled)
+        and max(int(settings.stream_runtime_restart_max_attempts), 0) > 0
+    )
 
 
 # Asset schemas
@@ -257,6 +274,9 @@ class DestinationResponse(DestinationBase):
     provider_viewers: Optional[int] = None
     provider_last_checked_at: Optional[datetime] = None
     provider_video_id: Optional[str] = None
+    provider_stream_status: Optional[str] = None
+    provider_health_status: Optional[str] = None
+    provider_health_issues: List[str] = Field(default_factory=list)
     stream_key_masked: str = Field(default="****")  # Never expose real key
     created_at: datetime
     updated_at: datetime
@@ -484,6 +504,9 @@ class DestinationSummary(BaseModel):
     provider_viewers: Optional[int] = None
     provider_last_checked_at: Optional[datetime] = None
     provider_video_id: Optional[str] = None
+    provider_stream_status: Optional[str] = None
+    provider_health_status: Optional[str] = None
+    provider_health_issues: List[str] = Field(default_factory=list)
 
 
 class StreamDestinationLink(BaseModel):
@@ -504,7 +527,7 @@ def _stream_runtime_restart_state(
     attempts: int,
     next_restart_at: Optional[datetime],
 ) -> StreamRuntimeRestartState:
-    enabled = bool(settings.stream_runtime_auto_restart_enabled)
+    enabled = _runtime_restart_enabled()
     if not enabled:
         return "disabled"
     if next_restart_at is not None:
@@ -588,6 +611,15 @@ class StreamResponse(StreamBase):
                 destination, "_provider_last_checked_at", None
             ),
             provider_video_id=getattr(destination, "_provider_video_id", None),
+            provider_stream_status=getattr(
+                destination, "_provider_stream_status", None
+            ),
+            provider_health_status=getattr(
+                destination, "_provider_health_status", None
+            ),
+            provider_health_issues=list(
+                getattr(destination, "_provider_health_issues", None) or []
+            ),
         )
 
     @computed_field  # type: ignore[misc]
@@ -655,6 +687,39 @@ class StreamResponse(StreamBase):
 
     @computed_field  # type: ignore[misc]
     @property
+    def provider_stream_status(self) -> Optional[str]:
+        stream_statuses = {
+            destination.provider_stream_status
+            for destination in self.destinations
+            if destination.provider_stream_status
+        }
+        if len(stream_statuses) == 1:
+            return next(iter(stream_statuses))
+        return None
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def provider_health_status(self) -> Optional[str]:
+        statuses = [
+            destination.provider_health_status
+            for destination in self.destinations
+            if destination.provider_health_status
+        ]
+        return _aggregate_provider_health_status(statuses)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def provider_health_issues(self) -> List[str]:
+        issues = {
+            issue
+            for destination in self.destinations
+            for issue in destination.provider_health_issues
+            if issue
+        }
+        return sorted(issues)
+
+    @computed_field  # type: ignore[misc]
+    @property
     def provider_mismatch(self) -> bool:
         if self.provider_status == "unknown":
             return False
@@ -668,7 +733,7 @@ class StreamResponse(StreamBase):
         attempts = max(int(self.runtime_restart_attempts or 0), 0)
         next_restart_at = self.runtime_next_restart_at
         return StreamRuntimeRestartInfo(
-            enabled=bool(settings.stream_runtime_auto_restart_enabled),
+            enabled=_runtime_restart_enabled(),
             state=_stream_runtime_restart_state(
                 status=self.status,
                 attempts=attempts,
@@ -697,6 +762,9 @@ class StreamStatus(BaseModel):
     provider_viewers: Optional[int] = None
     provider_last_checked_at: Optional[datetime] = None
     provider_video_id: Optional[str] = None
+    provider_stream_status: Optional[str] = None
+    provider_health_status: Optional[str] = None
+    provider_health_issues: List[str] = Field(default_factory=list)
     provider_mismatch: bool = False
     runtime_restart: StreamRuntimeRestartInfo
 
@@ -721,6 +789,9 @@ class YoutubeConnectionResponse(BaseModel):
     provider_viewers: Optional[int] = None
     provider_last_checked_at: Optional[datetime] = None
     provider_video_id: Optional[str] = None
+    provider_stream_status: Optional[str] = None
+    provider_health_status: Optional[str] = None
+    provider_health_issues: List[str] = Field(default_factory=list)
 
 
 class YoutubeOAuthStartResponse(BaseModel):

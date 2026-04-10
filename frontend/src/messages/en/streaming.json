@@ -524,6 +524,8 @@
     "channelsEmpty": "Add an RTMPS channel and link a YouTube OAuth connection when you need real provider status.",
     "viewersLabel": "YouTube viewers",
     "viewers": "{count} viewers",
+    "healthIssues": "{count} ingest issues",
+    "healthDegraded": "Ingest degraded",
     "runtimeMismatchTitle": "Runtime / YouTube mismatch",
     "runtimeMismatchBody": "Runtime: {runtime} · Provider: {provider}",
     "runtime": {

@@ -103,6 +103,11 @@ class YoutubeConnectionService:
                 snapshot, "provider_last_checked_at", None
             ),
             provider_video_id=getattr(snapshot, "provider_video_id", None),
+            provider_stream_status=getattr(snapshot, "provider_stream_status", None),
+            provider_health_status=getattr(snapshot, "provider_health_status", None),
+            provider_health_issues=list(
+                getattr(snapshot, "provider_health_issues", None) or []
+            ),
         )
 
     async def _get_connection(self, connection_id: UUID) -> YoutubeConnection:

@@ -14,7 +14,12 @@ import { api } from '@/lib/api'
 import { writeDevBypassDisplayName } from '@/lib/devBypassUser'
 import { useDashboardContext } from '../dashboard-context'
 import { toast } from 'sonner'
-import { getProviderBadgeVariant, getProviderStatusKey } from '@/lib/provider-status'
+import {
+  getProviderBadgeVariant,
+  getProviderHealthIssueCount,
+  getProviderStatusKey,
+  hasProviderHealthAttention,
+} from '@/lib/provider-status'
 
 const LANGUAGE_OPTIONS = ['🇺🇦 Українська', '🇬🇧 English', '🇷🇺 Русский']
 const TIMEZONE_OPTIONS = ['UTC+3 (Київ)', 'UTC+0 (Лондон)', 'UTC-5 (Нью-Йорк)']
@@ -92,12 +97,20 @@ export default function ProfilePage() {
   const formatConnectionSummary = (connection: {
     provider_status?: string | null
     provider_viewers?: number | null
+    provider_health_status?: string | null
+    provider_health_issues?: string[] | null
   }) => {
-    const base = formatProviderStatus(connection.provider_status)
+    const parts = [formatProviderStatus(connection.provider_status)]
     if (typeof connection.provider_viewers === 'number') {
-      return `${base} · ${t('provider.viewers', { count: connection.provider_viewers })}`
+      parts.push(t('provider.viewers', { count: connection.provider_viewers }))
     }
-    return base
+    const issueCount = getProviderHealthIssueCount(connection)
+    if (issueCount > 0) {
+      parts.push(t('provider.healthIssues', { count: issueCount }))
+    } else if (hasProviderHealthAttention(connection)) {
+      parts.push(t('provider.healthDegraded'))
+    }
+    return parts.join(' · ')
   }
 
   const handleStartYouTubeConnect = async () => {

@@ -524,6 +524,8 @@
     "channelsEmpty": "Добавьте RTMPS-канал и при необходимости привяжите YouTube OAuth connection для реального provider status.",
     "viewersLabel": "YouTube viewers",
     "viewers": "{count} зрителей",
+    "healthIssues": "{count} проблем ingest",
+    "healthDegraded": "Проблемы ingest",
     "runtimeMismatchTitle": "Runtime / YouTube mismatch",
     "runtimeMismatchBody": "Runtime: {runtime} · Provider: {provider}",
     "runtime": {

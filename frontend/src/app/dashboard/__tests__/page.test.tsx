@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl'
 import React, { type ReactNode } from 'react'
@@ -23,6 +23,7 @@ jest.mock('@/lib/api', () => ({
     streams: {
       list: jest.fn(),
       createWsToken: jest.fn(),
+      stop: jest.fn(),
     },
     assets: {
       list: jest.fn(),
@@ -85,6 +86,20 @@ describe('DashboardPage', () => {
     jest.clearAllMocks()
     api.quota.get.mockResolvedValue(quotaData)
     api.streams.list.mockResolvedValue([])
+    api.streams.stop.mockResolvedValue({
+      id: 'stream-live',
+      status: 'stopped',
+      is_running: false,
+      runtime_restart: {
+        enabled: true,
+        state: 'idle',
+        attempts: 0,
+        max_attempts: 5,
+        next_restart_at: null,
+        last_restart_at: null,
+        last_failure_at: null,
+      },
+    })
     api.streams.createWsToken.mockResolvedValue({
       token: 'test-ws-token',
       expires_at: Math.floor(Date.now() / 1000) + 60,
@@ -108,6 +123,47 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Немає live')).toBeInTheDocument()
     expect(screen.queryByText('Ще немає live-ефірів')).not.toBeInTheDocument()
     expect(screen.queryByText('Очікує запуску')).not.toBeInTheDocument()
+  })
+
+  it('stops a live stream from the dashboard card', async () => {
+    api.streams.list.mockResolvedValue([
+      {
+        id: 'stream-live',
+        playlist_id: null,
+        source_type: 'playlist',
+        name: 'Live stream',
+        status: 'running',
+        pid: 123,
+        log_path: null,
+        error_message: null,
+        started_at: '2026-04-10T20:00:00Z',
+        stopped_at: null,
+        video_collection_id: null,
+        audio_collection_id: null,
+        mix_mode: 'video_only',
+        settings_json: {},
+        total_duration_seconds: 0,
+        created_at: '2026-04-10T19:00:00Z',
+        updated_at: '2026-04-10T20:00:00Z',
+        destinations: [],
+        runtime_restart: {
+          enabled: true,
+          state: 'idle',
+          attempts: 0,
+          max_attempts: 5,
+          next_restart_at: null,
+          last_restart_at: null,
+          last_failure_at: null,
+        },
+      },
+    ])
+
+    renderWithProviders(<DashboardPage />)
+
+    const stopButton = await screen.findByRole('button', { name: '■ Зупинити' })
+    fireEvent.click(stopButton)
+
+    await waitFor(() => expect(api.streams.stop).toHaveBeenCalledWith('stream-live'))
   })
 
 })

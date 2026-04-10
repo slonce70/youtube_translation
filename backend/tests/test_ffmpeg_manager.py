@@ -775,6 +775,7 @@ class TestFFmpegStreamManagerMonitor:
         fake_process.stdout = AsyncMock()
         fake_process.stderr = AsyncMock()
         captured_cmd = []
+        monkeypatch.setattr(settings, "ffmpeg_output_recovery_max_attempts", 9)
 
         # _monitor_process is scheduled asynchronously – replace with noop to avoid background execution
         monitor_stub = AsyncMock()
@@ -824,7 +825,7 @@ class TestFFmpegStreamManagerMonitor:
         assert "-attempt_recovery" in captured_cmd and captured_cmd[captured_cmd.index("-attempt_recovery") + 1] == "1"
         assert "-recover_any_error" in captured_cmd and captured_cmd[captured_cmd.index("-recover_any_error") + 1] == "1"
         assert "-restart_with_keyframe" in captured_cmd and captured_cmd[captured_cmd.index("-restart_with_keyframe") + 1] == "1"
-        assert "-max_recovery_attempts" in captured_cmd and captured_cmd[captured_cmd.index("-max_recovery_attempts") + 1] == "3"
+        assert "-max_recovery_attempts" in captured_cmd and captured_cmd[captured_cmd.index("-max_recovery_attempts") + 1] == "9"
 
         # ensure telemetry persisted even after retrieving info
         assert (

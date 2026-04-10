@@ -81,6 +81,17 @@ def _is_removed_process_group_error(exc: RuntimeError) -> bool:
     return "removed process group" in message or "no such process" in message
 
 
+_PROVIDER_HEALTH_PRIORITY = {"bad": 3, "ok": 2, "good": 1, "noData": 0}
+
+
+def _aggregate_provider_health_status(statuses: List[str]) -> Optional[str]:
+    if not statuses:
+        return None
+    return max(
+        statuses, key=lambda status: (_PROVIDER_HEALTH_PRIORITY.get(status, 2), status)
+    )
+
+
 class StreamControlService:
     """Coordinates FFmpeg/systemd/supervisor interactions for streams."""
 
@@ -939,6 +950,9 @@ class StreamControlService:
             provider_viewers=provider_summary["provider_viewers"],
             provider_last_checked_at=provider_summary["provider_last_checked_at"],
             provider_video_id=provider_summary["provider_video_id"],
+            provider_stream_status=provider_summary["provider_stream_status"],
+            provider_health_status=provider_summary["provider_health_status"],
+            provider_health_issues=provider_summary["provider_health_issues"],
             provider_mismatch=(
                 provider_summary["provider_status"] != "unknown"
                 and (is_running != (provider_summary["provider_status"] == "live"))
@@ -1344,6 +1358,9 @@ def _provider_summary_for_stream(stream: Stream) -> dict[str, object]:
             "provider_viewers": None,
             "provider_last_checked_at": None,
             "provider_video_id": None,
+            "provider_stream_status": None,
+            "provider_health_status": None,
+            "provider_health_issues": [],
         }
 
     connected_destinations = []
@@ -1360,6 +1377,9 @@ def _provider_summary_for_stream(stream: Stream) -> dict[str, object]:
             "provider_viewers": None,
             "provider_last_checked_at": None,
             "provider_video_id": None,
+            "provider_stream_status": None,
+            "provider_health_status": None,
+            "provider_health_issues": [],
         }
 
     statuses = {
@@ -1393,6 +1413,22 @@ def _provider_summary_for_stream(stream: Stream) -> dict[str, object]:
         for destination in connected_destinations
         if getattr(destination, "_provider_video_id", None)
     }
+    stream_statuses = {
+        getattr(destination, "_provider_stream_status", None)
+        for destination in connected_destinations
+        if getattr(destination, "_provider_stream_status", None)
+    }
+    health_statuses = [
+        getattr(destination, "_provider_health_status", None)
+        for destination in connected_destinations
+        if getattr(destination, "_provider_health_status", None)
+    ]
+    health_issues = {
+        issue
+        for destination in connected_destinations
+        for issue in (getattr(destination, "_provider_health_issues", None) or [])
+        if issue
+    }
     return {
         "provider_status": provider_status,
         "provider_viewers": (
@@ -1400,6 +1436,11 @@ def _provider_summary_for_stream(stream: Stream) -> dict[str, object]:
         ),
         "provider_last_checked_at": max(last_checked) if last_checked else None,
         "provider_video_id": next(iter(video_ids)) if len(video_ids) == 1 else None,
+        "provider_stream_status": (
+            next(iter(stream_statuses)) if len(stream_statuses) == 1 else None
+        ),
+        "provider_health_status": _aggregate_provider_health_status(health_statuses),
+        "provider_health_issues": sorted(health_issues),
     }
 
 
@@ -1415,7 +1456,8 @@ def _runtime_restart_payload(
     effective_status = status_value or stream.status
     next_restart_at = _aware(stream.runtime_next_restart_at)
     return StreamRuntimeRestartInfo(
-        enabled=bool(default_settings.stream_runtime_auto_restart_enabled),
+        enabled=bool(default_settings.stream_runtime_auto_restart_enabled)
+        and max(int(default_settings.stream_runtime_restart_max_attempts), 0) > 0,
         state=_stream_runtime_restart_state(
             status=effective_status,
             attempts=attempts,

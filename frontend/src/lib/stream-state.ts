@@ -6,6 +6,7 @@ import type {
   StreamStatusResponse,
   StreamStatusValue,
 } from './types'
+import { hasProviderHealthAttention } from './provider-status'
 
 export type StreamGroup = 'live' | 'transitioning' | 'attention' | 'scheduled' | 'stopped'
 export type StreamPrimaryAction = 'stop' | 'start' | 'edit_schedule' | 'view_issue' | 'pending'
@@ -96,12 +97,17 @@ export function deriveStreamState(
 
   const runtimeRestart = statusData?.runtime_restart ?? stream.runtime_restart
   const effectiveErrorMessage = statusData?.error_message ?? stream.error_message ?? null
+  const providerHealthAttention = hasProviderHealthAttention({
+    provider_health_status: statusData?.provider_health_status ?? stream.provider_health_status,
+    provider_health_issues: statusData?.provider_health_issues ?? stream.provider_health_issues,
+  })
   const requiresAttention =
     derivedStatus === 'error' ||
     runtimeRestart.state === 'retrying' ||
     runtimeRestart.state === 'scheduled' ||
     runtimeRestart.state === 'exhausted' ||
-    quotaReached
+    quotaReached ||
+    providerHealthAttention
 
   const group = isTransitioning
     ? 'transitioning'
