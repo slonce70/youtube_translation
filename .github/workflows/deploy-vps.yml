@@ -209,9 +209,9 @@ jobs:
           }
 
           frontend_pattern='^frontend/'
-          backend_pattern='^(backend/|docker/docker-compose\.yml|docker/Caddyfile(\.template)?|docker/mediamtx\.yml|scripts/render_caddyfile\.py)$'
-          tusd_pattern='^(backend/tusd-hooks/|docker/tusd\.Dockerfile|docker/docker-compose\.yml)$'
-          infra_pattern='^(docker/docker-compose\.yml|docker/Caddyfile(\.template)?|docker/mediamtx\.yml|scripts/render_caddyfile\.py)$'
+          backend_pattern='^(backend/|docker/docker-compose\.yml$|docker/Caddyfile(\.template)?$|docker/mediamtx\.yml$|scripts/render_caddyfile\.py$)'
+          tusd_pattern='^(backend/tusd-hooks/|docker/tusd\.Dockerfile$|docker/docker-compose\.yml$)'
+          infra_pattern='^(docker/docker-compose\.yml$|docker/Caddyfile(\.template)?$|docker/mediamtx\.yml$|scripts/render_caddyfile\.py$)'
 
           frontend_needs_deploy=false
           backend_needs_deploy=false
