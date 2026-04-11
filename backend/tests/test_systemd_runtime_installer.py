@@ -53,4 +53,6 @@ def test_install_systemd_runtime_renders_units_into_target_dir(tmp_path) -> None
     assert 'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' in wrapper_text
     assert 'repo_root="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd)"' in wrapper_text
     assert 'backend_dir="${SYSTEMD_BACKEND_DIR:-$repo_root/backend}"' in wrapper_text
-    assert 'venv_python="${SYSTEMD_PYTHON_BIN:-$repo_root/.venv/bin/python}"' in wrapper_text
+    assert 'backend_venv_dir="${SYSTEMD_BACKEND_VENV_DIR:-$backend_dir/.venv}"' in wrapper_text
+    assert 'repo_venv_dir="${SYSTEMD_REPO_VENV_DIR:-$repo_root/.venv}"' in wrapper_text
+    assert 'preferred_python="${SYSTEMD_PYTHON_BIN:-}"' in wrapper_text

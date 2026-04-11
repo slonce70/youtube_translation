@@ -11,6 +11,17 @@ stream_unit_template="${HOST_STREAM_UNIT_TEMPLATE:-ffmpeg@}"
 install_root="${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}"
 ss_bin="${SS_BIN:-ss}"
 
+detect_host_binary() {
+  local candidate
+  for candidate in "$@"; do
+    if [[ -x "$candidate" ]]; then
+      printf 'present:%s' "$candidate"
+      return 0
+    fi
+  done
+  echo "missing"
+}
+
 check_container_status() {
   local name="$1"
   "$docker_bin" inspect -f '{{.State.Status}}' "$name" 2>/dev/null || echo "missing"
@@ -54,8 +65,14 @@ echo "host_backend_unit=$(unit_state "$backend_unit")"
 echo "ffmpeg_template_unit=$(test -f /etc/systemd/system/ffmpeg@.service && echo present || echo missing)"
 echo "streaming_slice=$(test -f /etc/systemd/system/streaming.slice && echo present || echo missing)"
 echo "host_backend_unit_file=$(test -f /etc/systemd/system/${backend_unit}.service && echo present || echo missing)"
-echo "host_backend_python=$(test -x "$install_root/.venv/bin/python" && echo present || echo missing)"
-echo "host_backend_uvicorn=$(test -x "$install_root/.venv/bin/uvicorn" && echo present || echo missing)"
+echo "host_backend_python=$(detect_host_binary \
+  "$install_root/backend/.venv/bin/python" \
+  "$install_root/backend/.venv/bin/python3" \
+  "$install_root/.venv/bin/python" \
+  "$install_root/.venv/bin/python3")"
+echo "host_backend_uvicorn=$(detect_host_binary \
+  "$install_root/backend/.venv/bin/uvicorn" \
+  "$install_root/.venv/bin/uvicorn")"
 echo "host_loopback_postgres=$(loopback_port_state 5432)"
 echo "host_loopback_redis=$(loopback_port_state 6379)"
 echo "host_loopback_backend=$(loopback_port_state 8000)"

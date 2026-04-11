@@ -29,6 +29,7 @@ sudo cp docs/systemd/ffmpeg@.service.example /etc/systemd/system/ffmpeg@.service
 ```
 
 2. Відредагуйте шляхи, користувача та virtualenv.
+   Stream wrapper `scripts/run_stream_systemd.sh` спочатку шукає Python у `backend/.venv`, а потім у repo-root `.venv`; якщо у вас інший layout, задайте `SYSTEMD_PYTHON_BIN` явно.
    Також одразу перевірте resource accounting directives:
    - `CPUAccounting=yes`
    - `MemoryAccounting=yes`

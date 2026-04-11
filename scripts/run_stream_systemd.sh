@@ -2,10 +2,13 @@
 set -euo pipefail
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+shopt -s nullglob
 
 repo_root="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd)"
 backend_dir="${SYSTEMD_BACKEND_DIR:-$repo_root/backend}"
-venv_python="${SYSTEMD_PYTHON_BIN:-$repo_root/.venv/bin/python}"
+backend_venv_dir="${SYSTEMD_BACKEND_VENV_DIR:-$backend_dir/.venv}"
+repo_venv_dir="${SYSTEMD_REPO_VENV_DIR:-$repo_root/.venv}"
+preferred_python="${SYSTEMD_PYTHON_BIN:-}"
 log_dir="${SYSTEMD_LOG_DIR:-$repo_root/backend/logs}"
 stream_id="${1:-}"
 
@@ -21,16 +24,27 @@ wrapper_log="$log_dir/systemd-run-stream-${stream_id}.log"
 {
   echo "[$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)] starting run_stream_systemd wrapper"
   echo "backend_dir=$backend_dir"
-  echo "venv_python=$venv_python"
+  echo "backend_venv_dir=$backend_venv_dir"
+  echo "repo_venv_dir=$repo_venv_dir"
+  echo "preferred_python=${preferred_python:-<auto>}"
   echo "stream_id=$stream_id"
 } >>"$wrapper_log"
 
+candidate_python_bins=()
+if [[ -n "$preferred_python" ]]; then
+  candidate_python_bins+=("$preferred_python")
+fi
+candidate_python_bins+=(
+  "$backend_venv_dir/bin/python"
+  "$backend_venv_dir/bin/python3"
+  "$backend_venv_dir"/bin/python3.*
+  "$repo_venv_dir/bin/python"
+  "$repo_venv_dir/bin/python3"
+  "$repo_venv_dir"/bin/python3.*
+)
+
 resolved_python=""
-for candidate in \
-  "$venv_python" \
-  "$repo_root/.venv/bin/python3" \
-  "$repo_root/.venv/bin/python3.12"
-do
+for candidate in "${candidate_python_bins[@]}"; do
   if [[ ! -x "$candidate" ]]; then
     continue
   fi
