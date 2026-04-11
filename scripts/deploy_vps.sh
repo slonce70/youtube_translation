@@ -304,6 +304,36 @@ ensure_host_runtime_mode_alignment() {
   export STREAM_RUNTIME_MODE="systemd"
 }
 
+ensure_host_storage_env_alignment() {
+  if ! host_runtime_refresh_requested; then
+    return 0
+  fi
+
+  if ! host_backend_is_active && ! flag_enabled "${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"; then
+    return 0
+  fi
+
+  local changed=0
+  local current_upload_dir="${UPLOAD_DIR:-}"
+  local current_stream_dir="${STREAM_DIR:-}"
+
+  if [[ "$current_upload_dir" != "./uploads" ]]; then
+    upsert_env_kv "$backend_env" "UPLOAD_DIR" "./uploads"
+    export UPLOAD_DIR="./uploads"
+    changed=1
+  fi
+
+  if [[ "$current_stream_dir" != "./streams" ]]; then
+    upsert_env_kv "$backend_env" "STREAM_DIR" "./streams"
+    export STREAM_DIR="./streams"
+    changed=1
+  fi
+
+  if [[ "$changed" == "1" ]]; then
+    echo "Host-native deploy path requested; aligning backend/.env storage dirs to repo-local persistent symlink paths."
+  fi
+}
+
 maybe_provision_host_native_backend_venv() {
   local runtime_mode="${STREAM_RUNTIME_MODE:-}"
   runtime_mode="$(printf '%s' "$runtime_mode" | tr '[:upper:]' '[:lower:]')"
@@ -641,6 +671,7 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
 fi
 
 ensure_host_runtime_mode_alignment
+ensure_host_storage_env_alignment
 parse_selected_services
 
 deploy_ref="${GITHUB_SHA:-$(git rev-parse HEAD)}"
