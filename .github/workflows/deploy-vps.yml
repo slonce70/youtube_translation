@@ -131,7 +131,7 @@ jobs:
           ')"
           host_backend_active="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet youtube-backend; then echo true; else echo false; fi")"
           host_backend_unit_present="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "if [[ -f /etc/systemd/system/youtube-backend.service ]]; then echo true; else echo false; fi")"
-          configured_stream_runtime_mode="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && awk -F= '/^[[:space:]]*STREAM_RUNTIME_MODE=/{print tolower(\\$2); exit}' backend/.env 2>/dev/null || true")"
+          configured_stream_runtime_mode="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && sed -n 's/^[[:space:]]*STREAM_RUNTIME_MODE=//p' backend/.env 2>/dev/null | head -n 1 | tr '[:upper:]' '[:lower:]'")"
           vps_checkout_sha="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && git rev-parse HEAD 2>/dev/null || true")"
 
           current_backend_sha=''
