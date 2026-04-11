@@ -24,7 +24,7 @@ This document summarizes the current FastAPI routing surface for the YouTube Mul
 | `media_collections` | `/api/media/collections` | `MediaCollectionService` | Відео/аудіо колекції, синхронізація з плейлистами | `origin_playlist_id` відстежує походження; router повертає Pydantic response. |
 | `destinations` | `/api/destinations` | `DestinationService` | RTMPS-канали з шифруванням ключів | Маскування ключів і quota-чек централізовані; router залишено dict-сумісним для існуючих тестів. |
 | `streams` | `/api/streams` | `StreamService` + `StreamControlService` | Конфіг стрімів, старт/стоп FFmpeg, логи | Control-сервіс працює з `ffmpeg_manager`; Service перевіряє джерела/квоти. |
-| `metrics` | `/api/metrics` | psutil helpers + middleware | System/stream метрики, Prometheus export | Потребує валідного Supabase токена; забезпечує `/api/metrics/prometheus`. |
+| `metrics` | `/api/metrics` | psutil helpers + middleware | System/stream метрики, Prometheus export | `GET /api/metrics/` потребує admin auth; `capacity` є евристичним, а не authoritative production limit; `/api/metrics/prometheus` захищений окремим shared token. |
 
 ## Endpoint Details
 
@@ -32,7 +32,7 @@ This document summarizes the current FastAPI routing surface for the YouTube Mul
 
 - `GET /` → service heartbeat (anonymous)
 - `GET /health` → liveness check (anonymous)
-- `GET /api/metrics/` → system + stream metrics (requires Supabase Bearer token)
+- `GET /api/metrics/` → system + stream metrics (requires admin auth; capacity block is heuristic)
 - `POST /api/internal/check-quota` → tusd pre-create hook, HMAC optional
 - `GET /api/quota/usage` *(in `quota.py`)* → returns tier usage snapshot for authenticated user
 

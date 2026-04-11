@@ -36,7 +36,12 @@ import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamStatusMap } from './hooks/useStreamStatusMap'
 import { AddChannelModal } from '@/components/streaming/AddChannelModal'
-import { deriveStreamState } from '@/lib/stream-state'
+import {
+  buildStreamIncidentNotice,
+  deriveStreamState,
+  getStreamLogLineClassName,
+  summarizeStreamLogIncidents,
+} from '@/lib/stream-state'
 import { getDestinationPlatformPresentation } from './platform'
 import { formatDuration } from '@/lib/utils'
 import { formatDateTimeLocal, type ScheduleDraft } from './schedule-utils'
@@ -657,6 +662,30 @@ export default function StreamingPage() {
       ),
     [optimisticRunningStreamIds, optimisticStoppingStreamIds, presentedStreams],
   )
+  const degradedLiveEntries = useMemo(
+    () =>
+      liveEntries.filter(({ derived }) => derived.isDegraded),
+    [liveEntries],
+  )
+  const viewingStreamEntry = useMemo(
+    () =>
+      viewingLogs
+        ? presentedStreams.find(({ stream }) => stream.id === viewingLogs) ?? null
+        : null,
+    [presentedStreams, viewingLogs],
+  )
+  const logIncidentSummary = useMemo(
+    () => summarizeStreamLogIncidents(logsResponse?.logs ?? []),
+    [logsResponse?.logs],
+  )
+  const runtimeIncidentNotice = useMemo(
+    () => buildStreamIncidentNotice(viewingStreamEntry?.derived.incidentSummary),
+    [viewingStreamEntry],
+  )
+  const logIncidentNotice = useMemo(
+    () => buildStreamIncidentNotice(logIncidentSummary),
+    [logIncidentSummary],
+  )
 
   if (!user) {
     return <LoadingState text={tStreaming('loading')} />
@@ -701,6 +730,13 @@ export default function StreamingPage() {
               {destinations?.length || 0}/{formatLimitValue(destinationsLimit)}
             </div>
             <div className="page-sub">Каналів додано</div>
+          </div>
+        </div>
+        <div className="stat-strip-card">
+          <div style={{ fontSize: 24 }}>⚠️</div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--amber)' }}>{degradedLiveEntries.length}</div>
+            <div className="page-sub">Деградуючих ефірів</div>
           </div>
         </div>
       </div>
@@ -812,20 +848,33 @@ export default function StreamingPage() {
             const isOptimisticallyStarting = pendingStartStreamId === stream.id || (optimisticRunningStreamIds.includes(stream.id) && !derived.isRunning)
             const isOptimisticallyStopping = pendingStopStreamId === stream.id || optimisticStoppingStreamIds.includes(stream.id) || derived.isStopping
             const isTransitioning = isOptimisticallyStarting || isOptimisticallyStopping || derived.isTransitioning
+            const incidentNotice = buildStreamIncidentNotice(derived.incidentSummary)
             const statusLabel = isOptimisticallyStopping
               ? 'Зупиняється'
               : isOptimisticallyStarting || derived.isStarting
                 ? 'Запускається'
-                : 'У ЕФІРІ'
+                : derived.isDegraded
+                  ? 'ДЕГРАДУЄ'
+                  : 'У ЕФІРІ'
             const progressPercent = sourceTotalSeconds && derived.liveDurationSeconds != null
               ? Math.min(100, Math.round((derived.liveDurationSeconds / sourceTotalSeconds) * 100))
               : null
 
             return (
-              <article key={stream.id} className="card stream-summary-card" style={{ borderColor: isTransitioning ? 'rgba(245,158,11,.35)' : 'rgba(34,197,94,.25)' }}>
+              <article
+                key={stream.id}
+                className="card stream-summary-card"
+                style={{
+                  borderColor: isTransitioning
+                    ? 'rgba(245,158,11,.35)'
+                    : derived.isDegraded
+                      ? 'rgba(245,158,11,.35)'
+                      : 'rgba(34,197,94,.25)',
+                }}
+              >
                 <div className="card-content">
                   <div className="stream-card-header">
-                    <Badge variant={isTransitioning ? 'warn' : 'live'} style={{ fontSize: 12 }}>
+                    <Badge variant={isTransitioning || derived.isDegraded ? 'warn' : 'live'} style={{ fontSize: 12 }}>
                       {isTransitioning ? null : <span className="live-dot" />}{statusLabel}
                     </Badge>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
@@ -834,6 +883,42 @@ export default function StreamingPage() {
                       {isOptimisticallyStopping ? '⏳ Зупиняється' : isOptimisticallyStarting || derived.isStarting ? '⏳ Запускається' : '■ Зупинити'}
                     </Button>
                   </div>
+
+                  {incidentNotice ? (
+                    <div
+                      className="rounded-lg border px-4 py-3 text-sm"
+                      style={{
+                        marginTop: 12,
+                        borderColor:
+                          incidentNotice.tone === 'critical'
+                            ? 'rgba(248,113,113,.35)'
+                            : 'rgba(245,158,11,.35)',
+                        background:
+                          incidentNotice.tone === 'critical'
+                            ? 'rgba(127,29,29,.18)'
+                            : 'rgba(120,53,15,.18)',
+                        color: 'var(--txt)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '.08em',
+                          color: incidentNotice.tone === 'critical' ? '#fecaca' : '#fde68a',
+                        }}
+                      >
+                        {incidentNotice.tone === 'critical' ? 'Критичний інцидент' : 'Потік деградує'}
+                      </div>
+                      <div style={{ marginTop: 6, fontWeight: 600 }}>{incidentNotice.title}</div>
+                      {incidentNotice.details.length ? (
+                        <div style={{ marginTop: 6, color: 'var(--txt-2)' }}>
+                          {incidentNotice.details.join(' · ')}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="stream-playback-panel">
                     <div className="flex items-center gap-8 mb-10">
@@ -1075,19 +1160,62 @@ export default function StreamingPage() {
                   </div>
                 </div>
               ) : null}
+              {runtimeIncidentNotice ? (
+                <div
+                  className="rounded-lg border p-4 text-sm"
+                  style={{
+                    borderColor:
+                      runtimeIncidentNotice.tone === 'critical'
+                        ? 'rgba(248,113,113,.35)'
+                        : 'rgba(245,158,11,.35)',
+                    background:
+                      runtimeIncidentNotice.tone === 'critical'
+                        ? 'rgba(127,29,29,.18)'
+                        : 'rgba(120,53,15,.18)',
+                    color: 'var(--txt)',
+                  }}
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em]">
+                    Поточний runtime-контекст
+                  </div>
+                  <div className="mt-2 text-sm font-medium">{runtimeIncidentNotice.title}</div>
+                  {runtimeIncidentNotice.details.length ? (
+                    <div className="mt-2 text-xs text-slate-200">{runtimeIncidentNotice.details.join(' · ')}</div>
+                  ) : null}
+                </div>
+              ) : null}
+              {logIncidentNotice ? (
+                <div
+                  className="rounded-lg border p-4 text-sm"
+                  style={{
+                    borderColor:
+                      logIncidentNotice.tone === 'critical'
+                        ? 'rgba(248,113,113,.35)'
+                        : 'rgba(245,158,11,.35)',
+                    background:
+                      logIncidentNotice.tone === 'critical'
+                        ? 'rgba(127,29,29,.18)'
+                        : 'rgba(120,53,15,.18)',
+                    color: 'var(--txt)',
+                  }}
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em]">
+                    Incident digest з логів
+                  </div>
+                  <div className="mt-2 text-sm font-medium">{logIncidentNotice.title}</div>
+                  {logIncidentNotice.details.length ? (
+                    <div className="mt-2 space-y-1 text-xs text-slate-200">
+                      {logIncidentNotice.details.map((detail) => (
+                        <div key={detail}>{detail}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs max-h-96 overflow-y-auto">
                 {logsResponse?.logs?.length ? (
                   logsResponse.logs.map((line, index) => (
-                    <p
-                      key={index}
-                      className={
-                        /\[audit\]/i.test(line)
-                          ? 'text-amber-200'
-                          : /error|failed|forbidden|invalid|denied|fatal/i.test(line)
-                            ? 'text-error-300'
-                            : 'text-slate-300'
-                      }
-                    >
+                    <p key={index} className={getStreamLogLineClassName(line)}>
                       {line}
                     </p>
                   ))

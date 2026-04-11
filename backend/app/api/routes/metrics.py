@@ -171,9 +171,11 @@ def estimate_stream_capacity(
 
     avg_cpu_per_stream = 3.5  # percent
     avg_memory_per_stream_gb = 0.075  # 75MB
+    reserved_cpu_percent = 20
+    reserved_memory_percent = 20
 
-    cpu_available = 80 - cpu_percent  # Keep 20% buffer
-    memory_available = 80 - memory_percent  # Keep 20% buffer
+    cpu_available = max(0.0, 100 - reserved_cpu_percent - cpu_percent)
+    memory_available = max(0.0, 100 - reserved_memory_percent - memory_percent)
 
     # Estimate additional capacity based on CPU
     cpu_capacity = max(0, int(cpu_available / avg_cpu_per_stream))
@@ -187,11 +189,23 @@ def estimate_stream_capacity(
     estimated_additional_capacity = min(cpu_capacity, memory_capacity)
 
     return {
+        "mode": "heuristic",
+        "recommended_for_production_decisions": False,
+        "summary": (
+            "Heuristic estimate based on copy-oriented stream assumptions. "
+            "Use measured workload profiles for production capacity planning."
+        ),
         "active_streams": active_streams,
         "estimated_additional_capacity": estimated_additional_capacity,
         "estimated_total_capacity": active_streams + estimated_additional_capacity,
         "cpu_limited": cpu_capacity < memory_capacity,
         "memory_limited": memory_capacity < cpu_capacity,
+        "assumptions": {
+            "avg_cpu_percent_per_stream": avg_cpu_per_stream,
+            "avg_memory_gb_per_stream": avg_memory_per_stream_gb,
+            "reserved_cpu_percent": reserved_cpu_percent,
+            "reserved_memory_percent": reserved_memory_percent,
+        },
     }
 
 

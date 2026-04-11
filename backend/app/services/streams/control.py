@@ -64,7 +64,7 @@ from app.services.youtube import YoutubeProviderStatusService
 from app.streaming.ffmpeg_manager import ffmpeg_manager as default_ffmpeg_manager
 from app.streaming.hot_swap import hot_swap_manager
 
-from .audit import persist_stream_audit_event
+from .audit import attach_runtime_incident_summaries, persist_stream_audit_event
 from .helpers import (
     collect_live_output_compatibility_violations,
     extract_stream_assets,
@@ -587,6 +587,7 @@ class StreamControlService:
                 detail="Stream not found",
             )
         await YoutubeProviderStatusService(self.db).enrich_streams([stream])
+        await attach_runtime_incident_summaries(self.db, [stream], manager=self.manager)
 
         if systemd_enabled():
             is_running = await systemd_is_active(stream_id)
@@ -934,6 +935,7 @@ class StreamControlService:
         status_value = status_override or stream.status
         error_value = stream.error_message if error_message is None else error_message
         provider_summary = _provider_summary_for_stream(stream)
+        runtime_incident_summary = getattr(stream, "_runtime_incident_summary", None)
 
         return StreamStatus(
             id=stream.id,
@@ -958,6 +960,7 @@ class StreamControlService:
                 and (is_running != (provider_summary["provider_status"] == "live"))
             ),
             runtime_restart=_runtime_restart_payload(stream, status_value=status_value),
+            runtime_incident_summary=runtime_incident_summary or {},
         )
 
     async def _get_usage_snapshot(

@@ -114,7 +114,7 @@ curl http://localhost:8000/health
 Що це не дає:
 
 - це не робить destination “healthy” автоматично
-- оператор усе ще має дивитися логи й підтверджувати, що degraded destination справді відновився
+- оператор усе ще має дивитися логи й підтверджувати, що degraded destination справді відновився, але повторні transport/reset storm сигнали тепер повинні підніматися і в operator-facing `stream_events` / `system_alerts`; dashboard/status path для managed runtime читає shared log evidence і recent persisted alerts, а не тільки process-local backend memory
 
 Якщо вам потрібен fail-fast сценарій, можна явно повернути `FFMPEG_TEE_ONFAIL_POLICY=abort`, але для публічного multi-destination запуску це менш безпечний режим.
 
@@ -148,9 +148,10 @@ curl http://localhost:8000/health
 
 1. Перевірте log file стріму в `backend/supervisord/logs/`
 2. Подивіться, чи проблема в одному destination або у всьому input path
-3. Якщо проблема лише в одному destination, тимчасово відключіть його і повторіть start
-4. Якщо проблема в input asset, відкрийте asset metadata та validation errors у UI/API
-5. Якщо exhausted restart budget, не зациклюйте ручні retry без встановлення причини першого падіння
+3. Якщо UI/API показує `running`, але з degraded/runtime incident signals, не вважайте ефір healthy тільки через те, що процес ще живий
+4. Якщо проблема лише в одному destination, тимчасово відключіть його і повторіть start
+5. Якщо проблема в input asset, відкрийте asset metadata та validation errors у UI/API
+6. Якщо exhausted restart budget, не зациклюйте ручні retry без встановлення причини першого падіння
 
 ### 3. Disk pressure
 

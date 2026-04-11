@@ -2,6 +2,8 @@
 
 `systemd` у цьому проєкті призначений для Linux/VPS production-сценарію. Це не канонічний локальний bootstrap path.
 
+Важливо: цей шлях розрахований на host-native control plane. Якщо backend сам працює в контейнері, комбінація `STREAM_RUNTIME_MODE=systemd` для `staging`/`production` тепер fail-closed блокується конфіг-валідатором без явного `ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=true`, доки не буде окремо впроваджено і задокументовано підтриманий host-level control path.
+
 ## Коли використовувати
 
 Використовуйте `STREAM_RUNTIME_MODE=systemd`, якщо потрібно:
@@ -11,29 +13,120 @@
 
 ## Базова схема
 
-1. Скопіюйте шаблон:
+Підтримуваний production shape для цього режиму:
+
+- host-native backend service на `127.0.0.1:8000`
+- host-native `ffmpeg@<stream_id>` units
+- Docker infra для `postgres`, `redis`, `tusd`, `frontend`, `mediamtx`
+- `postgres` і `redis` публікуються лише на loopback (`127.0.0.1:5432`, `127.0.0.1:6379`), щоб backend control plane на хості міг працювати без Docker-in-Docker або container-to-host `systemctl` hacks
+- `frontend` і `tusd` у containerized lane можуть бути перепідняті з `FRONTEND_API_PROXY_TARGET` / `TUSD_BACKEND_URL`, що вказують на `http://host.docker.internal:8000`, коли backend уже host-native
+
+1. Скопіюйте шаблони:
 ```bash
+sudo cp docs/systemd/youtube-backend.service.example /etc/systemd/system/youtube-backend.service
+sudo cp docs/systemd/streaming.slice.example /etc/systemd/system/streaming.slice
 sudo cp docs/systemd/ffmpeg@.service.example /etc/systemd/system/ffmpeg@.service
 ```
 
 2. Відредагуйте шляхи, користувача та virtualenv.
+   Також одразу перевірте resource accounting directives:
+   - `CPUAccounting=yes`
+   - `MemoryAccounting=yes`
+   - `TasksAccounting=yes`
+   - `CPUQuota` / `MemoryMax` / `TasksMax`
+   - `OOMPolicy=stop` для stream units
+   - `Slice=streaming.slice` для stream units
+   Значення в шаблоні є безпечним стартовим baseline, але їх треба підтвердити measured workload profiles перед широким rollout.
 
 3. Увімкніть у `backend/.env`:
 ```env
 STREAM_RUNTIME_MODE=systemd
 SYSTEMD_UNIT_TEMPLATE=ffmpeg@{stream_id}
 SYSTEMCTL_PATH=systemctl
+DATABASE_URL=postgresql://youtube_user:...@127.0.0.1:5432/youtube_streaming
+REDIS_URL=redis://127.0.0.1:6379/0
 ```
 
-4. Оновіть systemd і підніміть конкретний стрім:
+Якщо backend працює host-native на Linux/VPS, цього достатньо. Якщо backend працює всередині контейнера, не вмикайте цей режим у `staging`/`production` без свідомого override і окремо перевіреного control-plane рішення.
+
+4. Підніміть Docker infra, але без containerized backend/runner:
+```bash
+docker compose -f docker/docker-compose.yml up -d postgres redis tusd frontend mediamtx
+```
+
+5. Оновіть systemd і підніміть backend + конкретний стрім:
 ```bash
 sudo systemctl daemon-reload
+sudo systemctl enable --now youtube-backend
 sudo systemctl enable --now ffmpeg@<stream_uuid>
+```
+
+Альтернатива через repo-native helper:
+
+```bash
+sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
+  SYSTEMD_SERVICE_USER=streambot \
+  SYSTEMD_SERVICE_GROUP=streambot \
+  SYSTEMD_ENABLE_BACKEND=1 \
+  ./scripts/install_systemd_runtime.sh
+```
+
+Для canary stream можна додати:
+
+```bash
+sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
+  SYSTEMD_ENABLE_BACKEND=1 \
+  SYSTEMD_ENABLE_STREAM_UNIT=<stream_uuid> \
+  ./scripts/install_systemd_runtime.sh
+```
+
+Контрольоване переключення з Docker `backend`/`runner` на host-native backend service:
+
+```bash
+sudo BACKEND_ENV=/opt/youtube_translation/backend/.env \
+  ALLOW_LIVE_STREAM_RUNTIME_CUTOVER=0 \
+  CUTOVER_STOP_DOCKER_RUNTIME=1 \
+  ./scripts/cutover_host_runtime.sh
+```
+
+Для reviewed canary stream:
+
+```bash
+sudo BACKEND_ENV=/opt/youtube_translation/backend/.env \
+  CUTOVER_RUNTIME_MODE_OVERRIDE=systemd \
+  ALLOW_LIVE_STREAM_RUNTIME_CUTOVER=1 \
+  HOST_STREAM_UNIT_NAME=<stream_uuid> \
+  ./scripts/cutover_host_runtime.sh
+```
+
+Rollback назад у Docker runtime lane:
+
+```bash
+sudo BACKEND_ENV=/opt/youtube_translation/backend/.env \
+  ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK=0 \
+  ROLLBACK_START_DOCKER_RUNTIME=1 \
+  ./scripts/rollback_host_runtime.sh
+```
+
+Для reviewed rollback конкретного canary stream:
+
+```bash
+sudo BACKEND_ENV=/opt/youtube_translation/backend/.env \
+  ROLLBACK_RUNTIME_MODE_OVERRIDE=systemd \
+  ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK=1 \
+  HOST_STREAM_UNIT_NAME=<stream_uuid> \
+  ./scripts/rollback_host_runtime.sh
 ```
 
 ## Що робить unit
 
-Unit запускає:
+Backend unit запускає:
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Stream unit запускає:
 
 ```bash
 python -m app.cli.run_stream <stream_id>
@@ -45,9 +138,42 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 
 Шаблон unit-файлу лежить у:
 
+- `docs/systemd/youtube-backend.service.example`
+- `docs/systemd/streaming.slice.example`
 - `docs/systemd/ffmpeg@.service.example`
+
+## Resource isolation baseline
+
+Початковий baseline у шаблонах навмисно conservative:
+
+- backend control plane:
+  - `MemoryMax=1G`
+  - `TasksMax=512`
+- stream units:
+  - `CPUQuota=200%`
+  - `MemoryMax=2G`
+  - `TasksMax=128`
+- aggregate slice:
+  - `CPUQuota=300%`
+  - `MemoryMax=5G`
+  - `TasksMax=512`
+
+Це не остаточні production цифри. Вони потрібні, щоб:
+
+- fail-closed не дати одному процесу забрати весь хост без жодних меж
+- мати canary-safe стартові обмеження
+- далі відкалібрувати їх за measured profiles (`720p30`, `1080p30`, `4K60`, noisy timestamp cases)
 
 ## Зауваження
 
 - Для локальної розробки prefer `supervisor`, а не `systemd`
 - Якщо вам потрібен лише local smoke path, використовуйте DEV auth і hybrid boot з `docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner`
+- Containerized backend + `systemd` runtime не вважається підтриманим production control path за замовчуванням
+- Якщо ви переходите на host-native backend control plane, не запускайте одночасно Docker `backend`/`runner` як production executors для тих самих live streams
+- Якщо використовуєте `scripts/install_systemd_runtime.sh`, пам'ятайте: без `SYSTEMD_ENABLE_BACKEND=1` / `SYSTEMD_ENABLE_STREAM_UNIT=...` helper лише ставить unit-файли й робить `daemon-reload`, але не активує сервіси
+- `scripts/cutover_host_runtime.sh` навмисно fail-closed відмовляється від cutover при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_CUTOVER=1`
+- `scripts/cutover_host_runtime.sh` також fail-closed перевіряє, що host loopback `127.0.0.1:5432` і `127.0.0.1:6379` вже слухають, інакше host-native backend не отримає доступу до PostgreSQL/Redis після відключення Docker `backend`/`runner`
+- `scripts/cutover_host_runtime.sh` також перепіднімає `frontend` і `tusd` з upstream `http://host.docker.internal:8000`, щоб containerized edge продовжив ходити в host-native backend
+- `scripts/rollback_host_runtime.sh` так само fail-closed відмовляється від rollback при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK=1`
+- `scripts/rollback_host_runtime.sh` повертає `frontend` і `tusd` назад на upstream `http://backend:8000`
+- `CUTOVER_RUNTIME_MODE_OVERRIDE=systemd` і `ROLLBACK_RUNTIME_MODE_OVERRIDE=systemd` існують саме для безпечного dry-run / reviewed canary prep без зміни реального `backend/.env` на хості

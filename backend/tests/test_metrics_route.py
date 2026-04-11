@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api import deps
-from app.api.routes.metrics import get_stream_metrics
+from app.api.routes.metrics import estimate_stream_capacity, get_stream_metrics
 from app.core.config import settings
 from app.core.database import async_session_maker
 from app.models.database import Stream, UserProfile
@@ -170,3 +170,22 @@ async def test_require_metrics_access_fails_closed_without_config(monkeypatch) -
         await deps.require_metrics_access(metrics_token="metrics-secret")
 
     assert exc.value.status_code == 503
+
+
+def test_estimate_stream_capacity_is_explicitly_marked_as_heuristic(
+    monkeypatch,
+) -> None:
+    class _Memory:
+        total = 32 * 1024**3
+
+    monkeypatch.setattr("app.api.routes.metrics.psutil.virtual_memory", lambda: _Memory())
+
+    capacity = estimate_stream_capacity(cpu_percent=12.5, memory_percent=25.0, active_streams=2)
+
+    assert capacity["mode"] == "heuristic"
+    assert capacity["recommended_for_production_decisions"] is False
+    assert "measured workload profiles" in capacity["summary"]
+    assert capacity["assumptions"]["avg_cpu_percent_per_stream"] == 3.5
+    assert capacity["assumptions"]["avg_memory_gb_per_stream"] == 0.075
+    assert capacity["assumptions"]["reserved_cpu_percent"] == 20
+    assert capacity["assumptions"]["reserved_memory_percent"] == 20

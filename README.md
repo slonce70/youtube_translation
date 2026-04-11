@@ -194,6 +194,7 @@ make verify-v0
 | `STREAM_RUNTIME_MODE` | `manager` \| `supervisor` \| `systemd` | `supervisor` для macOS/Docker, `systemd` для Linux |
 | `STREAM_RUNTIME_NODE_ID` | Стабільний ідентифікатор runtime-вузла | hostname або явне ім'я ноди/worker-групи |
 | `ALLOW_UNSAFE_MANAGER_RUNTIME` | `true` \| `false` | `false`; у `staging`/`production` manager runtime заборонений без явного override |
+| `ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME` | `true` \| `false` | `false`; у `staging`/`production` containerized backend + `systemd` runtime блокується без явного override |
 | `STREAM_RUNTIME_LEASE_TTL_SECONDS` | TTL DB lease для ownership стріму (сек) | `60`; має бути >= heartbeat interval |
 | `STREAM_RUNTIME_HEARTBEAT_INTERVAL_SECONDS` | Інтервал heartbeat managed runner (сек) | `10` |
 | `STREAM_RUNTIME_HEARTBEAT_TTL_SECONDS` | Через скільки heartbeat вважається застарілим (сек) | `45` |
@@ -241,18 +242,22 @@ Makefile               команди для розробки та CI
 - `docs/postman/` — готові колекції та оточення Postman
 - `docs/operations/first_stream_checklist.md` — чекліст і визначення першого успішного стріму
 - `docs/operations/supervisor.md` — налаштування Supervisor для автономних стрімів (macOS/Docker)
-- `docs/operations/systemd.md` — налаштування systemd для Linux production
+- `docs/operations/systemd.md` — налаштування host-native backend + systemd stream units для Linux production
 - `docs/operations/mediamtx.md` — optional MediaMTX relay/metrics layer для майбутнього scale-up
 - `docs/design/README.md` — archived standalone mockups і design reference assets, які не входять у shipping baseline
 - `LOCAL_DB_SETUP.md` — інструкції по локальній PostgreSQL БД
 
 ### Автономні стріми через systemd
 
-CLI-скрипт `python -m app.cli.run_stream <stream_id>` може піднімати FFmpeg-процес поза FastAPI й тримати його активним, поки працює systemd-служба. Це production/Linux-сценарій, а не канонічний локальний baseline.
+CLI-скрипт `python -m app.cli.run_stream <stream_id>` може піднімати FFmpeg-процес поза FastAPI й тримати його активним, поки працює systemd-служба. Це production/Linux-сценарій, а не канонічний локальний baseline. Для `staging`/`production` backend, що сам працює в контейнері, така комбінація тепер fail-closed блокується конфіг-валідатором без явного `ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=true`. Підтриманий шлях для `systemd` зараз означає host-native backend control plane + Docker infra для `postgres`/`redis`/`tusd`/`frontend`/`mediamtx`.
 
-1. Скопіюйте `docs/systemd/ffmpeg@.service.example` у `/etc/systemd/system/ffmpeg@.service` і підправте шляхи/користувача.
-2. Увімкніть `STREAM_RUNTIME_MODE=systemd` у `backend/.env`.
-3. Піднімайте конкретні стріми через `systemctl enable --now ffmpeg@<stream_uuid>` — CLI сам збере плейлисти, запустить FFmpeg і оновить статус у БД.
+1. Скопіюйте `docs/systemd/youtube-backend.service.example`, `docs/systemd/streaming.slice.example` і `docs/systemd/ffmpeg@.service.example` у `/etc/systemd/system/`.
+2. Увімкніть `STREAM_RUNTIME_MODE=systemd` у `backend/.env`, а `DATABASE_URL` / `REDIS_URL` спрямуйте на `127.0.0.1`.
+3. Підніміть Docker infra без containerized backend/runner.
+4. Підніміть host-native backend через `systemctl enable --now youtube-backend`, repo-native helper `scripts/install_systemd_runtime.sh` з `SYSTEMD_ENABLE_BACKEND=1`, або через контрольований cutover helper `scripts/cutover_host_runtime.sh`.
+5. Піднімайте конкретні стріми через `systemctl enable --now ffmpeg@<stream_uuid>`, через installer helper з `SYSTEMD_ENABLE_STREAM_UNIT=<stream_uuid>`, або через cutover helper з `HOST_STREAM_UNIT_NAME=<stream_uuid>` — CLI сам збере плейлисти, запустить FFmpeg і оновить статус у БД.
+6. Для повернення в Docker runtime lane використовуйте `scripts/rollback_host_runtime.sh`; він теж fail-closed блокує rollback при активних стрімах без явного override.
+7. Під час host-native backend lane `frontend` і `tusd` мають бути перепідняті на upstream `http://host.docker.internal:8000`; helper-и вже роблять це автоматично.
 
 Подробиці: `docs/operations/systemd.md`.
 
@@ -263,9 +268,9 @@ CLI-скрипт `python -m app.cli.run_stream <stream_id>` може підні�
 ### Моніторинг
 
 - Middleware `APIMetricsMiddleware` пише латентність, HTTP-статус і помилки в структурні логи та збільшує лічильники `track_api_request` / `track_api_error`.
-- `/api/metrics` — агрегована статистика по системних ресурсах і активних стрімах.
+- `/api/metrics` — агрегована статистика по системних ресурсах і активних стрімах; блок `capacity` є евристичною оцінкою для copy-oriented workload і не повинен використовуватися як єдине production-рішення про безпечну місткість.
 - `/api/metrics/prometheus` — текстовий експорт для Prometheus/Grafana.
-- FFmpeg manager передає події `track_stream_start/stop/error`, тому дашборд показує реальну кількість активних процесів і їхню тривалість.
+- FFmpeg manager передає події `track_stream_start/stop/error`, а degraded-live runtime сигнали пишуться в `stream_events` і `system_alerts`; status API збирає incident summary з shared runtime evidence (in-memory manager state для local runtime, shared log tail і recent alerts для managed runtime), тому оператор може побачити `running + degraded` стан ще до terminal failure.
 
 ## 🛠 Команды Makefile
 

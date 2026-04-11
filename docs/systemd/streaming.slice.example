@@ -1,0 +1,13 @@
+# Copy to /etc/systemd/system/streaming.slice and tune for the host.
+
+[Unit]
+Description=Aggregate resource slice for YouTube translation streaming workers
+
+[Slice]
+# Aggregate guardrails for all ffmpeg@ units together.
+CPUAccounting=yes
+MemoryAccounting=yes
+TasksAccounting=yes
+CPUQuota=300%
+MemoryMax=5G
+TasksMax=512

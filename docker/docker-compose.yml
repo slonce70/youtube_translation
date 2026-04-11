@@ -7,6 +7,9 @@ services:
   postgres:
     image: postgres:16
     container_name: youtube-streaming-postgres
+    ports:
+      # Keep database reachable from a host-native Linux backend control plane.
+      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_USER=youtube_user
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -26,6 +29,9 @@ services:
   redis:
     image: redis:7-alpine
     container_name: youtube-streaming-redis
+    ports:
+      # Keep Redis reachable from a host-native Linux backend control plane.
+      - "127.0.0.1:6379:6379"
     restart: unless-stopped
     networks:
       - app-network
@@ -56,6 +62,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://youtube_user:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/youtube_streaming
       - REDIS_URL=redis://redis:6379/0
+      - STREAM_RUNTIME_MODE=${STREAM_RUNTIME_MODE:-supervisor}
+      - ALLOW_UNSAFE_MANAGER_RUNTIME=${ALLOW_UNSAFE_MANAGER_RUNTIME:-false}
+      - ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=${ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME:-false}
       - FFMPEG_BIN=/usr/bin/ffmpeg
       - FFPROBE_BIN=/usr/bin/ffprobe
       - MEDIAMTX_ENABLED=true
@@ -97,10 +106,12 @@ services:
     env_file:
       - ../backend/.env
     environment:
-      - TUSD_BACKEND_URL=http://backend:8000
+      - TUSD_BACKEND_URL=${TUSD_BACKEND_URL:-http://backend:8000}
     restart: unless-stopped
     networks:
       - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-sS", "-o", "/dev/null", "--max-time", "3", "http://localhost:1080/"]
       interval: 30s
@@ -139,7 +150,7 @@ services:
       context: ../frontend
       dockerfile: Dockerfile
       args:
-        DEV_API_PROXY_TARGET: http://backend:8000
+        DEV_API_PROXY_TARGET: ${FRONTEND_API_PROXY_TARGET:-http://backend:8000}
         ENABLE_API_PROXY: "1"
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
@@ -150,14 +161,13 @@ services:
     env_file:
       - ../frontend/.env.local
     environment:
-      - DEV_API_PROXY_TARGET=http://backend:8000
+      - DEV_API_PROXY_TARGET=${FRONTEND_API_PROXY_TARGET:-http://backend:8000}
       - ENABLE_API_PROXY=1
     restart: unless-stopped
     networks:
       - app-network
-    depends_on:
-      backend:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test:
         [
@@ -192,6 +202,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://youtube_user:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/youtube_streaming
       - REDIS_URL=redis://redis:6379/0
+      - STREAM_RUNTIME_MODE=${STREAM_RUNTIME_MODE:-supervisor}
+      - ALLOW_UNSAFE_MANAGER_RUNTIME=${ALLOW_UNSAFE_MANAGER_RUNTIME:-false}
+      - ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=${ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME:-false}
       - FFMPEG_BIN=/usr/bin/ffmpeg
       - FFPROBE_BIN=/usr/bin/ffprobe
     restart: unless-stopped

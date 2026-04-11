@@ -284,6 +284,34 @@ export interface StreamRuntimeRestartInfo {
   last_failure_at?: string | null
 }
 
+export type StreamIncidentSeverity = 'healthy' | 'degraded' | 'critical'
+
+export type StreamIncidentCode =
+  | 'stream_error'
+  | 'quota_limit'
+  | 'provider_health'
+  | 'runtime_restart'
+  | 'transport_connection_reset'
+  | 'transport_broken_pipe'
+  | 'transport_recovery'
+  | 'timeline_drift'
+
+export interface StreamIncidentItem {
+  code: StreamIncidentCode
+  severity: Exclude<StreamIncidentSeverity, 'healthy'>
+  label: string
+  detail?: string | null
+  count?: number
+  lastMatchedLine?: string | null
+}
+
+export interface StreamIncidentSummary {
+  severity: StreamIncidentSeverity
+  headline: string | null
+  details: string[]
+  items: StreamIncidentItem[]
+}
+
 export interface StreamAssetLink {
   asset_id: string
   position: number
@@ -332,6 +360,7 @@ export interface Stream {
   provider_health_status?: string | null
   provider_health_issues?: string[]
   provider_mismatch?: boolean
+  runtime_incident_summary?: StreamIncidentSummary
   scheduled_start_enabled?: boolean
   scheduled_start_time?: string | null
   scheduled_stop_time?: string | null
@@ -359,6 +388,7 @@ export interface StreamStatusResponse {
   provider_health_issues?: string[]
   provider_mismatch?: boolean
   runtime_restart: StreamRuntimeRestartInfo
+  runtime_incident_summary?: StreamIncidentSummary
 }
 
 export interface YoutubeConnection {
@@ -475,11 +505,20 @@ export interface MetricsResponse {
     }
   }
   capacity: {
+    mode?: 'heuristic'
+    recommended_for_production_decisions?: boolean
+    summary?: string
     active_streams: number
     estimated_additional_capacity: number
     estimated_total_capacity: number
     cpu_limited: boolean
     memory_limited: boolean
+    assumptions?: {
+      avg_cpu_percent_per_stream: number
+      avg_memory_gb_per_stream: number
+      reserved_cpu_percent: number
+      reserved_memory_percent: number
+    }
   }
 }
 

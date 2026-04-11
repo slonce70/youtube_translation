@@ -40,6 +40,40 @@ def test_manager_runtime_can_be_explicitly_allowed_in_production() -> None:
     assert settings.allow_unsafe_manager_runtime is True
 
 
+def test_containerized_systemd_runtime_is_blocked_in_production_without_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.core.config._running_in_container", lambda: True)
+
+    with pytest.raises(
+        ValidationError,
+        match="ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=true",
+    ):
+        Settings(
+            _env_file=None,
+            environment="production",
+            stream_runtime_mode="systemd",
+            **_base_settings_kwargs(),
+        )
+
+
+def test_containerized_systemd_runtime_can_be_explicitly_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.core.config._running_in_container", lambda: True)
+
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        stream_runtime_mode="systemd",
+        allow_unsafe_containerized_systemd_runtime=True,
+        **_base_settings_kwargs(),
+    )
+
+    assert settings.stream_runtime_mode == "systemd"
+    assert settings.allow_unsafe_containerized_systemd_runtime is True
+
+
 def test_runtime_heartbeat_intervals_must_be_positive() -> None:
     with pytest.raises(
         ValidationError, match="STREAM_RUNTIME_HEARTBEAT_INTERVAL_SECONDS"

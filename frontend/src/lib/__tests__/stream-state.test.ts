@@ -1,5 +1,11 @@
 import type { Stream, StreamRuntimeRestartInfo, StreamStatusResponse } from '../types'
-import { deriveDashboardNextAction, deriveStreamState, type StreamStatusQuery } from '../stream-state'
+import {
+  deriveDashboardNextAction,
+  deriveStreamState,
+  summarizeRuntimeIncidentState,
+  summarizeStreamLogIncidents,
+  type StreamStatusQuery,
+} from '../stream-state'
 
 function createRestartInfo(overrides: Partial<StreamRuntimeRestartInfo> = {}): StreamRuntimeRestartInfo {
   return {
@@ -92,6 +98,46 @@ describe('deriveStreamState', () => {
 
     expect(result.requiresAttention).toBe(true)
     expect(result.group).toBe('live')
+    expect(result.isDegraded).toBe(true)
+    expect(result.incidentSummary.severity).toBe('degraded')
+    expect(result.incidentSummary.headline).toBe('Провайдер повідомляє про деградацію потоку')
+  })
+
+  it('surfaces backend-provided runtime incident summaries for degraded running streams', () => {
+    const stream = createStream({ status: 'running' })
+    const data: StreamStatusResponse = {
+      id: stream.id,
+      status: 'running',
+      is_running: true,
+      live_duration_seconds: 30,
+      total_duration_seconds: 30,
+      runtime_restart: createRestartInfo(),
+      runtime_incident_summary: {
+        severity: 'degraded',
+        headline: 'Runtime зафіксував повторні remote output resets',
+        details: ['3 подій за останні 180с.'],
+        items: [
+          {
+            code: 'transport_connection_reset',
+            severity: 'degraded',
+            label: 'Runtime зафіксував повторні remote output resets',
+            detail: '3 подій за останні 180с.',
+            count: 3,
+          },
+        ],
+      },
+    }
+
+    const result = deriveStreamState(
+      stream,
+      { data, dataUpdatedAt: Date.now(), isError: false, isFetching: false },
+      Date.now(),
+    )
+
+    expect(result.isRunning).toBe(true)
+    expect(result.isDegraded).toBe(true)
+    expect(result.requiresAttention).toBe(true)
+    expect(result.incidentSummary.headline).toBe('Runtime зафіксував повторні remote output resets')
   })
 
 
@@ -129,6 +175,78 @@ describe('deriveStreamState', () => {
 
     expect(result.group).toBe('scheduled')
     expect(result.primaryAction).toBe('edit_schedule')
+  })
+})
+
+describe('incident summaries', () => {
+  it('marks stopped errored streams as critical without degraded-running state', () => {
+    const summary = summarizeRuntimeIncidentState({
+      isRunning: false,
+      derivedStatus: 'error',
+      quotaReached: false,
+      runtimeRestart: createRestartInfo(),
+      providerHealthAttention: false,
+      providerHealthIssues: [],
+      effectiveErrorMessage: 'ffmpeg exited with code 1',
+    })
+
+    expect(summary.severity).toBe('critical')
+    expect(summary.headline).toBe('Трансляція завершилась з помилкою')
+    expect(summary.details).toContain('ffmpeg exited with code 1')
+  })
+
+  it('summarizes transport faults with recovery as degraded log incident context', () => {
+    const summary = summarizeStreamLogIncidents([
+      '2026-04-11T10:00:00Z Connection reset by peer',
+      '2026-04-11T10:00:01Z Broken pipe',
+      '2026-04-11T10:00:02Z Recovery successful',
+    ], {
+      nowMs: Date.parse('2026-04-11T10:05:00Z'),
+    })
+
+    expect(summary.severity).toBe('degraded')
+    expect(summary.headline).toBe("RTMPS ingest скинув з'єднання 1 раз(и)")
+    expect(summary.items.map((item) => item.code)).toEqual([
+      'transport_connection_reset',
+      'transport_broken_pipe',
+      'transport_recovery',
+    ])
+  })
+
+  it('keeps unrecovered transport faults critical', () => {
+    const summary = summarizeStreamLogIncidents([
+      '2026-04-11T10:00:00Z Broken pipe',
+      '2026-04-11T10:00:01Z Connection reset by peer',
+    ], {
+      nowMs: Date.parse('2026-04-11T10:05:00Z'),
+    })
+
+    expect(summary.severity).toBe('critical')
+    expect(summary.items.every((item) => item.severity === 'critical')).toBe(true)
+  })
+
+  it('treats timeline drift warnings as degraded', () => {
+    const summary = summarizeStreamLogIncidents([
+      '2026-04-11T10:00:00Z Non-monotonic DTS in output stream 0:1; previous: 10, current: 9',
+    ], {
+      nowMs: Date.parse('2026-04-11T10:05:00Z'),
+    })
+
+    expect(summary.severity).toBe('degraded')
+    expect(summary.headline).toBe('FFmpeg попереджає про Non-monotonic DTS 1 раз(и)')
+  })
+
+  it('ignores stale incident lines outside the recency window', () => {
+    const summary = summarizeStreamLogIncidents([
+      '2026-04-11T10:00:00Z Connection reset by peer',
+      '2026-04-11T10:00:01Z Broken pipe',
+      '2026-04-11T10:00:02Z Recovery successful',
+    ], {
+      nowMs: Date.parse('2026-04-11T10:30:00Z'),
+    })
+
+    expect(summary.severity).toBe('healthy')
+    expect(summary.items).toEqual([])
   })
 })
 

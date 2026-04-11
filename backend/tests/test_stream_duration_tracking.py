@@ -10,7 +10,7 @@ import app.services.streams.control as streams_control
 from app.core.database import async_session_maker
 from app.core.stream_runtime_heartbeat import write_runtime_heartbeat
 from app.core.quota import QuotaEnforcer
-from app.models.database import Stream, UserProfile
+from app.models.database import Stream, SystemAlert, UserProfile
 from app.services.streams.control import StreamControlService
 from app.streaming.ffmpeg_manager import FFmpegStreamManager
 
@@ -161,6 +161,22 @@ async def test_stream_status_reports_live_and_total_duration(
             def get_stream_info(self, stream_id: str) -> Dict[str, Any]:
                 return self._info
 
+            def get_runtime_incident_summary(self, stream_id: str) -> Dict[str, Any]:
+                return {
+                    "severity": "degraded",
+                    "headline": "Runtime зафіксував повторні remote output resets",
+                    "details": ["3 подій за останні 180с."],
+                    "items": [
+                        {
+                            "code": "transport_connection_reset",
+                            "severity": "degraded",
+                            "label": "Runtime зафіксував повторні remote output resets",
+                            "detail": "3 подій за останні 180с.",
+                            "count": 3,
+                        }
+                    ],
+                }
+
         manager = DummyManager({"uptime_seconds": 600})
         service = StreamControlService(session, user_id, manager=manager)
 
@@ -182,6 +198,11 @@ async def test_stream_status_reports_live_and_total_duration(
         assert status.runtime_restart.attempts == 2
         assert status.runtime_restart.state == "retrying"
         assert status.runtime_restart.last_restart_at is not None
+        assert status.runtime_incident_summary.severity == "degraded"
+        assert (
+            status.runtime_incident_summary.headline
+            == "Runtime зафіксував повторні remote output resets"
+        )
 
 
 @pytest.mark.asyncio
@@ -241,6 +262,214 @@ async def test_stream_status_disables_runtime_restart_when_attempt_budget_is_zer
 
         assert status.runtime_restart.enabled is False
         assert status.runtime_restart.state == "disabled"
+
+
+@pytest.mark.asyncio
+async def test_stream_status_reads_degraded_runtime_summary_from_managed_log(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_id = uuid4()
+    stream_id = uuid4()
+    log_path = tmp_path / "managed-stream.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                "2026-04-11T10:00:00Z Connection reset by peer",
+                "2026-04-11T10:00:01Z Broken pipe",
+                "2026-04-11T10:00:02Z Recovery successful",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"managed-log-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=stream_id,
+            user_id=user_id,
+            name="managed-live",
+            status="running",
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=2),
+            log_path=str(log_path),
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+        async def _supervisor_program_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {
+                "state": "RUNNING",
+                "error": None,
+                "details": None,
+            }
+
+        monkeypatch.setattr(
+            streams_control,
+            "supervisor_program_status",
+            _supervisor_program_status,
+        )
+
+        class DummyManager:
+            def is_running(self, stream_id: str) -> bool:
+                return False
+
+            def get_stream_info(self, stream_id: str) -> Dict[str, Any]:
+                return {}
+
+            def get_runtime_incident_summary(self, stream_id: str) -> Dict[str, Any]:
+                return {"severity": "healthy", "headline": None, "details": [], "items": []}
+
+        service = StreamControlService(session, user_id, manager=DummyManager())
+        status = await service.get_stream_status(stream_id)
+
+        assert status.is_running is True
+        assert status.runtime_incident_summary.severity == "degraded"
+        assert (
+            status.runtime_incident_summary.headline
+            == "RTMPS ingest скинув з'єднання 1 раз(и)"
+        )
+
+
+@pytest.mark.asyncio
+async def test_stream_status_ignores_stale_runtime_faults_from_managed_log(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_id = uuid4()
+    stream_id = uuid4()
+    old_timestamp = datetime.now(timezone.utc) - timedelta(hours=1)
+    log_path = tmp_path / "stale-managed-stream.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                f"{old_timestamp.isoformat()} Connection reset by peer",
+                f"{(old_timestamp + timedelta(seconds=1)).isoformat()} Broken pipe",
+                f"{(old_timestamp + timedelta(seconds=2)).isoformat()} Recovery successful",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"stale-managed-log-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=stream_id,
+            user_id=user_id,
+            name="managed-live-stale-log",
+            status="running",
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=2),
+            log_path=str(log_path),
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+
+        async def _supervisor_program_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {
+                "state": "RUNNING",
+                "error": None,
+                "details": None,
+            }
+
+        monkeypatch.setattr(
+            streams_control,
+            "supervisor_program_status",
+            _supervisor_program_status,
+        )
+
+        class DummyManager:
+            def is_running(self, stream_id: str) -> bool:
+                return False
+
+            def get_stream_info(self, stream_id: str) -> Dict[str, Any]:
+                return {}
+
+            def get_runtime_incident_summary(self, stream_id: str) -> Dict[str, Any]:
+                return {"severity": "healthy", "headline": None, "details": [], "items": []}
+
+        service = StreamControlService(session, user_id, manager=DummyManager())
+        status = await service.get_stream_status(stream_id)
+
+        assert status.is_running is True
+        assert status.runtime_incident_summary.severity == "healthy"
+        assert status.runtime_incident_summary.items == []
+
+
+@pytest.mark.asyncio
+async def test_stream_status_falls_back_to_persisted_runtime_alert_when_log_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    stream_id = uuid4()
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"persisted-alert-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=stream_id,
+            user_id=user_id,
+            name="persisted-alert-live",
+            status="running",
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=3),
+            log_path=None,
+        )
+        alert = SystemAlert(
+            user_id=user_id,
+            stream_id=stream_id,
+            alert_type="ffmpeg_error",
+            severity="warning",
+            message="Stream degraded while still running: repeated remote output resets detected in FFmpeg logs.",
+            details={
+                "category": "stream_runtime_health",
+                "signal": "remote_output_reset",
+                "status": "degraded_running",
+                "occurrence_count": 3,
+                "window_seconds": 180,
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        session.add_all([profile, stream, alert])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
+
+        class DummyManager:
+            def is_running(self, stream_id: str) -> bool:
+                return True
+
+            def get_stream_info(self, stream_id: str) -> Dict[str, Any]:
+                return {"uptime_seconds": 180}
+
+            def get_runtime_incident_summary(self, stream_id: str) -> Dict[str, Any]:
+                return {"severity": "healthy", "headline": None, "details": [], "items": []}
+
+        service = StreamControlService(session, user_id, manager=DummyManager())
+        status = await service.get_stream_status(stream_id)
+
+        assert status.runtime_incident_summary.severity == "degraded"
+        assert (
+            status.runtime_incident_summary.headline
+            == "Runtime зафіксував повторні remote output resets"
+        )
 
 
 @pytest.mark.asyncio
