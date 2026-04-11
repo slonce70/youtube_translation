@@ -47,6 +47,15 @@ wait_for_http() {
   "$curl_bin" -fsS --max-time 5 "$url" >/dev/null
 }
 
+dump_host_backend_diagnostics() {
+  echo "Collecting host-native backend diagnostics for ${backend_unit}..."
+  "$systemctl_bin" show \
+    --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,NRestarts \
+    "$backend_unit" || true
+  "$systemctl_bin" status --no-pager -l "$backend_unit" || true
+  journalctl -u "$backend_unit" -n "${CUTOVER_HOST_BACKEND_JOURNAL_LINES:-80}" --no-pager || true
+}
+
 host_loopback_port_present() {
   local port="$1"
   "$ss_bin" -ltn 2>/dev/null | grep -q "127.0.0.1:${port}"
@@ -152,7 +161,10 @@ if [[ -n "$stream_unit" ]]; then
 fi
 
 if [[ "$dry_run" != "1" ]]; then
-  wait_for_http "host-native backend health endpoint" "$backend_health_url"
+  if ! wait_for_http "host-native backend health endpoint" "$backend_health_url"; then
+    dump_host_backend_diagnostics
+    exit 1
+  fi
 fi
 
 if [[ "$restart_frontend_and_tusd" == "1" ]]; then
