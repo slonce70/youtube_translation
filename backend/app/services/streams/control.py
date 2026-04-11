@@ -200,29 +200,117 @@ class StreamControlService:
                 detail=_runtime_lease_conflict_detail(lease.owner_id, lease.expires_at),
             )
 
-        if systemd_enabled():
-            _, _, log_file = await validate_stream_launch_prerequisites(
+        runtime_started = False
+
+        try:
+            if systemd_enabled():
+                _, _, log_file = await validate_stream_launch_prerequisites(
+                    self.db,
+                    self.user_id,
+                    stream,
+                    quota_evaluator=enforcer,
+                    settings_obj=self.settings,
+                )
+                if await systemd_is_active(stream_id):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Stream already running",
+                    )
+                try:
+                    await systemd_start_unit(stream_id)
+                except RuntimeError as err:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=str(err),
+                    ) from err
+                runtime_started = True
+                stream.status = "running"
+                stream.started_at = _utcnow()
+                stream.stopped_at = None
+                stream.error_message = None
+                stream.log_path = str(log_file)
+                if reset_restart_policy:
+                    clear_stream_runtime_restart_state(stream)
+                else:
+                    mark_stream_runtime_restart_dispatched(stream)
+                if not preserve_schedule:
+                    self._clear_start_schedule(stream)
+                await self.db.commit()
+                usage = await self._get_usage_snapshot(enforcer)
+                return self._status_payload(stream, True, usage=usage)
+
+            if supervisor_enabled():
+                _, _, log_file = await validate_stream_launch_prerequisites(
+                    self.db,
+                    self.user_id,
+                    stream,
+                    quota_evaluator=enforcer,
+                    settings_obj=self.settings,
+                )
+                info = await supervisor_program_status(stream_id)
+                if info.get("state") == "RUNNING":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Stream already running",
+                    )
+                try:
+                    await supervisor_start_program(stream_id)
+                except RuntimeError as err:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=str(err),
+                    ) from err
+                runtime_started = True
+                stream.status = "running"
+                stream.started_at = _utcnow()
+                stream.stopped_at = None
+                stream.error_message = None
+                stream.log_path = str(log_file)
+                if reset_restart_policy:
+                    clear_stream_runtime_restart_state(stream)
+                else:
+                    mark_stream_runtime_restart_dispatched(stream)
+                if not preserve_schedule:
+                    self._clear_start_schedule(stream)
+                await self.db.commit()
+                usage = await self._get_usage_snapshot(enforcer)
+                return self._status_payload(stream, True, usage=usage)
+
+            playlists, destinations, log_file = await prepare_stream_launch(
                 self.db,
                 self.user_id,
                 stream,
                 quota_evaluator=enforcer,
                 settings_obj=self.settings,
             )
-            if await systemd_is_active(stream_id):
+
+            success = await self.manager.start_stream(
+                str(stream_id),
+                playlists,
+                destinations,
+                log_file,
+                metadata={
+                    "user_id": self.user_id,
+                    "stream_id": str(stream.id),
+                    "playlist_id": (
+                        str(stream.playlist_id) if stream.playlist_id else None
+                    ),
+                },
+            )
+
+            if not success:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Stream already running",
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to start stream",
                 )
-            try:
-                await systemd_start_unit(stream_id)
-            except RuntimeError as err:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err)
-                ) from err
+
+            runtime_started = True
             stream.status = "running"
             stream.started_at = _utcnow()
             stream.stopped_at = None
             stream.error_message = None
+            info = self.manager.get_stream_info(str(stream_id)) or {}
+            stream.pid = info.get("pid")
             stream.log_path = str(log_file)
             if reset_restart_policy:
                 clear_stream_runtime_restart_state(stream)
@@ -232,90 +320,16 @@ class StreamControlService:
                 self._clear_start_schedule(stream)
             await self.db.commit()
             usage = await self._get_usage_snapshot(enforcer)
-            return self._status_payload(stream, True, usage=usage)
-
-        if supervisor_enabled():
-            _, _, log_file = await validate_stream_launch_prerequisites(
-                self.db,
-                self.user_id,
+            return self._status_payload(
                 stream,
-                quota_evaluator=enforcer,
-                settings_obj=self.settings,
+                True,
+                info.get("uptime_seconds", 0),
+                usage=usage,
             )
-            info = await supervisor_program_status(stream_id)
-            if info.get("state") == "RUNNING":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Stream already running",
-                )
-            try:
-                await supervisor_start_program(stream_id)
-            except RuntimeError as err:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err)
-                ) from err
-            stream.status = "running"
-            stream.started_at = _utcnow()
-            stream.stopped_at = None
-            stream.error_message = None
-            stream.log_path = str(log_file)
-            if reset_restart_policy:
-                clear_stream_runtime_restart_state(stream)
-            else:
-                mark_stream_runtime_restart_dispatched(stream)
-            if not preserve_schedule:
-                self._clear_start_schedule(stream)
-            await self.db.commit()
-            usage = await self._get_usage_snapshot(enforcer)
-            return self._status_payload(stream, True, usage=usage)
-
-        playlists, destinations, log_file = await prepare_stream_launch(
-            self.db,
-            self.user_id,
-            stream,
-            quota_evaluator=enforcer,
-            settings_obj=self.settings,
-        )
-
-        success = await self.manager.start_stream(
-            str(stream_id),
-            playlists,
-            destinations,
-            log_file,
-            metadata={
-                "user_id": self.user_id,
-                "stream_id": str(stream.id),
-                "playlist_id": str(stream.playlist_id) if stream.playlist_id else None,
-            },
-        )
-
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to start stream",
-            )
-
-        stream.status = "running"
-        stream.started_at = _utcnow()
-        stream.stopped_at = None
-        stream.error_message = None
-        info = self.manager.get_stream_info(str(stream_id)) or {}
-        stream.pid = info.get("pid")
-        stream.log_path = str(log_file)
-        if reset_restart_policy:
-            clear_stream_runtime_restart_state(stream)
-        else:
-            mark_stream_runtime_restart_dispatched(stream)
-        if not preserve_schedule:
-            self._clear_start_schedule(stream)
-        await self.db.commit()
-        usage = await self._get_usage_snapshot(enforcer)
-        return self._status_payload(
-            stream,
-            True,
-            info.get("uptime_seconds", 0),
-            usage=usage,
-        )
+        except Exception:
+            if not runtime_started:
+                clear_stream_runtime_lease(stream)
+            raise
 
     async def _acquire_user_start_lock(self) -> None:
         lock_key = int.from_bytes(self.user_id.bytes[:8], byteorder="big", signed=False)

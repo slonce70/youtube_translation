@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from app.core.database import async_session_maker
 from app.models.database import Asset, Destination, Stream, UserProfile
 from app.schemas.api import StreamCreate, StreamScheduleUpdate
+from app.services.streams.scheduler import launch_due_streams
 from app.services.streams.service import StreamService
 
 
@@ -420,3 +421,72 @@ async def test_update_stream_schedule_fails_closed_when_systemd_liveness_is_unav
             exc.value.detail
             == "Cannot schedule start while runtime liveness cannot be verified"
         )
+
+
+@pytest.mark.asyncio
+async def test_update_stream_schedule_allows_edit_after_failed_scheduler_start(
+    monkeypatch,
+):
+    user_id = uuid4()
+    due_start = (datetime.now(timezone.utc) - timedelta(minutes=1)).replace(
+        microsecond=0
+    )
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"{user_id}@schedule-edit-after-failed-start.test",
+            subscription_tier="free",
+        )
+        session.add(profile)
+
+        stream = Stream(
+            user_id=user_id,
+            source_type="playlist",
+            mix_mode="video_only",
+            status="scheduled",
+            scheduled_start_enabled=True,
+            scheduled_start_time=due_start,
+        )
+        session.add(stream)
+        await session.commit()
+
+        monkeypatch.setattr("app.services.streams.control.supervisor_enabled", lambda: False)
+        monkeypatch.setattr("app.services.streams.control.systemd_enabled", lambda: True)
+
+        async def fake_systemd_unit_status(_stream_id):
+            assert _stream_id == stream.id
+            return {}
+
+        async def fake_validate_prerequisites(*args, **kwargs):
+            raise HTTPException(status_code=400, detail="missing destination")
+
+        monkeypatch.setattr(
+            "app.services.streams.control.systemd_unit_status",
+            fake_systemd_unit_status,
+        )
+        monkeypatch.setattr(
+            "app.services.streams.control.validate_stream_launch_prerequisites",
+            fake_validate_prerequisites,
+        )
+
+        launched = await launch_due_streams(session, batch_size=100)
+        assert launched == 0
+
+        service = StreamService(session, user_id)
+        next_start = (datetime.now(timezone.utc) + timedelta(hours=2)).replace(
+            microsecond=0
+        )
+        updated = await service.update_stream_schedule(
+            stream.id,
+            StreamScheduleUpdate(
+                schedule_mode="schedule",
+                schedule_start_at=next_start,
+                schedule_stop_at=None,
+            ),
+        )
+
+        assert updated.scheduled_start_enabled is True
+        assert updated.scheduled_start_time == next_start
+        assert updated.runtime_owner_id is None
+        assert updated.runtime_lease_expires_at is None

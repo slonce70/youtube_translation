@@ -4,6 +4,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
+from fastapi import HTTPException
 
 from app.core.database import async_session_maker
 from app.core.stream_schedule import (
@@ -67,7 +68,7 @@ async def test_launch_due_streams_advances_recurring_schedule_after_start(monkey
             fake_start,
         )
 
-        launched = await launch_due_streams(session)
+        launched = await launch_due_streams(session, batch_size=100)
         await session.refresh(stream)
 
         assert launched >= 1
@@ -120,7 +121,7 @@ async def test_launch_due_streams_skips_expired_recurring_window(monkeypatch):
             fake_start,
         )
 
-        launched = await launch_due_streams(session)
+        launched = await launch_due_streams(session, batch_size=100)
         await session.refresh(stream)
 
         assert launched == 0
@@ -170,7 +171,7 @@ async def test_launch_due_streams_clears_expired_one_shot_window(monkeypatch):
             fake_start,
         )
 
-        launched = await launch_due_streams(session)
+        launched = await launch_due_streams(session, batch_size=100)
         await session.refresh(stream)
 
         assert launched == 0
@@ -180,6 +181,61 @@ async def test_launch_due_streams_clears_expired_one_shot_window(monkeypatch):
         assert stream.scheduled_start_attempted_at is None
         assert stream.scheduled_stop_time is None
         assert stream.scheduled_stop_attempted_at is None
+
+
+@pytest.mark.asyncio
+async def test_launch_due_streams_clears_runtime_lease_after_failed_start(monkeypatch):
+    user_id = uuid4()
+    due_start = (datetime.now(timezone.utc) - timedelta(minutes=1)).replace(
+        microsecond=0
+    )
+
+    async with async_session_maker() as session:
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"{user_id}@scheduler-failed-start.test",
+                subscription_tier="free",
+            )
+        )
+        stream = Stream(
+            user_id=user_id,
+            source_type="playlist",
+            mix_mode="video_only",
+            status="scheduled",
+            scheduled_start_enabled=True,
+            scheduled_start_time=due_start,
+        )
+        session.add(stream)
+        await session.commit()
+
+        monkeypatch.setattr("app.services.streams.control.systemd_enabled", lambda: True)
+        monkeypatch.setattr(
+            "app.services.streams.control.supervisor_enabled", lambda: False
+        )
+
+        async def fake_systemd_unit_status(_stream_id):
+            assert _stream_id == stream.id
+            return {}
+
+        async def fake_validate_prerequisites(*args, **kwargs):
+            raise HTTPException(status_code=400, detail="missing destination")
+
+        monkeypatch.setattr(
+            "app.services.streams.control.systemd_unit_status",
+            fake_systemd_unit_status,
+        )
+        monkeypatch.setattr(
+            "app.services.streams.control.validate_stream_launch_prerequisites",
+            fake_validate_prerequisites,
+        )
+
+        launched = await launch_due_streams(session, batch_size=100)
+        await session.refresh(stream)
+
+        assert launched == 0
+        assert stream.runtime_owner_id is None
+        assert stream.runtime_lease_expires_at is None
 
 
 def test_compute_next_repeating_start_preserves_local_time_across_dst():
