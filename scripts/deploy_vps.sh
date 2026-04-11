@@ -42,6 +42,38 @@ flag_enabled() {
   esac
 }
 
+upsert_env_kv() {
+  local env_file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file
+  tmp_file="$(mktemp)"
+
+  awk -v key="$key" -v value="$value" '
+    BEGIN {
+      updated = 0
+      pattern = "^[[:space:]]*" key "="
+    }
+    $0 ~ pattern {
+      if (updated == 0) {
+        print key "=" value
+        updated = 1
+      }
+      next
+    }
+    {
+      print
+    }
+    END {
+      if (updated == 0) {
+        print key "=" value
+      }
+    }
+  ' "$env_file" >"$tmp_file"
+
+  mv "$tmp_file" "$env_file"
+}
+
 registry_login() {
   if [[ -z "${REGISTRY_PASSWORD:-}" ]]; then
     return 0
@@ -219,6 +251,33 @@ host_backend_is_active() {
   fi
 
   systemctl is-active --quiet "$backend_unit"
+}
+
+host_runtime_refresh_requested() {
+  flag_enabled "${DEPLOY_INSTALL_SYSTEMD_UNITS:-0}" \
+    || flag_enabled "${DEPLOY_PREPARE_HOST_NATIVE:-0}" \
+    || flag_enabled "${DEPLOY_RESTART_HOST_BACKEND:-0}" \
+    || flag_enabled "${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"
+}
+
+ensure_host_runtime_mode_alignment() {
+  local runtime_mode="${STREAM_RUNTIME_MODE:-}"
+  runtime_mode="$(printf '%s' "$runtime_mode" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$runtime_mode" == "systemd" ]]; then
+    return 0
+  fi
+
+  if ! host_runtime_refresh_requested; then
+    return 0
+  fi
+
+  if ! host_backend_is_active; then
+    return 0
+  fi
+
+  echo "Host-native backend is active while STREAM_RUNTIME_MODE=${runtime_mode:-unset}; aligning $backend_env to systemd."
+  upsert_env_kv "$backend_env" "STREAM_RUNTIME_MODE" "systemd"
+  export STREAM_RUNTIME_MODE="systemd"
 }
 
 maybe_provision_host_native_backend_venv() {
@@ -510,6 +569,7 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
   exit 1
 fi
 
+ensure_host_runtime_mode_alignment
 parse_selected_services
 
 deploy_ref="${GITHUB_SHA:-$(git rev-parse HEAD)}"

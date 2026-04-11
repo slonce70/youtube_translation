@@ -107,6 +107,8 @@ sudo systemctl enable --now ffmpeg@<stream_uuid>
 
 9. Лише після readiness/canary запускайте `cutover_host_runtime.sh`.
 
+Примітка для вже-cutover VPS: `scripts/deploy_vps.sh` тепер вважає активний `youtube-backend` unit джерелом істини для host-native refresh path. Якщо unit уже активний, але `backend/.env` усе ще містить старий `STREAM_RUNTIME_MODE`, deploy automation ідемпотентно вирівнює його до `systemd` перед restart/provision кроками.
+
 ## Manual install details
 
 1. Скопіюйте шаблони вручну, якщо не використовуєте helper:
