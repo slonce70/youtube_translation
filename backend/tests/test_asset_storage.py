@@ -101,6 +101,63 @@ def test_missing_filesystem_asset_preserves_404_semantics(tmp_path):
         settings.upload_dir = original_upload_dir
 
 
+def test_legacy_app_upload_path_is_remapped_into_current_user_root(tmp_path):
+    user_id = uuid4()
+    upload_root = tmp_path / "uploads"
+    user_dir = upload_root / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    remapped_path = user_dir / "legacy.mp4"
+    remapped_path.write_text("video")
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+
+    try:
+        asset = Asset(
+            user_id=user_id,
+            filename="legacy.mp4",
+            storage_path=f"/app/uploads/{user_id}/legacy.mp4",
+            size_bytes=remapped_path.stat().st_size,
+            asset_type="video",
+        )
+
+        resolved = resolve_asset_local_path(asset, user_id, must_exist=True)
+
+        assert resolved == remapped_path.resolve()
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
+def test_legacy_upload_path_for_other_user_is_still_rejected(tmp_path):
+    user_id = uuid4()
+    other_user_id = uuid4()
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir(parents=True, exist_ok=True)
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+
+    try:
+        asset = Asset(
+            user_id=user_id,
+            filename="legacy.mp4",
+            storage_path=f"/app/uploads/{other_user_id}/legacy.mp4",
+            size_bytes=1024,
+            asset_type="video",
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            resolve_asset_local_path(asset, user_id, must_exist=True)
+
+        assert exc_info.value.status_code == 400
+        assert (
+            exc_info.value.detail
+            == "Asset storage_path must be within the user's upload directory"
+        )
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
 def test_object_storage_asset_uses_existing_local_cache(tmp_path):
     user_id = uuid4()
     upload_root = tmp_path / "uploads"

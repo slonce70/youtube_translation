@@ -494,6 +494,32 @@ sync_legacy_dir() {
   fi
 }
 
+ensure_repo_path_symlink() {
+  local label="$1"
+  local repo_dir="$2"
+  local target_dir="$3"
+
+  run_as_root mkdir -p "$(dirname "$repo_dir")"
+  run_as_root mkdir -p "$target_dir"
+
+  if [[ -L "$repo_dir" ]]; then
+    local current_target
+    current_target="$(readlink "$repo_dir")"
+    if [[ "$current_target" == "$target_dir" ]]; then
+      return 0
+    fi
+    run_as_root rm "$repo_dir"
+  elif [[ -d "$repo_dir" ]]; then
+    sync_legacy_dir "$label" "$repo_dir" "$target_dir"
+    run_as_root rm -rf "$repo_dir"
+  elif [[ -e "$repo_dir" ]]; then
+    echo "Refusing to replace non-directory path with symlink: $repo_dir" >&2
+    exit 1
+  fi
+
+  run_as_root ln -s "$target_dir" "$repo_dir"
+}
+
 ensure_persistent_storage() {
   if [[ "$(uname -s)" != "Linux" ]]; then
     return 0
@@ -520,6 +546,18 @@ ensure_persistent_storage() {
     --entrypoint sh \
     postgres:16 \
     -c 'cd /from && cp -a . /to/'
+}
+
+align_host_storage_links() {
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    return 0
+  fi
+
+  local backend_root="${SYSTEMD_BACKEND_DIR:-$repo_root/backend}"
+  ensure_repo_path_symlink "uploads" "$backend_root/uploads" "$HOST_UPLOADS_DIR"
+  ensure_repo_path_symlink "streams" "$backend_root/streams" "$HOST_STREAMS_DIR"
+  ensure_repo_path_symlink "logs" "$backend_root/logs" "$HOST_LOGS_DIR"
+  ensure_repo_path_symlink "supervisord state" "$backend_root/supervisord" "$HOST_SUPERVISORD_DIR"
 }
 
 sync_host_caddy() {
@@ -613,6 +651,7 @@ export TUSD_IMAGE="${TUSD_IMAGE:-${image_namespace}/youtube_translation-tusd:${d
 prepare_linux_persistence
 verify_linux_persistence
 ensure_persistent_storage
+align_host_storage_links
 
 if ! flag_enabled "$skip_docker_deploy"; then
   echo "Validating compose config..."
