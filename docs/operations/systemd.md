@@ -89,6 +89,15 @@ REDIS_URL=redis://127.0.0.1:6379/0
 
 Installer з попереднього кроку автоматично вирівнює цей файл до `0640` і `chgrp streambot`, щоб host-native backend міг його прочитати.
 
+Для host-native cutover збережіть `UPLOAD_DIR=./uploads` і `STREAM_DIR=./streams`. GitHub deploy path тепер сам:
+- синкає legacy data у `/opt/youtube_translation_data/{uploads,streams,logs,supervisord}`
+- прив'язує `backend/{uploads,streams,logs,supervisord}` symlink-ами до цих persistent каталогів
+
+Це дозволяє:
+- не ламати containerized compose mounts, які як і раніше очікують `/app/uploads` всередині контейнерів
+- одночасно дати host-native backend доступ до того самого persistent storage через його repo-local relative paths
+- запускати старі stream/assets записи з `storage_path=/app/uploads/...`, бо backend тепер backward-compatible remap-ить legacy filesystem paths у поточний user upload root
+
 7. Проганяйте readiness before cutover:
 ```bash
 sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
@@ -263,6 +272,7 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 - Якщо ви переходите на host-native backend control plane, не запускайте одночасно Docker `backend`/`runner` як production executors для тих самих live streams
 - Якщо використовуєте `scripts/install_systemd_runtime.sh`, пам'ятайте: без `SYSTEMD_ENABLE_BACKEND=1` / `SYSTEMD_ENABLE_STREAM_UNIT=...` helper лише ставить unit-файли й робить `daemon-reload`, але не активує сервіси
 - `scripts/deploy_vps.sh` тепер уміє ідемпотентно провіжинити `backend/.venv`, коли host-native backend уже активний або коли ви готуєте cutover через `DEPLOY_PREPARE_HOST_NATIVE=1`
+- `scripts/deploy_vps.sh` також вирівнює `backend/{uploads,streams,logs,supervisord}` на symlink-и до `/opt/youtube_translation_data/...`, щоб host-native backend і containerized edge дивилися в один persistent storage root
 - `scripts/check_host_runtime_readiness.sh` тепер окремо показує `backend/.venv` vs repo-root `.venv` і перевіряє, чи service user реально може зробити `systemctl start --dry-run ffmpeg@__readiness_probe`
 - `scripts/cutover_host_runtime.sh` навмисно fail-closed відмовляється від cutover при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_CUTOVER=1`
 - `scripts/cutover_host_runtime.sh` також fail-closed перевіряє, що host loopback `127.0.0.1:5432` і `127.0.0.1:6379` вже слухають, інакше host-native backend не отримає доступу до PostgreSQL/Redis після відключення Docker `backend`/`runner`

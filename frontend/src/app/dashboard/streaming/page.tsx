@@ -432,11 +432,7 @@ export default function StreamingPage() {
     setShowChannelForm(true)
   }
 
-  const handleOpenSchedule = (stream: Stream) => {
-    setScheduleModalStream(stream)
-  }
-
-  const handleEditArchivedStream = (stream: Stream) => {
+  const handleOpenStreamEditor = (stream: Stream) => {
     setLiveEditorScheduleDraft({
       startMode: stream.scheduled_start_enabled ? 'schedule' : 'now',
       startAt: stream.scheduled_start_time ? formatDateTimeLocal(new Date(stream.scheduled_start_time)) : '',
@@ -821,18 +817,36 @@ export default function StreamingPage() {
         </CardContent>
       </Card>
 
-      <div className="tabs">
-        <button type="button" className={`tab-btn ${activeStreamTab === 'live' ? 'active' : ''}`} onClick={() => setActiveStreamTab('live')}>
-          🔴 У ефірі
-          {liveEntries.length ? <span className="nav-badge" style={{ marginLeft: 6 }}>{liveEntries.length}</span> : null}
+      <div className="tabs" role="tablist" aria-label="Потоки">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeStreamTab === 'live'}
+          className={`tab-btn ${activeStreamTab === 'live' ? 'active' : ''}`}
+          onClick={() => setActiveStreamTab('live')}
+        >
+          <span className="tab-btn-label">🔴 У ефірі</span>
+          {liveEntries.length ? <span className="tab-badge">{liveEntries.length}</span> : null}
         </button>
-        <button type="button" className={`tab-btn ${activeStreamTab === 'scheduled' ? 'active' : ''}`} onClick={() => setActiveStreamTab('scheduled')}>
-          🗓️ Заплановані
-          {scheduledEntries.length ? <span className="nav-badge" style={{ marginLeft: 6, background: 'var(--indigo)' }}>{scheduledEntries.length}</span> : null}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeStreamTab === 'scheduled'}
+          className={`tab-btn ${activeStreamTab === 'scheduled' ? 'active' : ''}`}
+          onClick={() => setActiveStreamTab('scheduled')}
+        >
+          <span className="tab-btn-label">🗓️ Заплановані</span>
+          {scheduledEntries.length ? <span className="tab-badge tab-badge-active">{scheduledEntries.length}</span> : null}
         </button>
-        <button type="button" className={`tab-btn ${activeStreamTab === 'archive' ? 'active' : ''}`} onClick={() => setActiveStreamTab('archive')}>
-          📋 Архів
-          {archiveEntries.length ? <span className="nav-badge" style={{ marginLeft: 6, background: 'var(--bg-3)', color: 'var(--txt-2)' }}>{archiveEntries.length}</span> : null}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeStreamTab === 'archive'}
+          className={`tab-btn ${activeStreamTab === 'archive' ? 'active' : ''}`}
+          onClick={() => setActiveStreamTab('archive')}
+        >
+          <span className="tab-btn-label">📋 Архів</span>
+          {archiveEntries.length ? <span className="tab-badge tab-badge-muted">{archiveEntries.length}</span> : null}
         </button>
       </div>
 
@@ -1001,7 +1015,25 @@ export default function StreamingPage() {
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || 'Без назви'}</div>
                   <div className="page-sub">{stream.scheduled_start_time ? new Date(stream.scheduled_start_time).toLocaleString() : 'Заплановано'}</div>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => handleOpenSchedule(stream)}>Редагувати</Button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <Button size="sm" onClick={() => handleStartStream(stream)} disabled={pendingStartStreamId === stream.id}>
+                    {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '▶ Запустити'}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleOpenStreamEditor(stream)}>✏️ Редагувати</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => handleDeleteStream(stream)}
+                    disabled={pendingDeleteStreamId === stream.id}
+                  >
+                    {pendingDeleteStreamId === stream.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      `🗑 ${tStreaming('streams.buttons.delete')}`
+                    )}
+                  </Button>
+                </div>
               </div>
             )) : (
               <div className="empty-state" style={{ padding: '36px 20px' }}>
@@ -1038,7 +1070,7 @@ export default function StreamingPage() {
                           <Button size="sm" onClick={() => handleStartStream(stream)} disabled={pendingStartStreamId === stream.id}>
                             {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '▶ Запустити'}
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleEditArchivedStream(stream)}>✏️ Редагувати</Button>
+                          <Button size="sm" variant="outline" onClick={() => handleOpenStreamEditor(stream)}>✏️ Редагувати</Button>
                           <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
                           <Button
                             size="sm"

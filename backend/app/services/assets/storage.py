@@ -22,6 +22,10 @@ from app.models.database import (
 logger = logging.getLogger(__name__)
 
 SUPPORTED_ASSET_STORAGE_BACKENDS = {"filesystem", "object_storage"}
+LEGACY_FILESYSTEM_UPLOAD_ROOTS = (
+    Path("/app/uploads"),
+    Path("/uploads"),
+)
 
 
 def normalize_storage_backend(raw_value: object) -> str:
@@ -38,6 +42,17 @@ def normalize_storage_backend(raw_value: object) -> str:
     return candidate
 
 
+def remap_legacy_user_upload_path(candidate: Path, upload_root: Path, user_id: UUID) -> Path:
+    for legacy_root in LEGACY_FILESYSTEM_UPLOAD_ROOTS:
+        legacy_user_root = (legacy_root / str(user_id)).resolve(strict=False)
+        if candidate == legacy_user_root:
+            return (upload_root / str(user_id)).resolve(strict=False)
+        if legacy_user_root in candidate.parents:
+            relative_path = candidate.relative_to(legacy_user_root)
+            return (upload_root / str(user_id) / relative_path).resolve(strict=False)
+    return candidate
+
+
 def require_user_filesystem_path(
     raw_path: str, user_id: UUID, *, must_exist: bool
 ) -> Path:
@@ -50,6 +65,7 @@ def require_user_filesystem_path(
     candidate = Path(raw_path).expanduser().resolve(strict=False)
     upload_root = Path(settings.upload_dir).resolve(strict=False)
     expected_root = (upload_root / str(user_id)).resolve(strict=False)
+    candidate = remap_legacy_user_upload_path(candidate, upload_root, user_id)
 
     if candidate != expected_root and expected_root not in candidate.parents:
         raise HTTPException(
