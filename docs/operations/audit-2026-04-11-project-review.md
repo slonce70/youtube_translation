@@ -4,6 +4,8 @@ Repository: `/Users/trend/Documents/Work/youtube_translation`
 Scope: whole-project and live-VPS audit with emphasis on stream resilience, multi-stream isolation, runner/runtime failure modes, operator visibility, and whether one stream or service failure can cascade into others.
 Result: `REQUEST CHANGES`
 
+Update: host-native follow-up audit is recorded in `docs/operations/audit-2026-04-11-host-native-review.md`. The reproducibility gaps from that follow-up are now remediated in the current repository state; keep this document as the historical snapshot of the earlier wider runtime review.
+
 ## Executive Summary
 
 The project is materially stronger than in the previous audit pass. Several earlier concerns are now genuinely fixed in code:

@@ -4,13 +4,14 @@ from typing import Any, Dict
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import select
 
 import app.cli.run_stream as run_stream_cli
 import app.services.streams.control as streams_control
 from app.core.database import async_session_maker
 from app.core.stream_runtime_heartbeat import write_runtime_heartbeat
 from app.core.quota import QuotaEnforcer
-from app.models.database import Stream, SystemAlert, UserProfile
+from app.models.database import Stream, StreamEvent, SystemAlert, UserProfile
 from app.services.streams.control import StreamControlService
 from app.streaming.ffmpeg_manager import FFmpegStreamManager
 
@@ -106,6 +107,96 @@ async def test_update_stream_status_after_exit_preserves_existing_error_without_
             refreshed.error_message
             == "Remote output disconnect evidence detected in FFmpeg logs."
         )
+
+
+@pytest.mark.asyncio
+async def test_start_stream_refuses_terminal_state_and_records_alert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    stream_id = uuid4()
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"terminal-refusal-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=stream_id,
+            user_id=user_id,
+            name="terminal-refusal",
+            status="error",
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+    async def fake_load_stream_with_relations(_db, user_id_arg, stream_id_arg):
+        assert user_id_arg == user_id
+        assert stream_id_arg == stream_id
+        async with async_session_maker() as session:
+            return await session.get(Stream, stream_id)
+
+    prepare_stream_launch = pytest.fail
+    monkeypatch.setattr(
+        run_stream_cli, "load_stream_with_relations", fake_load_stream_with_relations
+    )
+    monkeypatch.setattr(run_stream_cli, "prepare_stream_launch", prepare_stream_launch)
+
+    with pytest.raises(run_stream_cli.TerminalStateRefusal):
+        await run_stream_cli._start_stream(stream_id, wait=False)
+
+    async with async_session_maker() as session:
+        alerts = (
+            (
+                await session.execute(
+                    select(SystemAlert).where(SystemAlert.stream_id == stream_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        events = (
+            (
+                await session.execute(
+                    select(StreamEvent).where(StreamEvent.stream_id == stream_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert len(alerts) == 1
+    assert alerts[0].alert_type == "stream_runtime_refused_terminal_state"
+    assert alerts[0].details["status"] == "error"
+    assert len(events) == 1
+    assert events[0].event_metadata["phase"] == "startup_guard"
+
+
+def test_main_returns_dedicated_exit_code_for_terminal_state_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(run_stream_cli, "setup_logging", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        run_stream_cli,
+        "_parse_args",
+        lambda _argv=None: type("Args", (), {"stream_id": str(uuid4()), "wait": True})(),
+    )
+
+    async def fake_async_entry(_args):
+        return None
+
+    monkeypatch.setattr(run_stream_cli, "_async_entry", fake_async_entry)
+    monkeypatch.setattr(
+        run_stream_cli.asyncio,
+        "run",
+        lambda _coro: (_ for _ in ()).throw(
+            run_stream_cli.TerminalStateRefusal("terminal state refusal")
+        ),
+    )
+
+    assert run_stream_cli.main([]) == run_stream_cli.TERMINAL_STATE_EXIT_CODE
 
 
 @pytest.mark.asyncio
@@ -270,13 +361,14 @@ async def test_stream_status_reads_degraded_runtime_summary_from_managed_log(
 ) -> None:
     user_id = uuid4()
     stream_id = uuid4()
+    base_timestamp = datetime.now(timezone.utc) - timedelta(seconds=3)
     log_path = tmp_path / "managed-stream.log"
     log_path.write_text(
         "\n".join(
             [
-                "2026-04-11T10:00:00Z Connection reset by peer",
-                "2026-04-11T10:00:01Z Broken pipe",
-                "2026-04-11T10:00:02Z Recovery successful",
+                f"{base_timestamp.isoformat()} Connection reset by peer",
+                f"{(base_timestamp + timedelta(seconds=1)).isoformat()} Broken pipe",
+                f"{(base_timestamp + timedelta(seconds=2)).isoformat()} Recovery successful",
             ]
         )
         + "\n",

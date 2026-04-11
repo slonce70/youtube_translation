@@ -216,11 +216,13 @@ jobs:
           backend_pattern='^(backend/|docker/docker-compose\.yml$|docker/Caddyfile(\.template)?$|docker/mediamtx\.yml$|scripts/render_caddyfile\.py$)'
           tusd_pattern='^(backend/tusd-hooks/|docker/tusd\.Dockerfile$|docker/docker-compose\.yml$)'
           infra_pattern='^(docker/docker-compose\.yml$|docker/Caddyfile(\.template)?$|docker/mediamtx\.yml$|scripts/render_caddyfile\.py$)'
+          host_runtime_pattern='^(backend/|scripts/(deploy_vps|install_systemd_runtime|provision_host_native_backend_venv|run_stream_systemd|check_host_runtime_readiness|cutover_host_runtime|rollback_host_runtime)\.sh$|docs/systemd/)'
 
           frontend_needs_deploy=false
           backend_needs_deploy=false
           tusd_needs_deploy=false
           infra_needs_deploy=false
+          host_runtime_needs_refresh=false
 
           effective_frontend_sha="${CURRENT_FRONTEND_SHA:-$VPS_CHECKOUT_SHA}"
           effective_backend_sha="${CURRENT_BACKEND_SHA:-$VPS_CHECKOUT_SHA}"
@@ -240,6 +242,10 @@ jobs:
 
           if diff_has_paths "$effective_backend_sha" "$infra_pattern" || diff_has_paths "$effective_tusd_sha" "$infra_pattern"; then
             infra_needs_deploy=true
+          fi
+
+          if [[ "$HOST_BACKEND_ACTIVE" == 'true' ]] && diff_has_paths "$effective_backend_sha" "$host_runtime_pattern"; then
+            host_runtime_needs_refresh=true
           fi
 
           services=()
@@ -269,6 +275,17 @@ jobs:
           deploy_services_csv=''
           needs_deploy=false
           frontend_only_deploy=false
+          skip_docker_deploy=false
+          restart_host_backend=false
+          install_systemd_units=false
+          prepare_host_native=false
+
+          if [[ "$host_runtime_needs_refresh" == 'true' ]]; then
+            restart_host_backend=true
+            install_systemd_units=true
+            prepare_host_native=true
+          fi
+
           if [[ "${#services[@]}" -gt 0 ]]; then
             needs_deploy=true
             deploy_services="${services[*]}"
@@ -276,6 +293,9 @@ jobs:
             if [[ "${#services[@]}" -eq 1 && "${services[0]}" == 'frontend' && "$sync_host_caddy" == '0' ]]; then
               frontend_only_deploy=true
             fi
+          elif [[ "$host_runtime_needs_refresh" == 'true' ]]; then
+            needs_deploy=true
+            skip_docker_deploy=true
           fi
 
           {
@@ -284,10 +304,15 @@ jobs:
             echo "backend_needs_deploy=$backend_needs_deploy"
             echo "tusd_needs_deploy=$tusd_needs_deploy"
             echo "infra_needs_deploy=$infra_needs_deploy"
+            echo "host_runtime_needs_refresh=$host_runtime_needs_refresh"
             echo "frontend_only_deploy=$frontend_only_deploy"
             echo "deploy_services=$deploy_services"
             echo "deploy_services_csv=$deploy_services_csv"
             echo "sync_host_caddy=$sync_host_caddy"
+            echo "skip_docker_deploy=$skip_docker_deploy"
+            echo "restart_host_backend=$restart_host_backend"
+            echo "install_systemd_units=$install_systemd_units"
+            echo "prepare_host_native=$prepare_host_native"
           } >> "$GITHUB_OUTPUT"
 
           {
@@ -297,6 +322,7 @@ jobs:
             echo "- Backend/runner update needed: \`$backend_needs_deploy\`"
             echo "- tusd update needed: \`$tusd_needs_deploy\`"
             echo "- Infra sync needed: \`$infra_needs_deploy\`"
+            echo "- Host runtime refresh needed: \`$host_runtime_needs_refresh\`"
             echo "- Host-native backend active: \`$HOST_BACKEND_ACTIVE\`"
             echo "- Planned services: \`${deploy_services:-none}\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -322,6 +348,8 @@ jobs:
           if (( active_streams > 0 )); then
             if [[ "$FRONTEND_ONLY_DEPLOY" == 'true' ]]; then
               decision='live stream active: frontend-only deploy allowed'
+            elif [[ "${{ steps.impact.outputs.host_runtime_needs_refresh }}" == 'true' && "${{ steps.prod_state.outputs.host_backend_active }}" == 'true' ]]; then
+              decision='live stream active: host-native backend refresh allowed'
             else
               can_deploy=false
               decision='deploy deferred to protect live streams'
@@ -372,6 +400,10 @@ jobs:
           REGISTRY_PASSWORD: ${{ github.token }}
           DEPLOY_SERVICES: ${{ steps.impact.outputs.deploy_services_csv }}
           DEPLOY_SYNC_HOST_CADDY: ${{ steps.impact.outputs.sync_host_caddy }}
+          DEPLOY_SKIP_DOCKER: ${{ steps.impact.outputs.skip_docker_deploy }}
+          DEPLOY_RESTART_HOST_BACKEND: ${{ steps.impact.outputs.restart_host_backend }}
+          DEPLOY_INSTALL_SYSTEMD_UNITS: ${{ steps.impact.outputs.install_systemd_units }}
+          DEPLOY_PREPARE_HOST_NATIVE: ${{ steps.impact.outputs.prepare_host_native }}
         run: |
           ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
-            "export GITHUB_SHA='$GITHUB_SHA' REGISTRY_HOST='ghcr.io' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASSWORD='$REGISTRY_PASSWORD' BACKEND_IMAGE='ghcr.io/slonce70/youtube_translation-backend:$GITHUB_SHA' FRONTEND_IMAGE='ghcr.io/slonce70/youtube_translation-frontend:$GITHUB_SHA' TUSD_IMAGE='ghcr.io/slonce70/youtube_translation-tusd:$GITHUB_SHA' DEPLOY_SERVICES='$DEPLOY_SERVICES' DEPLOY_SYNC_HOST_CADDY='$DEPLOY_SYNC_HOST_CADDY'; git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
+            "export GITHUB_SHA='$GITHUB_SHA' REGISTRY_HOST='ghcr.io' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASSWORD='$REGISTRY_PASSWORD' BACKEND_IMAGE='ghcr.io/slonce70/youtube_translation-backend:$GITHUB_SHA' FRONTEND_IMAGE='ghcr.io/slonce70/youtube_translation-frontend:$GITHUB_SHA' TUSD_IMAGE='ghcr.io/slonce70/youtube_translation-tusd:$GITHUB_SHA' DEPLOY_SERVICES='$DEPLOY_SERVICES' DEPLOY_SYNC_HOST_CADDY='$DEPLOY_SYNC_HOST_CADDY' DEPLOY_SKIP_DOCKER='$DEPLOY_SKIP_DOCKER' DEPLOY_RESTART_HOST_BACKEND='$DEPLOY_RESTART_HOST_BACKEND' DEPLOY_INSTALL_SYSTEMD_UNITS='$DEPLOY_INSTALL_SYSTEMD_UNITS' DEPLOY_PREPARE_HOST_NATIVE='$DEPLOY_PREPARE_HOST_NATIVE'; git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"

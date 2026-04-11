@@ -17,29 +17,68 @@
 
 - host-native backend service на `127.0.0.1:8000`
 - host-native `ffmpeg@<stream_id>` units
+- канонічний Python layout для host-native backend: `/opt/youtube_translation/backend/.venv`
 - Docker infra для `postgres`, `redis`, `tusd`, `frontend`, `mediamtx`
 - `postgres` і `redis` публікуються лише на loopback (`127.0.0.1:5432`, `127.0.0.1:6379`), щоб backend control plane на хості міг працювати без Docker-in-Docker або container-to-host `systemctl` hacks
 - `frontend` і `tusd` у containerized lane можуть бути перепідняті з `FRONTEND_API_PROXY_TARGET` / `TUSD_BACKEND_URL`, що вказують на `http://host.docker.internal:8000`, коли backend уже host-native
 
-1. Скопіюйте шаблони:
+## Privilege bootstrap
+
+`youtube-backend.service` і `ffmpeg@.service` запускаються від користувача `streambot`, тому керування `systemctl` для stream units має бути дозволене явно. Репозиторій тепер містить приклад polkit rule:
+
+- `docs/systemd/polkit/youtube-ffmpeg.rules.example`
+
+Рекомендований шлях для VPS:
+
 ```bash
-sudo cp docs/systemd/youtube-backend.service.example /etc/systemd/system/youtube-backend.service
-sudo cp docs/systemd/streaming.slice.example /etc/systemd/system/streaming.slice
-sudo cp docs/systemd/ffmpeg@.service.example /etc/systemd/system/ffmpeg@.service
+sudo install -D -m 0644 \
+  docs/systemd/polkit/youtube-ffmpeg.rules.example \
+  /etc/polkit-1/rules.d/50-youtube-ffmpeg.rules
 ```
 
-2. Відредагуйте шляхи, користувача та virtualenv.
-   Stream wrapper `scripts/run_stream_systemd.sh` спочатку шукає Python у `backend/.venv`, а потім у repo-root `.venv`; якщо у вас інший layout, задайте `SYSTEMD_PYTHON_BIN` явно.
-   Також одразу перевірте resource accounting directives:
-   - `CPUAccounting=yes`
-   - `MemoryAccounting=yes`
-   - `TasksAccounting=yes`
-   - `CPUQuota` / `MemoryMax` / `TasksMax`
-   - `OOMPolicy=stop` для stream units
-   - `Slice=streaming.slice` для stream units
-   Значення в шаблоні є безпечним стартовим baseline, але їх треба підтвердити measured workload profiles перед широким rollout.
+Repo-native helper теж уміє поставити цей rule:
 
-3. Увімкніть у `backend/.env`:
+```bash
+sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
+  SYSTEMD_SERVICE_USER=streambot \
+  SYSTEMD_SERVICE_GROUP=streambot \
+  SYSTEMD_INSTALL_POLKIT=1 \
+  ./scripts/install_systemd_runtime.sh
+```
+
+Якщо ваш дистрибутив не використовує `polkit` для `org.freedesktop.systemd1.manage-units`, задокументуйте еквівалентний `sudoers` hook окремо. Не залишайте privilege path як “ручний секрет VPS”.
+
+## From Zero To Green
+
+Це канонічний bootstrap на новому VPS.
+
+1. Створіть системного користувача й каталоги:
+```bash
+sudo useradd --system --home /opt/youtube_translation --shell /usr/sbin/nologin streambot || true
+sudo mkdir -p /opt/youtube_translation
+sudo chown -R streambot:streambot /opt/youtube_translation
+```
+
+2. Розгорніть git checkout у `/opt/youtube_translation`, підкладіть `backend/.env`, підніміть Docker infra (`postgres redis tusd frontend mediamtx`) і переконайтеся, що `127.0.0.1:5432` та `127.0.0.1:6379` уже слухають.
+
+3. Поставте privilege hook з секції вище.
+
+4. Провіжиньте host-native backend venv:
+```bash
+sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
+  ./scripts/provision_host_native_backend_venv.sh
+```
+
+5. Встановіть unit-файли:
+```bash
+sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
+  SYSTEMD_SERVICE_USER=streambot \
+  SYSTEMD_SERVICE_GROUP=streambot \
+  SYSTEMD_INSTALL_POLKIT=1 \
+  ./scripts/install_systemd_runtime.sh
+```
+
+6. Увімкніть у `backend/.env`:
 ```env
 STREAM_RUNTIME_MODE=systemd
 SYSTEMD_UNIT_TEMPLATE=ffmpeg@{stream_id}
@@ -48,7 +87,49 @@ DATABASE_URL=postgresql://youtube_user:...@127.0.0.1:5432/youtube_streaming
 REDIS_URL=redis://127.0.0.1:6379/0
 ```
 
-Якщо backend працює host-native на Linux/VPS, цього достатньо. Якщо backend працює всередині контейнера, не вмикайте цей режим у `staging`/`production` без свідомого override і окремо перевіреного control-plane рішення.
+7. Проганяйте readiness before cutover:
+```bash
+sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
+  SYSTEMD_SERVICE_USER=streambot \
+  ./scripts/check_host_runtime_readiness.sh
+```
+
+Очікування для green state:
+- `host_backend_python_backend=present:.../backend/.venv/bin/python`
+- `host_backend_uvicorn_backend=present:.../backend/.venv/bin/uvicorn`
+- `host_service_user_systemctl=allowed`
+
+8. Активуйте backend і за потреби canary stream:
+```bash
+sudo systemctl enable --now youtube-backend
+sudo systemctl enable --now ffmpeg@<stream_uuid>
+```
+
+9. Лише після readiness/canary запускайте `cutover_host_runtime.sh`.
+
+## Manual install details
+
+1. Скопіюйте шаблони вручну, якщо не використовуєте helper:
+```bash
+sudo cp docs/systemd/youtube-backend.service.example /etc/systemd/system/youtube-backend.service
+sudo cp docs/systemd/streaming.slice.example /etc/systemd/system/streaming.slice
+sudo cp docs/systemd/ffmpeg@.service.example /etc/systemd/system/ffmpeg@.service
+```
+
+2. Відредагуйте шляхи, користувача та virtualenv.
+   Канонічний layout для production: `backend/.venv`.
+   Stream wrapper `scripts/run_stream_systemd.sh` усе ще вміє fallback у repo-root `.venv` для старих хостів, але нові інсталяції не повинні на нього покладатися.
+   Також одразу перевірте resource accounting directives:
+   - `CPUAccounting=yes`
+   - `MemoryAccounting=yes`
+   - `TasksAccounting=yes`
+   - `CPUQuota` / `MemoryMax` / `TasksMax`
+   - `OOMPolicy=stop` для stream units
+   - `StartLimitBurst=5` / `StartLimitIntervalSec=300` / `RestartPreventExitStatus=10` для stream units
+   - `Slice=streaming.slice` для stream units
+   Значення в шаблоні є безпечним стартовим baseline, але їх треба підтвердити measured workload profiles перед широким rollout.
+
+3. Якщо backend працює host-native на Linux/VPS, цього достатньо. Якщо backend працює всередині контейнера, не вмикайте цей режим у `staging`/`production` без свідомого override і окремо перевіреного control-plane рішення.
 
 4. Підніміть Docker infra, але без containerized backend/runner:
 ```bash
@@ -68,6 +149,7 @@ sudo systemctl enable --now ffmpeg@<stream_uuid>
 sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
   SYSTEMD_SERVICE_USER=streambot \
   SYSTEMD_SERVICE_GROUP=streambot \
+  SYSTEMD_INSTALL_POLKIT=1 \
   SYSTEMD_ENABLE_BACKEND=1 \
   ./scripts/install_systemd_runtime.sh
 ```
@@ -76,6 +158,7 @@ sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
 
 ```bash
 sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
+  SYSTEMD_INSTALL_POLKIT=1 \
   SYSTEMD_ENABLE_BACKEND=1 \
   SYSTEMD_ENABLE_STREAM_UNIT=<stream_uuid> \
   ./scripts/install_systemd_runtime.sh
@@ -124,7 +207,7 @@ sudo BACKEND_ENV=/opt/youtube_translation/backend/.env \
 Backend unit запускає:
 
 ```bash
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Stream unit запускає:
@@ -134,6 +217,7 @@ python -m app.cli.run_stream <stream_id>
 ```
 
 CLI сам збирає плейлист, запускає FFmpeg і підтримує статус стріму в БД.
+Якщо systemd намагається рестартувати stream unit після того, як БД уже перевела стрім у terminal state (`stopped` або `error`), CLI завершується кодом `10`, а unit більше не входить у нескінченний restart loop.
 
 ## Приклад
 
@@ -142,6 +226,7 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 - `docs/systemd/youtube-backend.service.example`
 - `docs/systemd/streaming.slice.example`
 - `docs/systemd/ffmpeg@.service.example`
+- `docs/systemd/polkit/youtube-ffmpeg.rules.example`
 
 ## Resource isolation baseline
 
@@ -172,9 +257,12 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 - Containerized backend + `systemd` runtime не вважається підтриманим production control path за замовчуванням
 - Якщо ви переходите на host-native backend control plane, не запускайте одночасно Docker `backend`/`runner` як production executors для тих самих live streams
 - Якщо використовуєте `scripts/install_systemd_runtime.sh`, пам'ятайте: без `SYSTEMD_ENABLE_BACKEND=1` / `SYSTEMD_ENABLE_STREAM_UNIT=...` helper лише ставить unit-файли й робить `daemon-reload`, але не активує сервіси
+- `scripts/deploy_vps.sh` тепер уміє ідемпотентно провіжинити `backend/.venv`, коли host-native backend уже активний або коли ви готуєте cutover через `DEPLOY_PREPARE_HOST_NATIVE=1`
+- `scripts/check_host_runtime_readiness.sh` тепер окремо показує `backend/.venv` vs repo-root `.venv` і перевіряє, чи service user реально може зробити `systemctl start --dry-run ffmpeg@__readiness_probe`
 - `scripts/cutover_host_runtime.sh` навмисно fail-closed відмовляється від cutover при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_CUTOVER=1`
 - `scripts/cutover_host_runtime.sh` також fail-closed перевіряє, що host loopback `127.0.0.1:5432` і `127.0.0.1:6379` вже слухають, інакше host-native backend не отримає доступу до PostgreSQL/Redis після відключення Docker `backend`/`runner`
 - `scripts/cutover_host_runtime.sh` також перепіднімає `frontend` і `tusd` з upstream `http://host.docker.internal:8000`, щоб containerized edge продовжив ходити в host-native backend
 - `scripts/rollback_host_runtime.sh` так само fail-closed відмовляється від rollback при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK=1`
 - `scripts/rollback_host_runtime.sh` повертає `frontend` і `tusd` назад на upstream `http://backend:8000`
 - `CUTOVER_RUNTIME_MODE_OVERRIDE=systemd` і `ROLLBACK_RUNTIME_MODE_OVERRIDE=systemd` існують саме для безпечного dry-run / reviewed canary prep без зміни реального `backend/.env` на хості
+- `Requires=docker.service` у `youtube-backend.service` є свідомим тимчасовим coupling: поки `postgres` і `redis` лишаються в Docker, повністю Docker-independent host-native state ще не досягнутий

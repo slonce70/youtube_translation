@@ -9,6 +9,8 @@ runner_container="${RUNNER_CONTAINER_NAME:-youtube-streaming-runner}"
 backend_unit="${HOST_BACKEND_UNIT_NAME:-youtube-backend}"
 stream_unit_template="${HOST_STREAM_UNIT_TEMPLATE:-ffmpeg@}"
 install_root="${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}"
+service_user="${SYSTEMD_SERVICE_USER:-streambot}"
+systemd_target_dir="${SYSTEMD_TARGET_DIR:-/etc/systemd/system}"
 ss_bin="${SS_BIN:-ss}"
 
 detect_host_binary() {
@@ -57,22 +59,92 @@ loopback_port_state() {
   echo missing
 }
 
+run_as_service_user() {
+  local target_user="$1"
+  shift
+
+  if ! id "$target_user" >/dev/null 2>&1; then
+    return 11
+  fi
+
+  if [[ "$(id -un)" == "$target_user" ]]; then
+    "$@"
+    return $?
+  fi
+
+  if command -v runuser >/dev/null 2>&1; then
+    runuser -u "$target_user" -- "$@"
+    return $?
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    sudo -n -u "$target_user" "$@"
+    return $?
+  fi
+
+  return 12
+}
+
+service_user_systemctl_access() {
+  local probe_unit="${HOST_STREAM_PERMISSION_PROBE_UNIT:-${stream_unit_template}__readiness_probe}"
+
+  if [[ ! -f "$systemd_target_dir/ffmpeg@.service" ]]; then
+    echo "unknown:unit_template_missing"
+    return 0
+  fi
+
+  local output=""
+  local rc=0
+  output="$(run_as_service_user "$service_user" "$systemctl_bin" start --dry-run "$probe_unit" 2>&1)" || rc=$?
+
+  case "$rc" in
+    0)
+      echo "allowed"
+      ;;
+    11)
+      echo "unknown:user_missing"
+      ;;
+    12)
+      echo "unknown:no_impersonation_tool"
+      ;;
+    *)
+      if printf '%s' "$output" | grep -qi "access denied\\|not authorized\\|authentication is required\\|interactive authentication required"; then
+        echo "denied"
+      else
+        echo "denied"
+      fi
+      ;;
+  esac
+}
+
 echo "install_root=$install_root"
+echo "host_service_user=$service_user"
 echo "active_runtime_streams=$(count_active_streams)"
 echo "docker_backend=$(check_container_status "$backend_container")"
 echo "docker_runner=$(check_container_status "$runner_container")"
 echo "host_backend_unit=$(unit_state "$backend_unit")"
-echo "ffmpeg_template_unit=$(test -f /etc/systemd/system/ffmpeg@.service && echo present || echo missing)"
-echo "streaming_slice=$(test -f /etc/systemd/system/streaming.slice && echo present || echo missing)"
-echo "host_backend_unit_file=$(test -f /etc/systemd/system/${backend_unit}.service && echo present || echo missing)"
+echo "ffmpeg_template_unit=$(test -f "$systemd_target_dir/ffmpeg@.service" && echo present || echo missing)"
+echo "streaming_slice=$(test -f "$systemd_target_dir/streaming.slice" && echo present || echo missing)"
+echo "host_backend_unit_file=$(test -f "$systemd_target_dir/${backend_unit}.service" && echo present || echo missing)"
+echo "host_backend_python_backend=$(detect_host_binary \
+  "$install_root/backend/.venv/bin/python" \
+  "$install_root/backend/.venv/bin/python3")"
+echo "host_backend_python_repo=$(detect_host_binary \
+  "$install_root/.venv/bin/python" \
+  "$install_root/.venv/bin/python3")"
 echo "host_backend_python=$(detect_host_binary \
   "$install_root/backend/.venv/bin/python" \
   "$install_root/backend/.venv/bin/python3" \
   "$install_root/.venv/bin/python" \
   "$install_root/.venv/bin/python3")"
+echo "host_backend_uvicorn_backend=$(detect_host_binary \
+  "$install_root/backend/.venv/bin/uvicorn")"
+echo "host_backend_uvicorn_repo=$(detect_host_binary \
+  "$install_root/.venv/bin/uvicorn")"
 echo "host_backend_uvicorn=$(detect_host_binary \
   "$install_root/backend/.venv/bin/uvicorn" \
   "$install_root/.venv/bin/uvicorn")"
+echo "host_service_user_systemctl=$(service_user_systemctl_access)"
 echo "host_loopback_postgres=$(loopback_port_state 5432)"
 echo "host_loopback_redis=$(loopback_port_state 6379)"
 echo "host_loopback_backend=$(loopback_port_state 8000)"

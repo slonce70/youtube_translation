@@ -4,6 +4,9 @@
 Description=YouTube translation stream %i
 After=network-online.target
 Wants=network-online.target
+StartLimitBurst=5
+StartLimitIntervalSec=300
+StartLimitAction=none
 
 [Service]
 Type=simple
@@ -15,6 +18,8 @@ EnvironmentFile=/opt/youtube_translation/backend/.env
 ExecStart=/bin/bash /opt/youtube_translation/scripts/run_stream_systemd.sh %i
 Restart=always
 RestartSec=5s
+# CLI exit code 10 means "terminal state refusal" and must not trigger an endless restart loop.
+RestartPreventExitStatus=10
 # Resource accounting / isolation. Tune from measured workload profiles before production-wide rollout.
 CPUAccounting=yes
 MemoryAccounting=yes

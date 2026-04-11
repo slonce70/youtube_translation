@@ -11,6 +11,7 @@ host_caddy_target="${HOST_CADDYFILE_PATH:-/etc/caddy/Caddyfile}"
 render_caddy_script="$repo_root/scripts/render_caddyfile.py"
 runtime_guards_script="$repo_root/scripts/runtime_guards.sh"
 systemd_runtime_installer="$repo_root/scripts/install_systemd_runtime.sh"
+host_native_venv_provisioner="$repo_root/scripts/provision_host_native_backend_venv.sh"
 host_runtime_cutover_script="$repo_root/scripts/cutover_host_runtime.sh"
 host_runtime_rollback_script="$repo_root/scripts/rollback_host_runtime.sh"
 all_services=(postgres redis backend tusd frontend runner mediamtx)
@@ -18,6 +19,7 @@ services=()
 tmp_dir="$(mktemp -d)"
 registry_host="${REGISTRY_HOST:-ghcr.io}"
 image_namespace="${IMAGE_NAMESPACE:-ghcr.io/slonce70}"
+skip_docker_deploy="${DEPLOY_SKIP_DOCKER:-0}"
 
 cleanup() {
   rm -rf "$tmp_dir"
@@ -98,6 +100,11 @@ service_selected() {
 }
 
 parse_selected_services() {
+  if [[ "$skip_docker_deploy" == "1" ]]; then
+    services=()
+    return 0
+  fi
+
   local requested="${DEPLOY_SERVICES:-}"
   local normalized=()
   local seen=""
@@ -192,6 +199,44 @@ maybe_install_systemd_runtime_units() {
   run_as_root env "${env_args[@]}" "$systemd_runtime_installer"
 }
 
+host_backend_is_active() {
+  local backend_unit="${HOST_BACKEND_UNIT_NAME:-youtube-backend}"
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 1
+  fi
+
+  systemctl is-active --quiet "$backend_unit"
+}
+
+maybe_provision_host_native_backend_venv() {
+  local runtime_mode="${STREAM_RUNTIME_MODE:-}"
+  runtime_mode="$(printf '%s' "$runtime_mode" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$runtime_mode" != "systemd" ]]; then
+    return 0
+  fi
+
+  local prepare_host_native="${DEPLOY_PREPARE_HOST_NATIVE:-0}"
+  local install_units="${DEPLOY_INSTALL_SYSTEMD_UNITS:-0}"
+  local activate_backend="${DEPLOY_ACTIVATE_HOST_BACKEND:-0}"
+  local activate_cutover="${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"
+
+  if [[ "$prepare_host_native" != "1" && "$install_units" != "1" && "$activate_backend" != "1" && "$activate_cutover" != "1" ]]; then
+    if ! host_backend_is_active; then
+      return 0
+    fi
+  fi
+
+  echo "Provisioning host-native backend venv..."
+  local env_args=(
+    "SYSTEMD_INSTALL_ROOT=${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}"
+    "SYSTEMD_BACKEND_DIR=${SYSTEMD_BACKEND_DIR:-${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}/backend}"
+    "SYSTEMD_BACKEND_VENV_DIR=${SYSTEMD_BACKEND_VENV_DIR:-${SYSTEMD_BACKEND_DIR:-${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}/backend}/.venv}"
+    "HOST_BACKEND_REQUIREMENTS_FILE=${HOST_BACKEND_REQUIREMENTS_FILE:-${SYSTEMD_BACKEND_DIR:-${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}/backend}/requirements.txt}"
+    "HOST_BACKEND_BOOTSTRAP_PYTHON=${HOST_BACKEND_BOOTSTRAP_PYTHON:-python3}"
+  )
+  run_as_root env "${env_args[@]}" "$host_native_venv_provisioner"
+}
+
 maybe_run_host_runtime_cutover() {
   local activate_cutover="${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"
   if [[ "$activate_cutover" != "1" ]]; then
@@ -249,6 +294,38 @@ maybe_run_host_runtime_rollback() {
     env_args+=("HOST_STREAM_UNIT_NAME=${DEPLOY_ROLLBACK_STREAM_UNIT}")
   fi
   run_as_root env "${env_args[@]}" "$host_runtime_rollback_script"
+}
+
+maybe_restart_host_native_backend() {
+  local restart_host_backend="${DEPLOY_RESTART_HOST_BACKEND:-0}"
+  if [[ "$restart_host_backend" != "1" ]]; then
+    return 0
+  fi
+
+  local runtime_mode="${STREAM_RUNTIME_MODE:-}"
+  runtime_mode="$(printf '%s' "$runtime_mode" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$runtime_mode" != "systemd" ]]; then
+    echo "Skipping host-native backend restart: STREAM_RUNTIME_MODE is not systemd."
+    return 0
+  fi
+
+  local backend_unit="${HOST_BACKEND_UNIT_NAME:-youtube-backend}"
+  local backend_health_url="${HOST_BACKEND_HEALTH_URL:-http://127.0.0.1:8000/health}"
+
+  echo "Restarting host-native backend unit ${backend_unit}..."
+  run_as_root systemctl daemon-reload
+  run_as_root systemctl restart "$backend_unit"
+  run_as_root systemctl is-active --quiet "$backend_unit"
+  wait_for_http "host-native backend health endpoint" "$backend_health_url" -fsS --max-time 5
+
+  if [[ "${DEPLOY_VERIFY_HOST_RUNTIME:-1}" == "1" ]]; then
+    echo "Verifying host-native runtime readiness after backend restart..."
+    run_as_root env \
+      "SYSTEMD_INSTALL_ROOT=${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}" \
+      "SYSTEMD_TARGET_DIR=${SYSTEMD_TARGET_DIR:-/etc/systemd/system}" \
+      "SYSTEMD_SERVICE_USER=${SYSTEMD_SERVICE_USER:-streambot}" \
+      "$repo_root/scripts/check_host_runtime_readiness.sh"
+  fi
 }
 
 prepare_linux_persistence() {
@@ -424,39 +501,53 @@ prepare_linux_persistence
 verify_linux_persistence
 ensure_persistent_storage
 
-echo "Validating compose config..."
-docker compose -f "$compose_file" config >/dev/null
+if [[ "$skip_docker_deploy" != "1" ]]; then
+  echo "Validating compose config..."
+  docker compose -f "$compose_file" config >/dev/null
+fi
 
-registry_login
+if [[ "$skip_docker_deploy" != "1" ]]; then
+  registry_login
+fi
+maybe_provision_host_native_backend_venv
 maybe_install_systemd_runtime_units
 maybe_run_host_runtime_rollback
 guard_containerized_systemd_runtime "${services[*]}"
 guard_stream_runtime
-echo "Deploying services via registry images pinned to ${deploy_ref}: ${services[*]}"
-docker compose -f "$compose_file" pull "${services[@]}"
+if [[ "$skip_docker_deploy" != "1" && "${#services[@]}" -gt 0 ]]; then
+  echo "Deploying services via registry images pinned to ${deploy_ref}: ${services[*]}"
+  docker compose -f "$compose_file" pull "${services[@]}"
 
-compose_up_args=(-d --no-build --remove-orphans)
-if [[ "${#services[@]}" -lt "${#all_services[@]}" ]]; then
-  compose_up_args=(--no-deps "${compose_up_args[@]}")
-fi
+  compose_up_args=(-d --no-build --remove-orphans)
+  if [[ "${#services[@]}" -lt "${#all_services[@]}" ]]; then
+    compose_up_args=(--no-deps "${compose_up_args[@]}")
+  fi
 
-docker compose -f "$compose_file" up "${compose_up_args[@]}" "${services[@]}"
+  docker compose -f "$compose_file" up "${compose_up_args[@]}" "${services[@]}"
 
-if service_selected backend; then
-  wait_for_http "backend health endpoint" "http://127.0.0.1:8000/health" -fsS --max-time 5
-fi
-if service_selected frontend; then
-  wait_for_http "frontend health endpoint" "http://127.0.0.1:3000/api/health" -fsS --max-time 5
-fi
-if service_selected tusd; then
-  wait_for_http "tusd" "http://127.0.0.1:1080/" -sS -o /dev/null --max-time 5
+  if service_selected backend; then
+    wait_for_http "backend health endpoint" "http://127.0.0.1:8000/health" -fsS --max-time 5
+  fi
+  if service_selected frontend; then
+    wait_for_http "frontend health endpoint" "http://127.0.0.1:3000/api/health" -fsS --max-time 5
+  fi
+  if service_selected tusd; then
+    wait_for_http "tusd" "http://127.0.0.1:1080/" -sS -o /dev/null --max-time 5
+  fi
+elif [[ "$skip_docker_deploy" == "1" ]]; then
+  echo "Skipping Docker deploy because DEPLOY_SKIP_DOCKER=1"
+else
+  echo "No Docker services selected for deploy."
 fi
 
 if [[ "${DEPLOY_SYNC_HOST_CADDY:-0}" == "1" ]]; then
   sync_host_caddy
 fi
 
+maybe_restart_host_native_backend
 maybe_run_host_runtime_cutover
 
 echo "Deployment complete for commit $(git rev-parse --short HEAD)"
-docker compose -f "$compose_file" ps
+if [[ "$skip_docker_deploy" != "1" ]]; then
+  docker compose -f "$compose_file" ps
+fi

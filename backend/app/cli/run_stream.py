@@ -28,7 +28,10 @@ from app.core.stream_runtime_lease import (
 )
 from app.core.stream_runtime_restart import clear_stream_runtime_restart_state
 from app.models.database import Stream
-from app.services.streams.audit import record_stream_audit_event
+from app.services.streams.audit import (
+    persist_stream_alert_event,
+    record_stream_audit_event,
+)
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.services.streams.helpers import (
     load_stream_with_relations,
@@ -38,6 +41,12 @@ from app.services.streams.helpers import (
 LOGGER = logging.getLogger("app.cli.run_stream")
 CURRENT_STREAM_ID: Optional[str] = None
 CURRENT_HEARTBEAT_TASK: Optional[asyncio.Task] = None
+TERMINAL_STREAM_STATES = {"stopped", "error"}
+TERMINAL_STATE_EXIT_CODE = 10
+
+
+class TerminalStateRefusal(RuntimeError):
+    """Raised when the runner refuses to relaunch a stream in a terminal DB state."""
 
 
 def _utcnow() -> datetime:
@@ -55,6 +64,34 @@ async def _load_stream_with_relations(db, stream_id: UUID) -> Tuple[Stream, UUID
     if not full_stream:
         raise RuntimeError(f"Stream {stream_id} not found for user {user_id}")
     return full_stream, user_id
+
+
+async def _refuse_terminal_state_launch(stream: Stream) -> None:
+    message = (
+        f"Stream {stream.id} is in terminal state {stream.status}; "
+        "refusing to relaunch via systemd auto-restart."
+    )
+    metadata = {
+        "category": "stream_runtime_health",
+        "phase": "startup_guard",
+        "source": "systemd_runner",
+        "status": stream.status,
+        "launcher": "cli",
+        "node_id": settings.stream_runtime_node_id,
+    }
+    LOGGER.warning(message)
+    await persist_stream_alert_event(
+        stream.id,
+        level="warning",
+        message=message,
+        alert_type="stream_runtime_refused_terminal_state",
+        alert_severity="warning",
+        metadata=metadata,
+        alert_details=metadata,
+        user_id=stream.user_id,
+        log_path=stream.log_path,
+    )
+    raise TerminalStateRefusal(message)
 
 
 async def _update_stream_status_after_exit(stream: Stream) -> None:
@@ -201,6 +238,8 @@ async def _start_stream(stream_id: UUID, wait: bool = True) -> None:
 
     async with async_session_maker() as db:
         stream, user_id = await _load_stream_with_relations(db, stream_id)
+        if stream.status in TERMINAL_STREAM_STATES:
+            await _refuse_terminal_state_launch(stream)
         # Конкурентні ліміти вже перевіряються у FastAPI перед запуском supervisor
         # Повторна перевірка тут призводить до хибних спрацювань, бо цей самий
         # стрім уже має статус "starting". Тому просто передаємо Enforcer у
@@ -328,6 +367,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = _parse_args(argv)
     try:
         asyncio.run(_async_entry(args))
+    except TerminalStateRefusal as err:
+        LOGGER.warning("%s", err)
+        return TERMINAL_STATE_EXIT_CODE
     except HTTPException as err:
         LOGGER.error("Stream launch rejected: %s", err.detail)
         return 1

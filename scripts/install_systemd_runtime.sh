@@ -9,10 +9,13 @@ service_group="${SYSTEMD_SERVICE_GROUP:-$service_user}"
 skip_reload="${SYSTEMD_SKIP_RELOAD:-0}"
 enable_backend="${SYSTEMD_ENABLE_BACKEND:-0}"
 enable_stream_unit="${SYSTEMD_ENABLE_STREAM_UNIT:-}"
+install_polkit="${SYSTEMD_INSTALL_POLKIT:-0}"
+polkit_rules_dir="${SYSTEMD_POLKIT_RULES_DIR:-/etc/polkit-1/rules.d}"
 
 backend_template="$repo_root/docs/systemd/youtube-backend.service.example"
 stream_template="$repo_root/docs/systemd/ffmpeg@.service.example"
 slice_template="$repo_root/docs/systemd/streaming.slice.example"
+polkit_template="$repo_root/docs/systemd/polkit/youtube-ffmpeg.rules.example"
 stream_runner_script="$repo_root/scripts/run_stream_systemd.sh"
 
 render_template() {
@@ -32,11 +35,12 @@ service_group = sys.argv[5]
 text = src.read_text(encoding="utf-8")
 replacements = {
     "/opt/youtube_translation/backend": f"{install_root}/backend",
-    "/opt/youtube_translation/.venv/bin/uvicorn": f"{install_root}/.venv/bin/uvicorn",
-    "/opt/youtube_translation/.venv/bin/python": f"{install_root}/.venv/bin/python",
+    "/opt/youtube_translation/backend/.venv/bin/uvicorn": f"{install_root}/backend/.venv/bin/uvicorn",
+    "/opt/youtube_translation/.venv/bin/python": f"{install_root}/backend/.venv/bin/python",
     "/opt/youtube_translation/scripts/run_stream_systemd.sh": f"{install_root}/scripts/run_stream_systemd.sh",
     "User=streambot": f"User={service_user}",
     "Group=streambot": f"Group={service_group}",
+    'subject.user !== "streambot"': f'subject.user !== "{service_user}"',
 }
 for old, new in replacements.items():
     text = text.replace(old, new)
@@ -47,6 +51,9 @@ PY
 
 mkdir -p "$systemd_target_dir"
 mkdir -p "$install_root/scripts"
+if [[ "$install_polkit" == "1" ]]; then
+  mkdir -p "$polkit_rules_dir"
+fi
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -55,17 +62,26 @@ render_template "$backend_template" "$tmp_dir/youtube-backend.service"
 render_template "$stream_template" "$tmp_dir/ffmpeg@.service"
 render_template "$slice_template" "$tmp_dir/streaming.slice"
 render_template "$stream_runner_script" "$tmp_dir/run_stream_systemd.sh"
+if [[ "$install_polkit" == "1" ]]; then
+  render_template "$polkit_template" "$tmp_dir/50-youtube-ffmpeg.rules"
+fi
 
 install -m 0644 "$tmp_dir/youtube-backend.service" "$systemd_target_dir/youtube-backend.service"
 install -m 0644 "$tmp_dir/ffmpeg@.service" "$systemd_target_dir/ffmpeg@.service"
 install -m 0644 "$tmp_dir/streaming.slice" "$systemd_target_dir/streaming.slice"
 install -m 0755 "$tmp_dir/run_stream_systemd.sh" "$install_root/scripts/run_stream_systemd.sh"
+if [[ "$install_polkit" == "1" ]]; then
+  install -m 0644 "$tmp_dir/50-youtube-ffmpeg.rules" "$polkit_rules_dir/50-youtube-ffmpeg.rules"
+fi
 
 echo "Installed systemd unit files into $systemd_target_dir"
 echo "  - youtube-backend.service"
 echo "  - ffmpeg@.service"
 echo "  - streaming.slice"
 echo "  - run_stream_systemd.sh"
+if [[ "$install_polkit" == "1" ]]; then
+  echo "Installed polkit rule into $polkit_rules_dir/50-youtube-ffmpeg.rules"
+fi
 
 if [[ "$skip_reload" == "1" ]]; then
   echo "Skipping systemd daemon-reload because SYSTEMD_SKIP_RELOAD=1"

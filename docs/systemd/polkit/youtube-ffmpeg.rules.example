@@ -1,0 +1,26 @@
+// Install as /etc/polkit-1/rules.d/50-youtube-ffmpeg.rules
+// Grants streambot the minimum systemd control needed for youtube-backend and ffmpeg@<stream>.
+
+polkit.addRule(function(action, subject) {
+  if (action.id !== "org.freedesktop.systemd1.manage-units") {
+    return polkit.Result.NOT_HANDLED;
+  }
+
+  if (subject.user !== "streambot") {
+    return polkit.Result.NOT_HANDLED;
+  }
+
+  var unit = action.lookup("unit") || "";
+  var verb = action.lookup("verb") || "";
+  var allowedVerbs = ["start", "stop", "restart", "try-restart", "reload"];
+
+  if (allowedVerbs.indexOf(verb) === -1) {
+    return polkit.Result.NOT_HANDLED;
+  }
+
+  if (unit === "youtube-backend.service" || /^ffmpeg@.+\.service$/.test(unit)) {
+    return polkit.Result.YES;
+  }
+
+  return polkit.Result.NOT_HANDLED;
+});
