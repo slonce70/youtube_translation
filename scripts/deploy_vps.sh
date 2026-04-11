@@ -290,12 +290,15 @@ ensure_host_runtime_mode_alignment() {
     return 0
   fi
 
-  if ! host_backend_is_active; then
+  if ! host_backend_is_active && ! flag_enabled "${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"; then
     return 0
   fi
 
-  echo "Host-native backend is active while STREAM_RUNTIME_MODE=${runtime_mode:-unset}; aligning $backend_env to systemd."
+  echo "Host-native deploy path requested while STREAM_RUNTIME_MODE=${runtime_mode:-unset}; aligning env files to systemd."
   upsert_env_kv "$backend_env" "STREAM_RUNTIME_MODE" "systemd"
+  if [[ -f "$root_env" ]]; then
+    upsert_env_kv "$root_env" "STREAM_RUNTIME_MODE" "systemd"
+  fi
   export STREAM_RUNTIME_MODE="systemd"
 }
 

@@ -82,3 +82,38 @@ def test_deploy_vps_script_aligns_stream_runtime_mode_for_active_host_backend(
     assert result.returncode == 0, result.stderr
     assert "STREAM_RUNTIME_MODE=systemd" in backend_env.read_text(encoding="utf-8")
     assert "aligning" in result.stdout
+
+
+def test_deploy_vps_script_aligns_effective_runtime_mode_for_cutover_path(
+    tmp_path,
+) -> None:
+    script = _script_path()
+    backend_env = tmp_path / "backend.env"
+    root_env = tmp_path / "root.env"
+    backend_env.write_text("STREAM_RUNTIME_MODE=systemd\n", encoding="utf-8")
+    root_env.write_text("STREAM_RUNTIME_MODE=supervisor\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                f"backend_env='{backend_env}'; "
+                f"root_env='{root_env}'; "
+                "STREAM_RUNTIME_MODE=supervisor; "
+                "DEPLOY_CUTOVER_HOST_RUNTIME=true; "
+                "host_backend_is_active(){ return 1; }; "
+                "ensure_host_runtime_mode_alignment; "
+                "printf 'effective=%s\\n' \"$STREAM_RUNTIME_MODE\""
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "STREAM_RUNTIME_MODE=systemd" in backend_env.read_text(encoding="utf-8")
+    assert "STREAM_RUNTIME_MODE=systemd" in root_env.read_text(encoding="utf-8")
+    assert "effective=systemd" in result.stdout
