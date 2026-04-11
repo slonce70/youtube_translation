@@ -11,8 +11,9 @@ Type=simple
 WorkingDirectory=/opt/youtube_translation/backend
 EnvironmentFile=/opt/youtube_translation/backend/.env
 Environment=PYTHONPATH=/opt/youtube_translation/backend
-# Bind only on loopback; host Caddy stays the public edge.
-ExecStart=/opt/youtube_translation/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Bind wide enough for containerized edge services to reach the host-native backend
+# via host.docker.internal. Keep port 8000 private at the firewall/Caddy layer.
+ExecStart=/bin/bash -lc 'exec /opt/youtube_translation/backend/.venv/bin/uvicorn app.main:app --host "${HOST_BACKEND_BIND_HOST:-0.0.0.0}" --port "${HOST_BACKEND_PORT:-8000}"'
 Restart=always
 RestartSec=5s
 # Keep the control plane on a predictable resource budget and with reduced ambient privileges.

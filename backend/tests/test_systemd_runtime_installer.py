@@ -46,6 +46,9 @@ def test_install_systemd_runtime_renders_units_into_target_dir(tmp_path) -> None
 
     assert "/srv/youtube_translation/backend" in backend_unit
     assert f"{install_root}/backend/.venv/bin/uvicorn" in backend_unit
+    assert '/bin/bash -lc' in backend_unit
+    assert 'HOST_BACKEND_BIND_HOST:-0.0.0.0' in backend_unit
+    assert 'HOST_BACKEND_PORT:-8000' in backend_unit
     assert "User=ytbot" in backend_unit
     assert "Group=ytgrp" in backend_unit
 

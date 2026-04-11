@@ -15,12 +15,12 @@
 
 Підтримуваний production shape для цього режиму:
 
-- host-native backend service на `127.0.0.1:8000`
+- host-native backend service на `0.0.0.0:8000` з приватним доступом через firewall/Caddy
 - host-native `ffmpeg@<stream_id>` units
 - канонічний Python layout для host-native backend: `/opt/youtube_translation/backend/.venv`
 - Docker infra для `postgres`, `redis`, `tusd`, `frontend`, `mediamtx`
 - `postgres` і `redis` публікуються лише на loopback (`127.0.0.1:5432`, `127.0.0.1:6379`), щоб backend control plane на хості міг працювати без Docker-in-Docker або container-to-host `systemctl` hacks
-- `frontend` і `tusd` у containerized lane можуть бути перепідняті з `FRONTEND_API_PROXY_TARGET` / `TUSD_BACKEND_URL`, що вказують на `http://host.docker.internal:8000`, коли backend уже host-native
+- `frontend` і `tusd` у containerized lane можуть бути перепідняті з `FRONTEND_API_PROXY_TARGET` / `TUSD_BACKEND_URL`, що вказують на `http://host.docker.internal:8000`, коли backend уже host-native; для цього host-native backend має слухати не лише loopback
 
 ## Privilege bootstrap
 
@@ -227,7 +227,7 @@ sudo BACKEND_ENV=/opt/youtube_translation/backend/.env \
 Backend unit запускає:
 
 ```bash
-backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Stream unit запускає:

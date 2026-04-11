@@ -59,6 +59,20 @@ loopback_port_state() {
   echo missing
 }
 
+backend_port_state() {
+  if "$ss_bin" -ltn 2>/dev/null | awk '
+    $4 ~ /:8000$/ &&
+    ($4 ~ /^127\.0\.0\.1:8000$/ || $4 ~ /^0\.0\.0\.0:8000$/ || $4 ~ /^172\.[0-9]+\.[0-9]+\.[0-9]+:8000$/ || $4 ~ /^\[::\]:8000$/) {
+      found = 1
+    }
+    END { exit found ? 0 : 1 }
+  '; then
+    echo present
+    return 0
+  fi
+  echo missing
+}
+
 run_as_service_user() {
   local target_user="$1"
   shift
@@ -157,5 +171,5 @@ echo "host_backend_uvicorn=$(detect_host_binary \
 echo "host_service_user_systemctl=$(service_user_systemctl_access)"
 echo "host_loopback_postgres=$(loopback_port_state 5432)"
 echo "host_loopback_redis=$(loopback_port_state 6379)"
-echo "host_loopback_backend=$(loopback_port_state 8000)"
+echo "host_loopback_backend=$(backend_port_state)"
 echo "host_loopback_runner=$(loopback_port_state 9001)"

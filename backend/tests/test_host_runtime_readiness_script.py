@@ -60,7 +60,7 @@ exit 0
     ss_script.write_text(
         """#!/usr/bin/env bash
 cat <<'EOF'
-LISTEN 0 4096 127.0.0.1:8000 0.0.0.0:*
+LISTEN 0 4096 0.0.0.0:8000 0.0.0.0:*
 LISTEN 0 4096 127.0.0.1:9001 0.0.0.0:*
 EOF
 """,
