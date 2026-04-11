@@ -119,6 +119,25 @@ wait_for_http() {
   curl "${curl_args[@]}" "$url" >/dev/null
 }
 
+dump_host_backend_diagnostics() {
+  local backend_unit="$1"
+
+  echo "Collecting host-native backend diagnostics for ${backend_unit}..."
+  run_as_root systemctl show \
+    --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,NRestarts \
+    "$backend_unit" || true
+  run_as_root systemctl status --no-pager -l "$backend_unit" || true
+  run_as_root journalctl -u "$backend_unit" -n "${DEPLOY_HOST_BACKEND_JOURNAL_LINES:-80}" --no-pager || true
+
+  if [[ -x "$repo_root/scripts/check_host_runtime_readiness.sh" ]]; then
+    run_as_root env \
+      "SYSTEMD_INSTALL_ROOT=${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}" \
+      "SYSTEMD_TARGET_DIR=${SYSTEMD_TARGET_DIR:-/etc/systemd/system}" \
+      "SYSTEMD_SERVICE_USER=${SYSTEMD_SERVICE_USER:-streambot}" \
+      "$repo_root/scripts/check_host_runtime_readiness.sh" || true
+  fi
+}
+
 count_active_streams() {
   local postgres_container="youtube-streaming-postgres"
 
@@ -389,9 +408,18 @@ maybe_restart_host_native_backend() {
 
   echo "Restarting host-native backend unit ${backend_unit}..."
   run_as_root systemctl daemon-reload
-  run_as_root systemctl restart "$backend_unit"
-  run_as_root systemctl is-active --quiet "$backend_unit"
-  wait_for_http "host-native backend health endpoint" "$backend_health_url" -fsS --max-time 5
+  if ! run_as_root systemctl restart "$backend_unit"; then
+    dump_host_backend_diagnostics "$backend_unit"
+    exit 1
+  fi
+  if ! run_as_root systemctl is-active --quiet "$backend_unit"; then
+    dump_host_backend_diagnostics "$backend_unit"
+    exit 1
+  fi
+  if ! wait_for_http "host-native backend health endpoint" "$backend_health_url" -fsS --max-time 5; then
+    dump_host_backend_diagnostics "$backend_unit"
+    exit 1
+  fi
 
   if flag_enabled "${DEPLOY_VERIFY_HOST_RUNTIME:-1}"; then
     echo "Verifying host-native runtime readiness after backend restart..."
