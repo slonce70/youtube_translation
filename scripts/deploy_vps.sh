@@ -29,6 +29,19 @@ trap cleanup EXIT
 # shellcheck disable=SC1090
 source "$runtime_guards_script"
 
+flag_enabled() {
+  local raw_value="${1:-0}"
+  raw_value="$(printf '%s' "$raw_value" | tr '[:upper:]' '[:lower:]')"
+  case "$raw_value" in
+    1|true|yes|on)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 registry_login() {
   if [[ -z "${REGISTRY_PASSWORD:-}" ]]; then
     return 0
@@ -100,7 +113,7 @@ service_selected() {
 }
 
 parse_selected_services() {
-  if [[ "$skip_docker_deploy" == "1" ]]; then
+  if flag_enabled "$skip_docker_deploy"; then
     services=()
     return 0
   fi
@@ -141,7 +154,7 @@ parse_selected_services() {
 
 guard_stream_runtime() {
   local allow_live_restart="${ALLOW_LIVE_STREAM_RESTARTS:-0}"
-  if [[ "$allow_live_restart" == "1" ]]; then
+  if flag_enabled "$allow_live_restart"; then
     echo "ALLOW_LIVE_STREAM_RESTARTS=1 set; bypassing live-stream deploy guard."
     return 0
   fi
@@ -174,7 +187,7 @@ guard_stream_runtime() {
 
 maybe_install_systemd_runtime_units() {
   local install_units="${DEPLOY_INSTALL_SYSTEMD_UNITS:-0}"
-  if [[ "$install_units" != "1" ]]; then
+  if ! flag_enabled "$install_units"; then
     return 0
   fi
 
@@ -220,7 +233,10 @@ maybe_provision_host_native_backend_venv() {
   local activate_backend="${DEPLOY_ACTIVATE_HOST_BACKEND:-0}"
   local activate_cutover="${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"
 
-  if [[ "$prepare_host_native" != "1" && "$install_units" != "1" && "$activate_backend" != "1" && "$activate_cutover" != "1" ]]; then
+  if ! flag_enabled "$prepare_host_native" \
+    && ! flag_enabled "$install_units" \
+    && ! flag_enabled "$activate_backend" \
+    && ! flag_enabled "$activate_cutover"; then
     if ! host_backend_is_active; then
       return 0
     fi
@@ -239,7 +255,7 @@ maybe_provision_host_native_backend_venv() {
 
 maybe_run_host_runtime_cutover() {
   local activate_cutover="${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"
-  if [[ "$activate_cutover" != "1" ]]; then
+  if ! flag_enabled "$activate_cutover"; then
     return 0
   fi
 
@@ -271,7 +287,7 @@ maybe_run_host_runtime_cutover() {
 
 maybe_run_host_runtime_rollback() {
   local activate_rollback="${DEPLOY_ROLLBACK_HOST_RUNTIME:-0}"
-  if [[ "$activate_rollback" != "1" ]]; then
+  if ! flag_enabled "$activate_rollback"; then
     return 0
   fi
 
@@ -298,7 +314,7 @@ maybe_run_host_runtime_rollback() {
 
 maybe_restart_host_native_backend() {
   local restart_host_backend="${DEPLOY_RESTART_HOST_BACKEND:-0}"
-  if [[ "$restart_host_backend" != "1" ]]; then
+  if ! flag_enabled "$restart_host_backend"; then
     return 0
   fi
 
@@ -318,7 +334,7 @@ maybe_restart_host_native_backend() {
   run_as_root systemctl is-active --quiet "$backend_unit"
   wait_for_http "host-native backend health endpoint" "$backend_health_url" -fsS --max-time 5
 
-  if [[ "${DEPLOY_VERIFY_HOST_RUNTIME:-1}" == "1" ]]; then
+  if flag_enabled "${DEPLOY_VERIFY_HOST_RUNTIME:-1}"; then
     echo "Verifying host-native runtime readiness after backend restart..."
     run_as_root env \
       "SYSTEMD_INSTALL_ROOT=${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}" \
@@ -465,6 +481,10 @@ sync_host_caddy() {
   echo "Host Caddy reloaded from git-managed config."
 }
 
+if flag_enabled "${DEPLOY_VPS_SOURCE_ONLY:-0}"; then
+  return 0 2>/dev/null || exit 0
+fi
+
 if [[ ! -f "$backend_env" ]]; then
   echo "Missing required env file: $backend_env" >&2
   exit 1
@@ -501,12 +521,12 @@ prepare_linux_persistence
 verify_linux_persistence
 ensure_persistent_storage
 
-if [[ "$skip_docker_deploy" != "1" ]]; then
+if ! flag_enabled "$skip_docker_deploy"; then
   echo "Validating compose config..."
   docker compose -f "$compose_file" config >/dev/null
 fi
 
-if [[ "$skip_docker_deploy" != "1" ]]; then
+if ! flag_enabled "$skip_docker_deploy"; then
   registry_login
 fi
 maybe_provision_host_native_backend_venv
@@ -514,7 +534,7 @@ maybe_install_systemd_runtime_units
 maybe_run_host_runtime_rollback
 guard_containerized_systemd_runtime "${services[*]}"
 guard_stream_runtime
-if [[ "$skip_docker_deploy" != "1" && "${#services[@]}" -gt 0 ]]; then
+if ! flag_enabled "$skip_docker_deploy" && [[ "${#services[@]}" -gt 0 ]]; then
   echo "Deploying services via registry images pinned to ${deploy_ref}: ${services[*]}"
   docker compose -f "$compose_file" pull "${services[@]}"
 
@@ -534,13 +554,13 @@ if [[ "$skip_docker_deploy" != "1" && "${#services[@]}" -gt 0 ]]; then
   if service_selected tusd; then
     wait_for_http "tusd" "http://127.0.0.1:1080/" -sS -o /dev/null --max-time 5
   fi
-elif [[ "$skip_docker_deploy" == "1" ]]; then
+elif flag_enabled "$skip_docker_deploy"; then
   echo "Skipping Docker deploy because DEPLOY_SKIP_DOCKER=1"
 else
   echo "No Docker services selected for deploy."
 fi
 
-if [[ "${DEPLOY_SYNC_HOST_CADDY:-0}" == "1" ]]; then
+if flag_enabled "${DEPLOY_SYNC_HOST_CADDY:-0}"; then
   sync_host_caddy
 fi
 
@@ -548,6 +568,6 @@ maybe_restart_host_native_backend
 maybe_run_host_runtime_cutover
 
 echo "Deployment complete for commit $(git rev-parse --short HEAD)"
-if [[ "$skip_docker_deploy" != "1" ]]; then
+if ! flag_enabled "$skip_docker_deploy"; then
   docker compose -f "$compose_file" ps
 fi
