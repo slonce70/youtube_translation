@@ -1,0 +1,32 @@
+# Copy to /etc/systemd/system/youtube-backend.service and adjust paths/users.
+
+[Unit]
+Description=YouTube translation backend API
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/youtube_translation/backend
+EnvironmentFile=/opt/youtube_translation/backend/.env
+Environment=PYTHONPATH=/opt/youtube_translation/backend
+# Bind only on loopback; host Caddy stays the public edge.
+ExecStart=/opt/youtube_translation/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5s
+# Keep the control plane on a predictable resource budget and with reduced ambient privileges.
+CPUAccounting=yes
+MemoryAccounting=yes
+TasksAccounting=yes
+MemoryMax=1G
+TasksMax=512
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+User=streambot
+Group=streambot
+
+[Install]
+WantedBy=multi-user.target

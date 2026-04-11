@@ -519,6 +519,17 @@ class StreamDestinationLink(BaseModel):
 StreamRuntimeRestartState = Literal[
     "disabled", "idle", "scheduled", "retrying", "exhausted"
 ]
+StreamIncidentSeverity = Literal["healthy", "degraded", "critical"]
+StreamIncidentCode = Literal[
+    "stream_error",
+    "quota_limit",
+    "provider_health",
+    "runtime_restart",
+    "transport_connection_reset",
+    "transport_broken_pipe",
+    "transport_recovery",
+    "timeline_drift",
+]
 
 
 def _stream_runtime_restart_state(
@@ -552,6 +563,21 @@ class StreamRuntimeRestartInfo(BaseModel):
     next_restart_at: Optional[datetime] = None
     last_restart_at: Optional[datetime] = None
     last_failure_at: Optional[datetime] = None
+
+
+class StreamIncidentItem(BaseModel):
+    code: StreamIncidentCode
+    severity: Literal["degraded", "critical"]
+    label: str
+    detail: Optional[str] = None
+    count: Optional[int] = None
+
+
+class StreamIncidentSummary(BaseModel):
+    severity: StreamIncidentSeverity = "healthy"
+    headline: Optional[str] = None
+    details: List[str] = Field(default_factory=list)
+    items: List[StreamIncidentItem] = Field(default_factory=list)
 
 
 class StreamResponse(StreamBase):
@@ -589,6 +615,16 @@ class StreamResponse(StreamBase):
     runtime_next_restart_at: Optional[datetime] = Field(default=None, exclude=True)
     runtime_last_restart_at: Optional[datetime] = Field(default=None, exclude=True)
     runtime_last_failure_at: Optional[datetime] = Field(default=None, exclude=True)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def runtime_incident_summary(self) -> StreamIncidentSummary:
+        payload = getattr(self, "_runtime_incident_summary", None)
+        if isinstance(payload, StreamIncidentSummary):
+            return payload
+        if isinstance(payload, dict):
+            return StreamIncidentSummary.model_validate(payload)
+        return StreamIncidentSummary()
 
     @staticmethod
     def _destination_summary_from_link(
@@ -767,6 +803,9 @@ class StreamStatus(BaseModel):
     provider_health_issues: List[str] = Field(default_factory=list)
     provider_mismatch: bool = False
     runtime_restart: StreamRuntimeRestartInfo
+    runtime_incident_summary: StreamIncidentSummary = Field(
+        default_factory=StreamIncidentSummary
+    )
 
 
 class StreamWsTokenResponse(BaseModel):

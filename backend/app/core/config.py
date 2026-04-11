@@ -1,9 +1,14 @@
 import socket
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import ValidationInfo, field_validator, model_validator
 from typing import List, Optional, Union
 from urllib.parse import urlparse, urlunparse, quote, unquote, parse_qsl, urlencode
+
+
+def _running_in_container() -> bool:
+    return Path("/.dockerenv").exists()
 
 
 class Settings(BaseSettings):
@@ -100,6 +105,7 @@ class Settings(BaseSettings):
     user_cache_max_size: int = 512  # Maximum number of cached users
     stream_runtime_mode: str = "manager"  # manager | systemd | supervisor
     allow_unsafe_manager_runtime: bool = False
+    allow_unsafe_containerized_systemd_runtime: bool = False
     systemd_unit_template: str = "ffmpeg@{stream_id}"
     systemctl_path: str = "systemctl"
     supervisor_program_template: str = "stream_{stream_id}"
@@ -366,6 +372,18 @@ class Settings(BaseSettings):
             raise ValueError(
                 "STREAM_RUNTIME_MODE=manager is disabled for staging/production. "
                 "Use supervisor/systemd or explicitly set ALLOW_UNSAFE_MANAGER_RUNTIME=true."
+            )
+
+        if (
+            self.stream_runtime_mode == "systemd"
+            and environment in {"production", "staging"}
+            and _running_in_container()
+            and not self.allow_unsafe_containerized_systemd_runtime
+        ):
+            raise ValueError(
+                "STREAM_RUNTIME_MODE=systemd is blocked for containerized staging/production backends "
+                "unless you explicitly set ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=true. "
+                "Use a host-native backend control plane or a reviewed runtime-control mechanism first."
             )
 
         if (

@@ -17,6 +17,17 @@ Environment=PYTHONPATH=/opt/youtube_translation/backend
 ExecStart=/opt/youtube_translation/.venv/bin/python -m app.cli.run_stream %i
 Restart=always
 RestartSec=5s
+# Resource accounting / isolation. Tune from measured workload profiles before production-wide rollout.
+CPUAccounting=yes
+MemoryAccounting=yes
+TasksAccounting=yes
+CPUQuota=200%
+MemoryMax=2G
+TasksMax=128
+OOMPolicy=stop
+Slice=streaming.slice
+NoNewPrivileges=true
+PrivateTmp=true
 StandardOutput=journal
 StandardError=journal
 User=streambot

@@ -42,7 +42,9 @@ from app.schemas.api import (
     StreamScheduleUpdate,
 )
 from app.services.youtube import YoutubeProviderStatusService
+from app.streaming.ffmpeg_manager import ffmpeg_manager
 
+from .audit import attach_runtime_incident_summaries
 from .helpers import (
     ALLOWED_MIX_MODES,
     build_asset_payload,
@@ -758,6 +760,9 @@ class StreamService:
 
     async def _enrich_streams(self, streams: Sequence[Stream]) -> None:
         await YoutubeProviderStatusService(self.db).enrich_streams(list(streams))
+        await attach_runtime_incident_summaries(
+            self.db, streams, manager=ffmpeg_manager
+        )
 
 
 def load_stream_with_relations_options():  # pragma: no cover - helper for readability

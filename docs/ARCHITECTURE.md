@@ -212,9 +212,9 @@ user_profiles (synced on first login)
 
 - **Structured logging** — все сервисы используют `app.core.logging_config` (JSON + masking). Дополнительный middleware `APIMetricsMiddleware` снимает длительность/статус каждого HTTP-запроса и пишет их в кореллируемые логи.
 - **Metrics Registry** — `app.core.metrics` агрегирует счётчики/гистограммы (streams, API, quotas, uploads). Экспорт доступен в двух форматах:
-  - `/api/metrics` — агрегированная статистика по CPU/RAM/disk + активным стримам и оценка пропускной способности.
+  - `/api/metrics` — агрегированная статистика по CPU/RAM/disk + активным стримам и эвристическая оценка пропускной способности; блок capacity не должен считаться production-grade источником истинной безопасной вместимости без измеренных workload-профилей.
   - `/api/metrics/prometheus` — текстовый экспорт в формате Prometheus (`text/plain; version=0.0.4`).
-- **FFmpeg telemetry** — `FFmpegStreamManager` вызывает `track_stream_start`, `track_stream_stop` и `track_stream_error`, поэтому Active Streams gauge и гистограмма длительности отражают реальные процессы (включая auto-restart сценарии).
+- **FFmpeg telemetry** — `FFmpegStreamManager` вызывает `track_stream_start`, `track_stream_stop` и `track_stream_error`, поэтому Active Streams gauge и гистограмма длительности отражают реальные процессы (включая auto-restart сценарии). Поверх этого degraded-live runtime сигналы (повторные remote output reset, recovery storm, repeated Non-monotonic DTS) пишутся в `stream_events` и `system_alerts`, а `runtime_incident_summary` у stream status/list собирается из shared runtime evidence: local in-memory manager state, shared log tail и recent persisted alerts.
 - **Frontend hooks** — Dashboard и Streaming builder читают `/api/metrics` и отображают квоты/алерты; Jest тесты (`asset-display-info`, `builder-helpers`) проверяют логику отображения предупреждений и редакторов.
 
 ## Data Flow

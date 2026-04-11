@@ -9,6 +9,10 @@ frontend_env="$repo_root/frontend/.env.local"
 caddy_template="$repo_root/docker/Caddyfile.template"
 host_caddy_target="${HOST_CADDYFILE_PATH:-/etc/caddy/Caddyfile}"
 render_caddy_script="$repo_root/scripts/render_caddyfile.py"
+runtime_guards_script="$repo_root/scripts/runtime_guards.sh"
+systemd_runtime_installer="$repo_root/scripts/install_systemd_runtime.sh"
+host_runtime_cutover_script="$repo_root/scripts/cutover_host_runtime.sh"
+host_runtime_rollback_script="$repo_root/scripts/rollback_host_runtime.sh"
 all_services=(postgres redis backend tusd frontend runner mediamtx)
 services=()
 tmp_dir="$(mktemp -d)"
@@ -19,6 +23,9 @@ cleanup() {
   rm -rf "$tmp_dir"
 }
 trap cleanup EXIT
+
+# shellcheck disable=SC1090
+source "$runtime_guards_script"
 
 registry_login() {
   if [[ -z "${REGISTRY_PASSWORD:-}" ]]; then
@@ -156,6 +163,92 @@ guard_stream_runtime() {
   if (( active_streams > 0 )); then
     echo "Active live stream detected; allowing frontend-only deploy without touching runtime services."
   fi
+}
+
+maybe_install_systemd_runtime_units() {
+  local install_units="${DEPLOY_INSTALL_SYSTEMD_UNITS:-0}"
+  if [[ "$install_units" != "1" ]]; then
+    return 0
+  fi
+
+  local runtime_mode="${STREAM_RUNTIME_MODE:-}"
+  runtime_mode="$(printf '%s' "$runtime_mode" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$runtime_mode" != "systemd" ]]; then
+    echo "Skipping systemd unit installation: STREAM_RUNTIME_MODE is not systemd."
+    return 0
+  fi
+
+  echo "Installing host-native systemd runtime unit files..."
+  local env_args=(
+    "SYSTEMD_TARGET_DIR=${SYSTEMD_TARGET_DIR:-/etc/systemd/system}"
+    "SYSTEMD_INSTALL_ROOT=${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}"
+    "SYSTEMD_SERVICE_USER=${SYSTEMD_SERVICE_USER:-streambot}"
+    "SYSTEMD_SERVICE_GROUP=${SYSTEMD_SERVICE_GROUP:-${SYSTEMD_SERVICE_USER:-streambot}}"
+    "SYSTEMD_ENABLE_BACKEND=${DEPLOY_ACTIVATE_HOST_BACKEND:-0}"
+  )
+  if [[ -n "${DEPLOY_ACTIVATE_STREAM_UNIT:-}" ]]; then
+    env_args+=("SYSTEMD_ENABLE_STREAM_UNIT=${DEPLOY_ACTIVATE_STREAM_UNIT}")
+  fi
+  run_as_root env "${env_args[@]}" "$systemd_runtime_installer"
+}
+
+maybe_run_host_runtime_cutover() {
+  local activate_cutover="${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"
+  if [[ "$activate_cutover" != "1" ]]; then
+    return 0
+  fi
+
+  local runtime_mode="${STREAM_RUNTIME_MODE:-}"
+  runtime_mode="$(printf '%s' "$runtime_mode" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$runtime_mode" != "systemd" ]]; then
+    echo "Skipping host runtime cutover: STREAM_RUNTIME_MODE is not systemd."
+    return 0
+  fi
+
+  echo "Running host-native runtime cutover helper..."
+  local env_args=(
+    "DOCKER_BIN=${DOCKER_BIN:-docker}"
+    "SYSTEMCTL_BIN=${SYSTEMCTL_BIN:-systemctl}"
+    "CURL_BIN=${CURL_BIN:-curl}"
+    "POSTGRES_CONTAINER_NAME=${POSTGRES_CONTAINER_NAME:-youtube-streaming-postgres}"
+    "BACKEND_CONTAINER_NAME=${BACKEND_CONTAINER_NAME:-youtube-streaming-backend}"
+    "RUNNER_CONTAINER_NAME=${RUNNER_CONTAINER_NAME:-youtube-streaming-runner}"
+    "HOST_BACKEND_UNIT_NAME=${HOST_BACKEND_UNIT_NAME:-youtube-backend}"
+    "HOST_BACKEND_HEALTH_URL=${HOST_BACKEND_HEALTH_URL:-http://127.0.0.1:8000/health}"
+    "CUTOVER_STOP_DOCKER_RUNTIME=${CUTOVER_STOP_DOCKER_RUNTIME:-1}"
+    "ALLOW_LIVE_STREAM_RUNTIME_CUTOVER=${ALLOW_LIVE_STREAM_RUNTIME_CUTOVER:-0}"
+  )
+  if [[ -n "${DEPLOY_CUTOVER_STREAM_UNIT:-}" ]]; then
+    env_args+=("HOST_STREAM_UNIT_NAME=${DEPLOY_CUTOVER_STREAM_UNIT}")
+  fi
+  run_as_root env "${env_args[@]}" "$host_runtime_cutover_script"
+}
+
+maybe_run_host_runtime_rollback() {
+  local activate_rollback="${DEPLOY_ROLLBACK_HOST_RUNTIME:-0}"
+  if [[ "$activate_rollback" != "1" ]]; then
+    return 0
+  fi
+
+  echo "Running host-native runtime rollback helper..."
+  local env_args=(
+    "COMPOSE_FILE=$compose_file"
+    "BACKEND_ENV=$backend_env"
+    "ROOT_ENV=$root_env"
+    "DOCKER_BIN=${DOCKER_BIN:-docker}"
+    "SYSTEMCTL_BIN=${SYSTEMCTL_BIN:-systemctl}"
+    "CURL_BIN=${CURL_BIN:-curl}"
+    "POSTGRES_CONTAINER_NAME=${POSTGRES_CONTAINER_NAME:-youtube-streaming-postgres}"
+    "HOST_BACKEND_UNIT_NAME=${HOST_BACKEND_UNIT_NAME:-youtube-backend}"
+    "DOCKER_BACKEND_HEALTH_URL=${DOCKER_BACKEND_HEALTH_URL:-http://127.0.0.1:8000/health}"
+    "ROLLBACK_START_DOCKER_RUNTIME=${ROLLBACK_START_DOCKER_RUNTIME:-1}"
+    "ROLLBACK_DOCKER_STREAM_RUNTIME_MODE=${ROLLBACK_DOCKER_STREAM_RUNTIME_MODE:-supervisor}"
+    "ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK=${ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK:-0}"
+  )
+  if [[ -n "${DEPLOY_ROLLBACK_STREAM_UNIT:-}" ]]; then
+    env_args+=("HOST_STREAM_UNIT_NAME=${DEPLOY_ROLLBACK_STREAM_UNIT}")
+  fi
+  run_as_root env "${env_args[@]}" "$host_runtime_rollback_script"
 }
 
 prepare_linux_persistence() {
@@ -335,6 +428,9 @@ echo "Validating compose config..."
 docker compose -f "$compose_file" config >/dev/null
 
 registry_login
+maybe_install_systemd_runtime_units
+maybe_run_host_runtime_rollback
+guard_containerized_systemd_runtime "${services[*]}"
 guard_stream_runtime
 echo "Deploying services via registry images pinned to ${deploy_ref}: ${services[*]}"
 docker compose -f "$compose_file" pull "${services[@]}"
@@ -359,6 +455,8 @@ fi
 if [[ "${DEPLOY_SYNC_HOST_CADDY:-0}" == "1" ]]; then
   sync_host_caddy
 fi
+
+maybe_run_host_runtime_cutover
 
 echo "Deployment complete for commit $(git rev-parse --short HEAD)"
 docker compose -f "$compose_file" ps

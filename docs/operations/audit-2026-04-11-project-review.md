@@ -1,167 +1,293 @@
 # Project Audit - 2026-04-11
 
 Repository: `/Users/trend/Documents/Work/youtube_translation`
-Scope: whole-project audit with emphasis on stream stability, upload reliability, runtime restart behavior, dashboard/operator UX, and alignment with official YouTube, FFmpeg, and tus documentation.
+Scope: whole-project and live-VPS audit with emphasis on stream resilience, multi-stream isolation, runner/runtime failure modes, operator visibility, and whether one stream or service failure can cascade into others.
 Result: `REQUEST CHANGES`
 
 ## Executive Summary
 
-The project is in a generally solid state: lint, type-check, i18n checks, frontend tests, and several critical backend stream/upload suites pass locally. I did not find a critical security failure in the reviewed paths.
+The project is materially stronger than in the previous audit pass. Several earlier concerns are now genuinely fixed in code:
 
-The main production concern is stream resilience under transient ingest/network failures. The current FFmpeg recovery configuration is real, but too narrowly budgeted. There are also visibility and operator-control gaps that can make incidents harder to detect and recover from.
+- FFmpeg output recovery is no longer capped to a tiny retry budget.
+- YouTube provider status already pulls `liveStreams.status.healthStatus` and `configurationIssues[]`.
+- The dashboard stop button now issues a real stop mutation and has a focused test.
+
+The main remaining production risk is not a single bad line of code. It is the current tranche-one deployment model:
+
+- all live FFmpeg workers still share one `runner` container on one VPS,
+- that container has no CPU, memory, or PID isolation,
+- degraded RTMPS transport behavior is visible in raw stream logs but is not elevated into operator-facing alerts while the stream keeps limping along,
+- MediaMTX is deployed but not actually in the publish path, so it is not helping with isolation or buffering.
+
+The current system already proves one useful property: an individual FFmpeg process can hit repeated YouTube-side `Broken pipe` / `Connection reset by peer` failures without immediately killing a sibling stream. But the broader shared-fate problem is still real: one overloaded `runner`, host issue, Docker issue, disk issue, or manual restart still has the power to impact all streams at once.
+
+## Implementation Progress Since This Audit
+
+The repository has already moved on several recommendations from this audit:
+
+- degraded-live runtime signals are now promoted into durable `stream_events` / `system_alerts` and surfaced in frontend operator state instead of living only in raw logs
+- `/api/metrics` capacity is now documented as heuristic, not authoritative production capacity
+- `containerized backend + STREAM_RUNTIME_MODE=systemd` is now fail-closed blocked in `staging`/`production` without explicit override
+- the repo now contains host-native Linux control-plane artifacts (`youtube-backend.service.example`, `streaming.slice.example`) plus repo-native installer/cutover/rollback helpers for future canary rollout
+
+Remaining top risks from this audit still apply until an actual host-native backend + per-stream `systemd` canary cutover is completed on the VPS.
+
+## Live VPS Verification
+
+Verification window: 2026-04-11, approximately 10:06-10:16 Europe/Kiev (`07:06-07:16 UTC`)
+
+Host facts gathered read-only from `root@51.75.65.6`:
+
+- Containers up: `youtube-streaming-backend`, `youtube-streaming-runner`, `youtube-streaming-frontend`, `youtube-streaming-postgres`, `youtube-streaming-tusd`, `youtube-streaming-redis`, `youtube-streaming-mediamtx`
+- Container restart counts: all `0`
+- OOM kills observed: none
+- Host shape: `4` vCPU, `7.6 GiB` RAM, `0` swap
+- Disk use on `/`: `61%`
+- Active live streams in DB: `2`
+- Active supervisor programs in runner: `2`
+
+Observed runtime state:
+
+- `supervisorctl` showed:
+  - `stream_3b5c06fd-f9f8-4acb-bae5-8db41f4d6dc1 RUNNING`
+  - `stream_9351356c-ac19-4f49-ada9-ce9feed946ce RUNNING`
+- DB lease ownership and heartbeat timestamps were moving forward over time for both streams.
+- Shared heartbeat files under `/opt/youtube_translation_data/streams/.runtime-heartbeats/` matched the DB lease owner `vps-d4ce4beb`.
+
+Observed resource usage:
+
+- sample 1: `runner 102.14% CPU / 1.325 GiB`, `backend 0.21% CPU`, `frontend 0.00% CPU`
+- sample 2: `runner 38.92% CPU / 1.306 GiB`, `backend 0.33% CPU`, `frontend 0.00% CPU`
+- sample 3: `runner 38.98% CPU / 1.306 GiB`, `backend 0.23% CPU`, `frontend 0.00% CPU`
+
+Observed stream-specific symptoms:
+
+- stream `3b5c06fd-...` had repeated:
+  - `IO error: Broken pipe`
+  - `IO error: Connection reset by peer`
+  - `Recovery successful`
+- stream `9351356c-...` had repeated:
+  - `Non-monotonic DTS`
+
+Observed visibility gaps:
+
+- `system_alerts` rows on VPS: `0`
+- `stream_events` rows on VPS: `16`
+- the stored `stream_events` were stop-oriented audit events, not degraded-live transport warnings
+- backend logs showed MediaMTX polling (`GET /v3/paths/list`, `GET /metrics`) and authenticated WebSocket usage, but MediaMTX itself reported `path_count = 0`
 
 ## Findings
 
 ### HIGH
 
-1. FFmpeg recovery budget is hard-capped low enough to terminate otherwise recoverable streams
+1. Shared `runner` topology still creates a single blast radius for all live streams
 
 Files:
-- `backend/app/streaming/ffmpeg_manager.py:112`
-- `backend/app/streaming/ffmpeg_manager.py:820`
+
+- `docker/docker-compose.yml:174`
+- `docs/ARCHITECTURE.md:123`
+- `docs/ARCHITECTURE.md:266`
+- `docs/operations/supervisor.md:22`
 
 Evidence:
-- `_build_tee_destination(...)` sets `attempt_recovery=1`, `recover_any_error=1`, `restart_with_keyframe=1`, and `max_recovery_attempts=3`.
-- The single-destination output path mirrors the same limit with `-max_recovery_attempts 3`.
+
+- All FFmpeg workers still run inside one `youtube-streaming-runner` container.
+- The architecture docs explicitly describe the supported tranche-one topology as one all-in-one node.
+- Live VPS verification showed two concurrent streams under one supervisor instance on one host.
 
 Risk:
-- A short series of transient upstream RTMP(S) failures can permanently terminate the FFmpeg publishing leg instead of self-healing.
-- This is the most important stream-stability issue found in the repository.
 
-Why this matters against docs:
-- FFmpeg explicitly documents fifo-based recovery for temporary output failures. The implementation uses the right mechanism, but the current cap is small for real-world ingest turbulence.
+- A `runner` crash, Docker daemon issue, host reboot, disk failure, or operator restart still threatens all streams together.
+- This is the biggest remaining gap against the requirement that one stream or service failure should not take down the others.
 
 Recommendation:
-- Treat recovery policy as an operationally tuned setting instead of a hardcoded tiny cap.
-- Re-verify behavior against representative packet loss / remote reset scenarios.
+
+- Treat current deployment as “process-isolated, host-shared”, not “stream-isolated”.
+- Do not market or rely on full stream isolation until worker placement is separated from single-container single-host failure domains.
+
+2. The shared `runner` has no container-level resource guardrails, so one pathological stream can degrade siblings
+
+Files:
+
+- `docker/docker-compose.yml:174`
+- `backend/scripts/start-runner.sh:1`
+
+Evidence:
+
+- `docker inspect youtube-streaming-runner` on VPS returned:
+  - `cpus=0`
+  - `mem=0`
+  - `pids=<no value>`
+- Live samples showed the shared runner using up to `102.14%` CPU and about `1.3 GiB` RAM with only two active streams.
+- Each stream is only supervisor-isolated inside the same container; there is no container/runtime quota wall between them.
+
+Risk:
+
+- A single high-bitrate or malformed stream can starve the shared runner and indirectly degrade other streams even if the sibling FFmpeg process itself is “correct”.
+- The risk rises sharply with 4K inputs, timestamp anomalies, reconnect storms, or future mixed/transcode paths.
+
+Recommendation:
+
+- Add resource isolation before promising stable many-user concurrency.
+- At minimum, make capacity claims reflect real measured runner cost rather than idealized copy-only assumptions.
+
+3. Degraded-but-still-running transport failures are not surfaced as operator alerts
+
+Files:
+
+- `backend/app/streaming/ffmpeg_manager.py:1383`
+- `backend/app/services/streams/control.py:851`
+- `frontend/src/lib/stream-state.ts:98`
+- `frontend/src/app/dashboard/streaming/page.tsx:585`
+
+Evidence:
+
+- Restart warning alerts are created only on FFmpeg exit/restart paths.
+- The logs API reads the tail of the file and optionally filters “important” lines, but it does not persist degraded-live incidents as alerts.
+- `deriveStreamState(...)` marks attention from restart/quota/provider health, not from repeated FFmpeg transport fault patterns.
+- Live VPS evidence showed dozens of `Broken pipe` / `Connection reset by peer` / `Recovery successful` lines on a running stream while:
+  - `system_alerts = 0`
+  - `stream_events` contained no degraded-live fault trail
+
+Risk:
+
+- Operators can miss a stream that is repeatedly dropping and recovering until it finally fails hard.
+- This weakens incident detection and can let one unstable stream burn runner resources for a long time without escalating.
+
+Recommendation:
+
+- Promote repeated remote output resets and repeated recovery cycles into stream-level degraded state and alerting.
+- Track “recovery storm” patterns, not only terminal exits.
 
 ### MEDIUM
 
-2. YouTube provider status ignores upstream health/configuration issues that the API already exposes
+4. MediaMTX is deployed and polled, but it is not in the publish path and currently provides no isolation benefit
 
 Files:
-- `backend/app/services/youtube/client.py:99`
-- `backend/app/services/youtube/provider_status.py:98`
+
+- `docker/docker-compose.yml:216`
+- `backend/app/core/mediamtx.py:119`
+- `docs/operations/mediamtx.md:64`
 
 Evidence:
-- The provider flow checks only active broadcast presence and `liveStreamingDetails.concurrentViewers`.
-- It does not fetch or surface `liveStreams.status.streamStatus`, `liveStreams.status.healthStatus.status`, or `configurationIssues[]`.
+
+- Live backend logs showed successful polling of MediaMTX control and metrics endpoints.
+- Live `fetch_mediamtx_summary()` output showed `reachable=true` but `path_count=0` and empty `active_paths`.
+- The docs explicitly state that backend does not route streams through MediaMTX automatically yet.
+- Active FFmpeg commands on the VPS were publishing directly to `rtmps://a.rtmp.youtube.com/live2/...`.
 
 Risk:
-- The app can present a stream as simply `live` while YouTube is already marking ingest quality or configuration as degraded.
-- Operators lose early warning for issues such as missing audio, invalid GOP/keyframe cadence, low bitrate, or other documented ingest problems.
+
+- MediaMTX currently improves observability readiness, but not stream isolation, buffering, or publish-path fault containment.
+- Its presence can be misread as an active media-plane safeguard when it is not.
 
 Recommendation:
-- Extend provider-status polling to include `liveStreams` health fields and preserve those signals in API/UI state.
 
-3. Dashboard stop control is misleading during incidents
+- Either route publish traffic through the media plane intentionally, or describe it very clearly as inactive-for-publish in production runbooks.
 
-File:
-- `frontend/src/app/dashboard/page.tsx:208`
-
-Evidence:
-- The `■ Зупинити` button only calls `router.push('/dashboard/streaming')`.
-- It does not trigger a stop mutation or `api.streams.stop(...)`.
-
-Risk:
-- An operator can believe they stopped an active stream when they only navigated to another page.
-- This is especially risky under time pressure.
-
-Recommendation:
-- Either wire the button to a real stop action with confirmation/error handling, or relabel it so it does not imply control of the stream lifecycle.
-
-4. Auto-restart defaults and reported runtime state diverge
+5. Durable managed restarts still depend on the backend control loop being alive
 
 Files:
-- `backend/app/core/config.py:112`
-- `backend/app/core/stream_runtime_restart.py:144`
-- `backend/app/schemas/api.py:501`
-- `backend/.env.example:94`
-- `docs/operations/supervisor.md:52`
+
+- `backend/app/main.py:221`
+- `backend/app/core/stream_reconciler.py:517`
+- `backend/app/streaming/ffmpeg_manager.py:1160`
 
 Evidence:
-- Code defaults to `stream_runtime_auto_restart_enabled=true` with `stream_runtime_restart_max_attempts=0`.
-- Runtime scheduling exits early when `max_attempts < 1`.
-- API restart-state shaping still derives `enabled` from the boolean feature flag first.
-- The example env and supervisor docs recommend nonzero restart attempts.
+
+- Persistent retry dispatch is driven by `periodic_stream_status_sync()` in the backend process every 10 seconds.
+- The runner process itself provides one local FFmpeg retry path (`FFMPEG_AUTO_RESTART_ATTEMPTS=1` on the live VPS), but durable DB-backed retry orchestration is backend-owned.
 
 Risk:
-- Default deployments may appear restart-capable while the scheduler is effectively disabled.
-- This creates confusing observability during failures and weakens the expected safety net.
+
+- A backend outage will not kill already-running streams, which is good.
+- But if a stream fails during a backend outage, recovery beyond the local FFmpeg retry budget waits for backend recovery.
 
 Recommendation:
-- Align defaults, runtime behavior, and exposed API state so "enabled" means restart is actually schedulable.
+
+- Document this boundary explicitly in the ops runbook.
+- Keep backend recovery fast, because it is part of the restart control plane even when media execution is offloaded to `runner`.
 
 ### LOW
 
-5. Architecture docs still describe SSE while the implementation is WebSocket-based
+6. The current `/api/metrics` capacity model is too optimistic for real production stream cost
 
 Files:
-- `docs/ARCHITECTURE.md:76`
-- `docs/ARCHITECTURE.md:119`
-- `docs/ARCHITECTURE.md:239`
-- `backend/app/api/routes/streams.py:85`
-- `frontend/src/app/dashboard/streaming/hooks/useStreamSocket.ts:9`
 
-Risk:
-- This mainly hurts debugging, onboarding, and incident response.
-
-Recommendation:
-- Update the architecture documentation to consistently describe WebSocket transport.
-
-6. Dashboard page coverage is shallow around incident-control behavior
-
-File:
-- `frontend/src/app/dashboard/__tests__/page.test.tsx:1`
+- `backend/app/api/routes/metrics.py:162`
 
 Evidence:
-- The current dashboard page test verifies rendering/basic loading only.
-- There is no targeted assertion that the stop control triggers a real stop action.
+
+- Capacity estimation assumes about `3.5%` CPU and `75 MB` RAM per stream.
+- Live VPS evidence showed one 4K stream alone consuming far more than that estimate.
 
 Risk:
-- Regressions in operator controls can ship unnoticed.
+
+- If this estimate is used for operational decisions later, it can overstate safe concurrency.
 
 Recommendation:
-- Add a focused test for active-stream controls on the dashboard.
+
+- Recalibrate estimates from live workload classes or label the result as a lightweight heuristic only.
+
+## Already Fixed Since Earlier Audit
+
+These previously reported issues appear fixed in the current repository:
+
+1. FFmpeg output recovery budget is no longer hard-capped low
+
+- `backend/app/core/config.py:78` now defaults `ffmpeg_output_recovery_max_attempts` to `0`
+- `backend/app/streaming/ffmpeg_manager.py:112`
+- `backend/app/streaming/ffmpeg_manager.py:821`
+
+2. YouTube provider health/configuration issues are already surfaced
+
+- `backend/app/services/youtube/client.py:128`
+- `backend/app/services/youtube/provider_status.py:128`
+
+3. Dashboard stop control now performs a real stop mutation
+
+- `frontend/src/app/dashboard/page.tsx:226`
+- `frontend/src/app/dashboard/__tests__/page.test.tsx:128`
 
 ## What Looks Good
 
-- tus upload flow appears aligned with the tus 1.0 protocol in the reviewed paths.
-- `backend/tusd-hooks/post-finish` is defensive and idempotent.
-- Stream runtime/restart logic has dedicated backend coverage.
-- WebSocket stream update handling has targeted frontend and backend tests.
+- FFmpeg output recovery is configured in the right direction for transient RTMPS failures.
+- Running streams survive backend restarts conceptually because execution is separated into the runner.
+- Heartbeat + DB lease ownership are alive and coherent on the VPS.
+- The stop flow is audited and leaves a durable operator trail.
+- Provider health information is now modeled end-to-end in code.
+- `/api/metrics/` is admin-protected; unauthenticated probing returned `401` on the live VPS.
 
 ## Verification Performed
 
-Passed:
+Repository verification:
+
 - `make lint RUN_BLACK=1`
 - `make type-check RUN_MYPY=1`
-- `make i18n-check`
-- `cd frontend && CI=1 npm test`
-- `backend/.venv/bin/python -m pytest backend/tests/test_youtube_provider_status.py -q`
-- `backend/.venv/bin/python -m pytest backend/tests/test_ffmpeg_manager.py -q`
-- `backend/.venv/bin/python -m pytest backend/tests/test_upload_finalization.py -q`
-- `backend/.venv/bin/python -m pytest backend/tests/test_stream_runtime_restart.py -q`
-- `cd frontend && CI=1 npm test -- --runTestsByPath src/app/dashboard/__tests__/page.test.tsx src/app/dashboard/streaming/hooks/__tests__/useStreamSocket.test.tsx`
-- `POSTGRES_PASSWORD=... docker compose -f docker/docker-compose.yml config`
+- `backend/.venv/bin/python -m pytest backend/tests/test_ffmpeg_manager.py backend/tests/test_stream_runtime_restart.py backend/tests/test_youtube_provider_status.py backend/tests/test_stream_runtime_config.py -q`
+- `cd frontend && CI=1 npm test -- --runTestsByPath src/app/dashboard/__tests__/page.test.tsx src/app/dashboard/streaming/__tests__/log-audit.test.ts src/lib/__tests__/stream-state.test.ts src/lib/__tests__/provider-status.test.ts`
 
-Blocked:
-- Full Docker-backed backend suite could not be completed because the local Docker daemon was unavailable during this audit run.
+Live VPS verification:
 
-## Primary Documentation Used
+- `docker ps`
+- `docker inspect` for restart/OOM/health
+- `docker stats --no-stream` sampled repeatedly
+- `supervisorctl status`
+- Postgres queries for stream status, lease ownership, heartbeat timestamps, stream events, and alerts
+- direct inspection of heartbeat JSON files
+- direct inspection of per-stream `stream.log`
+- backend log inspection for WebSocket, MediaMTX polling, and `/api/metrics/` auth behavior
 
-- YouTube RTMPS ingestion guide: <https://developers.google.com/youtube/v3/live/guides/rtmps-ingestion>
-- YouTube `liveStreams` reference: <https://developers.google.com/youtube/v3/live/docs/liveStreams>
-- YouTube health status messages: <https://developers.google.com/youtube/v3/live/docs/liveStreams/health_status_messages>
-- YouTube encoder settings: <https://support.google.com/youtube/answer/2853702>
-- tus resumable upload protocol 1.0: <https://tus.io/protocols/resumable-upload>
-- FFmpeg main docs: <https://ffmpeg.org/ffmpeg.html>
-- FFmpeg protocol docs: <https://ffmpeg.org/ffmpeg-protocols.html>
+Not performed:
+
+- no destructive tests on the VPS
+- no forced stream crashes
+- no service restarts during live traffic
 
 ## Suggested Fix Order
 
-1. Raise or externalize FFmpeg recovery budgets and validate with fault-injection style tests.
-2. Surface YouTube stream health/configuration issues in provider status and UI.
-3. Fix or relabel the dashboard stop control.
-4. Align auto-restart defaults with actual runtime behavior and API semantics.
-5. Refresh architecture docs and add targeted dashboard control coverage.
+1. Reduce shared-fate risk around the `runner` execution plane.
+2. Surface degraded-live transport failures as alerts before terminal failure.
+3. Add real resource guardrails for runner workloads.
+4. Decide whether MediaMTX is production-observability only or part of the actual publish topology.
+5. Recalibrate or clearly de-scope capacity estimation logic.

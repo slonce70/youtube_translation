@@ -13,10 +13,45 @@ from sqlalchemy import select, text
 
 from app.core.config import settings
 from app.core.database import async_session_maker
-from app.models.database import Stream, SystemAlert, UserProfile
+from app.models.database import Stream, StreamEvent, SystemAlert, UserProfile
 from app.streaming.ffmpeg_manager import FFmpegStreamManager
 from app.streaming.hot_swap import hot_swap_manager
 from app.streaming.playlist_builder import PlaylistFileSet
+
+
+class _FakeStreamReader:
+    def __init__(self, lines):
+        self._lines = [line.encode("utf-8") + b"\n" for line in lines] + [b""]
+
+    async def readline(self):
+        return self._lines.pop(0)
+
+
+class _FakeProcess:
+    def __init__(self, lines):
+        self.stderr = _FakeStreamReader(lines)
+
+
+async def _create_owned_stream_record(*, user_id, stream_id, log_file, name, email_prefix):
+    async with async_session_maker() as session:
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"{email_prefix}-{uuid4()}@example.com",
+                subscription_tier="free",
+                subscription_status="active",
+            )
+        )
+        session.add(
+            Stream(
+                id=stream_id,
+                user_id=user_id,
+                name=name,
+                status="running",
+                log_path=str(log_file),
+            )
+        )
+        await session.commit()
 
 
 class TestFFmpegStreamManager:
@@ -912,3 +947,191 @@ class TestFFmpegStreamManagerMonitor:
 
         with pytest.raises(ValueError):
             await manager.restart_stream(stream_id, playlists)
+
+
+@pytest.mark.asyncio
+async def test_write_logs_persists_degraded_remote_reset_alert_once(tmp_path):
+    user_id = uuid4()
+    stream_id = uuid4()
+    log_file = tmp_path / "remote-reset.log"
+
+    await _create_owned_stream_record(
+        user_id=user_id,
+        stream_id=stream_id,
+        log_file=log_file,
+        name="remote reset stream",
+        email_prefix="reset",
+    )
+
+    manager = FFmpegStreamManager()
+    manager.stream_info[str(stream_id)] = {
+        "metadata": {"user_id": str(user_id)},
+        "log_file": str(log_file),
+        "recent_errors": deque(maxlen=20),
+        "runtime_signal_state": {},
+    }
+
+    process = _FakeProcess(
+        [
+            "Connection reset by peer",
+            "Error writing trailer",
+            "Broken pipe",
+            "Connection reset by peer",
+        ]
+    )
+
+    await manager._write_logs_to_file(str(stream_id), process, log_file)
+
+    async with async_session_maker() as session:
+        alerts = (
+            (
+                await session.execute(
+                    select(SystemAlert)
+                    .where(SystemAlert.stream_id == stream_id)
+                    .order_by(SystemAlert.created_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        events = (
+            (
+                await session.execute(
+                    select(StreamEvent)
+                    .where(StreamEvent.stream_id == stream_id)
+                    .order_by(StreamEvent.created_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert len(alerts) == 1
+    assert len(events) == 1
+    assert alerts[0].alert_type == "ffmpeg_error"
+    assert alerts[0].details["signal"] == "remote_output_reset"
+    assert alerts[0].details["status"] == "degraded_running"
+    assert alerts[0].details["occurrence_count"] >= 3
+    assert events[0].event_metadata["signal"] == "remote_output_reset"
+    assert events[0].event_metadata["threshold"] == 3
+
+
+@pytest.mark.asyncio
+async def test_write_logs_persists_recovery_storm_alert(tmp_path):
+    user_id = uuid4()
+    stream_id = uuid4()
+    log_file = tmp_path / "recovery-storm.log"
+
+    await _create_owned_stream_record(
+        user_id=user_id,
+        stream_id=stream_id,
+        log_file=log_file,
+        name="recovery storm stream",
+        email_prefix="storm",
+    )
+
+    manager = FFmpegStreamManager()
+    manager.stream_info[str(stream_id)] = {
+        "metadata": {"user_id": str(user_id)},
+        "log_file": str(log_file),
+        "recent_errors": deque(maxlen=20),
+        "runtime_signal_state": {},
+    }
+
+    process = _FakeProcess(
+        [
+            "Connection reset by peer",
+            "Recovery successful",
+            "Broken pipe",
+            "Recovery successful",
+            "Error writing trailer",
+            "Recovery successful",
+        ]
+    )
+
+    await manager._write_logs_to_file(str(stream_id), process, log_file)
+
+    async with async_session_maker() as session:
+        alerts = (
+            (
+                await session.execute(
+                    select(SystemAlert)
+                    .where(SystemAlert.stream_id == stream_id)
+                    .order_by(SystemAlert.created_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    signals = [alert.details["signal"] for alert in alerts]
+    assert all(alert.alert_type == "ffmpeg_error" for alert in alerts)
+    assert "remote_output_reset" in signals
+    assert "recovery_storm" in signals
+
+    storm_alert = next(alert for alert in alerts if alert.details["signal"] == "recovery_storm")
+    assert storm_alert.details["remote_output_reset_count"] >= 3
+    assert storm_alert.details["recovery_success_count"] >= 3
+
+
+@pytest.mark.asyncio
+async def test_write_logs_persists_non_monotonic_dts_alert(tmp_path):
+    user_id = uuid4()
+    stream_id = uuid4()
+    log_file = tmp_path / "non-monotonic.log"
+
+    await _create_owned_stream_record(
+        user_id=user_id,
+        stream_id=stream_id,
+        log_file=log_file,
+        name="dts stream",
+        email_prefix="dts",
+    )
+
+    manager = FFmpegStreamManager()
+    manager.stream_info[str(stream_id)] = {
+        "metadata": {"user_id": str(user_id)},
+        "log_file": str(log_file),
+        "recent_errors": deque(maxlen=20),
+        "runtime_signal_state": {},
+    }
+
+    process = _FakeProcess(
+        [
+            "Non-monotonic DTS; previous: 1000, current: 999; changing to 1001.",
+            "Non-monotonic DTS; previous: 1001, current: 1000; changing to 1002.",
+            "Non-monotonic DTS; previous: 1002, current: 1001; changing to 1003.",
+            "Non-monotonic DTS; previous: 1003, current: 1002; changing to 1004.",
+            "Non-monotonic DTS; previous: 1004, current: 1003; changing to 1005.",
+        ]
+    )
+
+    await manager._write_logs_to_file(str(stream_id), process, log_file)
+
+    async with async_session_maker() as session:
+        alert = (
+            (
+                await session.execute(
+                    select(SystemAlert).where(
+                        SystemAlert.stream_id == stream_id,
+                        SystemAlert.alert_type == "ffmpeg_error",
+                    )
+                )
+            )
+            .scalars()
+            .one()
+        )
+        event = (
+            (
+                await session.execute(
+                    select(StreamEvent).where(StreamEvent.stream_id == stream_id)
+                )
+            )
+            .scalars()
+            .one()
+        )
+
+    assert alert.details["signal"] == "non_monotonic_dts"
+    assert alert.alert_type == "ffmpeg_error"
+    assert alert.details["occurrence_count"] == 5
+    assert event.event_metadata["signal"] == "non_monotonic_dts"
