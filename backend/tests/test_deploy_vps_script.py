@@ -156,6 +156,35 @@ def test_deploy_vps_script_aligns_host_storage_env_for_active_backend(tmp_path) 
     assert "aligning backend/.env storage dirs" in result.stdout
 
 
+def test_deploy_vps_script_reinstalls_systemd_runtime_for_active_host_backend(tmp_path) -> None:
+    script = _script_path()
+    fake_installer = tmp_path / "install_systemd_runtime.sh"
+    fake_installer.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                "STREAM_RUNTIME_MODE=systemd; "
+                "DEPLOY_RESTART_HOST_BACKEND=true; "
+                f"systemd_runtime_installer='{fake_installer}'; "
+                "host_backend_is_active(){ return 0; }; "
+                "run_as_root(){ printf '%s\\n' \"$*\"; }; "
+                "maybe_install_systemd_runtime_units"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SYSTEMD_INSTALL_POLKIT=1" in result.stdout
+    assert str(fake_installer) in result.stdout
+
+
 def test_deploy_vps_diagnostics_runs_readiness_script_via_bash_when_not_executable(
     tmp_path,
 ) -> None:
