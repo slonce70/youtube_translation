@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.quota import QuotaEnforcer
-from app.models.database import Asset, UploadIngest
+from app.models.database import Asset, AssetFolderLink, MediaFolder, UploadIngest
 from app.schemas.api import ALLOWED_ASSET_TYPES
 
 from .storage import apply_storage_delta
@@ -274,11 +274,56 @@ class AssetUploadService:
         apply_stream_summary_fields(asset, summary_meta)
         self.db.add(asset)
         await self.db.flush()
+        await self._attach_asset_to_requested_folder(
+            asset=asset,
+            asset_owner_id=asset_owner_id,
+            meta_payload=meta_payload,
+        )
         logger.info(
             "Created asset %s from tusd webhook for user %s", asset.id, asset_owner_id
         )
 
         return asset
+
+    async def _attach_asset_to_requested_folder(
+        self,
+        *,
+        asset: Asset,
+        asset_owner_id: UUID,
+        meta_payload: Dict[str, Any],
+    ) -> None:
+        folder_id_raw = meta_payload.get("folder_id")
+        if not isinstance(folder_id_raw, str) or not folder_id_raw.strip():
+            return
+
+        try:
+            folder_id = UUID(folder_id_raw.strip())
+        except ValueError:
+            logger.warning(
+                "Ignoring invalid folder_id %r for upload asset %s",
+                folder_id_raw,
+                asset.id,
+            )
+            return
+
+        folder_result = await self.db.execute(
+            select(MediaFolder).where(
+                MediaFolder.id == folder_id,
+                MediaFolder.user_id == asset_owner_id,
+            )
+        )
+        folder = folder_result.scalar_one_or_none()
+        if folder is None:
+            logger.warning(
+                "Skipping missing folder %s for upload asset %s owned by %s",
+                folder_id,
+                asset.id,
+                asset_owner_id,
+            )
+            return
+
+        self.db.add(AssetFolderLink(asset_id=asset.id, folder_id=folder.id))
+        await self.db.flush()
 
     async def _generate_thumbnail(self, asset: Asset, file_path: Path) -> Optional[str]:
         thumbnails_dir = Path(settings.upload_dir) / "thumbnails"

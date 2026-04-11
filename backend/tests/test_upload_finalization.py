@@ -13,13 +13,13 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.api.routes import assets as assets_routes
 from app.core.config import settings
 from app.core.database import _apply_schema_changes, async_session_maker, engine
 from app.core.quota import QuotaExceededError
-from app.models.database import Asset, UploadIngest, UserProfile
+from app.models.database import Asset, AssetFolderLink, MediaFolder, UploadIngest, UserProfile
 from app.schemas.api import AssetCreate, UploadIngestResponse
 from app.services.assets.service import AssetService
 from app.services.assets.service import UploadTokenService
@@ -51,11 +51,14 @@ def _build_payload(
     file_path: Path,
     filename: str,
     storage_info_path: Path | None = None,
+    folder_id: str | None = None,
 ):
     metadata = {
         "filename": filename,
         "asset_type": "video",
     }
+    if folder_id is not None:
+        metadata["folder_id"] = folder_id
     if token is not None:
         metadata["upload_token"] = token
 
@@ -86,6 +89,15 @@ async def _create_user(session, *, user_id):
     session.add(profile)
     await session.commit()
     return profile
+
+
+async def _require_table(session, table_name: str) -> None:
+    result = await session.execute(
+        text("SELECT to_regclass(:table_name)"),
+        {"table_name": f"public.{table_name}"},
+    )
+    if not result.scalar():
+        pytest.skip(f"{table_name} table not available in this test environment")
 
 
 def _build_expired_upload_token(user_id):
@@ -169,6 +181,148 @@ async def test_upload_complete_persists_ingest_and_asset(tmp_path, monkeypatch):
             assert user.current_storage_bytes == file_size
             assert (upload_root / str(user_id) / upload_id).exists()
             assert not temp_file.exists()
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
+@pytest.mark.asyncio
+async def test_upload_complete_links_asset_to_requested_folder(tmp_path, monkeypatch):
+    user_id = uuid4()
+    upload_id = f"upload-folder-link-{uuid4()}"
+    upload_root = tmp_path / "uploads"
+    temp_dir = upload_root / "_temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_file = temp_dir / upload_id
+    temp_file.write_bytes(b"fake-video")
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
+
+    async def _thumbnail_skip(**_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.generate_video_thumbnail",
+        _thumbnail_skip,
+    )
+
+    try:
+        async with async_session_maker() as session:
+            await _require_table(session, "media_folders")
+            await _require_table(session, "asset_folder_links")
+            await _create_user(session, user_id=user_id)
+
+            root = MediaFolder(user_id=user_id, name="root", is_root=True)
+            session.add(root)
+            await session.flush()
+
+            folder = MediaFolder(
+                user_id=user_id,
+                parent_id=root.id,
+                name="Highlights",
+                is_root=False,
+            )
+            session.add(folder)
+            await session.commit()
+
+            token = UploadTokenService(user_id).create_token().token
+            service = AssetUploadService(session)
+
+            response = await service.handle_upload_complete(
+                _build_payload(
+                    upload_id=upload_id,
+                    token=token,
+                    file_path=temp_file,
+                    filename="foldered.mp4",
+                    folder_id=str(folder.id),
+                )
+            )
+
+            assert response["success"] is True
+
+            ingest = (
+                (
+                    await session.execute(
+                        select(UploadIngest).where(UploadIngest.upload_id == upload_id)
+                    )
+                )
+                .scalars()
+                .one()
+            )
+
+            links = await session.execute(
+                select(AssetFolderLink.folder_id).where(
+                    AssetFolderLink.asset_id == ingest.asset_id
+                )
+            )
+            assert links.scalars().all() == [folder.id]
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
+@pytest.mark.asyncio
+async def test_upload_complete_ignores_missing_folder_id(tmp_path, monkeypatch):
+    user_id = uuid4()
+    upload_id = f"upload-missing-folder-{uuid4()}"
+    upload_root = tmp_path / "uploads"
+    temp_dir = upload_root / "_temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_file = temp_dir / upload_id
+    temp_file.write_bytes(b"fake-video")
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
+
+    async def _thumbnail_skip(**_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.generate_video_thumbnail",
+        _thumbnail_skip,
+    )
+
+    try:
+        async with async_session_maker() as session:
+            await _require_table(session, "media_folders")
+            await _require_table(session, "asset_folder_links")
+            await _create_user(session, user_id=user_id)
+            token = UploadTokenService(user_id).create_token().token
+            service = AssetUploadService(session)
+
+            response = await service.handle_upload_complete(
+                _build_payload(
+                    upload_id=upload_id,
+                    token=token,
+                    file_path=temp_file,
+                    filename="fallback.mp4",
+                    folder_id=str(uuid4()),
+                )
+            )
+
+            assert response["success"] is True
+
+            ingest = (
+                (
+                    await session.execute(
+                        select(UploadIngest).where(UploadIngest.upload_id == upload_id)
+                    )
+                )
+                .scalars()
+                .one()
+            )
+
+            links = await session.execute(
+                select(AssetFolderLink.folder_id).where(
+                    AssetFolderLink.asset_id == ingest.asset_id
+                )
+            )
+            assert links.scalars().all() == []
     finally:
         settings.upload_dir = original_upload_dir
 
