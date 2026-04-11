@@ -1,4 +1,5 @@
 import subprocess
+import stat
 from pathlib import Path
 
 
@@ -237,3 +238,54 @@ def test_deploy_vps_aligns_repo_storage_paths_to_persistent_symlinks(tmp_path) -
     assert logs_dir.resolve() == host_logs_dir.resolve()
     assert supervisord_dir.resolve() == host_supervisord_dir.resolve()
     assert (host_uploads_dir / "legacy.mp4").read_text(encoding="utf-8") == "video"
+
+
+def test_deploy_vps_aligns_host_storage_permissions_for_service_group(tmp_path) -> None:
+    script = _script_path()
+    current_group = subprocess.run(
+        ["id", "-gn"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    uploads_dir = tmp_path / "persistent" / "uploads"
+    user_dir = uploads_dir / "user-1"
+    user_dir.mkdir(parents=True, exist_ok=True)
+    media_file = user_dir / "clip.mp4"
+    media_file.write_text("video", encoding="utf-8")
+    user_dir.chmod(0o700)
+    media_file.chmod(0o600)
+
+    streams_dir = tmp_path / "persistent" / "streams"
+    logs_dir = tmp_path / "persistent" / "logs"
+    supervisord_dir = tmp_path / "persistent" / "supervisord"
+    for directory in (streams_dir, logs_dir, supervisord_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+        directory.chmod(0o700)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                "uname(){ echo Linux; }; "
+                "run_as_root(){ \"$@\"; }; "
+                f"HOST_UPLOADS_DIR='{uploads_dir}'; "
+                f"HOST_STREAMS_DIR='{streams_dir}'; "
+                f"HOST_LOGS_DIR='{logs_dir}'; "
+                f"HOST_SUPERVISORD_DIR='{supervisord_dir}'; "
+                f"SYSTEMD_SERVICE_GROUP='{current_group}'; "
+                "align_host_storage_permissions"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert stat.S_IMODE(user_dir.stat().st_mode) & 0o070 == 0o070
+    assert stat.S_IMODE(media_file.stat().st_mode) & 0o060 == 0o060
+    assert stat.S_IMODE(uploads_dir.stat().st_mode) & stat.S_ISGID == stat.S_ISGID
