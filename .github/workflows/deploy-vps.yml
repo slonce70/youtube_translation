@@ -130,6 +130,8 @@ jobs:
             done
           ')"
           host_backend_active="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet youtube-backend; then echo true; else echo false; fi")"
+          host_backend_unit_present="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "if [[ -f /etc/systemd/system/youtube-backend.service ]]; then echo true; else echo false; fi")"
+          configured_stream_runtime_mode="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && awk -F= '/^[[:space:]]*STREAM_RUNTIME_MODE=/{print tolower(\\$2); exit}' backend/.env 2>/dev/null || true")"
           vps_checkout_sha="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && git rev-parse HEAD 2>/dev/null || true")"
 
           current_backend_sha=''
@@ -156,6 +158,8 @@ jobs:
             echo "current_frontend_sha=$current_frontend_sha"
             echo "current_tusd_sha=$current_tusd_sha"
             echo "host_backend_active=$host_backend_active"
+            echo "host_backend_unit_present=$host_backend_unit_present"
+            echo "configured_stream_runtime_mode=$configured_stream_runtime_mode"
             echo "vps_checkout_sha=$vps_checkout_sha"
             echo 'remote_state<<EOF'
             printf '%s\n' "$remote_state"
@@ -172,6 +176,8 @@ jobs:
             fi
             echo "- VPS checkout SHA: \`$vps_checkout_sha\`"
             echo "- Host-native backend active: \`$host_backend_active\`"
+            echo "- Host-native backend unit present: \`$host_backend_unit_present\`"
+            echo "- Configured stream runtime mode: \`${configured_stream_runtime_mode:-unset}\`"
             echo "- Target SHA: \`$TARGET_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -183,6 +189,8 @@ jobs:
           CURRENT_FRONTEND_SHA: ${{ steps.prod_state.outputs.current_frontend_sha }}
           CURRENT_TUSD_SHA: ${{ steps.prod_state.outputs.current_tusd_sha }}
           HOST_BACKEND_ACTIVE: ${{ steps.prod_state.outputs.host_backend_active }}
+          HOST_BACKEND_UNIT_PRESENT: ${{ steps.prod_state.outputs.host_backend_unit_present }}
+          CONFIGURED_STREAM_RUNTIME_MODE: ${{ steps.prod_state.outputs.configured_stream_runtime_mode }}
           VPS_CHECKOUT_SHA: ${{ steps.prod_state.outputs.vps_checkout_sha }}
         run: |
           set -euo pipefail
@@ -216,13 +224,14 @@ jobs:
           backend_pattern='^(backend/|docker/docker-compose\.yml$|docker/Caddyfile(\.template)?$|docker/mediamtx\.yml$|scripts/render_caddyfile\.py$)'
           tusd_pattern='^(backend/tusd-hooks/|docker/tusd\.Dockerfile$|docker/docker-compose\.yml$)'
           infra_pattern='^(docker/docker-compose\.yml$|docker/Caddyfile(\.template)?$|docker/mediamtx\.yml$|scripts/render_caddyfile\.py$)'
-          host_runtime_pattern='^(backend/|scripts/(deploy_vps|install_systemd_runtime|provision_host_native_backend_venv|run_stream_systemd|check_host_runtime_readiness|cutover_host_runtime|rollback_host_runtime)\.sh$|docs/systemd/)'
+          host_runtime_pattern='^(backend/|scripts/(deploy_vps|install_systemd_runtime|provision_host_native_backend_venv|run_stream_systemd|check_host_runtime_readiness|cutover_host_runtime|rollback_host_runtime|runtime_guards)\.sh$|docs/systemd/)'
 
           frontend_needs_deploy=false
           backend_needs_deploy=false
           tusd_needs_deploy=false
           infra_needs_deploy=false
           host_runtime_needs_refresh=false
+          host_runtime_managed=false
 
           effective_frontend_sha="${CURRENT_FRONTEND_SHA:-$VPS_CHECKOUT_SHA}"
           effective_backend_sha="${CURRENT_BACKEND_SHA:-$VPS_CHECKOUT_SHA}"
@@ -244,7 +253,11 @@ jobs:
             infra_needs_deploy=true
           fi
 
-          if [[ "$HOST_BACKEND_ACTIVE" == 'true' ]] && diff_has_paths "$effective_backend_sha" "$host_runtime_pattern"; then
+          if [[ "$HOST_BACKEND_ACTIVE" == 'true' || "$HOST_BACKEND_UNIT_PRESENT" == 'true' || "$CONFIGURED_STREAM_RUNTIME_MODE" == 'systemd' ]]; then
+            host_runtime_managed=true
+          fi
+
+          if [[ "$host_runtime_managed" == 'true' ]] && diff_has_paths "$effective_backend_sha" "$host_runtime_pattern"; then
             host_runtime_needs_refresh=true
           fi
 
@@ -252,14 +265,14 @@ jobs:
           sync_host_caddy=0
 
           if [[ "$infra_needs_deploy" == 'true' ]]; then
-            if [[ "$HOST_BACKEND_ACTIVE" == 'true' ]]; then
+            if [[ "$host_runtime_managed" == 'true' ]]; then
               services=(postgres redis tusd frontend mediamtx)
             else
               services=(postgres redis backend tusd frontend runner mediamtx)
             fi
             sync_host_caddy=1
           else
-            if [[ "$backend_needs_deploy" == 'true' && "$HOST_BACKEND_ACTIVE" != 'true' ]]; then
+            if [[ "$backend_needs_deploy" == 'true' && "$host_runtime_managed" != 'true' ]]; then
               add_service backend
               add_service runner
             fi
@@ -279,11 +292,16 @@ jobs:
           restart_host_backend=false
           install_systemd_units=false
           prepare_host_native=false
+          cutover_host_runtime=false
 
           if [[ "$host_runtime_needs_refresh" == 'true' ]]; then
-            restart_host_backend=true
             install_systemd_units=true
             prepare_host_native=true
+            if [[ "$HOST_BACKEND_ACTIVE" == 'true' ]]; then
+              restart_host_backend=true
+            else
+              cutover_host_runtime=true
+            fi
           fi
 
           if [[ "${#services[@]}" -gt 0 ]]; then
@@ -305,6 +323,7 @@ jobs:
             echo "tusd_needs_deploy=$tusd_needs_deploy"
             echo "infra_needs_deploy=$infra_needs_deploy"
             echo "host_runtime_needs_refresh=$host_runtime_needs_refresh"
+            echo "host_runtime_managed=$host_runtime_managed"
             echo "frontend_only_deploy=$frontend_only_deploy"
             echo "deploy_services=$deploy_services"
             echo "deploy_services_csv=$deploy_services_csv"
@@ -313,6 +332,7 @@ jobs:
             echo "restart_host_backend=$restart_host_backend"
             echo "install_systemd_units=$install_systemd_units"
             echo "prepare_host_native=$prepare_host_native"
+            echo "cutover_host_runtime=$cutover_host_runtime"
           } >> "$GITHUB_OUTPUT"
 
           {
@@ -323,7 +343,10 @@ jobs:
             echo "- tusd update needed: \`$tusd_needs_deploy\`"
             echo "- Infra sync needed: \`$infra_needs_deploy\`"
             echo "- Host runtime refresh needed: \`$host_runtime_needs_refresh\`"
+            echo "- Host runtime managed: \`$host_runtime_managed\`"
             echo "- Host-native backend active: \`$HOST_BACKEND_ACTIVE\`"
+            echo "- Host-native backend unit present: \`$HOST_BACKEND_UNIT_PRESENT\`"
+            echo "- Configured stream runtime mode: \`${CONFIGURED_STREAM_RUNTIME_MODE:-unset}\`"
             echo "- Planned services: \`${deploy_services:-none}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -404,6 +427,7 @@ jobs:
           DEPLOY_RESTART_HOST_BACKEND: ${{ steps.impact.outputs.restart_host_backend }}
           DEPLOY_INSTALL_SYSTEMD_UNITS: ${{ steps.impact.outputs.install_systemd_units }}
           DEPLOY_PREPARE_HOST_NATIVE: ${{ steps.impact.outputs.prepare_host_native }}
+          DEPLOY_CUTOVER_HOST_RUNTIME: ${{ steps.impact.outputs.cutover_host_runtime }}
         run: |
           ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
-            "export GITHUB_SHA='$GITHUB_SHA' REGISTRY_HOST='ghcr.io' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASSWORD='$REGISTRY_PASSWORD' BACKEND_IMAGE='ghcr.io/slonce70/youtube_translation-backend:$GITHUB_SHA' FRONTEND_IMAGE='ghcr.io/slonce70/youtube_translation-frontend:$GITHUB_SHA' TUSD_IMAGE='ghcr.io/slonce70/youtube_translation-tusd:$GITHUB_SHA' DEPLOY_SERVICES='$DEPLOY_SERVICES' DEPLOY_SYNC_HOST_CADDY='$DEPLOY_SYNC_HOST_CADDY' DEPLOY_SKIP_DOCKER='$DEPLOY_SKIP_DOCKER' DEPLOY_RESTART_HOST_BACKEND='$DEPLOY_RESTART_HOST_BACKEND' DEPLOY_INSTALL_SYSTEMD_UNITS='$DEPLOY_INSTALL_SYSTEMD_UNITS' DEPLOY_PREPARE_HOST_NATIVE='$DEPLOY_PREPARE_HOST_NATIVE'; git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
+            "export GITHUB_SHA='$GITHUB_SHA' REGISTRY_HOST='ghcr.io' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASSWORD='$REGISTRY_PASSWORD' BACKEND_IMAGE='ghcr.io/slonce70/youtube_translation-backend:$GITHUB_SHA' FRONTEND_IMAGE='ghcr.io/slonce70/youtube_translation-frontend:$GITHUB_SHA' TUSD_IMAGE='ghcr.io/slonce70/youtube_translation-tusd:$GITHUB_SHA' DEPLOY_SERVICES='$DEPLOY_SERVICES' DEPLOY_SYNC_HOST_CADDY='$DEPLOY_SYNC_HOST_CADDY' DEPLOY_SKIP_DOCKER='$DEPLOY_SKIP_DOCKER' DEPLOY_RESTART_HOST_BACKEND='$DEPLOY_RESTART_HOST_BACKEND' DEPLOY_INSTALL_SYSTEMD_UNITS='$DEPLOY_INSTALL_SYSTEMD_UNITS' DEPLOY_PREPARE_HOST_NATIVE='$DEPLOY_PREPARE_HOST_NATIVE' DEPLOY_CUTOVER_HOST_RUNTIME='$DEPLOY_CUTOVER_HOST_RUNTIME'; git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
