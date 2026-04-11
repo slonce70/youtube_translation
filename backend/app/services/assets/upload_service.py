@@ -20,7 +20,7 @@ from app.core.quota import QuotaEnforcer
 from app.models.database import Asset, AssetFolderLink, MediaFolder, UploadIngest
 from app.schemas.api import ALLOWED_ASSET_TYPES
 
-from .storage import apply_storage_delta
+from .storage import apply_storage_delta, remap_legacy_user_upload_path
 from .thumbnails import generate_video_thumbnail
 from .utils import (
     apply_stream_summary_fields,
@@ -82,7 +82,7 @@ class AssetUploadService:
 
         try:
             file_path = await self._resolve_file_path(
-                storage_payload, upload_meta, upload_id
+                storage_payload, upload_meta, upload_id, asset_owner_id
             )
             if not file_path:
                 raise HTTPException(
@@ -631,13 +631,25 @@ class AssetUploadService:
         storage_payload: Dict[str, Any],
         upload_meta: Dict[str, Any],
         upload_id: Optional[str],
+        user_id: UUID,
     ) -> Optional[Path]:
         async def resolve() -> Optional[Path]:
+            upload_root = Path(settings.upload_dir).resolve(strict=False)
+
             def resolve_path(path_value: Optional[str]) -> Optional[Path]:
                 if not path_value:
                     return None
-                candidate = Path(path_value)
-                return candidate if candidate.exists() else None
+                candidate = Path(path_value).expanduser()
+                if candidate.exists():
+                    return candidate
+
+                remapped = remap_legacy_user_upload_path(
+                    candidate.resolve(strict=False), upload_root, user_id
+                )
+                if remapped.exists():
+                    return remapped
+
+                return None
 
             raw_path = (
                 storage_payload.get("Path")
@@ -677,6 +689,11 @@ class AssetUploadService:
                 fallback = Path(settings.upload_dir) / upload_id
                 if fallback.exists():
                     file_candidate = fallback
+
+            if (not file_candidate or not file_candidate.is_file()) and upload_id:
+                user_dir_fallback = upload_root / str(user_id) / upload_id
+                if user_dir_fallback.exists():
+                    file_candidate = user_dir_fallback
 
             return (
                 file_candidate if file_candidate and file_candidate.is_file() else None

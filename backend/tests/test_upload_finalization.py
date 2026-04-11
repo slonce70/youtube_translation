@@ -1138,6 +1138,69 @@ async def test_upload_complete_preserves_http_status_for_quota_errors(
 
 
 @pytest.mark.asyncio
+async def test_upload_complete_remaps_moved_legacy_user_path_into_current_upload_root(
+    tmp_path, monkeypatch
+):
+    user_id = uuid4()
+    upload_id = f"upload-moved-legacy-path-{uuid4()}"
+    upload_root = tmp_path / "uploads"
+    user_dir = upload_root / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    final_file = user_dir / upload_id
+    final_file.write_bytes(b"fake-video")
+
+    original_upload_dir = settings.upload_dir
+    settings.upload_dir = str(upload_root)
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.validator", _ValidatorStub()
+    )
+
+    async def _thumbnail_skip(**_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "app.services.assets.upload_service.generate_video_thumbnail",
+        _thumbnail_skip,
+    )
+
+    try:
+        async with async_session_maker() as session:
+            await _create_user(session, user_id=user_id)
+            token = UploadTokenService(user_id).create_token().token
+            service = AssetUploadService(session)
+
+            response = await service.handle_upload_complete(
+                _build_payload(
+                    upload_id=upload_id,
+                    token=token,
+                    file_path=Path(f"/app/uploads/{user_id}/{upload_id}"),
+                    filename="moved.mp4",
+                )
+            )
+
+            assert response["success"] is True
+            assert response["status"] == "finalized"
+
+            ingest = (
+                (
+                    await session.execute(
+                        select(UploadIngest).where(UploadIngest.upload_id == upload_id)
+                    )
+                )
+                .scalars()
+                .one()
+            )
+            asset = await session.get(Asset, ingest.asset_id)
+
+            assert ingest.status == "finalized"
+            assert ingest.local_path == str(final_file)
+            assert asset is not None
+            assert asset.storage_path == str(final_file)
+    finally:
+        settings.upload_dir = original_upload_dir
+
+
+@pytest.mark.asyncio
 async def test_schema_changes_do_not_enable_duplicate_storage_accounting(tmp_path):
     user_id = uuid4()
     upload_root = tmp_path / "uploads"
