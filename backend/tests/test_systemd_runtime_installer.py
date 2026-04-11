@@ -9,6 +9,8 @@ def _installer_script_path() -> Path:
 def test_install_systemd_runtime_renders_units_into_target_dir(tmp_path) -> None:
     script = _installer_script_path()
     target_dir = tmp_path / "systemd"
+    install_root = tmp_path / "srv" / "youtube_translation"
+    install_root.mkdir(parents=True)
 
     result = subprocess.run(
         [
@@ -21,7 +23,7 @@ def test_install_systemd_runtime_renders_units_into_target_dir(tmp_path) -> None
         env={
             "PATH": str(Path("/usr/bin")) + ":" + str(Path("/bin")),
             "SYSTEMD_TARGET_DIR": str(target_dir),
-            "SYSTEMD_INSTALL_ROOT": "/srv/youtube_translation",
+            "SYSTEMD_INSTALL_ROOT": str(install_root),
             "SYSTEMD_SERVICE_USER": "ytbot",
             "SYSTEMD_SERVICE_GROUP": "ytgrp",
             "SYSTEMD_SKIP_RELOAD": "1",
@@ -35,13 +37,20 @@ def test_install_systemd_runtime_renders_units_into_target_dir(tmp_path) -> None
 
     backend_unit = (target_dir / "youtube-backend.service").read_text(encoding="utf-8")
     stream_unit = (target_dir / "ffmpeg@.service").read_text(encoding="utf-8")
+    stream_wrapper = install_root / "scripts" / "run_stream_systemd.sh"
 
     assert "/srv/youtube_translation/backend" in backend_unit
-    assert "/srv/youtube_translation/.venv/bin/uvicorn" in backend_unit
+    assert f"{install_root}/.venv/bin/uvicorn" in backend_unit
     assert "User=ytbot" in backend_unit
     assert "Group=ytgrp" in backend_unit
 
-    assert "/srv/youtube_translation/backend" in stream_unit
-    assert "/srv/youtube_translation/.venv/bin/python" in stream_unit
+    assert f"/bin/bash {install_root}/scripts/run_stream_systemd.sh %i" in stream_unit
     assert "User=ytbot" in stream_unit
     assert "Group=ytgrp" in stream_unit
+
+    assert stream_wrapper.exists()
+    wrapper_text = stream_wrapper.read_text(encoding="utf-8")
+    assert 'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' in wrapper_text
+    assert 'repo_root="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd)"' in wrapper_text
+    assert 'backend_dir="${SYSTEMD_BACKEND_DIR:-$repo_root/backend}"' in wrapper_text
+    assert 'venv_python="${SYSTEMD_PYTHON_BIN:-$repo_root/.venv/bin/python}"' in wrapper_text
