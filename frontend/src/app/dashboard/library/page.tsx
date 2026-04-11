@@ -590,18 +590,11 @@ export default function LibraryPage() {
   const visibleAssets = useMemo(() => {
     if (!assets) return [] as Asset[]
 
-    // "all" view behaves like the root screen: show only root-level assets (unassigned or explicitly linked to root)
-    if (selectedFolderId === 'all') {
-      return assets.filter((asset) => {
-        if (asset.primary_folder_id) {
-          return Boolean(rootFolderId && asset.primary_folder_id === rootFolderId)
-        }
-        return true
-      })
-    }
-
+    // Folder-specific views are already scoped by the API query.
+    // The top-level library screen should keep the whole library visible so
+    // assets do not appear to "disappear" after folder assignment or upload.
     return assets
-  }, [assets, rootFolderId, selectedFolderId])
+  }, [assets])
 
   const displayedAssets = useMemo(() => {
     return applyAssetView(visibleAssets, {
