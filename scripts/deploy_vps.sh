@@ -590,6 +590,26 @@ align_host_storage_links() {
   ensure_repo_path_symlink "supervisord state" "$backend_root/supervisord" "$HOST_SUPERVISORD_DIR"
 }
 
+align_host_storage_permissions() {
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    return 0
+  fi
+
+  local service_group="${SYSTEMD_SERVICE_GROUP:-${SYSTEMD_SERVICE_USER:-streambot}}"
+  local target_dir
+  for target_dir in \
+    "$HOST_UPLOADS_DIR" \
+    "$HOST_STREAMS_DIR" \
+    "$HOST_LOGS_DIR" \
+    "$HOST_SUPERVISORD_DIR"; do
+    run_as_root mkdir -p "$target_dir"
+    run_as_root chgrp -R "$service_group" "$target_dir"
+    run_as_root chmod g+rwX "$target_dir"
+    run_as_root find "$target_dir" -type d -exec chmod g+rwx,g+s {} +
+    run_as_root find "$target_dir" -type f -exec chmod g+rw {} +
+  done
+}
+
 sync_host_caddy() {
   local rendered_caddy="$tmp_dir/Caddyfile.host"
 
@@ -683,6 +703,7 @@ prepare_linux_persistence
 verify_linux_persistence
 ensure_persistent_storage
 align_host_storage_links
+align_host_storage_permissions
 
 if ! flag_enabled "$skip_docker_deploy"; then
   echo "Validating compose config..."
