@@ -129,12 +129,12 @@ dump_host_backend_diagnostics() {
   run_as_root systemctl status --no-pager -l "$backend_unit" || true
   run_as_root journalctl -u "$backend_unit" -n "${DEPLOY_HOST_BACKEND_JOURNAL_LINES:-80}" --no-pager || true
 
-  if [[ -x "$repo_root/scripts/check_host_runtime_readiness.sh" ]]; then
+  if [[ -f "$repo_root/scripts/check_host_runtime_readiness.sh" ]]; then
     run_as_root env \
       "SYSTEMD_INSTALL_ROOT=${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}" \
       "SYSTEMD_TARGET_DIR=${SYSTEMD_TARGET_DIR:-/etc/systemd/system}" \
       "SYSTEMD_SERVICE_USER=${SYSTEMD_SERVICE_USER:-streambot}" \
-      "$repo_root/scripts/check_host_runtime_readiness.sh" || true
+      bash "$repo_root/scripts/check_host_runtime_readiness.sh" || true
   fi
 }
 
@@ -432,7 +432,7 @@ maybe_restart_host_native_backend() {
       "SYSTEMD_INSTALL_ROOT=${SYSTEMD_INSTALL_ROOT:-/opt/youtube_translation}" \
       "SYSTEMD_TARGET_DIR=${SYSTEMD_TARGET_DIR:-/etc/systemd/system}" \
       "SYSTEMD_SERVICE_USER=${SYSTEMD_SERVICE_USER:-streambot}" \
-      "$repo_root/scripts/check_host_runtime_readiness.sh"
+      bash "$repo_root/scripts/check_host_runtime_readiness.sh"
   fi
 }
 

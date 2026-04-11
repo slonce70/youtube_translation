@@ -117,3 +117,34 @@ def test_deploy_vps_script_aligns_effective_runtime_mode_for_cutover_path(
     assert "STREAM_RUNTIME_MODE=systemd" in backend_env.read_text(encoding="utf-8")
     assert "STREAM_RUNTIME_MODE=systemd" in root_env.read_text(encoding="utf-8")
     assert "effective=systemd" in result.stdout
+
+
+def test_deploy_vps_diagnostics_runs_readiness_script_via_bash_when_not_executable(
+    tmp_path,
+) -> None:
+    script = _script_path()
+    repo_root = tmp_path / "repo"
+    scripts_dir = repo_root / "scripts"
+    scripts_dir.mkdir(parents=True)
+    readiness_script = scripts_dir / "check_host_runtime_readiness.sh"
+    readiness_script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                f"repo_root='{repo_root}'; "
+                "run_as_root(){ printf '%s\\n' \"$*\"; }; "
+                "dump_host_backend_diagnostics youtube-backend"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "env SYSTEMD_INSTALL_ROOT=/opt/youtube_translation" in result.stdout
+    assert f"bash {readiness_script}" in result.stdout
