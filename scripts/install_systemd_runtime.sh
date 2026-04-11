@@ -12,6 +12,7 @@ enable_stream_unit="${SYSTEMD_ENABLE_STREAM_UNIT:-}"
 install_polkit="${SYSTEMD_INSTALL_POLKIT:-0}"
 polkit_rules_dir="${SYSTEMD_POLKIT_RULES_DIR:-/etc/polkit-1/rules.d}"
 ensure_service_account="${SYSTEMD_ENSURE_SERVICE_ACCOUNT:-1}"
+align_env_permissions="${SYSTEMD_ALIGN_ENV_PERMISSIONS:-1}"
 
 backend_template="$repo_root/docs/systemd/youtube-backend.service.example"
 stream_template="$repo_root/docs/systemd/ffmpeg@.service.example"
@@ -73,6 +74,29 @@ ensure_service_account_present() {
   useradd "${useradd_args[@]}" "$service_user"
 }
 
+align_backend_env_permissions() {
+  local backend_env_file="$install_root/backend/.env"
+
+  if [[ "$align_env_permissions" != "1" ]]; then
+    echo "Skipping backend env permission alignment because SYSTEMD_ALIGN_ENV_PERMISSIONS=0"
+    return 0
+  fi
+
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    echo "Skipping backend env permission alignment on non-Linux host."
+    return 0
+  fi
+
+  if [[ ! -f "$backend_env_file" ]]; then
+    echo "Skipping backend env permission alignment because $backend_env_file is missing"
+    return 0
+  fi
+
+  echo "Granting $service_user read access to $backend_env_file..."
+  chgrp "$service_group" "$backend_env_file"
+  chmod 0640 "$backend_env_file"
+}
+
 render_template() {
   local src="$1"
   local dest="$2"
@@ -105,6 +129,7 @@ PY
 }
 
 ensure_service_account_present
+align_backend_env_permissions
 
 mkdir -p "$systemd_target_dir"
 mkdir -p "$install_root/scripts"
