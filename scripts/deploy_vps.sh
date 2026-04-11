@@ -238,15 +238,27 @@ guard_stream_runtime() {
 
 maybe_install_systemd_runtime_units() {
   local install_units="${DEPLOY_INSTALL_SYSTEMD_UNITS:-0}"
-  if ! flag_enabled "$install_units"; then
-    return 0
-  fi
 
   local runtime_mode="${STREAM_RUNTIME_MODE:-}"
   runtime_mode="$(printf '%s' "$runtime_mode" | tr '[:upper:]' '[:lower:]')"
   if [[ "$runtime_mode" != "systemd" ]]; then
     echo "Skipping systemd unit installation: STREAM_RUNTIME_MODE is not systemd."
     return 0
+  fi
+
+  local prepare_host_native="${DEPLOY_PREPARE_HOST_NATIVE:-0}"
+  local activate_backend="${DEPLOY_ACTIVATE_HOST_BACKEND:-0}"
+  local restart_host_backend="${DEPLOY_RESTART_HOST_BACKEND:-0}"
+  local activate_cutover="${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"
+
+  if ! flag_enabled "$install_units"; then
+    if ! host_backend_is_active \
+      && ! flag_enabled "$prepare_host_native" \
+      && ! flag_enabled "$activate_backend" \
+      && ! flag_enabled "$restart_host_backend" \
+      && ! flag_enabled "$activate_cutover"; then
+      return 0
+    fi
   fi
 
   echo "Installing host-native systemd runtime unit files..."
@@ -257,6 +269,7 @@ maybe_install_systemd_runtime_units() {
     "SYSTEMD_SERVICE_GROUP=${SYSTEMD_SERVICE_GROUP:-${SYSTEMD_SERVICE_USER:-streambot}}"
     "SYSTEMD_ENSURE_SERVICE_ACCOUNT=${SYSTEMD_ENSURE_SERVICE_ACCOUNT:-1}"
     "SYSTEMD_ALIGN_ENV_PERMISSIONS=${SYSTEMD_ALIGN_ENV_PERMISSIONS:-1}"
+    "SYSTEMD_INSTALL_POLKIT=${SYSTEMD_INSTALL_POLKIT:-1}"
     "SYSTEMD_ENABLE_BACKEND=${DEPLOY_ACTIVATE_HOST_BACKEND:-0}"
   )
   if [[ -n "${DEPLOY_ACTIVATE_STREAM_UNIT:-}" ]]; then
