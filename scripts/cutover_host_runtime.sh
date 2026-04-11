@@ -9,6 +9,7 @@ compose_file="${COMPOSE_FILE:-$repo_root/docker/docker-compose.yml}"
 docker_bin="${DOCKER_BIN:-docker}"
 systemctl_bin="${SYSTEMCTL_BIN:-systemctl}"
 curl_bin="${CURL_BIN:-curl}"
+ufw_bin="${UFW_BIN:-ufw}"
 ss_bin="${SS_BIN:-ss}"
 postgres_container="${POSTGRES_CONTAINER_NAME:-youtube-streaming-postgres}"
 backend_container="${BACKEND_CONTAINER_NAME:-youtube-streaming-backend}"
@@ -23,6 +24,8 @@ stop_docker_runtime="${CUTOVER_STOP_DOCKER_RUNTIME:-1}"
 skip_dependency_port_check="${CUTOVER_SKIP_DEPENDENCY_PORT_CHECK:-0}"
 host_backend_docker_upstream="${HOST_BACKEND_DOCKER_UPSTREAM:-http://host.docker.internal:8000}"
 restart_frontend_and_tusd="${CUTOVER_RESTART_FRONTEND_TUSD:-1}"
+host_backend_bridge_port="${HOST_BACKEND_DOCKER_PORT:-8000}"
+host_backend_firewall_comment="${HOST_BACKEND_FIREWALL_COMMENT:-youtube host backend bridge}"
 
 run_cmd() {
   if [[ "$dry_run" == "1" ]]; then
@@ -59,6 +62,41 @@ wait_for_tusd_backend_http() {
 
   "$docker_bin" compose -f "$compose_file" exec -T tusd \
     sh -lc 'curl -fsS --max-time 5 "$TUSD_BACKEND_URL/health" >/dev/null'
+}
+
+ufw_is_active() {
+  command -v "$ufw_bin" >/dev/null 2>&1 && "$ufw_bin" status 2>/dev/null | grep -q '^Status: active'
+}
+
+collect_edge_bridge_interfaces() {
+  local container_name
+
+  for container_name in youtube-streaming-tusd youtube-streaming-frontend; do
+    "$docker_bin" inspect -f '{{range $name, $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{"\n"}}{{end}}' "$container_name" 2>/dev/null || true
+  done \
+    | awk 'NF { print "br-" substr($0, 1, 12) }' \
+    | sort -u
+}
+
+ufw_backend_bridge_rule_present() {
+  local bridge_iface="$1"
+  "$ufw_bin" status 2>/dev/null | grep -Fq "${host_backend_bridge_port}/tcp on ${bridge_iface}"
+}
+
+ensure_host_backend_bridge_firewall() {
+  local bridge_iface
+
+  if ! ufw_is_active; then
+    return 0
+  fi
+
+  while IFS= read -r bridge_iface; do
+    [[ -n "$bridge_iface" ]] || continue
+    if ufw_backend_bridge_rule_present "$bridge_iface"; then
+      continue
+    fi
+    run_cmd "$ufw_bin" allow in on "$bridge_iface" to any port "$host_backend_bridge_port" proto tcp comment "$host_backend_firewall_comment"
+  done < <(collect_edge_bridge_interfaces)
 }
 
 dump_host_backend_diagnostics() {
@@ -187,6 +225,7 @@ if [[ "$restart_frontend_and_tusd" == "1" ]]; then
     TUSD_BACKEND_URL="$host_backend_docker_upstream" \
     "$docker_bin" compose -f "$compose_file" up -d frontend tusd
   if [[ "$dry_run" != "1" ]]; then
+    ensure_host_backend_bridge_firewall
     wait_for_http "frontend health endpoint" "$frontend_health_url"
     wait_for_tusd_backend_http
   fi

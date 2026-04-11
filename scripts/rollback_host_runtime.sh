@@ -9,6 +9,7 @@ root_env="${ROOT_ENV:-$repo_root/.env}"
 docker_bin="${DOCKER_BIN:-docker}"
 systemctl_bin="${SYSTEMCTL_BIN:-systemctl}"
 curl_bin="${CURL_BIN:-curl}"
+ufw_bin="${UFW_BIN:-ufw}"
 postgres_container="${POSTGRES_CONTAINER_NAME:-youtube-streaming-postgres}"
 backend_unit="${HOST_BACKEND_UNIT_NAME:-youtube-backend}"
 stream_unit="${HOST_STREAM_UNIT_NAME:-}"
@@ -19,6 +20,7 @@ allow_live_rollback="${ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK:-0}"
 start_docker_runtime="${ROLLBACK_START_DOCKER_RUNTIME:-1}"
 docker_runtime_mode="${ROLLBACK_DOCKER_STREAM_RUNTIME_MODE:-supervisor}"
 restart_frontend_and_tusd="${ROLLBACK_RESTART_FRONTEND_TUSD:-1}"
+host_backend_bridge_port="${HOST_BACKEND_DOCKER_PORT:-8000}"
 
 run_cmd() {
   if [[ "$dry_run" == "1" ]]; then
@@ -41,6 +43,41 @@ wait_for_http() {
   done
 
   "$curl_bin" -fsS --max-time 5 "$url" >/dev/null
+}
+
+ufw_is_active() {
+  command -v "$ufw_bin" >/dev/null 2>&1 && "$ufw_bin" status 2>/dev/null | grep -q '^Status: active'
+}
+
+collect_edge_bridge_interfaces() {
+  local container_name
+
+  for container_name in youtube-streaming-tusd youtube-streaming-frontend; do
+    "$docker_bin" inspect -f '{{range $name, $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{"\n"}}{{end}}' "$container_name" 2>/dev/null || true
+  done \
+    | awk 'NF { print "br-" substr($0, 1, 12) }' \
+    | sort -u
+}
+
+ufw_backend_bridge_rule_present() {
+  local bridge_iface="$1"
+  "$ufw_bin" status 2>/dev/null | grep -Fq "${host_backend_bridge_port}/tcp on ${bridge_iface}"
+}
+
+remove_host_backend_bridge_firewall() {
+  local bridge_iface
+
+  if ! ufw_is_active; then
+    return 0
+  fi
+
+  while IFS= read -r bridge_iface; do
+    [[ -n "$bridge_iface" ]] || continue
+    if ! ufw_backend_bridge_rule_present "$bridge_iface"; then
+      continue
+    fi
+    run_cmd "$ufw_bin" --force delete allow in on "$bridge_iface" to any port "$host_backend_bridge_port" proto tcp
+  done < <(collect_edge_bridge_interfaces)
 }
 
 count_active_streams() {
@@ -123,6 +160,7 @@ if [[ "$restart_frontend_and_tusd" == "1" ]]; then
     TUSD_BACKEND_URL="http://backend:8000" \
     "$docker_bin" compose -f "$compose_file" up -d frontend tusd
   if [[ "$dry_run" != "1" ]]; then
+    remove_host_backend_bridge_firewall
     wait_for_http "frontend health endpoint" "$frontend_health_url"
   fi
 fi
