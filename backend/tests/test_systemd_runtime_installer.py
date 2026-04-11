@@ -76,6 +76,9 @@ def test_install_systemd_runtime_provisions_missing_service_account(tmp_path) ->
     target_dir = tmp_path / "systemd"
     install_root = tmp_path / "srv" / "youtube_translation"
     install_root.mkdir(parents=True)
+    backend_dir = install_root / "backend"
+    backend_dir.mkdir()
+    (backend_dir / ".env").write_text("STREAM_RUNTIME_MODE=systemd\n", encoding="utf-8")
     call_log = tmp_path / "calls.log"
 
     def write_fake(name: str, body: str) -> None:
@@ -121,6 +124,20 @@ printf 'useradd:%s\\n' "$*" >> "{call_log}"
 exit 0
 """,
     )
+    write_fake(
+        "chgrp",
+        f"""#!/usr/bin/env bash
+printf 'chgrp:%s\\n' "$*" >> "{call_log}"
+exit 0
+""",
+    )
+    write_fake(
+        "chmod",
+        f"""#!/usr/bin/env bash
+printf 'chmod:%s\\n' "$*" >> "{call_log}"
+exit 0
+""",
+    )
 
     result = subprocess.run(
         ["bash", str(script)],
@@ -142,3 +159,5 @@ exit 0
     assert "groupadd:--system ytgrp" in log_text
     assert "useradd:--system --home-dir " in log_text
     assert "--create-home --shell /usr/sbin/nologin --gid ytgrp ytbot" in log_text
+    assert f"chgrp:ytgrp {backend_dir / '.env'}" in log_text
+    assert f"chmod:0640 {backend_dir / '.env'}" in log_text

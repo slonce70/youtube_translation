@@ -46,7 +46,7 @@ sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
   ./scripts/install_systemd_runtime.sh
 ```
 
-Той самий helper тепер ідемпотентно створює `SYSTEMD_SERVICE_USER` / `SYSTEMD_SERVICE_GROUP`, якщо їх ще немає на VPS. Тобто production bootstrap більше не залежить від ручного `useradd`, якщо installer викликається з root/passwordless sudo. За потреби цей крок можна вимкнути через `SYSTEMD_ENSURE_SERVICE_ACCOUNT=0`.
+Той самий helper тепер ідемпотентно створює `SYSTEMD_SERVICE_USER` / `SYSTEMD_SERVICE_GROUP`, якщо їх ще немає на VPS, і вирівнює `backend/.env` до group-readable mode для цього service account. Тобто production bootstrap більше не залежить від ручного `useradd` або ручного `chmod` на secrets-файлі, якщо installer викликається з root/passwordless sudo. За потреби ці кроки можна вимкнути через `SYSTEMD_ENSURE_SERVICE_ACCOUNT=0` або `SYSTEMD_ALIGN_ENV_PERMISSIONS=0`.
 
 Якщо ваш дистрибутив не використовує `polkit` для `org.freedesktop.systemd1.manage-units`, задокументуйте еквівалентний `sudoers` hook окремо. Не залишайте privilege path як “ручний секрет VPS”.
 
@@ -86,6 +86,8 @@ SYSTEMCTL_PATH=systemctl
 DATABASE_URL=postgresql://youtube_user:...@127.0.0.1:5432/youtube_streaming
 REDIS_URL=redis://127.0.0.1:6379/0
 ```
+
+Installer з попереднього кроку автоматично вирівнює цей файл до `0640` і `chgrp streambot`, щоб host-native backend міг його прочитати.
 
 7. Проганяйте readiness before cutover:
 ```bash
