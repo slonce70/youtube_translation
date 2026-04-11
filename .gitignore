@@ -79,6 +79,7 @@ docs/design/archive/
 
 # Docker
 .dockerignore
+!frontend/.dockerignore
 
 # Secrets
 *.pem
