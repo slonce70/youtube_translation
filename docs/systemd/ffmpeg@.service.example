@@ -11,10 +11,8 @@ Type=simple
 WorkingDirectory=/opt/youtube_translation/backend
 # Export environment variables for Pydantic settings
 EnvironmentFile=/opt/youtube_translation/backend/.env
-# Ensure Python can resolve the app package
-Environment=PYTHONPATH=/opt/youtube_translation/backend
-# Virtualenv interpreter
-ExecStart=/opt/youtube_translation/.venv/bin/python -m app.cli.run_stream %i
+# Wrapper keeps the launch path explicit and avoids complicated inline shell quoting.
+ExecStart=/bin/bash /opt/youtube_translation/scripts/run_stream_systemd.sh %i
 Restart=always
 RestartSec=5s
 # Resource accounting / isolation. Tune from measured workload profiles before production-wide rollout.
