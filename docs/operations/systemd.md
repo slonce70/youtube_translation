@@ -20,7 +20,7 @@
 - канонічний Python layout для host-native backend: `/opt/youtube_translation/backend/.venv`
 - Docker infra для `postgres`, `redis`, `tusd`, `frontend`, `mediamtx`
 - `postgres` і `redis` публікуються лише на loopback (`127.0.0.1:5432`, `127.0.0.1:6379`), щоб backend control plane на хості міг працювати без Docker-in-Docker або container-to-host `systemctl` hacks
-- `frontend` і `tusd` у containerized lane можуть бути перепідняті з `FRONTEND_API_PROXY_TARGET` / `TUSD_BACKEND_URL`, що вказують на `http://host.docker.internal:8000`, коли backend уже host-native; для цього host-native backend має слухати не лише loopback
+- `frontend` і `tusd` у containerized lane можуть бути перепідняті з `FRONTEND_API_PROXY_TARGET` / `TUSD_BACKEND_URL`, що вказують на `http://host.docker.internal:8000`, коли backend уже host-native; для цього host-native backend має слухати не лише loopback, а cutover helper також має відкрити вузький bridge->host firewall path на `tcp/8000`
 
 ## Privilege bootstrap
 
@@ -284,7 +284,7 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 - `scripts/check_host_runtime_readiness.sh` тепер окремо показує `backend/.venv` vs repo-root `.venv` і перевіряє, чи service user реально може зробити `systemctl start --dry-run ffmpeg@__readiness_probe`
 - `scripts/cutover_host_runtime.sh` навмисно fail-closed відмовляється від cutover при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_CUTOVER=1`
 - `scripts/cutover_host_runtime.sh` також fail-closed перевіряє, що host loopback `127.0.0.1:5432` і `127.0.0.1:6379` вже слухають, інакше host-native backend не отримає доступу до PostgreSQL/Redis після відключення Docker `backend`/`runner`
-- `scripts/cutover_host_runtime.sh` також перепіднімає `frontend` і `tusd` з upstream `http://host.docker.internal:8000`, щоб containerized edge продовжив ходити в host-native backend
+- `scripts/cutover_host_runtime.sh` також перепіднімає `frontend` і `tusd` з upstream `http://host.docker.internal:8000`, щоб containerized edge продовжив ходити в host-native backend, і на UFW-hostах додає вузьке allow-rule лише для Docker bridge -> `tcp/8000`
 - `scripts/rollback_host_runtime.sh` так само fail-closed відмовляється від rollback при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK=1`
 - `scripts/rollback_host_runtime.sh` повертає `frontend` і `tusd` назад на upstream `http://backend:8000`
 - `CUTOVER_RUNTIME_MODE_OVERRIDE=systemd` і `ROLLBACK_RUNTIME_MODE_OVERRIDE=systemd` існують саме для безпечного dry-run / reviewed canary prep без зміни реального `backend/.env` на хості

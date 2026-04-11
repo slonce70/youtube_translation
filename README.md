@@ -262,7 +262,7 @@ CLI-скрипт `python -m app.cli.run_stream <stream_id>` може підні�
 9. Піднімайте конкретні стріми через `systemctl enable --now ffmpeg@<stream_uuid>`, через installer helper з `SYSTEMD_ENABLE_STREAM_UNIT=<stream_uuid>`, або через cutover helper з `HOST_STREAM_UNIT_NAME=<stream_uuid>` — CLI сам збере плейлисти, запустить FFmpeg і оновить статус у БД.
 10. Якщо systemd намагається безкінечно підіймати зламаний stream unit, CLI тепер відмовляється стартувати terminal-state стрім і завершується кодом `10`, а unit обмежений `StartLimit*`/`RestartPreventExitStatus=10`.
 11. Для повернення в Docker runtime lane використовуйте `scripts/rollback_host_runtime.sh`; він теж fail-closed блокує rollback при активних стрімах без явного override.
-12. Під час host-native backend lane `frontend` і `tusd` мають бути перепідняті на upstream `http://host.docker.internal:8000`; helper-и вже роблять це автоматично, а host-native backend має слухати не лише loopback.
+12. Під час host-native backend lane `frontend` і `tusd` мають бути перепідняті на upstream `http://host.docker.internal:8000`; helper-и вже роблять це автоматично, а host-native backend має слухати не лише loopback і мати вузький bridge->host firewall allowance для `tcp/8000`.
 
 Подробиці: `docs/operations/systemd.md`.
 
