@@ -46,17 +46,17 @@ sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
   ./scripts/install_systemd_runtime.sh
 ```
 
+Той самий helper тепер ідемпотентно створює `SYSTEMD_SERVICE_USER` / `SYSTEMD_SERVICE_GROUP`, якщо їх ще немає на VPS. Тобто production bootstrap більше не залежить від ручного `useradd`, якщо installer викликається з root/passwordless sudo. За потреби цей крок можна вимкнути через `SYSTEMD_ENSURE_SERVICE_ACCOUNT=0`.
+
 Якщо ваш дистрибутив не використовує `polkit` для `org.freedesktop.systemd1.manage-units`, задокументуйте еквівалентний `sudoers` hook окремо. Не залишайте privilege path як “ручний секрет VPS”.
 
 ## From Zero To Green
 
 Це канонічний bootstrap на новому VPS.
 
-1. Створіть системного користувача й каталоги:
+1. Створіть каталоги checkout-а:
 ```bash
-sudo useradd --system --home /opt/youtube_translation --shell /usr/sbin/nologin streambot || true
 sudo mkdir -p /opt/youtube_translation
-sudo chown -R streambot:streambot /opt/youtube_translation
 ```
 
 2. Розгорніть git checkout у `/opt/youtube_translation`, підкладіть `backend/.env`, підніміть Docker infra (`postgres redis tusd frontend mediamtx`) і переконайтеся, що `127.0.0.1:5432` та `127.0.0.1:6379` уже слухають.
@@ -97,6 +97,7 @@ sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
 Очікування для green state:
 - `host_backend_python_backend=present:.../backend/.venv/bin/python`
 - `host_backend_uvicorn_backend=present:.../backend/.venv/bin/uvicorn`
+- `host_service_user_exists=present`
 - `host_service_user_systemctl=allowed`
 
 8. Активуйте backend і за потреби canary stream:

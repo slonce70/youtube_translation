@@ -11,12 +11,67 @@ enable_backend="${SYSTEMD_ENABLE_BACKEND:-0}"
 enable_stream_unit="${SYSTEMD_ENABLE_STREAM_UNIT:-}"
 install_polkit="${SYSTEMD_INSTALL_POLKIT:-0}"
 polkit_rules_dir="${SYSTEMD_POLKIT_RULES_DIR:-/etc/polkit-1/rules.d}"
+ensure_service_account="${SYSTEMD_ENSURE_SERVICE_ACCOUNT:-1}"
 
 backend_template="$repo_root/docs/systemd/youtube-backend.service.example"
 stream_template="$repo_root/docs/systemd/ffmpeg@.service.example"
 slice_template="$repo_root/docs/systemd/streaming.slice.example"
 polkit_template="$repo_root/docs/systemd/polkit/youtube-ffmpeg.rules.example"
 stream_runner_script="$repo_root/scripts/run_stream_systemd.sh"
+
+group_exists() {
+  local target_group="$1"
+
+  if command -v getent >/dev/null 2>&1; then
+    getent group "$target_group" >/dev/null 2>&1
+    return $?
+  fi
+
+  grep -q "^${target_group}:" /etc/group 2>/dev/null
+}
+
+user_exists() {
+  local target_user="$1"
+  id "$target_user" >/dev/null 2>&1
+}
+
+ensure_service_account_present() {
+  if [[ "$ensure_service_account" != "1" ]]; then
+    echo "Skipping service account provisioning because SYSTEMD_ENSURE_SERVICE_ACCOUNT=0"
+    return 0
+  fi
+
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    echo "Skipping service account provisioning on non-Linux host."
+    return 0
+  fi
+
+  local service_group_ready=0
+
+  if group_exists "$service_group"; then
+    service_group_ready=1
+  else
+    echo "Creating system group $service_group..."
+    groupadd --system "$service_group"
+    service_group_ready=1
+  fi
+
+  if user_exists "$service_user"; then
+    return 0
+  fi
+
+  echo "Creating system user $service_user..."
+  local useradd_args=(
+    --system
+    --home-dir "$install_root"
+    --create-home
+    --shell /usr/sbin/nologin
+  )
+  if [[ "$service_group_ready" == "1" ]]; then
+    useradd_args+=(--gid "$service_group")
+  fi
+  useradd "${useradd_args[@]}" "$service_user"
+}
 
 render_template() {
   local src="$1"
@@ -48,6 +103,8 @@ for old, new in replacements.items():
 dest.write_text(text, encoding="utf-8")
 PY
 }
+
+ensure_service_account_present
 
 mkdir -p "$systemd_target_dir"
 mkdir -p "$install_root/scripts"

@@ -85,6 +85,15 @@ run_as_service_user() {
   return 12
 }
 
+service_user_state() {
+  if id "$service_user" >/dev/null 2>&1; then
+    echo present
+    return 0
+  fi
+
+  echo missing
+}
+
 service_user_systemctl_access() {
   local probe_unit="${HOST_STREAM_PERMISSION_PROBE_UNIT:-${stream_unit_template}__readiness_probe}"
 
@@ -119,6 +128,7 @@ service_user_systemctl_access() {
 
 echo "install_root=$install_root"
 echo "host_service_user=$service_user"
+echo "host_service_user_exists=$(service_user_state)"
 echo "active_runtime_streams=$(count_active_streams)"
 echo "docker_backend=$(check_container_status "$backend_container")"
 echo "docker_runner=$(check_container_status "$runner_container")"

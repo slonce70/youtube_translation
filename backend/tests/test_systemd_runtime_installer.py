@@ -27,6 +27,7 @@ def test_install_systemd_runtime_renders_units_into_target_dir(tmp_path) -> None
             "SYSTEMD_INSTALL_ROOT": str(install_root),
             "SYSTEMD_SERVICE_USER": "ytbot",
             "SYSTEMD_SERVICE_GROUP": "ytgrp",
+            "SYSTEMD_ENSURE_SERVICE_ACCOUNT": "0",
             "SYSTEMD_INSTALL_POLKIT": "1",
             "SYSTEMD_POLKIT_RULES_DIR": str(polkit_dir),
             "SYSTEMD_SKIP_RELOAD": "1",
@@ -66,3 +67,78 @@ def test_install_systemd_runtime_renders_units_into_target_dir(tmp_path) -> None
     assert 'backend_venv_dir="${SYSTEMD_BACKEND_VENV_DIR:-$backend_dir/.venv}"' in wrapper_text
     assert 'repo_venv_dir="${SYSTEMD_REPO_VENV_DIR:-$repo_root/.venv}"' in wrapper_text
     assert 'preferred_python="${SYSTEMD_PYTHON_BIN:-}"' in wrapper_text
+
+
+def test_install_systemd_runtime_provisions_missing_service_account(tmp_path) -> None:
+    script = _installer_script_path()
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    target_dir = tmp_path / "systemd"
+    install_root = tmp_path / "srv" / "youtube_translation"
+    install_root.mkdir(parents=True)
+    call_log = tmp_path / "calls.log"
+
+    def write_fake(name: str, body: str) -> None:
+        path = fake_bin / name
+        path.write_text(body, encoding="utf-8")
+        path.chmod(0o755)
+
+    write_fake(
+        "id",
+        f"""#!/usr/bin/env bash
+if [[ "$1" == "ytbot" ]]; then
+  exit 1
+fi
+exec /usr/bin/id "$@"
+""",
+    )
+    write_fake(
+        "uname",
+        """#!/usr/bin/env bash
+echo Linux
+""",
+    )
+    write_fake(
+        "getent",
+        """#!/usr/bin/env bash
+if [[ "$1" == "group" && "$2" == "ytgrp" ]]; then
+  exit 2
+fi
+exit 0
+""",
+    )
+    write_fake(
+        "groupadd",
+        f"""#!/usr/bin/env bash
+printf 'groupadd:%s\\n' "$*" >> "{call_log}"
+exit 0
+""",
+    )
+    write_fake(
+        "useradd",
+        f"""#!/usr/bin/env bash
+printf 'useradd:%s\\n' "$*" >> "{call_log}"
+exit 0
+""",
+    )
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={
+            "PATH": f"{fake_bin}:/usr/bin:/bin",
+            "SYSTEMD_TARGET_DIR": str(target_dir),
+            "SYSTEMD_INSTALL_ROOT": str(install_root),
+            "SYSTEMD_SERVICE_USER": "ytbot",
+            "SYSTEMD_SERVICE_GROUP": "ytgrp",
+            "SYSTEMD_SKIP_RELOAD": "1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    log_text = call_log.read_text(encoding="utf-8")
+    assert "groupadd:--system ytgrp" in log_text
+    assert "useradd:--system --home-dir " in log_text
+    assert "--create-home --shell /usr/sbin/nologin --gid ytgrp ytbot" in log_text
