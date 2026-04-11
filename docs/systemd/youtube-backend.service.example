@@ -12,7 +12,7 @@ WorkingDirectory=/opt/youtube_translation/backend
 EnvironmentFile=/opt/youtube_translation/backend/.env
 Environment=PYTHONPATH=/opt/youtube_translation/backend
 # Bind only on loopback; host Caddy stays the public edge.
-ExecStart=/opt/youtube_translation/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+ExecStart=/opt/youtube_translation/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5s
 # Keep the control plane on a predictable resource budget and with reduced ambient privileges.

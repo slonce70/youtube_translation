@@ -1,3 +1,4 @@
+import getpass
 import subprocess
 from pathlib import Path
 
@@ -69,6 +70,11 @@ EOF
 
     install_root = tmp_path / "install-root"
     install_root.mkdir()
+    target_dir = tmp_path / "systemd"
+    target_dir.mkdir()
+    (target_dir / "ffmpeg@.service").write_text("[Service]\n", encoding="utf-8")
+    (target_dir / "streaming.slice").write_text("[Slice]\n", encoding="utf-8")
+    (target_dir / "youtube-backend.service").write_text("[Service]\n", encoding="utf-8")
 
     result = subprocess.run(
         ["bash", str(script)],
@@ -78,17 +84,28 @@ EOF
         env={
             "PATH": f"{fake_bin}:/usr/bin:/bin",
             "SYSTEMD_INSTALL_ROOT": str(install_root),
+            "SYSTEMD_TARGET_DIR": str(target_dir),
+            "SYSTEMD_SERVICE_USER": getpass.getuser(),
         },
     )
 
     assert result.returncode == 0, result.stderr
     assert f"install_root={install_root}" in result.stdout
+    assert f"host_service_user={getpass.getuser()}" in result.stdout
     assert "active_runtime_streams=0" in result.stdout
     assert "docker_backend=running" in result.stdout
     assert "docker_runner=running" in result.stdout
     assert "host_backend_unit=disabled/inactive" in result.stdout
+    assert "ffmpeg_template_unit=present" in result.stdout
+    assert "streaming_slice=present" in result.stdout
+    assert "host_backend_unit_file=present" in result.stdout
+    assert "host_backend_python_backend=missing" in result.stdout
+    assert "host_backend_python_repo=missing" in result.stdout
     assert "host_backend_python=missing" in result.stdout
+    assert "host_backend_uvicorn_backend=missing" in result.stdout
+    assert "host_backend_uvicorn_repo=missing" in result.stdout
     assert "host_backend_uvicorn=missing" in result.stdout
+    assert "host_service_user_systemctl=allowed" in result.stdout
     assert "host_loopback_postgres=missing" in result.stdout
     assert "host_loopback_redis=missing" in result.stdout
     assert "host_loopback_backend=present" in result.stdout
