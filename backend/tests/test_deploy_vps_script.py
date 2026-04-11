@@ -119,6 +119,42 @@ def test_deploy_vps_script_aligns_effective_runtime_mode_for_cutover_path(
     assert "effective=systemd" in result.stdout
 
 
+def test_deploy_vps_script_aligns_host_storage_env_for_active_backend(tmp_path) -> None:
+    script = _script_path()
+    backend_env = tmp_path / ".env"
+    backend_env.write_text(
+        "STREAM_RUNTIME_MODE=systemd\nUPLOAD_DIR=/app/uploads\nSTREAM_DIR=/app/streams\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                f"backend_env='{backend_env}'; "
+                "STREAM_RUNTIME_MODE=systemd; "
+                "UPLOAD_DIR=/app/uploads; "
+                "STREAM_DIR=/app/streams; "
+                "DEPLOY_RESTART_HOST_BACKEND=true; "
+                "host_backend_is_active(){ return 0; }; "
+                "ensure_host_storage_env_alignment; "
+                "cat \"$backend_env\""
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    aligned_env = backend_env.read_text(encoding="utf-8")
+    assert "UPLOAD_DIR=./uploads" in aligned_env
+    assert "STREAM_DIR=./streams" in aligned_env
+    assert "aligning backend/.env storage dirs" in result.stdout
+
+
 def test_deploy_vps_diagnostics_runs_readiness_script_via_bash_when_not_executable(
     tmp_path,
 ) -> None:

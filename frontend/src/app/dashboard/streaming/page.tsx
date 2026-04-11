@@ -31,7 +31,6 @@ import { useDashboardContext } from '../dashboard-context'
 import { StreamBuilderModal } from './components/StreamBuilderModal'
 import { LiveEditorModal } from './components/LiveEditorModal'
 import { QualityGateModal } from './components/QualityGateModal'
-import { StreamScheduleModal } from './components/StreamScheduleModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamStatusMap } from './hooks/useStreamStatusMap'
@@ -92,7 +91,6 @@ export default function StreamingPage() {
   const [viewingLogs, setViewingLogs] = useState<string | null>(null)
   const [logsMode, setLogsMode] = useState<'important' | 'raw'>('important')
   const [showCreateStream, setShowCreateStream] = useState(false)
-  const [scheduleModalStream, setScheduleModalStream] = useState<Stream | null>(null)
   const [activeStreamTab, setActiveStreamTab] = useState<'live' | 'scheduled' | 'archive'>('live')
   const [optimisticRunningStreamIds, setOptimisticRunningStreamIds] = useState<string[]>([])
   const [optimisticStoppingStreamIds, setOptimisticStoppingStreamIds] = useState<string[]>([])
@@ -119,15 +117,6 @@ export default function StreamingPage() {
     enabled: !!user,
     refetchInterval: 3000,
   })
-
-  useEffect(() => {
-    const targetId = searchParams?.get('editSchedule')
-    if (!targetId || !streams?.length) return
-    const match = streams.find((stream) => stream.id === targetId)
-    if (!match) return
-    setScheduleModalStream(match)
-    router.replace('/dashboard/streaming', { scroll: false })
-  }, [router, searchParams, streams])
 
   const liveStatusMap = useStreamStatusMap(streams, user?.id)
 
@@ -274,7 +263,6 @@ export default function StreamingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
       toast.success(streamingToasts('stream.scheduleUpdated'))
-      setScheduleModalStream(null)
     },
     onError: (error: Error) =>
       toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
@@ -432,7 +420,7 @@ export default function StreamingPage() {
     setShowChannelForm(true)
   }
 
-  const handleOpenStreamEditor = (stream: Stream) => {
+  const primeStreamEditorDrafts = (stream: Stream) => {
     setLiveEditorScheduleDraft({
       startMode: stream.scheduled_start_enabled ? 'schedule' : 'now',
       startAt: stream.scheduled_start_time ? formatDateTimeLocal(new Date(stream.scheduled_start_time)) : '',
@@ -440,45 +428,11 @@ export default function StreamingPage() {
     })
     setLiveEditorNameDraft(stream.name ?? '')
     setLiveEditorDestinationIds((stream.destinations ?? []).map((destination) => destination.id))
-    openLiveEditor(stream)
   }
 
-  const handleSaveSchedule = (draft: { startMode: 'now' | 'schedule'; startAt: string; stopAt: string }) => {
-    if (!scheduleModalStream) return
-
-    if (draft.startMode === 'schedule' && !draft.startAt) {
-      toast.error(streamingToasts('errors.scheduleTime'))
-      return
-    }
-
-    const now = new Date()
-    const startAtIso =
-      draft.startMode === 'schedule' && draft.startAt ? new Date(draft.startAt).toISOString() : null
-    const stopAtIso = draft.stopAt ? new Date(draft.stopAt).toISOString() : null
-
-    if (draft.stopAt) {
-      const stopAt = new Date(draft.stopAt)
-      if (Number.isNaN(stopAt.getTime()) || stopAt <= now) {
-        toast.error(streamingToasts('errors.scheduleStopTime'))
-        return
-      }
-      if (draft.startMode === 'schedule' && draft.startAt) {
-        const startAt = new Date(draft.startAt)
-        if (stopAt <= startAt) {
-          toast.error(streamingToasts('errors.scheduleStopAfterStart'))
-          return
-        }
-      }
-    }
-
-    updateScheduleMutation.mutate({
-      streamId: scheduleModalStream.id,
-      payload: {
-        schedule_mode: draft.startMode,
-        schedule_start_at: startAtIso,
-        schedule_stop_at: stopAtIso,
-      },
-    })
+  const handleOpenStreamEditor = (stream: Stream) => {
+    primeStreamEditorDrafts(stream)
+    openLiveEditor(stream)
   }
 
   const handleDeleteChannel = (destinationId: string) => {
@@ -612,6 +566,16 @@ export default function StreamingPage() {
     videoAssets: liveEditorVideoAssets,
     audioAssets: liveEditorAudioAssets,
   } = useLiveEditor({ assets, tStreaming, streamingToasts })
+
+  useEffect(() => {
+    const targetId = searchParams?.get('editStream') ?? searchParams?.get('editSchedule')
+    if (!targetId || !streams?.length) return
+    const match = streams.find((stream) => stream.id === targetId)
+    if (!match) return
+    primeStreamEditorDrafts(match)
+    openLiveEditor(match)
+    router.replace('/dashboard/streaming', { scroll: false })
+  }, [openLiveEditor, router, searchParams, streams])
 
   const presentedStreams = useMemo(
     () =>
@@ -1131,15 +1095,6 @@ export default function StreamingPage() {
         t={tStreaming}
         streamingToasts={streamingToasts}
         formatLimitValue={formatLimitValue}
-      />
-
-      <StreamScheduleModal
-        open={Boolean(scheduleModalStream)}
-        stream={scheduleModalStream}
-        t={tStreaming}
-        onClose={() => setScheduleModalStream(null)}
-        onSave={handleSaveSchedule}
-        isSaving={updateScheduleMutation.isPending}
       />
 
       {viewingLogs && (

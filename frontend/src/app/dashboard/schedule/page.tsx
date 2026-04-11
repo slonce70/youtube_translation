@@ -79,7 +79,7 @@ export default function SchedulePage() {
                     key={day.toISOString()}
                     type="button"
                     onClick={() => {
-                      if (dayStreams[0]) router.push(`/dashboard/streaming?editSchedule=${dayStreams[0].id}`)
+                      if (dayStreams[0]) router.push(`/dashboard/streaming?editStream=${dayStreams[0].id}`)
                     }}
                     style={{
                       minHeight: 84,
