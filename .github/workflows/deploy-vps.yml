@@ -129,7 +129,7 @@ jobs:
               docker inspect "$name" --format "{{.Name}}|{{.Config.Image}}|{{.State.StartedAt}}" 2>/dev/null || true
             done
           ')"
-          vps_checkout_sha="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "cd '$VPS_DEPLOY_PATH' && git rev-parse HEAD 2>/dev/null || true")"
+          vps_checkout_sha="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && git rev-parse HEAD 2>/dev/null || true")"
 
           current_backend_sha=''
           current_frontend_sha=''
@@ -345,7 +345,7 @@ jobs:
           VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
         run: |
           ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
-            "cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main"
+            "git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main"
 
       - name: Skip deploy because live stream protection is active
         if: steps.impact.outputs.needs_deploy == 'true' && steps.live_guard.outputs.can_deploy != 'true'
@@ -365,4 +365,4 @@ jobs:
           DEPLOY_SYNC_HOST_CADDY: ${{ steps.impact.outputs.sync_host_caddy }}
         run: |
           ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" \
-            "export GITHUB_SHA='$GITHUB_SHA' REGISTRY_HOST='ghcr.io' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASSWORD='$REGISTRY_PASSWORD' BACKEND_IMAGE='ghcr.io/slonce70/youtube_translation-backend:$GITHUB_SHA' FRONTEND_IMAGE='ghcr.io/slonce70/youtube_translation-frontend:$GITHUB_SHA' TUSD_IMAGE='ghcr.io/slonce70/youtube_translation-tusd:$GITHUB_SHA' DEPLOY_SERVICES='$DEPLOY_SERVICES' DEPLOY_SYNC_HOST_CADDY='$DEPLOY_SYNC_HOST_CADDY'; cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
+            "export GITHUB_SHA='$GITHUB_SHA' REGISTRY_HOST='ghcr.io' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASSWORD='$REGISTRY_PASSWORD' BACKEND_IMAGE='ghcr.io/slonce70/youtube_translation-backend:$GITHUB_SHA' FRONTEND_IMAGE='ghcr.io/slonce70/youtube_translation-frontend:$GITHUB_SHA' TUSD_IMAGE='ghcr.io/slonce70/youtube_translation-tusd:$GITHUB_SHA' DEPLOY_SERVICES='$DEPLOY_SERVICES' DEPLOY_SYNC_HOST_CADDY='$DEPLOY_SYNC_HOST_CADDY'; git config --global --add safe.directory '$VPS_DEPLOY_PATH' >/dev/null && cd '$VPS_DEPLOY_PATH' && git fetch --prune origin && git checkout main && git reset --hard origin/main && bash scripts/deploy_vps.sh"
