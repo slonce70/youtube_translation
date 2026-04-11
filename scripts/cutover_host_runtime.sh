@@ -47,6 +47,20 @@ wait_for_http() {
   "$curl_bin" -fsS --max-time 5 "$url" >/dev/null
 }
 
+wait_for_tusd_backend_http() {
+  echo "Waiting for tusd backend upstream reachability..."
+  for _ in $(seq 1 15); do
+    if "$docker_bin" compose -f "$compose_file" exec -T tusd \
+      sh -lc 'curl -fsS --max-time 5 "$TUSD_BACKEND_URL/health" >/dev/null' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  "$docker_bin" compose -f "$compose_file" exec -T tusd \
+    sh -lc 'curl -fsS --max-time 5 "$TUSD_BACKEND_URL/health" >/dev/null'
+}
+
 dump_host_backend_diagnostics() {
   echo "Collecting host-native backend diagnostics for ${backend_unit}..."
   "$systemctl_bin" show \
@@ -174,6 +188,7 @@ if [[ "$restart_frontend_and_tusd" == "1" ]]; then
     "$docker_bin" compose -f "$compose_file" up -d frontend tusd
   if [[ "$dry_run" != "1" ]]; then
     wait_for_http "frontend health endpoint" "$frontend_health_url"
+    wait_for_tusd_backend_http
   fi
 fi
 
