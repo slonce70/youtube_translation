@@ -338,6 +338,45 @@ async def prepare_stream_launch(
     return playlists, destinations, log_file
 
 
+def ensure_stream_runtime_writable(stream_dir: Path, *, mix_mode: str) -> None:
+    required_targets = ["video"]
+    if mix_mode in {"audio_only", "mixed"}:
+        required_targets.append("audio")
+
+    probe_files = [stream_dir / ".write_probe"]
+
+    try:
+        stream_dir.mkdir(parents=True, exist_ok=True)
+        for probe_file in probe_files:
+            probe_file.write_text("", encoding="utf-8")
+        for target in required_targets:
+            target_dir = stream_dir / "slots" / target
+            target_dir.mkdir(parents=True, exist_ok=True)
+            probe_file = target_dir / ".write_probe"
+            probe_file.write_text("", encoding="utf-8")
+            probe_files.append(probe_file)
+    except OSError as exc:
+        logger.exception(
+            "Failed to prepare writable runtime directory for %s", stream_dir
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "runtime_storage_unavailable",
+                "path": str(stream_dir),
+                "message": (
+                    "Stream runtime directory is not writable by the backend service user."
+                ),
+            },
+        ) from exc
+    finally:
+        for probe_file in probe_files:
+            try:
+                probe_file.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Failed to remove runtime write probe %s", probe_file)
+
+
 async def validate_stream_launch_prerequisites(
     db: AsyncSession,
     user_id: UUID,
@@ -392,7 +431,7 @@ async def validate_stream_launch_prerequisites(
         )
 
     stream_dir = Path(settings_obj.stream_dir) / str(stream.id)
-    stream_dir.mkdir(parents=True, exist_ok=True)
+    ensure_stream_runtime_writable(stream_dir, mix_mode=selection.mix_mode)
 
     log_file = Path(stream.log_path) if stream.log_path else stream_dir / "stream.log"
     if not destinations:

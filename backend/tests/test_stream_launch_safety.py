@@ -371,6 +371,63 @@ async def test_quality_and_start_reject_stale_copy_safe_asset_for_rtmp(
 
 
 @pytest.mark.asyncio
+async def test_launch_prerequisites_fail_closed_when_slot_dir_is_unwritable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+    user_id, stream_id = await _create_stream_fixture(tmp_path)
+    stream_dir = tmp_path / str(stream_id)
+    slot_dir = stream_dir / "slots" / "video"
+    slot_dir.mkdir(parents=True, exist_ok=True)
+    slot_probe = slot_dir / ".write_probe"
+
+    original_write_text = Path.write_text
+
+    def fail_slot_probe(self: Path, data: str, *args, **kwargs):
+        if self == slot_probe:
+            raise PermissionError(13, "Permission denied", str(slot_dir))
+        return original_write_text(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_slot_probe)
+    slot_dir.chmod(0o555)
+
+    class AllowAllQuota:
+        async def evaluate_stream_quality(self, *_args, **_kwargs):
+            return {
+                "ok": True,
+                "violations": [],
+                "tier": "free",
+                "limits": {},
+            }
+
+    async with async_session_maker() as session:
+        stream = await streams_helpers.load_stream_with_relations(
+            session, user_id, stream_id
+        )
+        assert stream is not None
+
+        with pytest.raises(HTTPException) as exc_info:
+            await streams_helpers.validate_stream_launch_prerequisites(
+                session,
+                user_id,
+                stream,
+                quota_evaluator=AllowAllQuota(),
+                settings_obj=streams_control.default_settings,
+            )
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == {
+        "error": "runtime_storage_unavailable",
+        "path": str(stream_dir),
+        "message": "Stream runtime directory is not writable by the backend service user.",
+    }
+
+
+@pytest.mark.asyncio
 async def test_http_quality_route_fails_closed_when_tier_limits_are_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
