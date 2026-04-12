@@ -143,3 +143,40 @@ def test_live_deploy_guard_allows_host_runtime_only_refresh_for_active_streams()
     values = _parse_key_values(result.stdout)
     assert values["can_deploy"] == "true"
     assert values["decision"] == "live stream active: host-native backend refresh allowed"
+
+
+def test_deploy_impact_ignores_backend_test_only_changes_for_host_runtime(tmp_path: Path) -> None:
+    script = _script_path()
+    repo = tmp_path / "repo-tests-only"
+    (repo / "backend" / "tests").mkdir(parents=True)
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "codex@example.com")
+    _git(repo, "config", "user.name", "Codex")
+
+    (repo / "backend" / "tests" / "test_example.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    checkout_sha = _commit_all(repo, "initial tests")
+
+    (repo / "backend" / "tests" / "test_example.py").write_text("def test_ok():\n    assert 1 == 1\n", encoding="utf-8")
+    target_sha = _commit_all(repo, "tests only")
+
+    result = _run_bash(
+        (
+            f"source {script}; "
+            f"TARGET_SHA='{target_sha}'; "
+            f"CURRENT_BACKEND_SHA='{checkout_sha}'; "
+            "CURRENT_FRONTEND_SHA=''; "
+            "CURRENT_TUSD_SHA=''; "
+            "HOST_BACKEND_ACTIVE=true; "
+            "HOST_BACKEND_UNIT_PRESENT=true; "
+            "CONFIGURED_STREAM_RUNTIME_MODE=systemd; "
+            f"VPS_CHECKOUT_SHA='{checkout_sha}'; "
+            "compute_deploy_impact"
+        ),
+        cwd=repo,
+    )
+
+    assert result.returncode == 0, result.stderr
+    values = _parse_key_values(result.stdout)
+    assert values["needs_deploy"] == "false"
+    assert values["backend_needs_deploy"] == "false"
+    assert values["host_runtime_needs_refresh"] == "false"
