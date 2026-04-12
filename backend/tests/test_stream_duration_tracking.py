@@ -546,6 +546,83 @@ async def test_stream_status_ignores_stale_runtime_faults_from_managed_log(
 
 
 @pytest.mark.asyncio
+async def test_stream_status_ignores_untimestamped_runtime_faults_from_previous_session(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_id = uuid4()
+    stream_id = uuid4()
+    old_timestamp = datetime.now(timezone.utc) - timedelta(hours=1)
+    log_path = tmp_path / "legacy-managed-stream.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                "[fifo @ 0x1] Non-monotonic DTS in output stream 0:1; previous: 1000, current: 999; changing to 1001.",
+                "[fifo @ 0x1] Non-monotonic DTS in output stream 0:1; previous: 1001, current: 1000; changing to 1002.",
+                f"{old_timestamp.isoformat()} [audit] INFO Stream stopped",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"legacy-managed-log-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=stream_id,
+            user_id=user_id,
+            name="managed-live-legacy-log",
+            status="running",
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=2),
+            log_path=str(log_path),
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+
+        async def _supervisor_program_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {
+                "state": "RUNNING",
+                "error": None,
+                "details": None,
+            }
+
+        monkeypatch.setattr(
+            streams_control,
+            "supervisor_program_status",
+            _supervisor_program_status,
+        )
+
+        class DummyManager:
+            def is_running(self, stream_id: str) -> bool:
+                return False
+
+            def get_stream_info(self, stream_id: str) -> Dict[str, Any]:
+                return {}
+
+            def get_runtime_incident_summary(self, stream_id: str) -> Dict[str, Any]:
+                return {
+                    "severity": "healthy",
+                    "headline": None,
+                    "details": [],
+                    "items": [],
+                }
+
+        service = StreamControlService(session, user_id, manager=DummyManager())
+        status = await service.get_stream_status(stream_id)
+
+        assert status.is_running is True
+        assert status.runtime_incident_summary.severity == "healthy"
+        assert status.runtime_incident_summary.items == []
+
+
+@pytest.mark.asyncio
 async def test_stream_status_falls_back_to_persisted_runtime_alert_when_log_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -606,6 +683,75 @@ async def test_stream_status_falls_back_to_persisted_runtime_alert_when_log_miss
             status.runtime_incident_summary.headline
             == "Runtime зафіксував повторні remote output resets"
         )
+
+
+@pytest.mark.asyncio
+async def test_stream_status_ignores_persisted_runtime_alert_from_previous_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    stream_id = uuid4()
+    session_started_at = datetime.now(timezone.utc) - timedelta(minutes=2)
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"stale-persisted-alert-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=stream_id,
+            user_id=user_id,
+            name="persisted-alert-stale",
+            status="running",
+            started_at=session_started_at,
+            log_path=None,
+        )
+        alert = SystemAlert(
+            user_id=user_id,
+            stream_id=stream_id,
+            alert_type="ffmpeg_error",
+            severity="warning",
+            message="Stream degraded while still running: repeated remote output resets detected in FFmpeg logs.",
+            created_at=session_started_at - timedelta(minutes=10),
+            details={
+                "category": "stream_runtime_health",
+                "signal": "remote_output_reset",
+                "status": "degraded_running",
+                "occurrence_count": 3,
+                "window_seconds": 180,
+                "observed_at": (
+                    session_started_at - timedelta(minutes=10)
+                ).isoformat(),
+            },
+        )
+        session.add_all([profile, stream, alert])
+        await session.commit()
+
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
+        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
+
+        class DummyManager:
+            def is_running(self, stream_id: str) -> bool:
+                return True
+
+            def get_stream_info(self, stream_id: str) -> Dict[str, Any]:
+                return {"uptime_seconds": 120}
+
+            def get_runtime_incident_summary(self, stream_id: str) -> Dict[str, Any]:
+                return {
+                    "severity": "healthy",
+                    "headline": None,
+                    "details": [],
+                    "items": [],
+                }
+
+        service = StreamControlService(session, user_id, manager=DummyManager())
+        status = await service.get_stream_status(stream_id)
+
+        assert status.runtime_incident_summary.severity == "healthy"
+        assert status.runtime_incident_summary.items == []
 
 
 @pytest.mark.asyncio

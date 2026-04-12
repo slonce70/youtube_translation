@@ -46,6 +46,9 @@ _NON_MONOTONIC_DTS_MARKERS = (
     "non-monotonic dts",
     "non monotonically increasing dts",
 )
+_RUNTIME_LOG_TIMESTAMP_PATTERN = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})\b"
+)
 _DEGRADED_SIGNAL_SPECS: Dict[str, Dict[str, Union[int, str, Tuple[str, ...]]]] = {
     "remote_output_reset": {
         "threshold": 3,
@@ -98,6 +101,20 @@ _RUNTIME_INCIDENT_CODES = {
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _format_runtime_log_line_for_persistence(
+    line: bytes, *, observed_at: datetime | None = None
+) -> bytes:
+    decoded = line.decode("utf-8", errors="replace").rstrip("\r\n")
+    if not decoded:
+        return b"\n"
+
+    if _RUNTIME_LOG_TIMESTAMP_PATTERN.match(decoded):
+        rendered = decoded
+    else:
+        rendered = f"{(observed_at or _utcnow()).isoformat()} {decoded}"
+    return f"{rendered}\n".encode("utf-8")
 
 
 def _redact_rtmp_uri(uri: str) -> str:
@@ -2015,15 +2032,20 @@ class FFmpegStreamManager:
                     if not line:
                         break
 
-                    if max_bytes and bytes_written + len(line) > max_bytes:
+                    observed_at = _utcnow()
+                    persisted_line = _format_runtime_log_line_for_persistence(
+                        line, observed_at=observed_at
+                    )
+
+                    if max_bytes and bytes_written + len(persisted_line) > max_bytes:
                         await f.flush()
                         await f.close()
                         self._rotate_log_file(log_file, max_backups)
                         bytes_written = 0
                         f = await _open_log()
 
-                    await f.write(line)
-                    bytes_written += len(line)
+                    await f.write(persisted_line)
+                    bytes_written += len(persisted_line)
 
                     try:
                         decoded = line.decode(errors="ignore").strip()

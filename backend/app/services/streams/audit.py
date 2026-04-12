@@ -261,17 +261,31 @@ def _parse_log_timestamp(line: str) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _normalize_utc_timestamp(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def filter_recent_runtime_log_lines(
     lines: Sequence[str],
     *,
     now: datetime | None = None,
     recency_window_seconds: int = _DEGRADED_ALERT_FALLBACK_SECONDS,
+    session_started_at: datetime | None = None,
 ) -> list[str]:
     if recency_window_seconds <= 0:
         return [str(line) for line in lines if str(line).strip()]
 
     current_time = now or _utcnow()
     cutoff = current_time - timedelta(seconds=recency_window_seconds)
+    if session_started_at is not None:
+        session_cutoff = _normalize_utc_timestamp(session_started_at)
+        assert session_cutoff is not None
+        if session_cutoff > cutoff:
+            cutoff = session_cutoff
     filtered: list[str] = []
 
     for raw_line in lines:
@@ -279,7 +293,12 @@ def filter_recent_runtime_log_lines(
         if not line:
             continue
         timestamp = _parse_log_timestamp(line)
-        if timestamp is not None and timestamp < cutoff:
+        if timestamp is None:
+            if session_started_at is not None:
+                # Without a timestamp we cannot safely attribute a raw FFmpeg line
+                # to the current session, so do not surface it as live degradation.
+                continue
+        elif timestamp < cutoff:
             continue
         filtered.append(line)
 
@@ -287,7 +306,10 @@ def filter_recent_runtime_log_lines(
 
 
 async def read_runtime_incident_summary_from_log(
-    log_path: str | None, *, line_limit: int = 200
+    log_path: str | None,
+    *,
+    line_limit: int = 200,
+    session_started_at: datetime | None = None,
 ) -> dict[str, Any]:
     if not log_path:
         return _healthy_runtime_incident_summary()
@@ -309,7 +331,9 @@ async def read_runtime_incident_summary_from_log(
         return _healthy_runtime_incident_summary()
 
     return summarize_runtime_incidents_from_log_lines(
-        filter_recent_runtime_log_lines(lines)
+        filter_recent_runtime_log_lines(
+            lines, session_started_at=session_started_at
+        )
     )
 
 
@@ -352,20 +376,28 @@ def _persisted_runtime_alert_to_item(alert: SystemAlert) -> Optional[dict[str, A
 
 
 async def load_persisted_runtime_incident_summaries(
-    db: AsyncSession, stream_ids: Sequence[UUID]
+    db: AsyncSession, streams: Sequence[Stream]
 ) -> dict[UUID, dict[str, Any]]:
-    ids = [stream_id for stream_id in stream_ids if stream_id]
+    ids = [stream.id for stream in streams if stream.id]
     if not ids:
         return {}
 
-    cutoff = _utcnow() - timedelta(seconds=_DEGRADED_ALERT_FALLBACK_SECONDS)
+    fallback_cutoff = _utcnow() - timedelta(seconds=_DEGRADED_ALERT_FALLBACK_SECONDS)
+    session_cutoffs = {
+        stream.id: max(
+            fallback_cutoff,
+            _normalize_utc_timestamp(stream.started_at) or fallback_cutoff,
+        )
+        for stream in streams
+        if stream.id
+    }
     result = await db.execute(
         select(SystemAlert)
         .where(
             SystemAlert.stream_id.in_(ids),
             SystemAlert.alert_type == "ffmpeg_error",
             SystemAlert.resolved.is_(False),
-            SystemAlert.created_at >= cutoff,
+            SystemAlert.created_at >= fallback_cutoff,
         )
         .order_by(SystemAlert.created_at.desc())
     )
@@ -376,6 +408,10 @@ async def load_persisted_runtime_incident_summaries(
     for alert in alerts:
         stream_id = alert.stream_id
         if stream_id is None:
+            continue
+        created_at = _normalize_utc_timestamp(alert.created_at)
+        session_cutoff = session_cutoffs.get(stream_id, fallback_cutoff)
+        if created_at is not None and created_at < session_cutoff:
             continue
         item = _persisted_runtime_alert_to_item(alert)
         if item is None:
@@ -402,11 +438,15 @@ async def attach_runtime_incident_summaries(
     if not streams:
         return
 
-    persisted = await load_persisted_runtime_incident_summaries(
-        db, [stream.id for stream in streams if stream.id]
-    )
+    persisted = await load_persisted_runtime_incident_summaries(db, streams)
     log_summaries = await asyncio.gather(
-        *[read_runtime_incident_summary_from_log(stream.log_path) for stream in streams]
+        *[
+            read_runtime_incident_summary_from_log(
+                stream.log_path,
+                session_started_at=stream.started_at,
+            )
+            for stream in streams
+        ]
     )
 
     for stream, log_summary in zip(streams, log_summaries):
