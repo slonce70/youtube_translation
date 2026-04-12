@@ -16,16 +16,12 @@ import { Badge } from '@/components/ui/Badge'
 import type {
   Destination,
   DestinationUpdatePayload,
-  Asset,
-  Stream,
-  Playlist,
   StreamLogsResponse,
   StreamStatusResponse,
   StreamQualityResponse,
   SubscriptionTierKey,
-  MediaCollection,
   StreamSchedulePayload,
-  YoutubeConnection,
+  Stream,
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
 import { StreamBuilderModal } from './components/StreamBuilderModal'
@@ -33,6 +29,7 @@ import { LiveEditorModal } from './components/LiveEditorModal'
 import { QualityGateModal } from './components/QualityGateModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
+import { useStreamingPageData } from './hooks/useStreamingPageData'
 import { useStreamStatusMap } from './hooks/useStreamStatusMap'
 import { AddChannelModal } from '@/components/streaming/AddChannelModal'
 import {
@@ -45,12 +42,7 @@ import { getDestinationPlatformPresentation } from './platform'
 import { formatDuration } from '@/lib/utils'
 import { formatDateTimeLocal, type ScheduleDraft } from './schedule-utils'
 import { extractStopAuditEntries } from './log-audit'
-import {
-  getProviderStatusKey,
-  getProviderBadgeVariant,
-  getProviderHealthIssueCount,
-  hasProviderHealthAttention,
-} from '@/lib/provider-status'
+import { getProviderBadgeVariant } from '@/lib/provider-status'
 
 type DestinationFormState = {
   name: string
@@ -98,118 +90,34 @@ export default function StreamingPage() {
   const [liveEditorNameDraft, setLiveEditorNameDraft] = useState('')
   const [liveEditorDestinationIds, setLiveEditorDestinationIds] = useState<string[]>([])
 
-  const { data: destinations, isLoading: isLoadingDestinations } = useQuery<Destination[]>({
-    queryKey: ['destinations', user?.id],
-    queryFn: () => api.destinations.list(),
-    enabled: !!user,
-  })
-
-  const { data: youtubeConnections } = useQuery<YoutubeConnection[]>({
-    queryKey: ['youtube-connections', user?.id],
-    queryFn: () => api.youtube.listConnections(),
-    enabled: !!user,
-    staleTime: 30_000,
-  })
-
-  const { data: streams, isLoading: isLoadingStreams } = useQuery<Stream[]>({
-    queryKey: ['streams', user?.id],
-    queryFn: () => api.streams.list(),
-    enabled: !!user,
-    refetchInterval: 3000,
+  const {
+    assets,
+    audioCollections,
+    concurrentStreamsLimit,
+    destinations,
+    destinationsLimit,
+    formatLimitValue,
+    formatProviderStatus,
+    formatProviderSummary,
+    getStreamSourceLabel,
+    getStreamSourceTotalSeconds,
+    isLoadingAssets,
+    isLoadingAudioCollections,
+    isLoadingDestinations,
+    isLoadingStreams,
+    isLoadingVideoCollections,
+    planQualityLimits,
+    streams,
+    shouldShowProviderBadge,
+    videoCollections,
+    youtubeConnections,
+  } = useStreamingPageData({
+    userId: user?.id,
+    quota,
+    tStreaming,
   })
 
   const liveStatusMap = useStreamStatusMap(streams, user?.id)
-
-  const { data: playlists } = useQuery<Playlist[]>({
-    queryKey: ['playlists', user?.id],
-    queryFn: () => api.playlists.list(),
-    enabled: !!user,
-  })
-
-  const { data: assets, isLoading: isLoadingAssets } = useQuery<Asset[]>({
-    queryKey: ['assets', user?.id, 'streaming'],
-    queryFn: () => api.assets.list(),
-    enabled: !!user,
-  })
-
-  const { data: videoCollections, isLoading: isLoadingVideoCollections } = useQuery<MediaCollection[]>({
-    queryKey: ['media-collections', user?.id, 'video'],
-    queryFn: () =>
-      api.mediaCollections.list({
-        collection_type: 'video_background',
-        include_items: true,
-      }),
-    enabled: !!user,
-  })
-
-  const { data: audioCollections, isLoading: isLoadingAudioCollections } = useQuery<MediaCollection[]>({
-    queryKey: ['media-collections', user?.id, 'audio'],
-    queryFn: () =>
-      api.mediaCollections.list({
-        collection_type: 'audio_playlist',
-        include_items: true,
-      }),
-    enabled: !!user,
-  })
-
-  const playlistMap = useMemo(() => {
-    if (!playlists) return new Map<string, Playlist>()
-    return new Map(playlists.map((playlist) => [playlist.id, playlist]))
-  }, [playlists])
-  const videoCollectionMap = useMemo(() => {
-    if (!videoCollections) return new Map<string, MediaCollection>()
-    return new Map(videoCollections.map((collection) => [collection.id, collection]))
-  }, [videoCollections])
-  const audioCollectionMap = useMemo(() => {
-    if (!audioCollections) return new Map<string, MediaCollection>()
-    return new Map(audioCollections.map((collection) => [collection.id, collection]))
-  }, [audioCollections])
-
-  const formatLimitValue = (value?: number | null) => (value == null ? '∞' : value.toString())
-  const hasProviderConnection = (stream: Stream) =>
-    Boolean(stream.destinations?.some((destination) => destination.provider_connection_id))
-  const formatProviderStatus = (status?: string | null) =>
-    tStreaming(`provider.status.${getProviderStatusKey(status)}`)
-  const shouldShowProviderBadge = (destination: Destination) =>
-    Boolean(destination.provider_connection_id && destination.provider_status && destination.provider_status !== 'unknown')
-  const getStreamSourceLabel = (stream: Stream) => {
-    if (stream.video_collection_id) return videoCollectionMap.get(stream.video_collection_id)?.name ?? 'Відеоряд'
-    if (stream.playlist_id) return playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист'
-    if (stream.stream_assets?.length) return `Черга (${stream.stream_assets.length})`
-    return 'Джерело не вказано'
-  }
-  const getStreamSourceTotalSeconds = (stream: Stream) => {
-    const collection = stream.video_collection_id ? videoCollectionMap.get(stream.video_collection_id) : null
-    if (collection?.items?.length) {
-      const total = collection.items.reduce((sum, item) => sum + (item.asset?.duration_seconds ?? 0), 0)
-      return total > 0 ? total : null
-    }
-    if (stream.stream_assets?.length && assets?.length) {
-      const assetDurations = stream.stream_assets
-        .map((link) => assets.find((asset) => asset.id === link.asset_id)?.duration_seconds ?? 0)
-        .reduce((sum, duration) => sum + duration, 0)
-      return assetDurations > 0 ? assetDurations : null
-    }
-    return null
-  }
-  const formatProviderSummary = (destination: Destination) => {
-    if (!destination.provider_connection_id) return null
-    if (!destination.provider_viewers && (!destination.provider_status || destination.provider_status === 'unknown')) return null
-    const parts = [formatProviderStatus(destination.provider_status)]
-    if (typeof destination.provider_viewers === 'number') {
-      parts.push(tStreaming('provider.viewers', { count: destination.provider_viewers }))
-    }
-    const issueCount = getProviderHealthIssueCount(destination)
-    if (issueCount > 0) {
-      parts.push(tStreaming('provider.healthIssues', { count: issueCount }))
-    } else if (hasProviderHealthAttention(destination)) {
-      parts.push(tStreaming('provider.healthDegraded'))
-    }
-    return parts.join(' · ')
-  }
-  const destinationsLimit = quota?.destinations?.limit ?? null
-  const concurrentStreamsLimit = quota?.streams?.limit ?? null
-  const planQualityLimits = quota?.quality
 
   const createDestinationMutation = useMutation({
     mutationFn: (data: DestinationFormState) => api.destinations.create(data),

@@ -9,10 +9,13 @@
 make install
 ```
 
-2. Підняти базові сервіси через Docker Compose:
+2. Підняти базові сервіси через канонічну обгортку:
 ```bash
-docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner
+make dev-bootstrap
 ```
+
+Цей шлях автоматично підхоплює `POSTGRES_PASSWORD` з `backend/.env`.
+Якщо `127.0.0.1:5432` або `127.0.0.1:6379` вже зайняті стороннім локальним `postgres`/`redis`, bootstrap має fail-fast: канонічний шлях не підміняє compose-залежності довільними host services.
 
 3. Запустити бекенд локально:
 ```bash
@@ -63,7 +66,7 @@ cd frontend && npm run test:e2e
 make verify-v0
 ```
 
-`make test` у канонічному локальному шляху сам перевіряє/піднімає `postgres` і `redis` через `docker compose`, тому backend unit/integration тести не вимагають окремого ручного bootstrap для цих двох сервісів.
+`make test` у канонічному локальному шляху сам перевіряє/піднімає `postgres` і `redis` через Docker Compose та відмовляється запускати backend tests проти довільних локальних сервісів на тих самих портах. Якщо порти зайняті не очікуваними compose-контейнерами, це вважається конфліктом середовища, а не валідним baseline.
 
 ## Поточний baseline
 

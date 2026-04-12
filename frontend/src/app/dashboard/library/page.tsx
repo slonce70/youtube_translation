@@ -2,7 +2,7 @@
 /* eslint-disable i18next/no-literal-string */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Uppy from '@uppy/core'
 import type { UploadResult } from '@uppy/core'
@@ -26,7 +26,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
 import { Input } from '@/components/ui/Input'
 import type {
   Asset,
-  AssetUsageReference,
   MediaFolder,
   Playlist,
   PlaylistCreatePayload,
@@ -37,12 +36,19 @@ import { UploadModal } from '@/components/upload/UploadModal'
 import { AssetActionsMenu } from '@/components/AssetActionsMenu'
 import {
   deriveAssetDisplayInfo,
+  formatAssetWarningMessage,
   formatBitrateDisplay,
   formatFpsDisplay,
   formatSampleRateDisplay,
   type AssetDisplayInfo,
-  type AssetWarning,
 } from './asset-utils'
+import { useLibraryRouteState } from './hooks/useLibraryRouteState'
+import { useLibraryPageData } from './hooks/useLibraryPageData'
+import { useAssetSelection } from './hooks/useAssetSelection'
+import { usePlaylistManager } from './hooks/usePlaylistManager'
+import { useFolderManager } from './hooks/useFolderManager'
+import { useAssetActions } from './hooks/useAssetActions'
+import { useDeleteAssetsFlow } from './hooks/useDeleteAssetsFlow'
 import { applyAssetView, type AssetSortValue } from './asset-view'
 import {
   applyUploadStatusEntries,
@@ -57,7 +63,14 @@ import { useDashboardContext } from '../dashboard-context'
 import { Breadcrumbs } from '@/components/library/Breadcrumbs'
 import { FolderCard } from '@/components/library/FolderCard'
 import { AssetCard } from '@/components/library/AssetCard'
-import { getAssetEmptyCopy, type AssetFilterValue } from './empty-state-copy'
+import { FolderSelectionTree } from './components/FolderSelectionTree'
+import { ForceUsageList } from './components/ForceUsageList'
+import { DeleteAssetsModal } from './components/DeleteAssetsModal'
+import { FolderModal } from './components/FolderModal'
+import { MoveAssetsModal } from './components/MoveAssetsModal'
+import { RenameAssetModal } from './components/RenameAssetModal'
+import { AssetValidationModal } from './components/AssetValidationModal'
+import type { AssetFilterValue } from './empty-state-copy'
 
 type PlaylistFormState = PlaylistCreatePayload & { description: string }
 
@@ -95,7 +108,6 @@ function extractTusUploadId(file: {
 }
 
 export default function LibraryPage() {
-  const searchParams = useSearchParams()
   const router = useRouter()
   const queryClient = useQueryClient()
   const { user, quota } = useDashboardContext()
@@ -106,125 +118,23 @@ export default function LibraryPage() {
   const tAssetWarnings = useTranslations('library.page.assets.warnings')
   const tStreamingStatus = useTranslations('streaming.status')
   const actionLabels = useTranslations('common.actions')
-
-  const buildLibraryRoute = useCallback(
-    (updates: Record<string, string | null | undefined>) => {
-      const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
-      Object.entries(updates).forEach(([key, value]) => {
-        if (!value) {
-          nextParams.delete(key)
-        } else {
-          nextParams.set(key, value)
-        }
-      })
-      const queryString = nextParams.toString()
-      return `/dashboard/library${queryString ? `?${queryString}` : ''}`
-    },
-    [searchParams]
-  )
-
-  const formatWarningMessage = (warning: AssetWarning): string => {
-    switch (warning.kind) {
-      case 'bitrateRange':
-        return tAssetWarnings('bitrateRange', {
-          resolution: warning.payload.resolution,
-          fps: warning.payload.fps,
-          min: warning.payload.min,
-          max: warning.payload.max,
-          target: warning.payload.target,
-        })
-      case 'fpsOutOfGuideline':
-        return tAssetWarnings('fpsOutOfGuideline')
-      case 'videoCodec':
-        return tAssetWarnings('videoCodec', {
-          expected: warning.payload.expected,
-          found: warning.payload.found ?? tAssetWarnings('unknownValue'),
-        })
-      case 'audioCodec':
-        return tAssetWarnings('audioCodec', {
-          expected: warning.payload.expected,
-          found: warning.payload.found ?? tAssetWarnings('unknownValue'),
-        })
-      case 'pixelFormat':
-        return tAssetWarnings('pixelFormat', {
-          expected: warning.payload.expected,
-          found: warning.payload.found ?? tAssetWarnings('unknownValue'),
-        })
-      case 'gopTooLarge':
-        return tAssetWarnings('gopTooLarge', {
-          found: warning.payload.found,
-          limit: warning.payload.limit,
-        })
-      case 'noVideoStream':
-        return tAssetWarnings('noVideoStream')
-      case 'noAudioStream':
-        return tAssetWarnings('noAudioStream')
-      case 'requiresTranscode':
-        return tAssetWarnings('requiresTranscode', {
-          video: warning.payload?.video ?? 'H.264',
-          audio: warning.payload?.audio ?? 'AAC',
-          pixel: warning.payload?.pixel ?? 'yuv420p',
-        })
-      case 'missingMetadata':
-        return tAssetWarnings('missingMetadata')
-      default:
-        return warning.message
-    }
-  }
-
-  // Tab management with URL sync
-  const [activeTab, setActiveTab] = useState(searchParams?.get('tab') || 'assets')
-  const deriveAssetFilter = useCallback((value: string | null): AssetFilterValue => {
-    if (value === 'video' || value === 'audio') {
-      return value
-    }
-    return 'all'
-  }, [])
-  const deriveFolderSelection = useCallback((value: string | null): string | 'all' => {
-    if (!value) {
-      return 'all'
-    }
-    return value
-  }, [])
-
-  const [assetFilter, setAssetFilter] = useState<AssetFilterValue>(
-    deriveAssetFilter(searchParams?.get('type') ?? null)
-  )
-  const [selectedFolderId, setSelectedFolderId] = useState<string | 'all'>(
-    deriveFolderSelection(searchParams?.get('folder') ?? null)
-  )
-  const assetEmptyCopy = getAssetEmptyCopy((key) => tLibrary(key), assetFilter)
-
-  useEffect(() => {
-    const tab = searchParams?.get('tab')
-    if (tab && (tab === 'assets' || tab === 'playlists')) {
-      setActiveTab(tab)
-    }
-    setAssetFilter(deriveAssetFilter(searchParams?.get('type') ?? null))
-    setSelectedFolderId(deriveFolderSelection(searchParams?.get('folder') ?? null))
-  }, [searchParams, deriveAssetFilter, deriveFolderSelection])
-
-  const handleTabChange = (tab: string) => {
-    setActiveTab(tab)
-    router.push(buildLibraryRoute({ tab }), { scroll: false })
-  }
-
-  const handleAssetFilterChange = (filter: AssetFilterValue) => {
-    if (assetFilter === filter) return
-    setAssetFilter(filter)
-    router.push(
-      buildLibraryRoute({ type: filter === 'all' ? null : filter }),
-      { scroll: false }
-    )
-  }
+  const {
+    activeTab,
+    assetEmptyCopy,
+    assetFilter,
+    buildLibraryRoute,
+    handleAssetFilterChange,
+    handleTabChange,
+    selectedFolderId,
+    setSelectedFolderId,
+  } = useLibraryRouteState({ tLibrary })
 
   const handleFolderSelect = (folderId: string | 'all') => {
     setSelectedFolderId(folderId)
     setSelectedAssets(new Set())
-    router.push(
-      buildLibraryRoute({ folder: folderId === 'all' ? null : folderId }),
-      { scroll: false }
-    )
+    router.push(buildLibraryRoute({ folder: folderId === 'all' ? null : folderId }), {
+      scroll: false,
+    })
   }
 
   const handleCloseUploadModal = useCallback(() => {
@@ -237,49 +147,19 @@ export default function LibraryPage() {
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [isProcessingUpload, setIsProcessingUpload] = useState(false)
   const [uploadStatusOverrides, setUploadStatusOverrides] = useState<Record<string, UploadModalStatusOverride>>({})
-  const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set())
-  const [assetBeingRenamed, setAssetBeingRenamed] = useState<Asset | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [checkingAssetId, setCheckingAssetId] = useState<string | null>(null)
-  const [optimizingAssetId, setOptimizingAssetId] = useState<string | null>(null)
-  const [downloadAssetId, setDownloadAssetId] = useState<string | null>(null)
-  const [checkModalAsset, setCheckModalAsset] = useState<Asset | null>(null)
-  const [checkModalInfo, setCheckModalInfo] = useState<AssetDisplayInfo | null>(null)
-  const [isCheckModalLoading, setIsCheckModalLoading] = useState(false)
-  const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set())
   const [assetSearchQuery, setAssetSearchQuery] = useState('')
   const [assetSort, setAssetSort] = useState<AssetSortValue>('newest')
   const [assetDensity, setAssetDensity] = useState<'compact' | 'comfortable'>('compact')
   const [inUseOnly, setInUseOnly] = useState(false)
   const [warningsOnly, setWarningsOnly] = useState(false)
-  const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(new Set())
-  const [pendingUsageActionKeys, setPendingUsageActionKeys] = useState<Set<string>>(new Set())
   const [moveModalState, setMoveModalState] = useState<{ open: boolean; assetIds: string[] }>({
     open: false,
     assetIds: [],
   })
   const [uploadTokenState, setUploadTokenState] = useState<{ token: string; expiresAt: number } | null>(null)
-  const [deleteModalState, setDeleteModalState] = useState<{
-    open: boolean
-    assetIds: string[]
-    forceRequired: boolean
-    forceTarget?: {
-      assetId: string
-      name?: string
-      usage?: Asset['usage']
-    }
-  }>({
-    open: false,
-    assetIds: [],
-    forceRequired: false,
-  })
   const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>('')
   const [draggedAssetIds, setDraggedAssetIds] = useState<string[] | null>(null)
   const [dragOverFolderId, setDragOverFolderId] = useState<string | 'all' | null>(null)
-  const [folderModalState, setFolderModalState] = useState<
-    { mode: 'create' | 'rename' | 'delete'; folder: MediaFolder | null } | null
-  >(null)
-  const [folderNameInput, setFolderNameInput] = useState('')
   const [isGlobalDragOver, setIsGlobalDragOver] = useState(false)
 
   useEffect(() => {
@@ -308,16 +188,6 @@ export default function LibraryPage() {
   useEffect(() => {
     window.localStorage.setItem('yt.library.assetSort', assetSort)
   }, [assetSort])
-
-  // Playlists state
-  const [showCreatePlaylist, setShowCreatePlaylist] = useState(false)
-  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null)
-  const [playlistForm, setPlaylistForm] = useState<PlaylistFormState>({
-    name: '',
-    description: '',
-    loop: true,
-    items: [],
-  })
 
   // Uppy configuration
   const tusEndpoint = useMemo(() => {
@@ -548,154 +418,182 @@ export default function LibraryPage() {
     uppy.setMeta(meta)
   }, [uppy, uploadTokenState?.token, user?.id])
 
-  // API Queries
-  const { data: assets, isLoading: isLoadingAssets } = useQuery<Asset[]>({
-    queryKey: ['assets', user?.id, assetFilter, selectedFolderId],
-    queryFn: () =>
-      api.assets.list(
-        assetFilter === 'all'
-          ? selectedFolderId === 'all'
-            ? undefined
-            : { folder_id: selectedFolderId }
-          : {
-              asset_type: assetFilter,
-              folder_id: selectedFolderId === 'all' ? undefined : selectedFolderId,
-            }
-      ),
-    enabled: !!user,
-  })
-
   const {
-    data: folders,
-    isLoading: isLoadingFolders,
-    isError: isFoldersError,
-  } = useQuery<MediaFolder[]>({
-    queryKey: ['media-folders', user?.id],
-    queryFn: () => api.mediaFolders.list(),
-    enabled: !!user,
+    assetMap,
+    assets,
+    currentFolders,
+    displayedAssets,
+    folderChildren,
+    folderItemCounts,
+    folders,
+    isFoldersError,
+    isLoadingAssets,
+    isLoadingFolders,
+    isLoadingPlaylists,
+    librarySummary,
+    playlists,
+    rootFolderId,
+    totalAssets,
+    totalPlaylists,
+    visibleAssets,
+  } = useLibraryPageData({
+    assetFilter,
+    assetSearchQuery,
+    assetSort,
+    inUseOnly,
+    selectedFolderId,
+    userId: user?.id,
+    warningsOnly,
   })
-
-  const { data: playlists, isLoading: isLoadingPlaylists } = useQuery<Playlist[]>({
-    queryKey: ['playlists', user?.id],
-    queryFn: () => api.playlists.list(),
-    enabled: !!user,
+  const {
+    addAssetToPlaylist,
+    createPlaylistMutation,
+    deletePlaylistMutation,
+    editingPlaylistId,
+    handleDeletePlaylist,
+    handleEditPlaylist,
+    handleSubmitPlaylist,
+    playlistForm,
+    removePlaylistItem,
+    resetPlaylistForm,
+    setPlaylistForm,
+    setShowCreatePlaylist,
+    showCreatePlaylist,
+    updatePlaylistMutation,
+  } = usePlaylistManager({
+    confirmDeleteMessage: tLibrary('playlists.messages.confirmDelete'),
+    genericError: (message) =>
+      libraryToasts('generic.errorWithMessage', { message }),
+    playlistCreatedMessage: libraryToasts('playlist.created'),
+    playlistDeletedMessage: libraryToasts('playlist.deleted'),
+    playlistUpdatedMessage: libraryToasts('playlist.updated'),
+    userId: user?.id,
   })
-
-  const rootFolderId = useMemo(() => {
-    if (!folders || folders.length === 0) return null
-    const root = folders.find((folder) => folder.is_root)
-    return root ? root.id : null
-  }, [folders])
-
-  const visibleAssets = useMemo(() => {
-    if (!assets) return [] as Asset[]
-
-    // Folder-specific views are already scoped by the API query.
-    // The top-level library screen should keep the whole library visible so
-    // assets do not appear to "disappear" after folder assignment or upload.
-    return assets
-  }, [assets])
-
-  const displayedAssets = useMemo(() => {
-    return applyAssetView(visibleAssets, {
-      query: assetSearchQuery,
-      sort: assetSort,
-      inUseOnly,
-      warningsOnly,
-    })
-  }, [assetSearchQuery, assetSort, inUseOnly, warningsOnly, visibleAssets])
-
-  const assetMap = useMemo(() => {
-    if (!assets) {
-      return new Map<string, Asset>()
-    }
-    return new Map(assets.map((asset) => [asset.id, asset]))
-  }, [assets])
-
-  useEffect(() => {
-    if (!assets) return
-    setSelectedAssets((prev) => {
-      if (prev.size === 0) return prev
-      const allowedIds = new Set(visibleAssets.map((asset) => asset.id))
-      const next = new Set<string>()
-      let changed = false
-      prev.forEach((id) => {
-        if (allowedIds.has(id)) {
-          next.add(id)
-        } else {
-          changed = true
-        }
-      })
-      if (changed || next.size !== prev.size) {
-        return next
-      }
-      return prev
-    })
-  }, [assets, visibleAssets])
+  const {
+    closeFolderModal,
+    createFolderMutation,
+    deleteFolderMutation,
+    folderModalState,
+    folderNameInput,
+    handleFolderDelete,
+    handleFolderModalSubmit,
+    openCreateFolderModal,
+    openDeleteFolderModal,
+    openRenameFolderModal,
+    setFolderNameInput,
+    updateFolderMutation,
+  } = useFolderManager({
+    emptyNameMessage: libraryToasts('asset.renameEmpty'),
+    genericError: (message) =>
+      libraryToasts('generic.errorWithMessage', { message }),
+    selectedFolderId,
+    setSelectedFolderId,
+    userId: user?.id,
+    folderCreatedMessage: libraryToasts('folder.created'),
+    folderDeletedMessage: libraryToasts('folder.deleted'),
+    folderUpdatedMessage: libraryToasts('folder.updated'),
+  })
+  const {
+    closeDeleteModal,
+    deleteAssets,
+    deleteModalAssets,
+    deleteModalState,
+    deleteSelectionHasUsage,
+    forceTargetUsage,
+    handleDeleteUsageCollection,
+    handleDeleteUsagePlaylist,
+    handleDeleteUsageStream,
+    isDeletingSelection,
+    openDeleteModal,
+    pendingDeletionIds,
+    pendingUsageActionKeys,
+    resolveAssetsByIds,
+    setDeleteModalState,
+  } = useDeleteAssetsFlow({
+    assetMap,
+    assetDeleteFailed: libraryToasts('asset.deleteFailed'),
+    assetDeleted: libraryToasts('asset.deleted'),
+    assetForceToast: libraryToasts('asset.forceToast'),
+    collectionDeleted: libraryToasts('references.collectionDeleted'),
+    collectionDeleteBlocked: libraryToasts('references.collectionDeleteBlocked'),
+    collectionDeleteFailed: (message) =>
+      libraryToasts('references.collectionDeleteFailed', { message }),
+    confirmDeleteCollection: (name) =>
+      tLibrary('assets.selection.confirmDeleteCollection', { name }),
+    confirmDeletePlaylist: (name) =>
+      tLibrary('playlists.messages.confirmDelete', { name }),
+    confirmDeleteStream: (name) =>
+      tLibrary('assets.selection.confirmDeleteStream', { name }),
+    forceUnknown: tLibrary('assets.selection.forceUnknown'),
+    genericError: (message) =>
+      libraryToasts('generic.errorWithMessage', { message }),
+    playlistDeleted: libraryToasts('playlist.deleted'),
+    playlistDeleteFailed: (message) =>
+      libraryToasts('generic.errorWithMessage', { message }),
+    streamDeleteFailed: (message) =>
+      libraryToasts('references.streamDeleteFailed', { message }),
+    streamDeleted: libraryToasts('references.streamDeleted'),
+    userId: user?.id,
+  })
 
   const hasViewFilters = Boolean(assetSearchQuery.trim() || inUseOnly || warningsOnly)
-
-  useEffect(() => {
-    if (!hasViewFilters) return
-    setSelectedAssets((prev) => {
-      if (prev.size === 0) return prev
-      const allowedIds = new Set(displayedAssets.map((asset) => asset.id))
-      const next = new Set<string>()
-      let changed = false
-      prev.forEach((id) => {
-        if (allowedIds.has(id)) {
-          next.add(id)
-        } else {
-          changed = true
-        }
-      })
-      if (changed || next.size !== prev.size) {
-        return next
-      }
-      return prev
-    })
-  }, [displayedAssets, hasViewFilters])
+  const {
+    allDisplayedSelected,
+    clearAssetSelection,
+    hasSelection,
+    isPartiallySelected,
+    selectAllDisplayedAssets,
+    selectedAssetCount,
+    selectedAssets,
+    selectedAssetsArray,
+    selectedDisplayedCount,
+    setSelectedAssets,
+    toggleAssetSelection,
+  } = useAssetSelection({
+    displayedAssets,
+    hasViewFilters,
+    visibleAssets,
+  })
+  const {
+    assetBeingRenamed,
+    checkModalAsset,
+    checkModalInfo,
+    checkingAssetId,
+    closeCheckModal,
+    closeRenameModal,
+    downloadAssetId,
+    downloadLinkMutation,
+    expandedAssets,
+    handleCheckAsset,
+    handleDownloadAsset,
+    handleOptimizeAsset,
+    handleRenameAsset,
+    isCheckModalLoading,
+    optimizingAssetId,
+    optimizeAssetMutation,
+    renameValue,
+    revalidateAssetMutation,
+    setRenameValue,
+    submitRename,
+    toggleAssetDetails,
+    updateAssetMutation,
+  } = useAssetActions({
+    assetDownloadLabel: (name) => libraryToasts('asset.download', { name }),
+    assetDownloadLinkFailed: libraryToasts('asset.downloadLinkFailed'),
+    assetOptimizeFailed: libraryToasts('asset.optimizeFailed'),
+    assetOptimizeQueued: (name) => libraryToasts('asset.optimizeQueued', { name }),
+    assetOptimizeReady: (name) => libraryToasts('asset.optimizeReady', { name }),
+    assetRenameEmpty: libraryToasts('asset.renameEmpty'),
+    assetUpdateFailed: libraryToasts('asset.updateFailed'),
+    assetUpdated: libraryToasts('asset.updated'),
+    assetValidateFailed: libraryToasts('asset.validateFailed'),
+    assetValidationRefreshed: libraryToasts('asset.validationRefreshed'),
+    genericError: (message) =>
+      libraryToasts('generic.errorWithMessage', { message }),
+    userId: user?.id,
+  })
 
   // Mutations
-  const revalidateAssetMutation = useMutation({
-    mutationFn: (assetId: string) => api.assets.revalidate(assetId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
-    },
-    onError: (error: Error) => {
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
-    },
-  })
-
-  const updateAssetMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { filename?: string } }) =>
-      api.assets.update(id, data),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
-      toast.success(libraryToasts('asset.updated'))
-    },
-    onError: (error: Error) => {
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
-    },
-  })
-
-  const optimizeAssetMutation = useMutation({
-    mutationFn: (assetId: string) => api.assets.optimize(assetId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
-    },
-    onError: (error: Error) => {
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
-    },
-  })
-
-  const downloadLinkMutation = useMutation({
-    mutationFn: (assetId: string) => api.assets.createDownloadLink(assetId),
-    onError: (error: Error) => {
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
-    },
-  })
-
   const moveAssetsMutation = useMutation({
     mutationFn: ({ folderId, assetIds }: { folderId: string | null; assetIds: string[] }) => {
       if (!folderId || !isValidUUID(folderId)) {
@@ -724,156 +622,6 @@ export default function LibraryPage() {
     },
   })
 
-  const createFolderMutation = useMutation({
-    mutationFn: (data: { name: string; parent_id?: string | null }) =>
-      api.mediaFolders.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['media-folders', user?.id] })
-      toast.success(libraryToasts('folder.created'))
-    },
-    onError: (error: Error) => {
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
-    },
-  })
-
-  const updateFolderMutation = useMutation({
-    mutationFn: ({ folderId, name }: { folderId: string; name: string }) =>
-      api.mediaFolders.update(folderId, { name }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['media-folders', user?.id] })
-      toast.success(libraryToasts('folder.updated'))
-    },
-    onError: (error: Error) => {
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
-    },
-  })
-
-  const deleteFolderMutation = useMutation({
-    mutationFn: (folderId: string) => api.mediaFolders.delete(folderId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['media-folders', user?.id] })
-      toast.success(libraryToasts('folder.deleted'))
-    },
-    onError: (error: Error) => {
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message }))
-    },
-  })
-
-  const createPlaylistMutation = useMutation({
-    mutationFn: (data: PlaylistCreatePayload) => api.playlists.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['playlists', user?.id] })
-      toast.success(libraryToasts('playlist.created'))
-      resetPlaylistForm()
-    },
-    onError: (error: Error) =>
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  const updatePlaylistMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: PlaylistFormState }) => {
-      const payload: PlaylistUpdatePayload = {
-        name: data.name,
-        description: data.description,
-        loop: data.loop,
-        items: data.items,
-      }
-      return api.playlists.update(id, payload)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['playlists', user?.id] })
-      toast.success(libraryToasts('playlist.updated'))
-      resetPlaylistForm()
-    },
-    onError: (error: Error) =>
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  const deletePlaylistMutation = useMutation({
-    mutationFn: (playlistId: string) => api.playlists.delete(playlistId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['playlists', user?.id] })
-      toast.success(libraryToasts('playlist.deleted'))
-    },
-    onError: (error: Error) =>
-      toast.error(libraryToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  const folderChildren = useMemo(() => {
-    const map = new Map<string | null, MediaFolder[]>()
-    ;(folders ?? []).forEach((folder) => {
-      const key = folder.parent_id ?? null
-      const siblings = map.get(key) ?? []
-      siblings.push(folder)
-      map.set(key, siblings)
-    })
-    map.forEach((children) => {
-      children.sort((a, b) => a.name.localeCompare(b.name))
-    })
-    return map
-  }, [folders])
-
-  const renderFolderSelectionTree = (parentId: string | null, depth = 0): ReactElement[] => {
-    const children = folderChildren.get(parentId) ?? []
-    return children.map((folder) => (
-      <div key={`move-${folder.id}`}>
-        <button
-          type="button"
-          onClick={() => setMoveTargetFolderId(folder.id)}
-          className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm transition-colors ${
-            moveTargetFolderId === folder.id
-              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-100'
-              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-          }`}
-          style={{ paddingLeft: depth ? depth * 12 : 0 }}
-        >
-          <span className="truncate">{folder.name}</span>
-          {moveTargetFolderId === folder.id && <CheckCircle className="h-4 w-4" />}
-        </button>
-        {renderFolderSelectionTree(folder.id, depth + 1)}
-      </div>
-    ))
-  }
-
-  const selectedAssetCount = selectedAssets.size
-  const hasSelection = selectedAssetCount > 0
-  const selectedAssetsArray = useMemo(() => Array.from(selectedAssets), [selectedAssets])
-  const selectedDisplayedCount = useMemo(() => {
-    if (displayedAssets.length === 0) return 0
-    return displayedAssets.reduce(
-      (count, asset) => (selectedAssets.has(asset.id) ? count + 1 : count),
-      0
-    )
-  }, [displayedAssets, selectedAssets])
-  const allDisplayedSelected = Boolean(
-    displayedAssets.length > 0 && selectedDisplayedCount === displayedAssets.length
-  )
-  const isPartiallySelected = Boolean(selectedDisplayedCount > 0 && !allDisplayedSelected)
-
-  const toggleAssetSelection = (assetId: string) => {
-    setSelectedAssets((prev) => {
-      const next = new Set(prev)
-      if (next.has(assetId)) {
-        next.delete(assetId)
-      } else {
-        next.add(assetId)
-      }
-      return next
-    })
-  }
-
-  const selectAllDisplayedAssets = () => {
-    if (displayedAssets.length === 0) {
-      setSelectedAssets(new Set())
-      return
-    }
-    setSelectedAssets(new Set(displayedAssets.map((asset) => asset.id)))
-  }
-
-  const clearAssetSelection = () => {
-    setSelectedAssets(new Set())
-  }
-
   const openMoveModal = (assetIds: string[]) => {
     if (!assetIds.length) return
     setMoveModalState({ open: true, assetIds })
@@ -886,70 +634,6 @@ export default function LibraryPage() {
     setMoveTargetFolderId('')
   }
 
-  const openDeleteModal = (assetIds: string[]) => {
-    if (!assetIds.length) return
-    const candidateAssets = resolveAssetsByIds(assetIds)
-    const firstUsed = candidateAssets.find((asset) => {
-      const usage = asset.usage
-      const playlists = usage?.playlists?.length ?? 0
-      const collections = usage?.collections?.length ?? 0
-      const streams = usage?.streams?.length ?? 0
-      return playlists + collections + streams > 0
-    })
-    setDeleteModalState({
-      open: true,
-      assetIds,
-      forceRequired: Boolean(firstUsed),
-      forceTarget: firstUsed
-        ? {
-            assetId: firstUsed.id,
-            name: firstUsed.filename,
-            usage: firstUsed.usage,
-          }
-        : undefined,
-    })
-  }
-
-  const closeDeleteModal = () => {
-    setDeleteModalState({
-      open: false,
-      assetIds: [],
-      forceRequired: false,
-      forceTarget: undefined,
-    })
-  }
-
-  const openCreateFolderModal = () => {
-    const parent =
-      selectedFolderId === 'all'
-        ? folders?.find((folder) => folder.is_root) ?? null
-        : folders?.find((folder) => folder.id === selectedFolderId) ?? null
-    setFolderModalState({ mode: 'create', folder: parent })
-    setFolderNameInput('')
-  }
-
-  const openRenameFolderModal = (folder: MediaFolder) => {
-    setFolderModalState({ mode: 'rename', folder })
-    setFolderNameInput(folder.name)
-  }
-
-  const openDeleteFolderModal = (folder: MediaFolder) => {
-    setFolderModalState({ mode: 'delete', folder })
-  }
-
-  const closeFolderModal = () => {
-    setFolderModalState(null)
-    setFolderNameInput('')
-  }
-
-  const resolveAssetsByIds = useCallback(
-    (ids: string[]) =>
-      ids
-        .map((id) => assetMap.get(id))
-        .filter((asset): asset is Asset => Boolean(asset)),
-    [assetMap]
-  )
-
   const formatUsageLabel = useCallback(
     (type: 'streams' | 'collections' | 'playlists', count: number) => {
       if (!count) return null
@@ -957,50 +641,6 @@ export default function LibraryPage() {
     },
     [tLibrary]
   )
-
-  const markUsageActionPending = useCallback((key: string, pending: boolean) => {
-    setPendingUsageActionKeys((prev) => {
-      const next = new Set(prev)
-      if (pending) {
-        next.add(key)
-      } else {
-        next.delete(key)
-      }
-      return next
-    })
-  }, [])
-
-  const pruneForceUsage = useCallback((
-    label: 'streams' | 'collections' | 'playlists',
-    itemId: string
-  ) => {
-    setDeleteModalState((prev) => {
-      if (!prev.forceTarget?.usage) {
-        return prev
-      }
-
-      const usage = prev.forceTarget.usage
-      const nextUsage = {
-        playlists: label === 'playlists' ? usage.playlists?.filter((item) => item.id !== itemId) : usage.playlists,
-        collections: label === 'collections' ? usage.collections?.filter((item) => item.id !== itemId) : usage.collections,
-        streams: label === 'streams' ? usage.streams?.filter((item) => item.id !== itemId) : usage.streams,
-      }
-
-      const hasRemaining =
-        (nextUsage.playlists?.length ?? 0) + (nextUsage.collections?.length ?? 0) + (nextUsage.streams?.length ?? 0) > 0
-
-      return {
-        ...prev,
-        forceRequired: hasRemaining,
-        forceTarget: prev.forceTarget
-          ? {
-              ...prev.forceTarget,
-              usage: nextUsage,
-            }
-          : prev.forceTarget,
-      }
-    })
-  }, [])
 
   const formatCollectionContext = useCallback(
     (context?: string | null) => {
@@ -1015,142 +655,6 @@ export default function LibraryPage() {
     },
     [tLibrary],
   )
-
-  const handleDeleteUsageStream = useCallback(
-    async (streamRef: AssetUsageReference) => {
-      const confirmDelete = confirm(
-        tLibrary('assets.selection.confirmDeleteStream', {
-          name: streamRef.name || tLibrary('assets.selection.forceUnknown'),
-        }),
-      )
-      if (!confirmDelete) return
-
-      const pendingKey = `stream:${streamRef.id}`
-      markUsageActionPending(pendingKey, true)
-      try {
-        await api.streams.delete(streamRef.id)
-        toast.success(libraryToasts('references.streamDeleted'))
-        pruneForceUsage('streams', streamRef.id)
-        queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
-        queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
-      } catch (error) {
-        const message =
-          error instanceof ApiError ? error.message : (error as Error)?.message ?? tAssetWarnings('unknownValue')
-        toast.error(libraryToasts('references.streamDeleteFailed', { message }))
-      } finally {
-        markUsageActionPending(pendingKey, false)
-      }
-    },
-    [libraryToasts, markUsageActionPending, pruneForceUsage, queryClient, tAssetWarnings, tLibrary, user?.id],
-  )
-
-  const handleDeleteUsageCollection = useCallback(
-    async (collectionRef: AssetUsageReference) => {
-      const confirmDelete = confirm(
-        tLibrary('assets.selection.confirmDeleteCollection', {
-          name: collectionRef.name || tLibrary('assets.selection.forceUnknown'),
-        }),
-      )
-      if (!confirmDelete) return
-
-      const pendingKey = `collection:${collectionRef.id}`
-      markUsageActionPending(pendingKey, true)
-      try {
-        await api.mediaCollections.delete(collectionRef.id)
-        toast.success(libraryToasts('references.collectionDeleted'))
-        pruneForceUsage('collections', collectionRef.id)
-        queryClient.invalidateQueries({ queryKey: ['media-collections', user?.id] })
-        queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 409) {
-          toast.error(libraryToasts('references.collectionDeleteBlocked'))
-        } else {
-          const message =
-            error instanceof ApiError ? error.message : (error as Error)?.message ?? tAssetWarnings('unknownValue')
-          toast.error(libraryToasts('references.collectionDeleteFailed', { message }))
-        }
-      } finally {
-        markUsageActionPending(pendingKey, false)
-      }
-    },
-    [libraryToasts, markUsageActionPending, pruneForceUsage, queryClient, tAssetWarnings, tLibrary, user?.id],
-  )
-
-  const renderForceUsageList = (
-    label: 'streams' | 'collections' | 'playlists',
-    items?: AssetUsageReference[]
-  ) => {
-    if (!items || items.length === 0) {
-      return null
-    }
-    return (
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          {tLibrary(`assets.selection.forceUsage.${label}` as const)}
-        </p>
-        {label === 'collections' && (
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {tLibrary('assets.selection.collectionsHint')}
-          </p>
-        )}
-        <ul className="mt-1 space-y-1 text-sm text-slate-600 dark:text-slate-300">
-          {items.map((item) => (
-            <li
-              key={`${label}-${item.id}`}
-              className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1 dark:bg-slate-800/40"
-            >
-              <span className="truncate">
-                {item.name || tLibrary('assets.selection.forceUnknown')}
-              </span>
-              <div className="flex items-center gap-2">
-                {label === 'collections' && item.context && (() => {
-                  const contextLabel = formatCollectionContext(item.context)
-                  if (!contextLabel) return null
-                  return (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-700/50 dark:text-slate-200">
-                      {contextLabel}
-                    </span>
-                  )
-                })()}
-                {label === 'streams' && item.status && (() => {
-                  const status = item.status ?? ''
-                  const knownStatuses = new Set(['running', 'stopped', 'starting', 'stopping', 'error', 'scheduled'])
-                  return (
-                    <span className="text-xs text-slate-400 dark:text-slate-500">
-                      {knownStatuses.has(status) ? tStreamingStatus(status) : status}
-                    </span>
-                  )
-                })()}
-                {label === 'streams' && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="danger"
-                    isLoading={pendingUsageActionKeys.has(`stream:${item.id}`)}
-                    disabled={item.status === 'running' || item.status === 'starting' || item.status === 'stopping'}
-                    onClick={() => handleDeleteUsageStream(item)}
-                  >
-                    {tLibrary('assets.selection.actions.deleteStream')}
-                  </Button>
-                )}
-                {label === 'collections' && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="danger"
-                    isLoading={pendingUsageActionKeys.has(`collection:${item.id}`)}
-                    onClick={() => handleDeleteUsageCollection(item)}
-                  >
-                    {tLibrary('assets.selection.actions.deleteCollection')}
-                  </Button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-    )
-  }
 
   const handleAssetDragStart = (event: DragEvent<HTMLDivElement>, assetId: string) => {
     const payload =
@@ -1195,27 +699,6 @@ export default function LibraryPage() {
     [moveModalState.assetIds, resolveAssetsByIds]
   )
 
-  const deleteModalAssets = useMemo(
-    () => resolveAssetsByIds(deleteModalState.assetIds),
-    [deleteModalState.assetIds, resolveAssetsByIds]
-  )
-
-  const deleteSelectionHasUsage = useMemo(() => {
-    if (!deleteModalAssets.length) return false
-    return deleteModalAssets.some((asset) => {
-      const usage = asset.usage
-      const playlists = usage?.playlists?.length ?? 0
-      const collections = usage?.collections?.length ?? 0
-      const streams = usage?.streams?.length ?? 0
-      return playlists + collections + streams > 0
-    })
-  }, [deleteModalAssets])
-
-  const forceTargetUsage = deleteModalState.forceTarget?.usage
-
-  const isDeletingSelection = deleteModalState.assetIds.some((id) =>
-    pendingDeletionIds.has(id)
-  )
   const isFolderSubmitting =
     createFolderMutation.isPending ||
     updateFolderMutation.isPending ||
@@ -1224,175 +707,6 @@ export default function LibraryPage() {
   // Handlers
   const handleDeleteAsset = (assetId: string) => {
     openDeleteModal([assetId])
-  }
-
-  const toggleAssetDetails = (assetId: string) => {
-    setExpandedAssets((prev) => {
-      const next = new Set(prev)
-      if (next.has(assetId)) {
-        next.delete(assetId)
-      } else {
-        next.add(assetId)
-      }
-      return next
-    })
-  }
-
-  const handleRenameAsset = (asset: Asset) => {
-    setAssetBeingRenamed(asset)
-    setRenameValue(asset.filename)
-  }
-
-  const closeRenameModal = () => {
-    setAssetBeingRenamed(null)
-    setRenameValue('')
-  }
-
-  const submitRename = async () => {
-    if (!assetBeingRenamed) return
-    const trimmed = renameValue.trim()
-    if (!trimmed) {
-      toast.error(libraryToasts('asset.renameEmpty'))
-      return
-    }
-    try {
-      await updateAssetMutation.mutateAsync({ id: assetBeingRenamed.id, data: { filename: trimmed } })
-      closeRenameModal()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : libraryToasts('asset.updateFailed')
-      toast.error(libraryToasts('generic.errorWithMessage', { message }))
-    }
-  }
-
-  const handleCheckAsset = async (asset: Asset) => {
-    setCheckingAssetId(asset.id)
-    setCheckModalAsset(asset)
-    setCheckModalInfo(null)
-    setIsCheckModalLoading(true)
-    try {
-      const updated = await revalidateAssetMutation.mutateAsync(asset.id)
-      if (updated) {
-        setCheckModalAsset(updated)
-        setCheckModalInfo(deriveAssetDisplayInfo(updated))
-        toast.success(libraryToasts('asset.validationRefreshed'))
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : libraryToasts('asset.validateFailed')
-      toast.error(libraryToasts('generic.errorWithMessage', { message }))
-      setCheckModalAsset(null)
-      setCheckModalInfo(null)
-    } finally {
-      setCheckingAssetId(null)
-      setIsCheckModalLoading(false)
-    }
-  }
-
-  const closeCheckModal = () => {
-    setCheckModalAsset(null)
-    setCheckModalInfo(null)
-    setIsCheckModalLoading(false)
-  }
-
-  const handleDownloadAsset = async (asset: Asset) => {
-    setDownloadAssetId(asset.id)
-    try {
-      const link = await downloadLinkMutation.mutateAsync(asset.id)
-      window.open(link.download_url, '_blank', 'noopener,noreferrer')
-      toast.info(libraryToasts('asset.download', { name: asset.filename }))
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : libraryToasts('asset.downloadLinkFailed')
-      toast.error(libraryToasts('generic.errorWithMessage', { message }))
-    } finally {
-      setDownloadAssetId(null)
-    }
-  }
-
-  const handleOptimizeAsset = async (asset: Asset) => {
-    if (optimizingAssetId === asset.id) {
-      return
-    }
-    setOptimizingAssetId(asset.id)
-    try {
-      const updated = await optimizeAssetMutation.mutateAsync(asset.id)
-      if (checkModalAsset?.id === updated.id) {
-        setCheckModalAsset(updated)
-        setCheckModalInfo(deriveAssetDisplayInfo(updated))
-      }
-
-      const strategy = updated.optimization.strategy ?? updated.optimization.recommended_strategy
-      const status = updated.optimization.status
-      if (status === 'ready' && strategy === 'copy') {
-        toast.success(libraryToasts('asset.optimizeReady', { name: updated.filename }))
-      } else if (status === 'queued') {
-        toast.success(libraryToasts('asset.optimizeQueued', { name: updated.filename }))
-      } else {
-        toast.success(libraryToasts('asset.updated'))
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : libraryToasts('asset.optimizeFailed')
-      toast.error(libraryToasts('generic.errorWithMessage', { message }))
-    } finally {
-      setOptimizingAssetId(null)
-    }
-  }
-
-  const markAssetsAsDeleting = (assetIds: string[], pending: boolean) => {
-    setPendingDeletionIds((prev) => {
-      const next = new Set(prev)
-      assetIds.forEach((id) => {
-        if (pending) {
-          next.add(id)
-        } else {
-          next.delete(id)
-        }
-      })
-      return next
-    })
-  }
-
-  const deleteAssets = async (assetIds: string[]) => {
-    if (!assetIds.length) return
-    markAssetsAsDeleting(assetIds, true)
-    try {
-      for (const assetId of assetIds) {
-        try {
-          await api.assets.delete(assetId)
-        } catch (error) {
-          if (error instanceof ApiError && error.status === 409) {
-            const conflictAsset = resolveAssetsByIds([assetId])[0]
-            const detail = (error.detail as { usage?: Asset['usage'] }) ?? {}
-            setDeleteModalState((prev) => ({
-              ...prev,
-              open: true,
-              forceRequired: true,
-              forceTarget: {
-                assetId,
-                name: conflictAsset?.filename ?? assetId,
-                usage: detail.usage ?? conflictAsset?.usage,
-              },
-            }))
-            toast.warning(libraryToasts('asset.forceToast'))
-            return
-          }
-          throw error
-        }
-      }
-      await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
-      toast.success(libraryToasts('asset.deleted'))
-      setSelectedAssets((prev) => {
-        const next = new Set(prev)
-        assetIds.forEach((id) => next.delete(id))
-        return next
-      })
-      closeDeleteModal()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : libraryToasts('asset.deleteFailed')
-      toast.error(libraryToasts('generic.errorWithMessage', { message }))
-      closeDeleteModal()
-    } finally {
-      markAssetsAsDeleting(assetIds, false)
-    }
   }
 
   const handleConfirmDelete = async () => {
@@ -1405,7 +719,13 @@ export default function LibraryPage() {
       toast.error(libraryToasts('asset.forceToast'))
       return
     }
-    await deleteAssets(ids)
+    await deleteAssets(ids, (deletedIds) => {
+      setSelectedAssets((prev) => {
+        const next = new Set(prev)
+        deletedIds.forEach((id) => next.delete(id))
+        return next
+      })
+    })
     // Modal is closed in deleteAssets on success or error (except 409)
   }
 
@@ -1424,45 +744,6 @@ export default function LibraryPage() {
         return next
       })
       closeMoveModal()
-    } catch (error) {
-      // toast handled in mutation
-    }
-  }
-
-  const handleFolderModalSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!folderModalState) return
-    const trimmed = folderNameInput.trim()
-    if (!trimmed) {
-      toast.error(libraryToasts('asset.renameEmpty'))
-      return
-    }
-    try {
-      if (folderModalState.mode === 'create') {
-        await createFolderMutation.mutateAsync({
-          name: trimmed,
-          parent_id: folderModalState.folder?.id,
-        })
-      } else if (folderModalState.mode === 'rename' && folderModalState.folder) {
-        await updateFolderMutation.mutateAsync({
-          folderId: folderModalState.folder.id,
-          name: trimmed,
-        })
-      }
-      closeFolderModal()
-    } catch (error) {
-      // errors handled by mutation toasts
-    }
-  }
-
-  const handleFolderDelete = async () => {
-    if (!folderModalState?.folder) return
-    try {
-      await deleteFolderMutation.mutateAsync(folderModalState.folder.id)
-      if (selectedFolderId === folderModalState.folder.id) {
-        setSelectedFolderId('all')
-      }
-      closeFolderModal()
     } catch (error) {
       // toast handled in mutation
     }
@@ -1488,127 +769,12 @@ export default function LibraryPage() {
     )
   }
 
-  const resetPlaylistForm = () => {
-    setPlaylistForm({ name: '', description: '', loop: true, items: [] })
-    setShowCreatePlaylist(false)
-    setEditingPlaylistId(null)
-  }
-
-  const handleSubmitPlaylist = (event: React.FormEvent) => {
-    event.preventDefault()
-    if (editingPlaylistId) {
-      updatePlaylistMutation.mutate({ id: editingPlaylistId, data: playlistForm })
-    } else {
-      createPlaylistMutation.mutate(playlistForm)
-    }
-  }
-
-  const handleEditPlaylist = (playlist: Playlist) => {
-    setEditingPlaylistId(playlist.id)
-    setPlaylistForm({
-      name: playlist.name,
-      description: playlist.description || '',
-      loop: playlist.loop,
-      items: (playlist.items || []).map((item, index): PlaylistItemInput => ({
-        asset_id: item.asset_id,
-        position: index,
-      })),
-    })
-    setShowCreatePlaylist(true)
-  }
-
-  const handleDeletePlaylist = (playlistId: string) => {
-    if (confirm(tLibrary('playlists.messages.confirmDelete'))) {
-      deletePlaylistMutation.mutate(playlistId)
-    }
-  }
-
-  const addAssetToPlaylist = (assetId: string) => {
-    setPlaylistForm((prev) => ({
-      ...prev,
-      items: [...prev.items, { asset_id: assetId, position: prev.items.length }],
-    }))
-  }
-
-  const removeAssetFromPlaylist = (index: number) => {
-    setPlaylistForm((prev) => ({
-      ...prev,
-      items: prev.items
-        .filter((_, itemIndex) => itemIndex !== index)
-        .map((item, itemIndex) => ({ ...item, position: itemIndex })),
-    }))
-  }
-
   const availableAssets = useMemo<Asset[]>(() => {
     if (!assets) return [] as Asset[]
     return assets
       .filter((asset) => asset.compatible_for_copy)
       .filter((asset) => !playlistForm.items.some((item) => item.asset_id === asset.id))
   }, [assets, playlistForm.items])
-
-  // Get folders in current directory
-  const currentFolders = useMemo(() => {
-    if (!folders || folders.length === 0) return []
-    
-    // Treat "all" as "root contents" and never render the root folder itself.
-    // If root isn't available yet, fall back to top-level non-root folders.
-    const effectiveParentId =
-      selectedFolderId === 'all' ? rootFolderId ?? null : selectedFolderId
-
-    return folders
-      .filter((folder) => {
-        if (folder.is_root) return false
-        if (effectiveParentId === null) {
-          return folder.parent_id === null
-        }
-        return folder.parent_id === effectiveParentId
-      })
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [folders, rootFolderId, selectedFolderId])
-
-  // Calculate item count for each folder (recursive)
-  const folderItemCounts = useMemo(() => {
-    if (!folders || !assets) return new Map<string, number>()
-    
-    const counts = new Map<string, number>()
-    
-    // Helper to get all descendant folder IDs
-    const getDescendantIds = (folderId: string): string[] => {
-      const descendants: string[] = [folderId]
-      const children = folders.filter((f) => f.parent_id === folderId)
-      children.forEach((child) => {
-        descendants.push(...getDescendantIds(child.id))
-      })
-      return descendants
-    }
-    
-    // Count assets in each folder and its descendants
-    folders.forEach((folder) => {
-      const folderIds = getDescendantIds(folder.id)
-      const count = assets.filter((asset) => {
-        return asset.folders?.some((af) => folderIds.includes(af.folder_id))
-      }).length
-      counts.set(folder.id, count)
-    })
-    
-    return counts
-  }, [folders, assets])
-
-  // Calculate stats
-  const totalAssets = visibleAssets.length
-  const totalPlaylists = playlists?.length || 0
-  const librarySummary = useMemo(() => {
-    const readyCount = visibleAssets.reduce((count, asset) => {
-      const info = deriveAssetDisplayInfo(asset)
-      return info.warnings.length === 0 && info.issues.length === 0 ? count + 1 : count
-    }, 0)
-
-    return {
-      readyCount,
-      attentionCount: Math.max(visibleAssets.length - readyCount, 0),
-      folderCount: currentFolders.length,
-    }
-  }, [currentFolders.length, visibleAssets])
 
   if (!user) {
     return <LoadingState text={tLibrary('loading')} />
@@ -1845,7 +1011,9 @@ export default function LibraryPage() {
                         isDeleting={pendingDeletionIds.has(asset.id)}
                         isChecking={checkingAssetId === asset.id}
                         isGeneratingDownload={downloadAssetId === asset.id && downloadLinkMutation.isPending}
-                        formatWarningMessage={formatWarningMessage}
+                        formatWarningMessage={(warning) =>
+                          formatAssetWarningMessage(tAssetWarnings, warning)
+                        }
                         formatUsageLabel={formatUsageLabel}
                         t={{
                           filters: { audio: tLibrary('assets.filters.audio') },
@@ -1986,7 +1154,7 @@ export default function LibraryPage() {
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => removeAssetFromPlaylist(index)}
+                                  onClick={() => removePlaylistItem(index)}
                                   className="text-error-600 hover:text-error-800 dark:text-error-400 dark:hover:text-error-300 text-sm font-medium"
                                 >
                                   {tLibrary('playlists.actions.remove')}
@@ -2178,458 +1346,136 @@ export default function LibraryPage() {
         folders={folders}
       />
 
-      {moveModalState.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4 py-6">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {tLibrary('assets.selection.bulkMoveTitle')}
-                </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {tLibrary('assets.selection.bulkMoveDescription')}
-                </p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={closeMoveModal} aria-label={actionLabels('close')}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+      <MoveAssetsModal
+        assets={moveModalAssets}
+        closeLabel={tLibrary('assets.selection.cancel')}
+        description={tLibrary('assets.selection.bulkMoveDescription')}
+        folderChildren={folderChildren}
+        isLoading={moveAssetsMutation.isPending}
+        isOpen={moveModalState.open}
+        moveConfirmLabel={tLibrary('assets.selection.moveConfirm')}
+        onClose={closeMoveModal}
+        onConfirm={handleConfirmMove}
+        onSelectFolder={setMoveTargetFolderId}
+        rootFolderId={rootFolderId}
+        rootOptionLabel={tUploadModal('folder.rootOption')}
+        selectedFolderId={moveTargetFolderId}
+        selectionCountLabel={tLibrary('assets.selection.count', { count: moveModalAssets.length })}
+        targetLabel={tLibrary('assets.selection.targetLabel')}
+        title={tLibrary('assets.selection.bulkMoveTitle')}
+        unknownValueLabel={tAssetWarnings('unknownValue')}
+      />
 
-            <div className="mt-4 space-y-4">
-              <div>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  {tLibrary('assets.selection.targetLabel')}
-                </p>
-                <div className="mt-2 max-h-60 space-y-1 overflow-y-auto rounded-lg border border-slate-200 px-2 py-2 dark:border-slate-700">
-                  {rootFolderId && (
-                    <button
-                      type="button"
-                      onClick={() => setMoveTargetFolderId(rootFolderId)}
-                      className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm transition-colors ${
-                        moveTargetFolderId === rootFolderId
-                          ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-100'
-                          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <span className="truncate">{tUploadModal('folder.rootOption')}</span>
-                      {moveTargetFolderId === rootFolderId && <CheckCircle className="h-4 w-4" />}
-                    </button>
-                  )}
-                  {renderFolderSelectionTree(rootFolderId ?? null)}
-                </div>
-              </div>
+      <DeleteAssetsModal
+        closeLabel={tLibrary('assets.selection.cancel')}
+        collectionDeleteLabel={tLibrary('assets.selection.actions.deleteCollection')}
+        playlistDeleteLabel={tLibrary('playlists.actions.delete')}
+        collectionsHint={tLibrary('assets.selection.collectionsHint')}
+        deleteConfirmLabel={tLibrary('assets.selection.deleteConfirm')}
+        deleteDescription={tLibrary('assets.selection.deleteDescription')}
+        deleteUsageWarning={tLibrary('assets.selection.deleteUsageWarning')}
+        deleteModalAssets={deleteModalAssets}
+        deleteSelectionHasUsage={deleteSelectionHasUsage}
+        deleteStreamLabel={tLibrary('assets.selection.actions.deleteStream')}
+        forceDescription={tLibrary('assets.selection.forceDescription', {
+          name: deleteModalState.forceTarget?.name || tLibrary('assets.selection.forceUnknown'),
+        })}
+        forceTargetUsage={forceTargetUsage}
+        forceTitle={tLibrary('assets.selection.forceTitle')}
+        forceUnknownLabel={tLibrary('assets.selection.forceUnknown')}
+        formatCollectionContext={formatCollectionContext}
+        formatStatus={(status) => {
+          const normalizedStatus = status ?? ''
+          const knownStatuses = new Set(['running', 'stopped', 'starting', 'stopping', 'error', 'scheduled'])
+          return knownStatuses.has(normalizedStatus)
+            ? tStreamingStatus(normalizedStatus)
+            : normalizedStatus
+        }}
+        formatUsageLabel={formatUsageLabel}
+        isDeletingSelection={isDeletingSelection}
+        onClose={closeDeleteModal}
+        onConfirmDelete={handleConfirmDelete}
+        onDeleteCollection={handleDeleteUsageCollection}
+        onDeletePlaylist={handleDeleteUsagePlaylist}
+        onDeleteStream={handleDeleteUsageStream}
+        open={deleteModalState.open}
+        pendingUsageActionKeys={pendingUsageActionKeys}
+        selectionForceUsageCollectionsLabel={tLibrary('assets.selection.forceUsage.collections')}
+        selectionForceUsagePlaylistsLabel={tLibrary('assets.selection.forceUsage.playlists')}
+        selectionForceUsageStreamsLabel={tLibrary('assets.selection.forceUsage.streams')}
+        selectionUsageNoneLabel={tLibrary('assets.usage.none')}
+        selectionUsagePillLabel={(count) => tLibrary('assets.usage.pill', { count })}
+        state={deleteModalState}
+        deleteTitle={tLibrary('assets.selection.deleteTitle')}
+      />
 
-              <div>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  {tLibrary('assets.selection.count', { count: moveModalAssets.length })}
-                </p>
-                <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-200">
-                  {moveModalAssets.length > 0 ? (
-                    <ul className="space-y-1">
-                      {moveModalAssets.map((asset) => (
-                        <li key={`moving-${asset.id}`} className="truncate">
-                          {asset.filename}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-slate-500 dark:text-slate-400">
-                      {tAssetWarnings('unknownValue')}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+      <FolderModal
+        closeLabel={actionLabels('cancel')}
+        deleteLabel={tFolders('delete')}
+        deleteMessage={tFolders('modal.deleteMessage', {
+          name: folderModalState?.folder?.name || tFolders('all'),
+        })}
+        folderNameInput={folderNameInput}
+        isLoading={isFolderSubmitting}
+        modeState={folderModalState}
+        nameLabel={tFolders('modal.nameLabel')}
+        onClose={closeFolderModal}
+        onDelete={handleFolderDelete}
+        onNameChange={setFolderNameInput}
+        onSubmit={handleFolderModalSubmit}
+        saveLabel={actionLabels('save')}
+        selectedFolderName={folderModalState?.folder?.name || tFolders('all')}
+        titleCreate={tFolders('modal.createTitle')}
+        titleDelete={tFolders('modal.deleteTitle')}
+        titleRename={tFolders('modal.renameTitle')}
+      />
 
-            <div className="mt-6 flex justify-end gap-3">
-              <Button variant="ghost" onClick={closeMoveModal}>
-                {tLibrary('assets.selection.cancel')}
-              </Button>
-              <Button
-                onClick={handleConfirmMove}
-                disabled={!moveTargetFolderId}
-                isLoading={moveAssetsMutation.isPending}
-              >
-                {tLibrary('assets.selection.moveConfirm')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <RenameAssetModal
+        asset={assetBeingRenamed}
+        cancelLabel={actionLabels('cancel')}
+        closeLabel={actionLabels('close')}
+        description={tLibrary('rename.description')}
+        inputLabel={tLibrary('rename.label')}
+        isLoading={updateAssetMutation.isPending}
+        onClose={closeRenameModal}
+        onRenameValueChange={setRenameValue}
+        onSubmit={(event) => {
+          event.preventDefault()
+          submitRename()
+        }}
+        renameValue={renameValue}
+        saveLabel={tLibrary('rename.save')}
+        title={tLibrary('rename.title')}
+      />
 
-      {deleteModalState.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4 py-6">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {tLibrary('assets.selection.deleteTitle')}
-                </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {tLibrary('assets.selection.deleteDescription')}
-                </p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={closeDeleteModal} aria-label={actionLabels('close')}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {deleteSelectionHasUsage && (
-              <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/60 dark:bg-amber-500/10 dark:text-amber-200">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                <p>{tLibrary('assets.selection.deleteUsageWarning')}</p>
-              </div>
-            )}
-
-            {deleteModalState.forceRequired && (
-              <div className="mt-4 space-y-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-400/60 dark:bg-rose-500/10 dark:text-rose-100">
-                <div>
-                  <p className="font-semibold">
-                    {tLibrary('assets.selection.forceTitle')}
-                  </p>
-                  <p className="mt-1 text-slate-600 dark:text-slate-300">
-                    {tLibrary('assets.selection.forceDescription', {
-                      name: deleteModalState.forceTarget?.name || tLibrary('assets.selection.forceUnknown'),
-                    })}
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  {renderForceUsageList('streams', forceTargetUsage?.streams)}
-                  {renderForceUsageList('collections', forceTargetUsage?.collections)}
-                  {renderForceUsageList('playlists', forceTargetUsage?.playlists)}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-4 max-h-72 space-y-3 overflow-y-auto">
-              {deleteModalAssets.map((asset) => {
-                const usage = asset.usage
-                const playlistsCount = usage?.playlists?.length ?? 0
-                const collectionsCount = usage?.collections?.length ?? 0
-                const streamsCount = usage?.streams?.length ?? 0
-                const totalUsage = playlistsCount + collectionsCount + streamsCount
-                const usageBadges = [
-                  formatUsageLabel('streams', streamsCount),
-                  formatUsageLabel('collections', collectionsCount),
-                  formatUsageLabel('playlists', playlistsCount),
-                ].filter(Boolean)
-
-                return (
-                  <div
-                    key={`delete-${asset.id}`}
-                    className={`rounded-lg border px-4 py-3 ${
-                      deleteModalState.forceTarget?.assetId === asset.id
-                        ? 'border-amber-400 bg-amber-50/60 dark:border-amber-400/60 dark:bg-amber-500/10'
-                        : 'border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <h4 className="truncate text-sm font-medium text-slate-900 dark:text-white">
-                        {asset.filename}
-                      </h4>
-                      {totalUsage > 0 && (
-                        <Badge variant="warning">
-                          {tLibrary('assets.usage.pill', { count: totalUsage })}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-300">
-                      {usageBadges.length > 0 ? (
-                        usageBadges.map((label, index) => (
-                          <span
-                            key={`${asset.id}-usage-${index}`}
-                            className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800/60"
-                          >
-                            {label}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-slate-400 dark:text-slate-500">
-                          {tLibrary('assets.usage.none')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <Button variant="ghost" onClick={closeDeleteModal}>
-                {tLibrary('assets.selection.cancel')}
-              </Button>
-              <Button
-                variant="danger"
-                onClick={handleConfirmDelete}
-                isLoading={isDeletingSelection}
-                disabled={deleteModalState.forceRequired}
-              >
-                {tLibrary('assets.selection.deleteConfirm')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {folderModalState && folderModalState.mode !== 'delete' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-md shadow-2xl">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {folderModalState.mode === 'create'
-                      ? tFolders('modal.createTitle')
-                      : tFolders('modal.renameTitle')}
-                  </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {folderModalState.folder?.name || tFolders('all')}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={closeFolderModal}>
-                  <X className="h-5 w-5" />
-                  <span className="sr-only">{actionLabels('close')}</span>
-                </Button>
-              </div>
-
-              <form onSubmit={handleFolderModalSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    {tFolders('modal.nameLabel')}
-                  </label>
-                  <Input
-                    value={folderNameInput}
-                    onChange={(event) => setFolderNameInput(event.target.value)}
-                    required
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="secondary" onClick={closeFolderModal}>
-                    {actionLabels('cancel')}
-                  </Button>
-                  <Button type="submit" isLoading={isFolderSubmitting}>
-                    {actionLabels('save')}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {folderModalState && folderModalState.mode === 'delete' && folderModalState.folder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-md shadow-2xl">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {tFolders('modal.deleteTitle')}
-                  </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {tFolders('modal.deleteMessage', { name: folderModalState.folder.name })}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={closeFolderModal}>
-                  <X className="h-5 w-5" />
-                  <span className="sr-only">{actionLabels('close')}</span>
-                </Button>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="secondary" onClick={closeFolderModal}>
-                  {actionLabels('cancel')}
-                </Button>
-                <Button
-                  variant="danger"
-                  onClick={handleFolderDelete}
-                  isLoading={isFolderSubmitting}
-                >
-                  {tFolders('delete')}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {assetBeingRenamed && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-md shadow-2xl">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{tLibrary('rename.title')}</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {tLibrary('rename.description')}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={closeRenameModal}>
-                  <X className="h-5 w-5" />
-                  <span className="sr-only">{actionLabels('close')}</span>
-                </Button>
-              </div>
-
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  submitRename()
-                }}
-                className="space-y-4"
-              >
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    {tLibrary('rename.label')}
-                  </label>
-                  <Input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="secondary" onClick={closeRenameModal}>
-                    {actionLabels('cancel')}
-                  </Button>
-                  <Button type="submit" isLoading={updateAssetMutation.isPending} className="gap-2">
-                    {tLibrary('rename.save')}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {checkModalAsset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-2xl shadow-2xl">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{tLibrary('validation.title')}</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {tLibrary('validation.description', { filename: checkModalAsset.filename })}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={closeCheckModal}>
-                  <X className="h-5 w-5" />
-                  <span className="sr-only">{actionLabels('close')}</span>
-                </Button>
-              </div>
-
-              {isCheckModalLoading ? (
-                <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500 dark:text-slate-400">
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                  <p>{tLibrary('validation.loading')}</p>
-                </div>
-              ) : checkModalInfo ? (
-                <div className="space-y-4 text-sm text-slate-600 dark:text-slate-300">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={checkModalAsset.compatible_for_copy ? 'success' : 'error'}>
-                      {checkModalAsset.compatible_for_copy
-                        ? tLibrary('assets.badges.ready')
-                        : tLibrary('assets.badges.needsEncoding')}
-                    </Badge>
-                    {checkModalInfo.bitrateStatus === 'within' ? (
-                      <Badge variant="success">{tLibrary('assets.badges.bitrateOk')}</Badge>
-                    ) : checkModalInfo.bitrateStatus === 'outside' ? (
-                      <Badge variant="warning">{tLibrary('assets.badges.bitrateCheck')}</Badge>
-                    ) : null}
-                  </div>
-
-                  {!checkModalAsset.compatible_for_copy && (
-                    <div className="text-sm text-error-600 dark:text-error-400">
-                      {tLibrary('assets.messages.incompatibleSummary')}
-                      {checkModalInfo.issues.length > 0 && (
-                        <span className="block text-xs text-error-500/90 dark:text-error-300">
-                          {checkModalInfo.issues[0]}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {tLibrary('assets.metadata.video')}
-                      </span>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">{checkModalInfo.videoCodec?.toUpperCase() ?? '—'}</Badge>
-                        <span>{formatBitrateDisplay(checkModalInfo.videoBitrate)}</span>
-                        <span>·</span>
-                        <span>
-                          {checkModalInfo.videoWidth && checkModalInfo.videoHeight
-                            ? `${checkModalInfo.videoWidth}×${checkModalInfo.videoHeight}`
-                            : '—'}
-                        </span>
-                        <span>·</span>
-                        <span>{formatFpsDisplay(checkModalInfo.videoFps)}</span>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {tLibrary('assets.metadata.audio')}
-                      </span>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">{checkModalInfo.audioCodec?.toUpperCase() ?? '—'}</Badge>
-                        <span>{formatBitrateDisplay(checkModalInfo.audioBitrate)}</span>
-                        <span>·</span>
-                        <span>{formatSampleRateDisplay(checkModalInfo.audioSampleRate)}</span>
-                        {checkModalInfo.audioChannels ? (
-                          <>
-                            <span>·</span>
-                            <span>{tLibrary('assets.metadata.channels', { count: checkModalInfo.audioChannels })}</span>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  {checkModalInfo.recommendationLabel ? (
-                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <CheckCircle className="w-4 h-4 text-primary-500" />
-                      <span>
-                        {tLibrary('assets.recommendations', {
-                          label: checkModalInfo.recommendationLabel,
-                          details: checkModalInfo.recommendationDetails,
-                        })}
-                      </span>
-                    </div>
-                  ) : null}
-
-                  {(checkModalInfo.issues.length > 0 || checkModalInfo.warnings.length > 0) && (
-                    <div className="space-y-2">
-                      {checkModalInfo.issues.map((issue, index) => (
-                        <div
-                          key={`modal-issue-${index}`}
-                          className="flex items-start text-sm text-error-600 dark:text-error-400"
-                        >
-                          <XCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                          <span>{issue}</span>
-                        </div>
-                      ))}
-                      {checkModalInfo.warnings.map((warning, index) => (
-                        <div
-                          key={`modal-warning-${index}`}
-                          className="flex items-start text-sm text-amber-600 dark:text-amber-400"
-                        >
-                          <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                          <span>{formatWarningMessage(warning)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {tLibrary('validation.unavailable')}
-                </p>
-              )}
-
-              <div className="flex justify-end">
-                <Button onClick={closeCheckModal}>{tLibrary('validation.close')}</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <AssetValidationModal
+        asset={checkModalAsset}
+        closeLabel={actionLabels('close')}
+        incompatibleSummary={tLibrary('assets.messages.incompatibleSummary')}
+        info={checkModalInfo}
+        isLoading={isCheckModalLoading}
+        metadataAudioLabel={tLibrary('assets.metadata.audio')}
+        metadataChannelsLabel={(count) =>
+          tLibrary('assets.metadata.channels', { count })
+        }
+        metadataVideoLabel={tLibrary('assets.metadata.video')}
+        onClose={closeCheckModal}
+        readyLabel={tLibrary('assets.badges.ready')}
+        recommendationsLabel={(input) =>
+          tLibrary('assets.recommendations', input)
+        }
+        title={tLibrary('validation.title')}
+        unavailableLabel={tLibrary('validation.unavailable')}
+        validationCloseLabel={tLibrary('validation.close')}
+        validationDescription={(filename) =>
+          tLibrary('validation.description', { filename })
+        }
+        validationLoading={tLibrary('validation.loading')}
+        warningBitrateCheckLabel={tLibrary('assets.badges.bitrateCheck')}
+        warningBitrateOkLabel={tLibrary('assets.badges.bitrateOk')}
+        warningNeedsEncodingLabel={tLibrary('assets.badges.needsEncoding')}
+        tAssetWarnings={tAssetWarnings}
+      />
     </div>
   )
 }

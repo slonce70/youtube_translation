@@ -1,3 +1,4 @@
+import type { TranslationValues } from 'next-intl'
 import type { Asset } from '@/lib/types'
 import { matchBitrateRecommendation } from '@/lib/videoRecommendations'
 
@@ -54,6 +55,8 @@ export type AssetDisplayInfo = {
   recommendationDetails?: string
   bitrateStatus: 'within' | 'outside' | 'unknown'
 }
+
+type AssetWarningTranslator = (key: string, values?: TranslationValues) => string
 
 export const formatBitrateDisplay = (bps?: number): string => {
   if (!bps || !Number.isFinite(bps)) return '—'
@@ -452,5 +455,57 @@ export const deriveAssetDisplayInfo = (asset: Asset): AssetDisplayInfo => {
       ? `${recommendation.rule.minBitrateMbps.toFixed(0)}–${recommendation.rule.maxBitrateMbps.toFixed(0)} Mbps · target ${recommendation.rule.targetBitrateMbps.toFixed(0)} Mbps`
       : undefined,
     bitrateStatus,
+  }
+}
+
+export const formatAssetWarningMessage = (
+  tAssetWarnings: AssetWarningTranslator,
+  warning: AssetWarning,
+): string => {
+  switch (warning.kind) {
+    case 'bitrateRange':
+      return tAssetWarnings('bitrateRange', {
+        resolution: warning.payload.resolution,
+        fps: warning.payload.fps,
+        min: warning.payload.min,
+        max: warning.payload.max,
+        target: warning.payload.target,
+      })
+    case 'fpsOutOfGuideline':
+      return tAssetWarnings('fpsOutOfGuideline')
+    case 'videoCodec':
+      return tAssetWarnings('videoCodec', {
+        expected: warning.payload.expected,
+        found: warning.payload.found ?? tAssetWarnings('unknownValue'),
+      })
+    case 'audioCodec':
+      return tAssetWarnings('audioCodec', {
+        expected: warning.payload.expected,
+        found: warning.payload.found ?? tAssetWarnings('unknownValue'),
+      })
+    case 'pixelFormat':
+      return tAssetWarnings('pixelFormat', {
+        expected: warning.payload.expected,
+        found: warning.payload.found ?? tAssetWarnings('unknownValue'),
+      })
+    case 'gopTooLarge':
+      return tAssetWarnings('gopTooLarge', {
+        found: warning.payload.found,
+        limit: warning.payload.limit,
+      })
+    case 'noVideoStream':
+      return tAssetWarnings('noVideoStream')
+    case 'noAudioStream':
+      return tAssetWarnings('noAudioStream')
+    case 'requiresTranscode':
+      return tAssetWarnings('requiresTranscode', {
+        video: warning.payload?.video ?? 'H.264',
+        audio: warning.payload?.audio ?? 'AAC',
+        pixel: warning.payload?.pixel ?? 'yuv420p',
+      })
+    case 'missingMetadata':
+      return tAssetWarnings('missingMetadata')
+    case 'custom':
+      return warning.message
   }
 }

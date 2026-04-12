@@ -61,10 +61,14 @@ cp frontend/.env.example frontend/.env.local
 ### Крок 2: Підняти базові сервіси
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner
+make dev-bootstrap
 ```
 
-Ця команда піднімає локальну PostgreSQL, Redis, `tusd` та окремий `runner` для supervisor-based FFmpeg процесів.
+Ця команда піднімає локальну PostgreSQL, Redis, `tusd` та окремий `runner` для supervisor-based FFmpeg процесів і автоматично підхоплює `POSTGRES_PASSWORD` з `backend/.env`.
+
+Якщо ви запускаєте raw `docker compose` напряму, спочатку експортуйте змінні з `backend/.env`, інакше Compose коректно fail-fast з помилкою про відсутній `POSTGRES_PASSWORD`.
+
+Канонічний локальний шлях вважає `postgres` і `redis` саме compose-залежностями. Якщо `127.0.0.1:5432` або `127.0.0.1:6379` зайняті сторонніми локальними сервісами, `make dev-bootstrap` і `make test` тепер fail-fast з явною помилкою замість тихо використовувати “будь-що, що слухає порт”.
 
 ### Крок 3: Обрати локальний auth path
 
@@ -119,6 +123,8 @@ make test
 # Frontend e2e
 cd frontend && npm run test:e2e
 ```
+
+`make test` також підхоплює `POSTGRES_PASSWORD` з `backend/.env` перед backend preflight. При цьому backend tests довіряють тільки очікуваним compose `postgres` / `redis`; сторонні локальні сервіси на цих портах вважаються конфліктом, а не валідною заміною.
 
 Після цього переходьте до [docs/operations/first_stream_checklist.md](docs/operations/first_stream_checklist.md), де зафіксовано визначення першого успішного стріму.
 

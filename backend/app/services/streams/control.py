@@ -53,13 +53,7 @@ from app.core.systemd_control import (
     unit_status as systemd_unit_status,
 )
 from app.models.database import Stream
-from app.schemas.api import (
-    StreamLogsResponse,
-    StreamQualityResponse,
-    StreamRuntimeRestartInfo,
-    StreamStatus,
-    _stream_runtime_restart_state,
-)
+from app.schemas.api import StreamLogsResponse, StreamQualityResponse, StreamStatus
 from app.services.youtube import YoutubeProviderStatusService
 from app.streaming.ffmpeg_manager import ffmpeg_manager as default_ffmpeg_manager
 from app.streaming.hot_swap import hot_swap_manager
@@ -73,6 +67,15 @@ from .helpers import (
     prepare_stream_launch,
     validate_stream_launch_prerequisites,
 )
+from .status_helpers import (
+    aware_datetime,
+    filter_important_ffmpeg_logs,
+    has_pending_runtime_restart,
+    provider_summary_for_stream,
+    runtime_lease_conflict_detail,
+    runtime_restart_payload,
+    uptime_seconds as compute_uptime_seconds,
+)
 from .audit import record_stream_audit_event
 
 
@@ -81,15 +84,8 @@ def _is_removed_process_group_error(exc: RuntimeError) -> bool:
     return "removed process group" in message or "no such process" in message
 
 
-_PROVIDER_HEALTH_PRIORITY = {"bad": 3, "ok": 2, "good": 1, "noData": 0}
-
-
-def _aggregate_provider_health_status(statuses: List[str]) -> Optional[str]:
-    if not statuses:
-        return None
-    return max(
-        statuses, key=lambda status: (_PROVIDER_HEALTH_PRIORITY.get(status, 2), status)
-    )
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class StreamControlService:
@@ -197,7 +193,7 @@ class StreamControlService:
         if not lease.acquired:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=_runtime_lease_conflict_detail(lease.owner_id, lease.expires_at),
+                detail=runtime_lease_conflict_detail(lease.owner_id, lease.expires_at),
             )
 
         runtime_started = False
@@ -407,7 +403,7 @@ class StreamControlService:
         if not lease.acquired:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=_runtime_lease_conflict_detail(lease.owner_id, lease.expires_at),
+                detail=runtime_lease_conflict_detail(lease.owner_id, lease.expires_at),
             )
 
         if systemd_enabled():
@@ -607,12 +603,12 @@ class StreamControlService:
             is_running = await systemd_is_active(stream_id)
             info = await systemd_unit_status(stream_id)
             active_state = info.get("ActiveState", stream.status)
-            uptime_seconds = _uptime_seconds(stream) if is_running else 0
+            uptime_seconds = compute_uptime_seconds(stream) if is_running else 0
             usage = await self._get_usage_snapshot()
             preserve_restart_queue = (
                 not is_running
                 and stream.status == "error"
-                and _has_pending_runtime_restart(stream)
+                and has_pending_runtime_restart(stream)
             )
             status_override = (
                 stream.status
@@ -657,7 +653,7 @@ class StreamControlService:
             }
             preserve_restart_queue = (
                 stream.status == "error"
-                and _has_pending_runtime_restart(stream)
+                and has_pending_runtime_restart(stream)
                 and raw_state in {"", "unknown", "not_found", "stopped", "exited"}
             )
             normalized_status = (
@@ -743,7 +739,7 @@ class StreamControlService:
                 )
 
             running = normalized_status == "running"
-            uptime_seconds = _uptime_seconds(stream) if running else 0
+            uptime_seconds = compute_uptime_seconds(stream) if running else 0
             state_dirty = False
 
             if running:
@@ -893,7 +889,7 @@ class StreamControlService:
             normalized_mode = "important"
 
         if normalized_mode == "important":
-            last_lines = _filter_important_ffmpeg_logs(last_lines)
+            last_lines = filter_important_ffmpeg_logs(last_lines)
 
         return StreamLogsResponse(
             stream_id=stream_id,
@@ -914,11 +910,11 @@ class StreamControlService:
         uptime = (
             uptime_seconds
             if uptime_seconds is not None
-            else (_uptime_seconds(stream) if is_running else 0)
+            else (compute_uptime_seconds(stream) if is_running else 0)
         )
 
         base_total = max(float(stream.total_duration_seconds or 0.0), 0.0)
-        started_at = _aware(stream.started_at) if is_running else None
+        started_at = aware_datetime(stream.started_at) if is_running else None
         live_duration = None
         if started_at:
             live_duration = max(0, int((_utcnow() - started_at).total_seconds()))
@@ -948,7 +944,7 @@ class StreamControlService:
 
         status_value = status_override or stream.status
         error_value = stream.error_message if error_message is None else error_message
-        provider_summary = _provider_summary_for_stream(stream)
+        provider_summary = provider_summary_for_stream(stream)
         runtime_incident_summary = getattr(stream, "_runtime_incident_summary", None)
 
         return StreamStatus(
@@ -973,7 +969,7 @@ class StreamControlService:
                 provider_summary["provider_status"] != "unknown"
                 and (is_running != (provider_summary["provider_status"] == "live"))
             ),
-            runtime_restart=_runtime_restart_payload(stream, status_value=status_value),
+            runtime_restart=runtime_restart_payload(stream, status_value=status_value),
             runtime_incident_summary=runtime_incident_summary or {},
         )
 
@@ -1235,8 +1231,8 @@ class StreamControlService:
         if heartbeat_payload is not None:
             return True
 
-        started_at = _aware(stream.started_at)
-        stopped_at = _aware(stream.stopped_at)
+        started_at = aware_datetime(stream.started_at)
+        stopped_at = aware_datetime(stream.stopped_at)
         started_without_newer_stop = started_at is not None and (
             stopped_at is None or started_at > stopped_at
         )
@@ -1275,214 +1271,4 @@ class StreamControlService:
             clear_stream_runtime_restart_state(stream)
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _filter_important_ffmpeg_logs(lines: list[str]) -> list[str]:
-    """Keep only the most important FFmpeg log lines for UI display.
-
-    We intentionally hide frame progress spam so users see actionable warnings/errors.
-    """
-    keywords = (
-        "error",
-        "failed",
-        "forbidden",
-        "invalid",
-        "denied",
-        "fatal",
-        "unable",
-        "timeout",
-        "timed out",
-        "exiting",
-        "signal",
-        "connection",
-        "disconnect",
-        "broken pipe",
-        "reset",
-    )
-
-    filtered: list[str] = []
-
-    for raw in lines:
-        line = (raw or "").strip()
-        if not line:
-            continue
-
-        # Known noisy warnings on graceful shutdown that do not affect live stability.
-        if "Failed to update header with correct duration" in line:
-            continue
-        if "Failed to update header with correct filesize" in line:
-            continue
-
-        # FFmpeg progress stats (very noisy)
-        if (
-            line.startswith("frame=")
-            or line.startswith("size=")
-            or line.startswith("fps=")
-        ):
-            continue
-        if line.startswith("Press [q]"):
-            continue
-
-        lowered = line.lower()
-        if "[audit]" in lowered:
-            filtered.append(line)
-            continue
-
-        if any(token in lowered for token in keywords):
-            filtered.append(line)
-
-    return filtered
-
-
-def _runtime_lease_conflict_detail(
-    owner_id: Optional[str], expires_at: Optional[datetime]
-) -> str:
-    detail = "Stream is currently managed by another runtime node"
-    if owner_id:
-        detail += f" ({owner_id})"
-    if expires_at:
-        expiry = (
-            expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=timezone.utc)
-        )
-        detail += f" until {expiry.astimezone(timezone.utc).isoformat()}"
-    return detail + "."
-
-
-def _aware(dt: Optional[datetime]) -> Optional[datetime]:
-    if not dt:
-        return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-
-def _uptime_seconds(stream: Stream) -> int:
-    start = _aware(stream.started_at)
-    if not start:
-        return 0
-    return max(0, int((_utcnow() - start).total_seconds()))
-
-
-def _has_pending_runtime_restart(stream: Stream) -> bool:
-    return _aware(stream.runtime_next_restart_at) is not None
-
-
-def _provider_summary_for_stream(stream: Stream) -> dict[str, object]:
-    loaded_destinations = getattr(stream, "__dict__", {}).get("stream_destinations")
-    if loaded_destinations is None:
-        return {
-            "provider_status": "unknown",
-            "provider_viewers": None,
-            "provider_last_checked_at": None,
-            "provider_video_id": None,
-            "provider_stream_status": None,
-            "provider_health_status": None,
-            "provider_health_issues": [],
-        }
-
-    connected_destinations = []
-    for link in loaded_destinations or []:
-        destination = link.destination
-        if destination is not None and getattr(
-            destination, "provider_connection_id", None
-        ):
-            connected_destinations.append(destination)
-
-    if not connected_destinations:
-        return {
-            "provider_status": "unknown",
-            "provider_viewers": None,
-            "provider_last_checked_at": None,
-            "provider_video_id": None,
-            "provider_stream_status": None,
-            "provider_health_status": None,
-            "provider_health_issues": [],
-        }
-
-    statuses = {
-        getattr(destination, "_provider_status", "unknown")
-        for destination in connected_destinations
-    }
-    if "live" in statuses:
-        provider_status = "live"
-    elif "stale" in statuses:
-        provider_status = "stale"
-    elif statuses == {"offline"}:
-        provider_status = "offline"
-    else:
-        provider_status = "unknown"
-
-    viewer_pairs = {
-        (
-            str(getattr(destination, "provider_connection_id", "")),
-            getattr(destination, "_provider_viewers", None),
-        )
-        for destination in connected_destinations
-        if getattr(destination, "_provider_viewers", None) is not None
-    }
-    last_checked = [
-        getattr(destination, "_provider_last_checked_at", None)
-        for destination in connected_destinations
-        if getattr(destination, "_provider_last_checked_at", None) is not None
-    ]
-    video_ids = {
-        getattr(destination, "_provider_video_id", None)
-        for destination in connected_destinations
-        if getattr(destination, "_provider_video_id", None)
-    }
-    stream_statuses = {
-        getattr(destination, "_provider_stream_status", None)
-        for destination in connected_destinations
-        if getattr(destination, "_provider_stream_status", None)
-    }
-    health_statuses = [
-        getattr(destination, "_provider_health_status", None)
-        for destination in connected_destinations
-        if getattr(destination, "_provider_health_status", None)
-    ]
-    health_issues = {
-        issue
-        for destination in connected_destinations
-        for issue in (getattr(destination, "_provider_health_issues", None) or [])
-        if issue
-    }
-    return {
-        "provider_status": provider_status,
-        "provider_viewers": (
-            sum(viewer for _, viewer in viewer_pairs) if viewer_pairs else None
-        ),
-        "provider_last_checked_at": max(last_checked) if last_checked else None,
-        "provider_video_id": next(iter(video_ids)) if len(video_ids) == 1 else None,
-        "provider_stream_status": (
-            next(iter(stream_statuses)) if len(stream_statuses) == 1 else None
-        ),
-        "provider_health_status": _aggregate_provider_health_status(health_statuses),
-        "provider_health_issues": sorted(health_issues),
-    }
-
-
 __all__ = ["StreamControlService"]
-
-
-def _runtime_restart_payload(
-    stream: Stream,
-    *,
-    status_value: Optional[str] = None,
-) -> StreamRuntimeRestartInfo:
-    attempts = max(int(stream.runtime_restart_attempts or 0), 0)
-    effective_status = status_value or stream.status
-    next_restart_at = _aware(stream.runtime_next_restart_at)
-    return StreamRuntimeRestartInfo(
-        enabled=bool(default_settings.stream_runtime_auto_restart_enabled)
-        and max(int(default_settings.stream_runtime_restart_max_attempts), 0) > 0,
-        state=_stream_runtime_restart_state(
-            status=effective_status,
-            attempts=attempts,
-            next_restart_at=next_restart_at,
-        ),
-        attempts=attempts,
-        max_attempts=max(int(default_settings.stream_runtime_restart_max_attempts), 0),
-        next_restart_at=next_restart_at,
-        last_restart_at=_aware(stream.runtime_last_restart_at),
-        last_failure_at=_aware(stream.runtime_last_failure_at),
-    )
