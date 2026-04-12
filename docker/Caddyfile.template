@@ -10,6 +10,10 @@ __PRIMARY_SITE__ {
         reverse_proxy __PRIMARY_BACKEND_UPSTREAM__
     }
 
+    handle /thumbnails/* {
+        reverse_proxy __PRIMARY_BACKEND_UPSTREAM__
+    }
+
     handle /files/* {
         reverse_proxy __PRIMARY_TUSD_UPSTREAM__
     }
@@ -43,6 +47,10 @@ __SECONDARY_SITE__ {
     }
 
     handle /api/* {
+        reverse_proxy __SECONDARY_BACKEND_UPSTREAM__
+    }
+
+    handle /thumbnails/* {
         reverse_proxy __SECONDARY_BACKEND_UPSTREAM__
     }
 
