@@ -80,17 +80,22 @@ async def _refuse_terminal_state_launch(stream: Stream) -> None:
         "node_id": settings.stream_runtime_node_id,
     }
     LOGGER.warning(message)
-    await persist_stream_alert_event(
-        stream.id,
-        level="warning",
-        message=message,
-        alert_type="stream_runtime_refused_terminal_state",
-        alert_severity="warning",
-        metadata=metadata,
-        alert_details=metadata,
-        user_id=stream.user_id,
-        log_path=stream.log_path,
-    )
+    try:
+        await persist_stream_alert_event(
+            stream.id,
+            level="warning",
+            message=message,
+            alert_type="stream_runtime_refused_terminal_state",
+            alert_severity="warning",
+            metadata=metadata,
+            alert_details=metadata,
+            user_id=stream.user_id,
+            log_path=stream.log_path,
+        )
+    except Exception:
+        LOGGER.exception(
+            "Failed to persist terminal-state refusal alert for stream %s", stream.id
+        )
     raise TerminalStateRefusal(message)
 
 

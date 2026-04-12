@@ -55,6 +55,7 @@ MIGRATIONS = [
     'migrations/032_asset_storage_contract.sql',
     'migrations/033_upload_ingests.sql',
     'migrations/034_fix_uhd_bitrate_caps.sql',
+    'migrations/035_stream_runtime_refusal_alert_type.sql',
 ]
 
 
@@ -411,6 +412,21 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     fks_ok = (await conn.execute(query)).scalar()
     status['019'] = bool(constraints_ok and allows_collection_depleted and fks_ok)
+
+    # Check runtime refusal alert type support (migration 035)
+    query = text(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            WHERE t.relname = 'system_alerts'
+              AND c.conname = 'system_alerts_alert_type_check'
+              AND pg_get_constraintdef(c.oid) ILIKE '%stream_runtime_refused_terminal_state%'
+        )
+        """
+    )
+    status['035'] = bool((await conn.execute(query)).scalar())
 
     # Check admin actions reason column (migration 020)
     query = text("""
@@ -1249,6 +1265,21 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         result = await conn.execute(query)
         return bool(result.scalar())
+
+    elif migration_num == '035':
+        query = text(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_constraint c
+                JOIN pg_class t ON c.conrelid = t.oid
+                WHERE t.relname = 'system_alerts'
+                  AND c.conname = 'system_alerts_alert_type_check'
+                  AND pg_get_constraintdef(c.oid) ILIKE '%stream_runtime_refused_terminal_state%'
+            )
+            """
+        )
+        return bool((await conn.execute(query)).scalar())
 
     return False
 

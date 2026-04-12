@@ -200,6 +200,50 @@ def test_main_returns_dedicated_exit_code_for_terminal_state_refusal(
 
 
 @pytest.mark.asyncio
+async def test_start_stream_refusal_still_returns_terminal_state_when_alert_persist_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    stream_id = uuid4()
+
+    async with async_session_maker() as session:
+        profile = UserProfile(
+            user_id=user_id,
+            email=f"refusal-fail-{uuid4()}@example.com",
+            subscription_tier="free",
+            subscription_status="active",
+        )
+        stream = Stream(
+            id=stream_id,
+            user_id=user_id,
+            name="terminal",
+            status="stopped",
+        )
+        session.add_all([profile, stream])
+        await session.commit()
+
+    async def fake_load_stream_with_relations(_db, user_id_arg, stream_id_arg):
+        assert user_id_arg == user_id
+        assert stream_id_arg == stream_id
+        async with async_session_maker() as session:
+            return await session.get(Stream, stream_id)
+
+    async def failing_persist(*args, **kwargs):
+        raise RuntimeError("alert persist failed")
+
+    monkeypatch.setattr(
+        run_stream_cli, "load_stream_with_relations", fake_load_stream_with_relations
+    )
+    monkeypatch.setattr(
+        run_stream_cli, "persist_stream_alert_event", failing_persist
+    )
+    monkeypatch.setattr(run_stream_cli, "prepare_stream_launch", pytest.fail)
+
+    with pytest.raises(run_stream_cli.TerminalStateRefusal):
+        await run_stream_cli._start_stream(stream_id, wait=False)
+
+
+@pytest.mark.asyncio
 async def test_stream_status_reports_live_and_total_duration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

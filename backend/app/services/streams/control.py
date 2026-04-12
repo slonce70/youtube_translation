@@ -171,7 +171,7 @@ class StreamControlService:
             )
 
         already_running = await self.get_stream_status(stream_id)
-        if already_running.is_running:
+        if already_running.status in {"running", "starting", "stopping"}:
             return already_running
 
         await self._acquire_user_start_lock()
@@ -212,9 +212,26 @@ class StreamControlService:
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Stream already running",
                     )
+                previous_status = stream.status
+                previous_started_at = stream.started_at
+                previous_stopped_at = stream.stopped_at
+                previous_error_message = stream.error_message
+                previous_log_path = stream.log_path
+                stream.status = "starting"
+                stream.stopped_at = None
+                stream.error_message = None
+                stream.log_path = str(log_file)
+                await self.db.commit()
                 try:
                     await systemd_start_unit(stream_id)
-                except RuntimeError as err:
+                except Exception as err:
+                    stream.status = previous_status
+                    stream.started_at = previous_started_at
+                    stream.stopped_at = previous_stopped_at
+                    stream.error_message = previous_error_message
+                    stream.log_path = previous_log_path
+                    clear_stream_runtime_lease(stream)
+                    await self.db.commit()
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail=str(err),
@@ -605,6 +622,7 @@ class StreamControlService:
             active_state = info.get("ActiveState", stream.status)
             uptime_seconds = compute_uptime_seconds(stream) if is_running else 0
             usage = await self._get_usage_snapshot()
+            preserve_starting = not is_running and stream.status == "starting"
             preserve_restart_queue = (
                 not is_running
                 and stream.status == "error"
@@ -613,7 +631,8 @@ class StreamControlService:
             status_override = (
                 stream.status
                 if (
-                    (stream.status == "scheduled" and not is_running)
+                    preserve_starting
+                    or (stream.status == "scheduled" and not is_running)
                     or preserve_restart_queue
                 )
                 else active_state

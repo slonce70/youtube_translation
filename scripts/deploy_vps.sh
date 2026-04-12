@@ -468,6 +468,41 @@ maybe_run_host_runtime_rollback() {
   run_as_root env "${env_args[@]}" "$host_runtime_rollback_script"
 }
 
+should_apply_database_migrations() {
+  if flag_enabled "${DEPLOY_APPLY_MIGRATIONS:-1}"; then
+    if service_selected backend; then
+      return 0
+    fi
+
+    if host_runtime_refresh_requested; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+run_database_migrations() {
+  if ! should_apply_database_migrations; then
+    return 0
+  fi
+
+  local migration_python="${HOST_BACKEND_PYTHON_BIN:-}"
+  if [[ -z "$migration_python" ]]; then
+    if [[ -x "$repo_root/backend/.venv/bin/python" ]]; then
+      migration_python="$repo_root/backend/.venv/bin/python"
+    else
+      migration_python="${HOST_BACKEND_BOOTSTRAP_PYTHON:-python3}"
+    fi
+  fi
+
+  echo "Applying database migrations before backend activation..."
+  (
+    cd "$repo_root/backend"
+    printf 'yes\n' | "$migration_python" apply_migrations.py
+  )
+}
+
 maybe_restart_host_native_backend() {
   local restart_host_backend="${DEPLOY_RESTART_HOST_BACKEND:-0}"
   if ! flag_enabled "$restart_host_backend"; then
@@ -792,6 +827,7 @@ if flag_enabled "${DEPLOY_SYNC_HOST_CADDY:-0}"; then
   sync_host_caddy
 fi
 
+run_database_migrations
 maybe_restart_host_native_backend
 maybe_run_host_runtime_cutover
 

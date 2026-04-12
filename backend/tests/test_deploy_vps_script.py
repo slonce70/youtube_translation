@@ -318,3 +318,53 @@ def test_deploy_vps_aligns_host_storage_permissions_for_service_group(tmp_path) 
     assert stat.S_IMODE(user_dir.stat().st_mode) & 0o070 == 0o070
     assert stat.S_IMODE(media_file.stat().st_mode) & 0o060 == 0o060
     assert stat.S_IMODE(uploads_dir.stat().st_mode) & stat.S_ISGID == stat.S_ISGID
+
+
+def test_deploy_vps_runs_migrations_for_host_backend_refresh(tmp_path) -> None:
+    script = _script_path()
+    fake_python = tmp_path / "python"
+    fake_python.write_text("#!/usr/bin/env bash\nprintf 'python=%s\\n' \"$0\"\nprintf 'args=%s\\n' \"$*\"\n", encoding="utf-8")
+    fake_python.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                "DEPLOY_RESTART_HOST_BACKEND=true; "
+                f"HOST_BACKEND_PYTHON_BIN='{fake_python}'; "
+                "services=(); "
+                "run_database_migrations"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Applying database migrations before backend activation..." in result.stdout
+    assert f"python={fake_python}" in result.stdout
+    assert "args=apply_migrations.py" in result.stdout
+
+
+def test_deploy_vps_skips_migrations_for_frontend_only_deploy() -> None:
+    script = _script_path()
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                "services=(frontend); "
+                "if should_apply_database_migrations; then exit 9; fi"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr

@@ -454,6 +454,208 @@ async def test_start_returns_authoritative_running_status_before_prerequisite_er
 
 
 @pytest.mark.asyncio
+async def test_systemd_start_marks_stream_starting_before_unit_launch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
+    user_id, stream_id = await _create_stream_fixture(tmp_path)
+    log_file = tmp_path / "stream.log"
+
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
+    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
+
+    async def fake_enrich_streams(self, streams):
+        return None
+
+    async def fake_attach_runtime_incident_summaries(_db, _streams, manager=None):
+        return None
+
+    async def fake_validate(*args, **kwargs):
+        return None, None, log_file
+
+    async def fake_systemd_is_active(_stream_id):
+        return False
+
+    async def fake_systemd_unit_status(_stream_id):
+        return {}
+
+    async def fake_systemd_start_unit(_stream_id):
+        async with async_session_maker() as check_session:
+            db_stream = await check_session.get(Stream, stream_id)
+            assert db_stream is not None
+            assert db_stream.status == "starting"
+            assert db_stream.runtime_owner_id == settings.stream_runtime_node_id
+            assert db_stream.log_path == str(log_file)
+
+    monkeypatch.setattr(
+        streams_control.YoutubeProviderStatusService,
+        "enrich_streams",
+        fake_enrich_streams,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "attach_runtime_incident_summaries",
+        fake_attach_runtime_incident_summaries,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "validate_stream_launch_prerequisites",
+        fake_validate,
+    )
+    monkeypatch.setattr(streams_control, "systemd_is_active", fake_systemd_is_active)
+    monkeypatch.setattr(
+        streams_control, "systemd_unit_status", fake_systemd_unit_status
+    )
+    monkeypatch.setattr(streams_control, "systemd_start_unit", fake_systemd_start_unit)
+
+    async with async_session_maker() as session:
+        service = StreamControlService(session, user_id)
+        status_payload = await service.start_stream(stream_id)
+
+        stream = await session.get(Stream, stream_id)
+        assert stream is not None
+        assert stream.status == "running"
+        assert stream.log_path == str(log_file)
+        assert stream.started_at is not None
+
+    assert status_payload.is_running is True
+    assert status_payload.status == "running"
+
+
+@pytest.mark.asyncio
+async def test_systemd_start_restores_stream_when_unit_launch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
+    user_id, stream_id = await _create_stream_fixture(tmp_path)
+    log_file = tmp_path / "stream.log"
+
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
+    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
+
+    async def fake_enrich_streams(self, streams):
+        return None
+
+    async def fake_attach_runtime_incident_summaries(_db, _streams, manager=None):
+        return None
+
+    async def fake_validate(*args, **kwargs):
+        return None, None, log_file
+
+    async def fake_systemd_is_active(_stream_id):
+        return False
+
+    async def fake_systemd_unit_status(_stream_id):
+        return {}
+
+    async def fake_systemd_start_unit(_stream_id):
+        raise OSError("boom")
+
+    monkeypatch.setattr(
+        streams_control.YoutubeProviderStatusService,
+        "enrich_streams",
+        fake_enrich_streams,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "attach_runtime_incident_summaries",
+        fake_attach_runtime_incident_summaries,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "validate_stream_launch_prerequisites",
+        fake_validate,
+    )
+    monkeypatch.setattr(streams_control, "systemd_is_active", fake_systemd_is_active)
+    monkeypatch.setattr(
+        streams_control, "systemd_unit_status", fake_systemd_unit_status
+    )
+    monkeypatch.setattr(streams_control, "systemd_start_unit", fake_systemd_start_unit)
+
+    async with async_session_maker() as session:
+        service = StreamControlService(session, user_id)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await service.start_stream(stream_id)
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "boom"
+
+        stream = await session.get(Stream, stream_id)
+        assert stream is not None
+        assert stream.status == "stopped"
+        assert stream.runtime_owner_id is None
+        assert stream.log_path is None
+
+
+@pytest.mark.asyncio
+async def test_systemd_start_returns_existing_starting_status_before_relaunch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
+    user_id, stream_id = await _create_stream_fixture(tmp_path, stream_status="starting")
+
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
+    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
+
+    async def fake_enrich_streams(self, streams):
+        return None
+
+    async def fake_attach_runtime_incident_summaries(_db, _streams, manager=None):
+        return None
+
+    async def fake_systemd_is_active(_stream_id):
+        return False
+
+    async def fake_systemd_unit_status(_stream_id):
+        return {"ActiveState": "inactive"}
+
+    async def fail_validate(*args, **kwargs):
+        raise AssertionError("launch prerequisites should not run for existing starting state")
+
+    async def fail_systemd_start(_stream_id):
+        raise AssertionError("systemd start should not run for existing starting state")
+
+    monkeypatch.setattr(
+        streams_control.YoutubeProviderStatusService,
+        "enrich_streams",
+        fake_enrich_streams,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "attach_runtime_incident_summaries",
+        fake_attach_runtime_incident_summaries,
+    )
+    monkeypatch.setattr(streams_control, "systemd_is_active", fake_systemd_is_active)
+    monkeypatch.setattr(
+        streams_control, "systemd_unit_status", fake_systemd_unit_status
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "validate_stream_launch_prerequisites",
+        fail_validate,
+    )
+    monkeypatch.setattr(streams_control, "systemd_start_unit", fail_systemd_start)
+
+    async with async_session_maker() as session:
+        service = StreamControlService(session, user_id)
+        status_payload = await service.start_stream(stream_id)
+
+    assert status_payload.is_running is False
+    assert status_payload.status == "starting"
+    assert status_payload.id == stream_id
+
+
+@pytest.mark.asyncio
 async def test_stream_logs_support_empty_filtered_and_raw_modes(tmp_path: Path) -> None:
     user_id = uuid4()
     log_path = tmp_path / "stream.log"
