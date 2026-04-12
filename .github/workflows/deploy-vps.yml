@@ -195,146 +195,18 @@ jobs:
           VPS_CHECKOUT_SHA: ${{ steps.prod_state.outputs.vps_checkout_sha }}
         run: |
           set -euo pipefail
+          source scripts/deploy_workflow_helpers.sh
+          impact_output="$(mktemp)"
+          compute_deploy_impact > "$impact_output"
+          cat "$impact_output" >> "$GITHUB_OUTPUT"
 
-          diff_has_paths() {
-            local base_sha="$1"
-            local pattern="$2"
-
-            if [[ -z "$base_sha" ]]; then
-              return 0
-            fi
-            if [[ "$base_sha" == "$TARGET_SHA" ]]; then
-              return 1
-            fi
-
-            git diff --name-only "$base_sha" "$TARGET_SHA" | grep -Eq "$pattern"
-          }
-
-          add_service() {
-            local service="$1"
-            local existing
-            for existing in "${services[@]:-}"; do
-              if [[ "$existing" == "$service" ]]; then
-                return 0
-              fi
-            done
-            services+=("$service")
-          }
-
-          frontend_pattern='^frontend/'
-          backend_pattern='^(backend/|docker/docker-compose\.yml$|docker/Caddyfile(\.template)?$|docker/mediamtx\.yml$|scripts/render_caddyfile\.py$)'
-          tusd_pattern='^(backend/tusd-hooks/|docker/tusd\.Dockerfile$|docker/docker-compose\.yml$)'
-          infra_pattern='^(docker/docker-compose\.yml$|docker/Caddyfile(\.template)?$|docker/mediamtx\.yml$|scripts/render_caddyfile\.py$)'
-          host_runtime_pattern='^(backend/|scripts/(deploy_vps|install_systemd_runtime|provision_host_native_backend_venv|run_stream_systemd|check_host_runtime_readiness|cutover_host_runtime|rollback_host_runtime|runtime_guards)\.sh$|docs/systemd/)'
-
-          frontend_needs_deploy=false
-          backend_needs_deploy=false
-          tusd_needs_deploy=false
-          infra_needs_deploy=false
-          host_runtime_needs_refresh=false
-          host_runtime_managed=false
-
-          effective_frontend_sha="${CURRENT_FRONTEND_SHA:-$VPS_CHECKOUT_SHA}"
-          effective_backend_sha="${CURRENT_BACKEND_SHA:-$VPS_CHECKOUT_SHA}"
-          effective_tusd_sha="${CURRENT_TUSD_SHA:-$VPS_CHECKOUT_SHA}"
-
-          if [[ "$effective_frontend_sha" != "$TARGET_SHA" ]] && diff_has_paths "$effective_frontend_sha" "$frontend_pattern"; then
-            frontend_needs_deploy=true
-          fi
-
-          if [[ "$effective_backend_sha" != "$TARGET_SHA" ]] && diff_has_paths "$effective_backend_sha" "$backend_pattern"; then
-            backend_needs_deploy=true
-          fi
-
-          if [[ "$effective_tusd_sha" != "$TARGET_SHA" ]] && diff_has_paths "$effective_tusd_sha" "$tusd_pattern"; then
-            tusd_needs_deploy=true
-          fi
-
-          if diff_has_paths "$effective_backend_sha" "$infra_pattern" || diff_has_paths "$effective_tusd_sha" "$infra_pattern"; then
-            infra_needs_deploy=true
-          fi
-
-          if [[ "$HOST_BACKEND_ACTIVE" == 'true' || "$HOST_BACKEND_UNIT_PRESENT" == 'true' || "$CONFIGURED_STREAM_RUNTIME_MODE" == 'systemd' ]]; then
-            host_runtime_managed=true
-          fi
-
-          if [[ "$host_runtime_managed" == 'true' ]] && diff_has_paths "$effective_backend_sha" "$host_runtime_pattern"; then
-            host_runtime_needs_refresh=true
-          fi
-
-          services=()
-          sync_host_caddy=0
-
-          if [[ "$infra_needs_deploy" == 'true' ]]; then
-            if [[ "$host_runtime_managed" == 'true' ]]; then
-              services=(postgres redis tusd frontend mediamtx)
-            else
-              services=(postgres redis backend tusd frontend runner mediamtx)
-            fi
-            sync_host_caddy=1
-          else
-            if [[ "$backend_needs_deploy" == 'true' && "$host_runtime_managed" != 'true' ]]; then
-              add_service backend
-              add_service runner
-            fi
-            if [[ "$tusd_needs_deploy" == 'true' ]]; then
-              add_service tusd
-            fi
-            if [[ "$frontend_needs_deploy" == 'true' ]]; then
-              add_service frontend
-            fi
-          fi
-
-          deploy_services=''
-          deploy_services_csv=''
-          needs_deploy=false
-          frontend_only_deploy=false
-          skip_docker_deploy=false
-          restart_host_backend=false
-          install_systemd_units=false
-          prepare_host_native=false
-          cutover_host_runtime=false
-
-          if [[ "$host_runtime_needs_refresh" == 'true' ]]; then
-            install_systemd_units=true
-            prepare_host_native=true
-            if [[ "$HOST_BACKEND_ACTIVE" == 'true' ]]; then
-              restart_host_backend=true
-            else
-              cutover_host_runtime=true
-            fi
-          fi
-
-          if [[ "${#services[@]}" -gt 0 ]]; then
-            needs_deploy=true
-            deploy_services="${services[*]}"
-            deploy_services_csv="$(IFS=,; echo "${services[*]}")"
-            if [[ "${#services[@]}" -eq 1 && "${services[0]}" == 'frontend' && "$sync_host_caddy" == '0' ]]; then
-              frontend_only_deploy=true
-            fi
-          elif [[ "$host_runtime_needs_refresh" == 'true' ]]; then
-            needs_deploy=true
-            skip_docker_deploy=true
-          fi
-
-          {
-            echo "needs_deploy=$needs_deploy"
-            echo "frontend_needs_deploy=$frontend_needs_deploy"
-            echo "backend_needs_deploy=$backend_needs_deploy"
-            echo "tusd_needs_deploy=$tusd_needs_deploy"
-            echo "infra_needs_deploy=$infra_needs_deploy"
-            echo "host_runtime_needs_refresh=$host_runtime_needs_refresh"
-            echo "host_runtime_managed=$host_runtime_managed"
-            echo "frontend_only_deploy=$frontend_only_deploy"
-            echo "deploy_services=$deploy_services"
-            echo "deploy_services_csv=$deploy_services_csv"
-            echo "sync_host_caddy=$sync_host_caddy"
-            echo "skip_docker_deploy=$skip_docker_deploy"
-            echo "restart_host_backend=$restart_host_backend"
-            echo "install_systemd_units=$install_systemd_units"
-            echo "prepare_host_native=$prepare_host_native"
-            echo "cutover_host_runtime=$cutover_host_runtime"
-          } >> "$GITHUB_OUTPUT"
+          while IFS='=' read -r key value; do
+            case "$key" in
+              frontend_needs_deploy|backend_needs_deploy|tusd_needs_deploy|infra_needs_deploy|host_runtime_needs_refresh|host_runtime_managed|deploy_services)
+                printf -v "$key" '%s' "$value"
+                ;;
+            esac
+          done < "$impact_output"
 
           {
             echo '### Deploy impact analysis'
@@ -358,6 +230,8 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           FRONTEND_ONLY_DEPLOY: ${{ steps.impact.outputs.frontend_only_deploy }}
+          HOST_RUNTIME_ONLY_REFRESH: ${{ steps.impact.outputs.host_runtime_only_refresh }}
+          HOST_BACKEND_ACTIVE: ${{ steps.prod_state.outputs.host_backend_active }}
         run: |
           set -euo pipefail
           active_streams="$(ssh -i ~/.ssh/id_ed25519_vps_deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "if docker ps --format '{{.Names}}' | grep -qx 'youtube-streaming-postgres'; then docker exec youtube-streaming-postgres psql -U youtube_user -d youtube_streaming -tAc \"SELECT count(*) FROM streams WHERE status IN ('running','starting','stopping');\" | tr -d '[:space:]'; else echo 0; fi")"
@@ -367,24 +241,20 @@ jobs:
             exit 1
           fi
 
-          can_deploy=true
-          decision='safe to deploy'
-          if (( active_streams > 0 )); then
-            if [[ "$FRONTEND_ONLY_DEPLOY" == 'true' ]]; then
-              decision='live stream active: frontend-only deploy allowed'
-            elif [[ "${{ steps.impact.outputs.host_runtime_needs_refresh }}" == 'true' && "${{ steps.prod_state.outputs.host_backend_active }}" == 'true' ]]; then
-              decision='live stream active: host-native backend refresh allowed'
-            else
-              can_deploy=false
-              decision='deploy deferred to protect live streams'
-            fi
-          fi
-
+          source scripts/deploy_workflow_helpers.sh
+          decision_output="$(mktemp)"
+          ACTIVE_STREAMS="$active_streams" evaluate_live_deploy_guard > "$decision_output"
           {
             echo "active_streams=$active_streams"
-            echo "can_deploy=$can_deploy"
-            echo "decision=$decision"
+            cat "$decision_output"
           } >> "$GITHUB_OUTPUT"
+
+          decision=''
+          while IFS='=' read -r key value; do
+            if [[ "$key" == 'decision' ]]; then
+              decision="$value"
+            fi
+          done < "$decision_output"
 
           {
             echo '### Live stream deploy guard'
