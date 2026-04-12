@@ -16,6 +16,28 @@ diff_has_paths() {
   git diff --name-only "$base_sha" "$target_sha" | grep -Eq "$pattern"
 }
 
+diff_has_paths_excluding() {
+  local base_sha="$1"
+  local include_pattern="$2"
+  local exclude_pattern="$3"
+  local target_sha="${4:?target sha is required}"
+
+  if [[ -z "$base_sha" ]]; then
+    return 0
+  fi
+  if [[ "$base_sha" == "$target_sha" ]]; then
+    return 1
+  fi
+
+  local changed_paths
+  changed_paths="$(git diff --name-only "$base_sha" "$target_sha")"
+  if [[ -n "$exclude_pattern" ]]; then
+    changed_paths="$(printf '%s\n' "$changed_paths" | grep -Ev "$exclude_pattern" || true)"
+  fi
+
+  printf '%s\n' "$changed_paths" | grep -Eq "$include_pattern"
+}
+
 add_service() {
   local service="$1"
   local existing
@@ -35,6 +57,7 @@ compute_deploy_impact() {
   local tusd_pattern='^(backend/tusd-hooks/|docker/tusd\.Dockerfile$|docker/docker-compose\.yml$)'
   local infra_pattern='^(docker/docker-compose\.yml$|docker/Caddyfile(\.template)?$|docker/mediamtx\.yml$|scripts/render_caddyfile\.py$)'
   local host_runtime_pattern='^(backend/|scripts/(deploy_vps|install_systemd_runtime|provision_host_native_backend_venv|run_stream_systemd|check_host_runtime_readiness|cutover_host_runtime|rollback_host_runtime|runtime_guards)\.sh$|docs/systemd/)'
+  local backend_ignore_pattern='^(backend/tests/|backend/pytest\.ini$)'
 
   local frontend_needs_deploy=false
   local backend_needs_deploy=false
@@ -61,7 +84,7 @@ compute_deploy_impact() {
     frontend_needs_deploy=true
   fi
 
-  if [[ "$effective_backend_sha" != "$TARGET_SHA" ]] && diff_has_paths "$effective_backend_sha" "$backend_pattern" "$TARGET_SHA"; then
+  if [[ "$effective_backend_sha" != "$TARGET_SHA" ]] && diff_has_paths_excluding "$effective_backend_sha" "$backend_pattern" "$backend_ignore_pattern" "$TARGET_SHA"; then
     backend_needs_deploy=true
   fi
 
@@ -73,7 +96,7 @@ compute_deploy_impact() {
     infra_needs_deploy=true
   fi
 
-  if [[ "$host_runtime_managed" == 'true' ]] && diff_has_paths "$effective_backend_sha" "$host_runtime_pattern" "$TARGET_SHA"; then
+  if [[ "$host_runtime_managed" == 'true' ]] && diff_has_paths_excluding "$effective_backend_sha" "$host_runtime_pattern" "$backend_ignore_pattern" "$TARGET_SHA"; then
     host_runtime_needs_refresh=true
   fi
 
