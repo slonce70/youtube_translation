@@ -1108,6 +1108,14 @@ async def test_write_logs_persists_non_monotonic_dts_alert(tmp_path):
 
     await manager._write_logs_to_file(str(stream_id), process, log_file)
 
+    persisted_lines = log_file.read_text(encoding="utf-8").strip().splitlines()
+    runtime_lines = [line for line in persisted_lines if "[audit]" not in line]
+    assert len(runtime_lines) == 5
+    for line in runtime_lines:
+        timestamp, message = line.split(" ", 1)
+        assert datetime.fromisoformat(timestamp).tzinfo is not None
+        assert "Non-monotonic DTS" in message
+
     async with async_session_maker() as session:
         alert = (
             (
