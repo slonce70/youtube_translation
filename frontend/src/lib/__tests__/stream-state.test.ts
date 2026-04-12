@@ -176,6 +176,33 @@ describe('deriveStreamState', () => {
     expect(result.group).toBe('scheduled')
     expect(result.primaryAction).toBe('edit_schedule')
   })
+
+  it('keeps scheduled streams in the scheduled group even with stale incident context', () => {
+    const stream = createStream({
+      status: 'scheduled',
+      scheduled_start_enabled: true,
+      scheduled_start_time: '2026-04-04T08:00:00Z',
+      runtime_incident_summary: {
+        severity: 'degraded',
+        headline: 'Historical warning',
+        details: ['Previous run emitted runtime warnings'],
+        items: [
+          {
+            code: 'timeline_drift',
+            severity: 'degraded',
+            label: 'Historical warning',
+            detail: 'Previous run emitted runtime warnings',
+          },
+        ],
+      },
+    })
+
+    const result = deriveStreamState(stream)
+
+    expect(result.group).toBe('scheduled')
+    expect(result.requiresAttention).toBe(true)
+    expect(result.primaryAction).toBe('edit_schedule')
+  })
 })
 
 describe('incident summaries', () => {

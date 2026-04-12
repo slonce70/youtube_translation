@@ -434,11 +434,11 @@ export function deriveStreamState(
     ? 'transitioning'
     : isRunning
       ? 'live'
-      : requiresAttention
+      : derivedStatus === 'scheduled'
+        ? 'scheduled'
+        : requiresAttention
         ? 'attention'
-        : derivedStatus === 'scheduled'
-          ? 'scheduled'
-          : 'stopped'
+        : 'stopped'
 
   const primaryAction = isTransitioning
     ? 'pending'
