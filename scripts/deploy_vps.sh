@@ -347,6 +347,36 @@ ensure_host_storage_env_alignment() {
   fi
 }
 
+ensure_host_ffmpeg_env_alignment() {
+  if ! host_runtime_refresh_requested; then
+    return 0
+  fi
+
+  if ! host_backend_is_active && ! flag_enabled "${DEPLOY_CUTOVER_HOST_RUNTIME:-0}"; then
+    return 0
+  fi
+
+  local changed=0
+  local current_ffmpeg_bin="${FFMPEG_BIN:-}"
+  local current_ffprobe_bin="${FFPROBE_BIN:-}"
+
+  if [[ "$current_ffmpeg_bin" != "/usr/bin/ffmpeg" ]]; then
+    upsert_env_kv "$backend_env" "FFMPEG_BIN" "/usr/bin/ffmpeg"
+    export FFMPEG_BIN="/usr/bin/ffmpeg"
+    changed=1
+  fi
+
+  if [[ "$current_ffprobe_bin" != "/usr/bin/ffprobe" ]]; then
+    upsert_env_kv "$backend_env" "FFPROBE_BIN" "/usr/bin/ffprobe"
+    export FFPROBE_BIN="/usr/bin/ffprobe"
+    changed=1
+  fi
+
+  if [[ "$changed" == "1" ]]; then
+    echo "Host-native deploy path requested; aligning backend/.env FFmpeg binaries to Linux system paths."
+  fi
+}
+
 maybe_provision_host_native_backend_venv() {
   local runtime_mode="${STREAM_RUNTIME_MODE:-}"
   runtime_mode="$(printf '%s' "$runtime_mode" | tr '[:upper:]' '[:lower:]')"
@@ -705,6 +735,7 @@ fi
 
 ensure_host_runtime_mode_alignment
 ensure_host_storage_env_alignment
+ensure_host_ffmpeg_env_alignment
 parse_selected_services
 
 deploy_ref="${GITHUB_SHA:-$(git rev-parse HEAD)}"
