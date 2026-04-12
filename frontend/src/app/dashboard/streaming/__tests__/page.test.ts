@@ -36,7 +36,9 @@ describe('streaming page incident helpers', () => {
     const summary = summarizeStreamLogIncidents([
       '2026-04-11T10:00:00Z Connection reset by peer',
       '2026-04-11T10:00:01Z Broken pipe',
-    ])
+    ], {
+      nowMs: Date.parse('2026-04-11T10:05:00Z'),
+    })
 
     expect(buildStreamIncidentNotice(summary)).toEqual({
       tone: 'critical',

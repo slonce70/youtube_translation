@@ -565,6 +565,33 @@ class StreamRuntimeRestartInfo(BaseModel):
     last_failure_at: Optional[datetime] = None
 
 
+def build_stream_runtime_restart_info(
+    *,
+    status: str,
+    attempts: int,
+    next_restart_at: Optional[datetime],
+    last_restart_at: Optional[datetime] = None,
+    last_failure_at: Optional[datetime] = None,
+) -> StreamRuntimeRestartInfo:
+    normalized_attempts = max(int(attempts or 0), 0)
+    normalized_max_attempts = max(int(settings.stream_runtime_restart_max_attempts), 0)
+    enabled = _runtime_restart_enabled()
+
+    return StreamRuntimeRestartInfo(
+        enabled=enabled,
+        state=_stream_runtime_restart_state(
+            status=status,
+            attempts=normalized_attempts,
+            next_restart_at=next_restart_at,
+        ),
+        attempts=normalized_attempts,
+        max_attempts=normalized_max_attempts,
+        next_restart_at=next_restart_at,
+        last_restart_at=last_restart_at,
+        last_failure_at=last_failure_at,
+    )
+
+
 class StreamIncidentItem(BaseModel):
     code: StreamIncidentCode
     severity: Literal["degraded", "critical"]
@@ -766,18 +793,10 @@ class StreamResponse(StreamBase):
     @computed_field  # type: ignore[misc]
     @property
     def runtime_restart(self) -> StreamRuntimeRestartInfo:
-        attempts = max(int(self.runtime_restart_attempts or 0), 0)
-        next_restart_at = self.runtime_next_restart_at
-        return StreamRuntimeRestartInfo(
-            enabled=_runtime_restart_enabled(),
-            state=_stream_runtime_restart_state(
-                status=self.status,
-                attempts=attempts,
-                next_restart_at=next_restart_at,
-            ),
-            attempts=attempts,
-            max_attempts=max(int(settings.stream_runtime_restart_max_attempts), 0),
-            next_restart_at=next_restart_at,
+        return build_stream_runtime_restart_info(
+            status=self.status,
+            attempts=int(self.runtime_restart_attempts or 0),
+            next_restart_at=self.runtime_next_restart_at,
             last_restart_at=self.runtime_last_restart_at,
             last_failure_at=self.runtime_last_failure_at,
         )

@@ -42,7 +42,9 @@ def normalize_storage_backend(raw_value: object) -> str:
     return candidate
 
 
-def remap_legacy_user_upload_path(candidate: Path, upload_root: Path, user_id: UUID) -> Path:
+def remap_legacy_user_upload_path(
+    candidate: Path, upload_root: Path, user_id: UUID
+) -> Path:
     for legacy_root in LEGACY_FILESYSTEM_UPLOAD_ROOTS:
         legacy_user_root = (legacy_root / str(user_id)).resolve(strict=False)
         if candidate == legacy_user_root:

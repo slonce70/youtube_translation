@@ -13,6 +13,35 @@ PY311 := $(shell command -v python3.11 || command -v python3)
 BACKEND_PY := $(BACKEND_VENV)/bin/python
 BACKEND_PIP := $(BACKEND_VENV)/bin/pip
 DOCKER_COMPOSE := docker compose -f docker/docker-compose.yml
+LOAD_BACKEND_ENV := set -a; [ -f "$(BACKEND_DIR)/.env" ] && . "$(BACKEND_DIR)/.env"; set +a
+POSTGRES_CONTAINER := youtube-streaming-postgres
+REDIS_CONTAINER := youtube-streaming-redis
+
+define ASSERT_COMPOSE_PORT_OWNERSHIP
+if nc -z 127.0.0.1 $(1) >/dev/null 2>&1; then \
+	running=$$(docker inspect -f '{{.State.Running}}' "$(2)" 2>/dev/null || echo false); \
+	if [ "$$running" != "true" ]; then \
+		echo "$(3) port 127.0.0.1:$(1) is occupied by a non-Compose service." >&2; \
+		echo "$(4)" >&2; \
+		exit 1; \
+	fi; \
+fi
+endef
+
+define WAIT_FOR_DOCKER_SERVICE
+status="starting"; \
+for _ in $$(seq 1 30); do \
+	status=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$(1)" 2>/dev/null || echo missing); \
+	if [ "$$status" = "healthy" ] || [ "$$status" = "running" ]; then \
+		break; \
+	fi; \
+	sleep 2; \
+done; \
+if [ "$$status" != "healthy" ] && [ "$$status" != "running" ]; then \
+	echo "Service $(1) is not ready (status=$$status)" >&2; \
+	exit 1; \
+fi
+endef
 
 backend-venv: ## Ensure backend virtualenv exists
 	@if [ ! -x "$(BACKEND_PY)" ]; then \
@@ -63,24 +92,30 @@ dev-local: dev ## Start all services (local only)
 
 dev-bootstrap: ## Start base services for hybrid local dev (postgres, redis, tusd, runner)
 	@echo "$(BLUE)Starting hybrid dev base services via Docker Compose...$(NC)"
-	docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner
+	@set -eu; \
+	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,5432,$(POSTGRES_CONTAINER),postgres,Stop the conflicting local service or free the port before running make dev-bootstrap.); \
+	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,6379,$(REDIS_CONTAINER),redis,Stop the conflicting local service or free the port before running make dev-bootstrap.); \
+	$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) up -d postgres redis tusd runner
 	@echo "$(GREEN)✓ Base services ready$(NC)"
 
 dev-bootstrap-v2: ## Start base services plus optional MediaMTX relay/metrics layer
 	@echo "$(BLUE)Starting hybrid dev v2 base services via Docker Compose...$(NC)"
-	docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner mediamtx
+	@set -eu; \
+	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,5432,$(POSTGRES_CONTAINER),postgres,Stop the conflicting local service or free the port before running make dev-bootstrap-v2.); \
+	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,6379,$(REDIS_CONTAINER),redis,Stop the conflicting local service or free the port before running make dev-bootstrap-v2.); \
+	$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) up -d postgres redis tusd runner mediamtx
 	@echo "$(GREEN)✓ V2 base services ready$(NC)"
 
 dev-bootstrap-down: ## Stop hybrid local dev base services
 	@echo "$(BLUE)Stopping hybrid dev base services...$(NC)"
-	docker compose -f docker/docker-compose.yml stop mediamtx runner tusd redis postgres
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) stop mediamtx runner tusd redis postgres
 	@echo "$(GREEN)✓ Base services stopped$(NC)"
 
 dev-bootstrap-logs: ## Tail logs for hybrid local dev base services
-	docker compose -f docker/docker-compose.yml logs -f postgres redis tusd runner
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) logs -f postgres redis tusd runner
 
 dev-bootstrap-v2-logs: ## Tail logs for hybrid local dev v2 services
-	docker compose -f docker/docker-compose.yml logs -f postgres redis tusd runner mediamtx
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) logs -f postgres redis tusd runner mediamtx
 
 dev-backend: ## Start backend only
 	@echo "$(BLUE)Starting backend at http://localhost:8000...$(NC)"
@@ -109,21 +144,12 @@ test-backend-preflight: backend-venv ## Ensure local services needed by backend 
 		echo "Docker is required for the canonical backend test path." >&2; \
 		exit 1; \
 	fi
-	@$(DOCKER_COMPOSE) up -d postgres redis >/dev/null
-	@for service in youtube-streaming-postgres youtube-streaming-redis; do \
-		status="starting"; \
-		for _ in $$(seq 1 30); do \
-			status=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $$service 2>/dev/null || echo missing); \
-			if [ "$$status" = "healthy" ] || [ "$$status" = "running" ]; then \
-				break; \
-			fi; \
-			sleep 2; \
-		done; \
-		if [ "$$status" != "healthy" ] && [ "$$status" != "running" ]; then \
-			echo "Service $$service is not ready (status=$$status)" >&2; \
-			exit 1; \
-		fi; \
-	done
+	@set -eu; \
+	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,5432,$(POSTGRES_CONTAINER),postgres,Refusing to run backend tests against an arbitrary local dependency. Stop the conflicting service or free the port before rerunning make test.); \
+	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,6379,$(REDIS_CONTAINER),redis,Refusing to run backend tests against an arbitrary local dependency. Stop the conflicting service or free the port before rerunning make test.); \
+	$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) up -d postgres redis >/dev/null; \
+	$(call WAIT_FOR_DOCKER_SERVICE,$(POSTGRES_CONTAINER)); \
+	$(call WAIT_FOR_DOCKER_SERVICE,$(REDIS_CONTAINER))
 
 test-backend: test-backend-preflight ## Run backend tests
 	@echo "$(BLUE)Running backend tests...$(NC)"
@@ -235,25 +261,25 @@ build-frontend: ## Build frontend only
 
 docker-up: ## Start all services with Docker Compose
 	@echo "$(BLUE)Starting Docker containers...$(NC)"
-	docker compose -f docker/docker-compose.yml up -d
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) up -d
 	@echo "$(GREEN)✓ All containers started$(NC)"
 
 docker-down: ## Stop all Docker containers
 	@echo "$(BLUE)Stopping Docker containers...$(NC)"
-	docker compose -f docker/docker-compose.yml down
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) down
 	@echo "$(GREEN)✓ All containers stopped$(NC)"
 
 docker-logs: ## View Docker logs
-	docker compose -f docker/docker-compose.yml logs -f
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) logs -f
 
 docker-build: ## Build Docker images
 	@echo "$(BLUE)Building Docker images...$(NC)"
-	docker compose -f docker/docker-compose.yml build
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) build
 	@echo "$(GREEN)✓ Images built$(NC)"
 
 docker-restart: ## Restart Docker containers
 	@echo "$(BLUE)Restarting Docker containers...$(NC)"
-	docker compose -f docker/docker-compose.yml restart
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) restart
 	@echo "$(GREEN)✓ Containers restarted$(NC)"
 
 # ==========================================
