@@ -144,6 +144,14 @@ make verify-v0
 
 Це важливо, бо дефолтні `make lint` і `make type-check` самі по собі не вмикають backend `black --check` і `mypy`.
 
+Якщо на локальній машині `127.0.0.1:5432` або `127.0.0.1:6379` уже зайняті host-сервісами і ви свідомо хочете прогнати той самий verification bar проти них, використовуйте явний fallback:
+
+```bash
+make verify-v0-localdb
+```
+
+`make verify-v0` лишається канонічним strict gate для compose-owned залежностей. `make verify-v0-localdb` існує лише як локальний explicit path і не підміняє canonical bootstrap/CI поведінку.
+
 ## 🔑 Важливі змінні оточення
 
 ### База даних
