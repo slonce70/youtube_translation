@@ -168,6 +168,7 @@ make verify-v0
 
 Для tusd uploads у фронтенді задавайте `NEXT_PUBLIC_TUSD_URL` на origin tusd, наприклад `http://localhost:1080`.
 Фронтенд сам додає `/files/` рівно один раз, тож у змінну не треба вписувати suffix вручну.
+Library upload modal is lazy-loaded when opened, so the upload bundle stays out of the base page shell.
 
 ### Безпека
 | Змінна | Призначення | Генерація |
@@ -298,6 +299,7 @@ make clean              # очистка временных файлов
 - `make test-backend` / `make test-frontend` — запускають лише бекенд або фронтенд.
 - `npm run build` у `frontend/` — production-білд Next.js з перевіркою типів та ESLint.
 - Точкові сценарії: `pytest backend/tests/test_ffmpeg_manager.py -vv`, `pytest backend/tests/test_auth_multitenancy.py -vv`, `pytest backend/tests/test_collection_quorum.py -vv`.
+- Frontend streaming helper seams уже винесені в `frontend/src/app/dashboard/streaming/{builder-helpers.ts,log-audit.ts,platform.ts,schedule-utils.ts}`; library upload flow нормалізує tusd origin через `frontend/src/lib/tusd.ts`.
 
 Усі ці команди прогнані й успішні станом на цей коміт.
 

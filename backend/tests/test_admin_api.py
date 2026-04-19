@@ -4,29 +4,35 @@ Integration tests for Admin API
 Tests admin-only endpoints for user management, stream monitoring, and system alerts.
 """
 
-import os
 import pytest
-
-if os.environ.get("RUN_ADMIN_TESTS", "").lower() not in {"1", "true", "yes"}:
-    pytest.skip("Skipping admin API integration tests in shared database", allow_module_level=True)
+from httpx import AsyncClient
 
 from uuid import uuid4, UUID
 from datetime import datetime, timezone
 from sqlalchemy import select, text
 
+from app.api import deps as api_deps
+from app.main import app
 from app.models.database import (
     UserProfile, SubscriptionTierLimits, AdminAction,
     SystemAlert, Stream, Asset
 )
 
 
+@pytest.fixture
+async def api_client():
+    async with AsyncClient(app=app, base_url="http://testserver") as client:
+        yield client
+
+
 @pytest.mark.asyncio
 class TestAdminPermissions:
     """Test admin access control"""
     
-    async def test_non_admin_cannot_access_admin_endpoints(self, db_session, auth_headers):
+    async def test_non_admin_cannot_access_admin_endpoints(
+        self, db_session, api_client
+    ):
         """Test that non-admin users are blocked from admin endpoints"""
-        # Create non-admin user
         user_id = uuid4()
         profile = UserProfile(
             user_id=user_id,
@@ -36,11 +42,18 @@ class TestAdminPermissions:
         )
         db_session.add(profile)
         await db_session.commit()
-        
-        # Try to access admin endpoint
-        # This would need actual HTTP client setup, so this is a placeholder
-        # In practice, you'd use TestClient from FastAPI
-        pass
+
+        async def fake_require_user():
+            return db_session, user_id
+
+        app.dependency_overrides[api_deps.require_user] = fake_require_user
+        try:
+            response = await api_client.get("/api/admin/access")
+        finally:
+            app.dependency_overrides.pop(api_deps.require_user, None)
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Admin access required"
     
     async def test_admin_can_access_admin_endpoints(self, db_session):
         """Test that admin users can access admin endpoints"""
