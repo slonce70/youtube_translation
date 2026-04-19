@@ -1,23 +1,25 @@
-type StreamPreviewPanelProps = {
+type StreamPreviewPanelBaseProps = {
   title: string
   badge: string
   latencyHint: string
   pendingTitle: string
   pendingDescription: string
-  embedUrl: string | null
-  state: 'ready' | 'pending'
 }
 
-export function StreamPreviewPanel({
-  title,
-  badge,
-  latencyHint,
-  pendingTitle,
-  pendingDescription,
-  embedUrl,
-  state,
-}: StreamPreviewPanelProps) {
-  if (state === 'pending') {
+type StreamPreviewPanelPendingProps = StreamPreviewPanelBaseProps & {
+  state: 'pending'
+}
+
+type StreamPreviewPanelReadyProps = StreamPreviewPanelBaseProps & {
+  state: 'ready'
+  embedUrl: string
+}
+
+type StreamPreviewPanelProps = StreamPreviewPanelPendingProps | StreamPreviewPanelReadyProps
+
+export function StreamPreviewPanel(props: StreamPreviewPanelProps) {
+  if (props.state === 'pending') {
+    const { badge, pendingTitle, pendingDescription } = props
     return (
       <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/50">
         <div className="flex items-center justify-between gap-3">
@@ -32,6 +34,8 @@ export function StreamPreviewPanel({
       </div>
     )
   }
+
+  const { title, badge, latencyHint, embedUrl } = props
 
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/50">
