@@ -1241,14 +1241,9 @@ class FFmpegStreamManager:
         observed_at: datetime,
     ) -> None:
         spec = runtime_signals.DEGRADED_SIGNAL_SPECS["recovery_storm"]
-        storm_state = runtime_state.setdefault(
+        storm_state = runtime_signals.ensure_runtime_signal_state(
+            runtime_state,
             "recovery_storm",
-            {
-                "hits": deque(maxlen=32),
-                "last_emitted_at": None,
-                "last_seen_at": None,
-                "last_line": None,
-            },
         )
         reset_state = runtime_state.get("remote_output_reset")
         recovery_state = runtime_state.get("recovery_success")
