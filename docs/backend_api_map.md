@@ -1,8 +1,8 @@
 # Backend API Map (FastAPI)
 
-_Updated: November 4, 2025_
+_Updated: April 19, 2026_
 
-This document summarizes the current FastAPI routing surface for the YouTube Multi-Channel Streaming Platform. It focuses on the publicly exposed `/api` namespace and the admin surface, highlighting key dependencies, important behaviors, and obvious gaps that require follow-up work.
+This document summarizes the current FastAPI routing surface for the YouTube Multi-Channel Streaming Platform. It focuses on the publicly exposed `/api` namespace and the admin surface, highlighting key dependencies, important behaviors, and broader follow-up lanes outside the narrow final MVP contract.
 
 ## Overview
 
@@ -83,7 +83,7 @@ This document summarizes the current FastAPI routing surface for the YouTube Mul
 - `POST /alerts/{alert_id}/resolve` → resolve alert with optional notes
 - `GET /actions` → admin audit log listing
 
-## Gaps & Follow-Up
+## Post-MVP Follow-Up
 
 1. Pagination для `/api/admin/users|streams|alerts` досі відсутня.
 2. Storage quota майже повністю покладається на фон оновлень; переконайтеся, що CRON/validators регулярно оновлюють `current_storage_bytes`.

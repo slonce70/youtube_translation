@@ -155,6 +155,22 @@ make verify-v0-localdb
 `make verify-v0` лишається канонічним strict gate для compose-owned залежностей. `make verify-v0-localdb` існує лише як локальний explicit path і не підміняє canonical bootstrap/CI поведінку.
 У межах цього gate `cd frontend && npm run test:e2e` сам підіймає локальний Next server, якщо `PLAYWRIGHT_BASE_URL` не заданий, тож окремий ручний `start-frontend.sh` для smoke-специфікацій не потрібен.
 
+### Фінальний MVP gate
+
+Для фінального MVP використовуйте явний shipping entrypoint:
+
+```bash
+make verify-mvp
+```
+
+Якщо локальний `postgres` / `redis` уже host-owned і ви свідомо лишаєтесь на цьому шляху:
+
+```bash
+make verify-mvp-localdb
+```
+
+Ці target-и не додають новий окремий test stack. Вони переиспользовують існуючі `verify-v0` / `verify-v0-localdb`, а потім друкують фінальний MVP contract: single-node, single-destination, real auth sanity check і first-stream rehearsal.
+
 ## 🔑 Важливі змінні оточення
 
 ### База даних
@@ -249,20 +265,20 @@ Makefile               команди для розробки та CI
 
 - `docs/ARCHITECTURE.md` — архітектура рішення
 - `docs/TESTING.md` — канонічний локальний bootstrap і перевірки
-- `docs/MVP_COMPLETE.md` — реалізований функціонал та API
-- `docs/IMPLEMENTATION_REPORT.md` — звіт по доопрацюванням
-- `docs/TROUBLESHOOTING.md` — часті проблеми та рішення
-- `docs/backend_api_contract.md` та `docs/backend_api_map.md` — контракти REST API  
+- `docs/MVP_COMPLETE.md` — фінальний MVP scope, launch gates і post-MVP межі
+- `docs/IMPLEMENTATION_REPORT.md` — підсумок фінального MVP tranche
+- `docs/TROUBLESHOOTING.md` — часті проблеми локального bootstrap, verification і rehearsal
+- `docs/backend_api_contract.md` та `docs/backend_api_map.md` — вузький MVP contract і ширша карта REST API
 - `docs/postman/` — готові колекції та оточення Postman
 - `docs/operations/first_stream_checklist.md` — чекліст і визначення першого успішного стріму
-- `docs/operations/systemd.md` — налаштування host-native backend + systemd stream units для Linux production
+- `docs/operations/systemd.md` — post-MVP host-native backend + systemd stream units для Linux production
 - `docs/operations/mediamtx.md` — optional MediaMTX relay/metrics layer для майбутнього scale-up
 - `docs/design/README.md` — archived standalone mockups і design reference assets, які не входять у shipping baseline
 - `docs/DATABASE_MIGRATIONS_LOCAL.md` — локальні нюанси міграцій і DB bootstrap
 
-### Автономні стріми через systemd
+### Post-MVP rollout: systemd
 
-CLI-скрипт `python -m app.cli.run_stream <stream_id>` може піднімати FFmpeg-процес поза FastAPI й тримати його активним, поки працює systemd-служба. Це production/Linux-сценарій, а не канонічний локальний baseline. Для `staging`/`production` backend, що сам працює в контейнері, така комбінація тепер fail-closed блокується конфіг-валідатором без явного `ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=true`. Підтриманий шлях для `systemd` зараз означає host-native backend control plane + Docker infra для `postgres`/`redis`/`tusd`/`frontend`/`mediamtx`.
+CLI-скрипт `python -m app.cli.run_stream <stream_id>` може піднімати FFmpeg-процес поза FastAPI й тримати його активним, поки працює systemd-служба. Це production/Linux-сценарій і окремий post-MVP rollout lane, а не обов'язкова умова фінального MVP. Для `staging`/`production` backend, що сам працює в контейнері, така комбінація тепер fail-closed блокується конфіг-валідатором без явного `ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=true`. Підтриманий шлях для `systemd` зараз означає host-native backend control plane + Docker infra для `postgres`/`redis`/`tusd`/`frontend`/`mediamtx`.
 
 1. Для нового VPS починайте з `docs/operations/systemd.md`, секцій `Privilege bootstrap` і `From Zero To Green`.
 2. Канонічний production layout для host-native backend тепер один: `/opt/youtube_translation/backend/.venv`.
@@ -302,6 +318,9 @@ make test               # pytest + npm test
 make lint               # ruff + eslint (Black only with RUN_BLACK=1)
 make type-check         # frontend tsc + optional backend mypy
 make verify-v0          # строгий V0 gate: black + mypy + tests + build + e2e
+make mvp-status         # друк фінального MVP contract і manual launch gates
+make verify-mvp         # фінальний MVP gate поверх strict V0
+make verify-mvp-localdb # фінальний MVP gate поверх localdb fallback
 make clean              # очистка временных файлов
 ```
 

@@ -49,9 +49,9 @@ make dev-bootstrap
 
 ## Runtime note
 
-- Цільовий production runtime: `STREAM_RUNTIME_MODE=systemd`
+- Фінальний MVP не вимагає `systemd` як launch bar
 - Локальний dev fallback: `STREAM_RUNTIME_MODE=manager`
-- `systemd` лишається Linux-only production шляхом
+- `systemd` лишається Linux-only post-MVP production шляхом
 
 ## Мінімальний validation bar
 
@@ -86,6 +86,22 @@ make verify-v0-localdb
 Цей target повторює той самий frontend/static-analysis bar, але для backend використовує `make test-backend-localdb`. Він не замінює canonical release gate і не повинен тихо підміняти `make verify-v0`.
 Усередині цього gate `cd frontend && npm run test:e2e` сам підіймає локальний Next server, якщо `PLAYWRIGHT_BASE_URL` не заданий.
 
+## Final MVP Gate
+
+Для фінального MVP використовуйте explicit shipping targets:
+
+```bash
+make verify-mvp
+```
+
+або, якщо локальні `postgres` / `redis` уже host-owned і це свідомий шлях:
+
+```bash
+make verify-mvp-localdb
+```
+
+Ці targets повторно використовують `verify-v0` / `verify-v0-localdb`, а потім друкують фінальний MVP contract: single-node, single-destination, real auth sanity check і first-stream rehearsal.
+
 ## Поточний baseline
 
 | Surface | Що має бути перевірено | Автоматичний baseline | Додатково перед release |
@@ -109,7 +125,7 @@ cd frontend && CI=1 npm test -- --runInBand
 cd frontend && npm run build
 ```
 
-Для tranche-one launch цього репозиторію окремо вважайте multi-destination rehearsal обов'язковим pre-public gate:
+Post-MVP public readiness lane для multi-destination:
 
 - дефолтний режим: `FFMPEG_TEE_ONFAIL_POLICY=ignore`
 - треба окремо перевірити, що падіння одного destination не валить інші
@@ -143,13 +159,13 @@ make test
 Перед релізом рекомендація жорсткіша:
 
 ```bash
-make verify-v0
+make verify-mvp
 ```
 
 Для локального аудиту на машині з host-owned `postgres` / `redis` використовуйте лише явний fallback:
 
 ```bash
-make verify-v0-localdb
+make verify-mvp-localdb
 ```
 
 Після automated gate обов'язковий ручний rehearsal:
@@ -161,8 +177,8 @@ make verify-v0-localdb
 5. Створення test stream, start/stop, перевірка логів
 6. Один реальний auth sanity check без `NEXT_PUBLIC_DEV_BYPASS_AUTH`
 7. Перевірка сценарію з `docs/operations/first_stream_checklist.md`
-8. Для multi-destination: окремо перевірити кейс з одним failing destination при `FFMPEG_TEE_ONFAIL_POLICY=ignore`
-9. Звірити операторські runbooks у `docs/operations/systemd.md` для node restart, failed stream, disk pressure і upload validation failures
+8. Якщо плануєте post-MVP `systemd` rollout, окремо звірити `docs/operations/systemd.md`
+9. Якщо плануєте post-MVP multi-destination launch, окремо перевірити кейс з одним failing destination при `FFMPEG_TEE_ONFAIL_POLICY=ignore`
 
 ## Точкові перевірки
 

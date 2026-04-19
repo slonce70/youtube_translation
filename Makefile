@@ -1,4 +1,4 @@
-.PHONY: help install install-backend install-frontend backend-venv dev dev-bootstrap dev-bootstrap-v2 dev-bootstrap-down dev-bootstrap-logs dev-bootstrap-v2-logs test test-localdb test-backend-preflight test-backend-localdb lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate verify-v0 verify-v0-localdb
+.PHONY: help install install-backend install-frontend backend-venv dev dev-bootstrap dev-bootstrap-v2 dev-bootstrap-down dev-bootstrap-logs dev-bootstrap-v2-logs test test-localdb test-backend-preflight test-backend-localdb lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate mvp-status verify-v0 verify-v0-localdb verify-mvp verify-mvp-localdb
 
 # Colors for output
 BLUE := \033[0;34m
@@ -266,6 +266,19 @@ verify-v0-localdb: backend-venv ## Run the V0 stabilization gate using existing 
 	@echo "$(BLUE)Running frontend Playwright smoke/e2e...$(NC)"
 	cd frontend && npm run test:e2e
 	@echo "$(GREEN)✓ V0 localdb verification gate passed$(NC)"
+
+mvp-status: ## Print the final MVP contract and remaining manual gates
+	@bash ./scripts/print_mvp_status.sh
+
+verify-mvp: backend-venv ## Run the final MVP verification gate
+	@echo "$(BLUE)Running final MVP verification gate...$(NC)"
+	$(MAKE) verify-v0
+	$(MAKE) mvp-status
+
+verify-mvp-localdb: backend-venv ## Run the final MVP verification gate using existing local postgres/redis
+	@echo "$(BLUE)Running final MVP verification gate against existing local postgres/redis...$(NC)"
+	$(MAKE) verify-v0-localdb
+	$(MAKE) mvp-status
 
 # ==========================================
 # Database
