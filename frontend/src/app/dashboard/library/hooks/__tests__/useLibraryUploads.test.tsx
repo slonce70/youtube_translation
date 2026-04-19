@@ -7,11 +7,12 @@ var mockInvalidateQueries = jest.fn()
 var mockRefetchQueries = jest.fn()
 var mockCreateUploadToken = jest.fn()
 var mockGetUploadStatus = jest.fn()
-var mockToastLoading = jest.fn(() => 'toast-id')
-var mockToastSuccess = jest.fn()
-var mockToastError = jest.fn()
+var mockToastLoading = jest.fn<string, [string, { id?: string }?]>(() => 'toast-id')
+var mockToastSuccess = jest.fn<void, [string, { id?: string }?]>()
+var mockToastError = jest.fn<void, [string, { id?: string }?]>()
 
 type EventHandler = (...args: unknown[]) => void
+type MockQueuedFile = { id: string }
 
 class MockUppy {
   private handlers = new Map<string, Set<EventHandler>>()
@@ -31,7 +32,7 @@ class MockUppy {
   cancelAll = jest.fn()
   removeFiles = jest.fn()
   addFiles = jest.fn()
-  getFiles = jest.fn(() => [])
+  getFiles = jest.fn<MockQueuedFile[], []>(() => [])
 
   emit(event: string, ...args: unknown[]) {
     this.handlers.get(event)?.forEach((handler) => handler(...args))
@@ -69,9 +70,9 @@ jest.mock('@uppy/tus', () => ({
 
 jest.mock('sonner', () => ({
   toast: {
-    loading: (...args: unknown[]) => mockToastLoading(...args),
-    success: (...args: unknown[]) => mockToastSuccess(...args),
-    error: (...args: unknown[]) => mockToastError(...args),
+    loading: (message: string, options?: { id?: string }) => mockToastLoading(message, options),
+    success: (message: string, options?: { id?: string }) => mockToastSuccess(message, options),
+    error: (message: string, options?: { id?: string }) => mockToastError(message, options),
   },
 }))
 
@@ -216,7 +217,7 @@ describe('useLibraryUploads', () => {
       queryKey: ['assets', 'user-1'],
       type: 'active',
     })
-    expect(mockToastLoading).toHaveBeenCalledWith('upload.finalizing')
+    expect(mockToastLoading).toHaveBeenCalledWith('upload.finalizing', undefined)
     expect(mockToastSuccess).toHaveBeenCalledWith('upload.processed', { id: 'toast-id' })
     expect(uppy.cancelAll).toHaveBeenCalledTimes(1)
     expect(uppy.removeFiles).toHaveBeenCalledWith(['file-1'])
