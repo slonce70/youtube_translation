@@ -447,7 +447,7 @@ describe('StreamsList restart visibility', () => {
         id: 'stream-preview-pending',
         name: 'Pending preview',
         status: 'running',
-        provider_status: 'unknown',
+        provider_status: 'live',
         provider_video_id: null,
       }),
     ])
@@ -465,11 +465,13 @@ describe('StreamsList restart visibility', () => {
     ])
 
     fireEvent.click(screen.getByText('First stream'))
+    expect(screen.getAllByTitle('Live preview')).toHaveLength(1)
     expect(screen.getByTitle('Live preview')).toHaveAttribute('src', expect.stringContaining('aaa111'))
 
     fireEvent.click(screen.getByText('Second stream'))
+    expect(screen.getAllByTitle('Live preview')).toHaveLength(1)
     expect(screen.getByTitle('Live preview')).toHaveAttribute('src', expect.stringContaining('bbb222'))
-    expect(screen.queryByText('First stream')).toBeInTheDocument()
+    expect(screen.queryByTitle('Live preview')).toBeInTheDocument()
   })
 
   it('does not toggle preview when stop is clicked', () => {
@@ -486,9 +488,15 @@ describe('StreamsList restart visibility', () => {
       { onStopStream },
     )
 
+    fireEvent.click(screen.getByText('Stop stream'))
+    expect(screen.getByTitle('Live preview')).toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
 
     expect(onStopStream).toHaveBeenCalledWith('stream-stop')
-    expect(screen.queryByTitle('Live preview')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Live preview')).toHaveAttribute(
+      'src',
+      expect.stringContaining('abc123xyz'),
+    )
   })
 })
