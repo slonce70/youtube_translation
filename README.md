@@ -144,6 +144,14 @@ make verify-v0
 
 Це важливо, бо дефолтні `make lint` і `make type-check` самі по собі не вмикають backend `black --check` і `mypy`.
 
+Якщо на локальній машині `127.0.0.1:5432` або `127.0.0.1:6379` уже зайняті host-сервісами і ви свідомо хочете прогнати той самий verification bar проти них, використовуйте явний fallback:
+
+```bash
+make verify-v0-localdb
+```
+
+`make verify-v0` лишається канонічним strict gate для compose-owned залежностей. `make verify-v0-localdb` існує лише як локальний explicit path і не підміняє canonical bootstrap/CI поведінку.
+
 ## 🔑 Важливі змінні оточення
 
 ### База даних
@@ -165,6 +173,10 @@ make verify-v0
 - backend/.env: `ENABLE_DEV_AUTH=true`
 - frontend/.env.local: `NEXT_PUBLIC_DEV_BYPASS_AUTH=1`
 - Для smoke/e2e це рекомендований локальний шлях за замовчуванням
+
+Для tusd uploads у фронтенді задавайте `NEXT_PUBLIC_TUSD_URL` на origin tusd, наприклад `http://localhost:1080`.
+Фронтенд сам додає `/files/` рівно один раз, тож у змінну не треба вписувати suffix вручну.
+Library upload modal is lazy-loaded when opened, so the upload bundle stays out of the base page shell.
 
 ### Безпека
 | Змінна | Призначення | Генерація |
@@ -295,6 +307,7 @@ make clean              # очистка временных файлов
 - `make test-backend` / `make test-frontend` — запускають лише бекенд або фронтенд.
 - `npm run build` у `frontend/` — production-білд Next.js з перевіркою типів та ESLint.
 - Точкові сценарії: `pytest backend/tests/test_ffmpeg_manager.py -vv`, `pytest backend/tests/test_auth_multitenancy.py -vv`, `pytest backend/tests/test_collection_quorum.py -vv`.
+- Frontend streaming helper seams уже винесені в `frontend/src/app/dashboard/streaming/{builder-helpers.ts,log-audit.ts,platform.ts,schedule-utils.ts}`; library upload flow нормалізує tusd origin через `frontend/src/lib/tusd.ts`.
 
 Усі ці команди прогнані й успішні станом на цей коміт.
 

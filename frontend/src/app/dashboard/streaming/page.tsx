@@ -2,25 +2,21 @@
 /* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Play, Loader2, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-import { api, ApiError } from '@/lib/api'
+import { api } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import type {
   Destination,
-  DestinationUpdatePayload,
   StreamLogsResponse,
-  StreamStatusResponse,
-  StreamQualityResponse,
   SubscriptionTierKey,
-  StreamSchedulePayload,
   Stream,
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
@@ -30,6 +26,7 @@ import { QualityGateModal } from './components/QualityGateModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamingPageData } from './hooks/useStreamingPageData'
+import { useStreamMutations, type DestinationFormState } from './hooks/useStreamMutations'
 import { AddChannelModal } from '@/components/streaming/AddChannelModal'
 import {
   buildStreamIncidentNotice,
@@ -43,16 +40,7 @@ import { formatDateTimeLocal, type ScheduleDraft } from './schedule-utils'
 import { extractStopAuditEntries } from './log-audit'
 import { getProviderBadgeVariant } from '@/lib/provider-status'
 
-type DestinationFormState = {
-  name: string
-  rtmps_url: string
-  stream_key: string
-  enabled: boolean
-  provider_connection_id: string | null
-}
-
 export default function StreamingPage() {
-  const queryClient = useQueryClient()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, quota, currentTier } = useDashboardContext()
@@ -83,8 +71,6 @@ export default function StreamingPage() {
   const [logsMode, setLogsMode] = useState<'important' | 'raw'>('important')
   const [showCreateStream, setShowCreateStream] = useState(false)
   const [activeStreamTab, setActiveStreamTab] = useState<'live' | 'scheduled' | 'archive'>('live')
-  const [optimisticRunningStreamIds, setOptimisticRunningStreamIds] = useState<string[]>([])
-  const [optimisticStoppingStreamIds, setOptimisticStoppingStreamIds] = useState<string[]>([])
   const [liveEditorScheduleDraft, setLiveEditorScheduleDraft] = useState<ScheduleDraft | null>(null)
   const [liveEditorNameDraft, setLiveEditorNameDraft] = useState('')
   const [liveEditorDestinationIds, setLiveEditorDestinationIds] = useState<string[]>([])
@@ -116,183 +102,7 @@ export default function StreamingPage() {
     tStreaming,
   })
 
-  const createDestinationMutation = useMutation({
-    mutationFn: (data: DestinationFormState) => api.destinations.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
-      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
-      toast.success(streamingToasts('destination.created'))
-      resetChannelForm()
-    },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  const updateDestinationMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: DestinationFormState }) => {
-      const payload: DestinationUpdatePayload = {
-        name: data.name,
-        rtmps_url: data.rtmps_url,
-        enabled: data.enabled,
-      }
-      if (data.stream_key.trim()) {
-        payload.stream_key = data.stream_key.trim()
-      }
-      payload.provider_connection_id = data.provider_connection_id
-      return api.destinations.update(id, payload)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
-      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
-      toast.success(streamingToasts('destination.updated'))
-      resetChannelForm()
-    },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  const deleteDestinationMutation = useMutation({
-    mutationFn: (destinationId: string) => api.destinations.delete(destinationId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['destinations', user?.id] })
-      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
-      toast.success(streamingToasts('destination.deleted'))
-    },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  const updateScheduleMutation = useMutation({
-    mutationFn: ({ streamId, payload }: { streamId: string; payload: StreamSchedulePayload }) =>
-      api.streams.update(streamId, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
-      toast.success(streamingToasts('stream.scheduleUpdated'))
-    },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  type StartStreamVariables = { streamId: string; streamName?: string | null }
-
-  const startStreamMutation = useMutation<
-    StreamStatusResponse,
-    Error & { quality?: StreamQualityResponse },
-    StartStreamVariables
-  >({
-    mutationFn: async ({ streamId }: StartStreamVariables) => {
-      const quality = await api.streams.quality(streamId)
-      if (!quality.ok) {
-        const error = new Error('quality_rejected') as Error & { quality: StreamQualityResponse }
-        error.quality = quality
-        throw error
-      }
-      return api.streams.start(streamId)
-    },
-    onMutate: async (variables) => {
-      setActiveStreamTab('live')
-      setOptimisticRunningStreamIds((current) =>
-        current.includes(variables.streamId) ? current : [...current, variables.streamId]
-      )
-      toast.info('Запускаємо трансляцію...')
-    },
-    onSuccess: (_, variables) => {
-      toast.success(streamingToasts('stream.started'))
-      queryClient.invalidateQueries({ queryKey: ['stream-status', user?.id, variables.streamId] })
-      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
-    },
-    onError: (error: Error & { quality?: StreamQualityResponse }, variables) => {
-      if (variables?.streamId) {
-        setOptimisticRunningStreamIds((current) => current.filter((id) => id !== variables.streamId))
-      }
-      if (error.quality && !error.quality.ok) {
-        openQualityGate({ streamName: variables?.streamName, quality: error.quality })
-        return
-      }
-
-      if (error instanceof ApiError) {
-        const detail = error.detail as
-          | {
-              error?: string
-              resource?: string
-              current?: number
-              limit?: number
-              message?: string
-            }
-          | undefined
-
-        if (detail?.error === 'quota_exceeded') {
-          if (detail.resource === 'concurrent streams') {
-            const rawCurrent =
-              typeof detail.current === 'number'
-                ? detail.current
-                : typeof (detail as { count?: number }).count === 'number'
-                  ? (detail as { count?: number }).count
-                  : undefined
-            const rawLimit = typeof detail.limit === 'number' ? detail.limit : undefined
-
-            toast.error(
-              streamingToasts('errors.concurrentLimit', {
-                current: rawCurrent ?? '?',
-                limit: rawLimit ?? '?',
-              }),
-            )
-            return
-          }
-
-          if (typeof detail.message === 'string' && detail.message.trim()) {
-            toast.error(streamingToasts('generic.errorWithMessage', { message: detail.message }))
-            return
-          }
-        }
-
-        if (typeof detail?.message === 'string' && detail.message.trim()) {
-          toast.error(streamingToasts('generic.errorWithMessage', { message: detail.message }))
-          return
-        }
-      }
-
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message }))
-    },
-  })
-
-  const stopStreamMutation = useMutation({
-    mutationFn: (streamId: string) => api.streams.stop(streamId),
-    onMutate: (streamId) => {
-      setActiveStreamTab('live')
-      setOptimisticStoppingStreamIds((current) =>
-        current.includes(streamId) ? current : [...current, streamId]
-      )
-    },
-    onSuccess: (_, streamId) => {
-      toast.info(streamingToasts('stream.stopped'))
-      setOptimisticRunningStreamIds((current) => current.filter((id) => id !== streamId))
-      queryClient.invalidateQueries({ queryKey: ['stream-status', user?.id, streamId] })
-      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
-    },
-    onError: (error: Error, streamId) => {
-      setOptimisticStoppingStreamIds((current) => current.filter((id) => id !== streamId))
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message }))
-    },
-    onSettled: (_, __, streamId) => {
-      setOptimisticStoppingStreamIds((current) => current.filter((id) => id !== streamId))
-    },
-  })
-
-  const deleteStreamMutation = useMutation({
-    mutationFn: (streamId: string) => api.streams.delete(streamId),
-    onSuccess: (_, streamId) => {
-      toast.success(streamingToasts('stream.deleted'))
-      if (viewingLogs === streamId) {
-        setViewingLogs(null)
-      }
-      queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
-    },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  const resetChannelForm = () => {
+  function resetChannelForm() {
     setChannelForm({
       name: '',
       rtmps_url: 'rtmps://a.rtmp.youtube.com/live2',
@@ -303,6 +113,33 @@ export default function StreamingPage() {
     setEditingChannelId(null)
     setShowChannelForm(false)
   }
+
+  function handleDeleteStreamSuccess(streamId: string) {
+    if (viewingLogs === streamId) {
+      setViewingLogs(null)
+    }
+  }
+
+  const {
+    createDestinationMutation,
+    updateDestinationMutation,
+    deleteDestinationMutation,
+    updateScheduleMutation,
+    startStreamMutation,
+    stopStreamMutation,
+    deleteStreamMutation,
+    optimisticRunningStreamIds,
+    optimisticStoppingStreamIds,
+    pendingStartStreamId,
+    pendingStopStreamId,
+    pendingDeleteStreamId,
+  } = useStreamMutations({
+    userId: user?.id,
+    streamingToasts,
+    openQualityGate,
+    onDestinationSaved: resetChannelForm,
+    onDeleteStreamSuccess: handleDeleteStreamSuccess,
+  })
 
   const handleSubmitChannel = (event: React.FormEvent) => {
     event.preventDefault()
@@ -358,13 +195,18 @@ export default function StreamingPage() {
     }
   }
 
-  const handleStartStream = (stream: Stream) =>
+  const handleStartStream = (stream: Stream) => {
+    setActiveStreamTab('live')
     startStreamMutation.mutate({
       streamId: stream.id,
       streamName: stream.name,
     })
+  }
 
-  const handleStopStream = (streamId: string) => stopStreamMutation.mutate(streamId)
+  const handleStopStream = (streamId: string) => {
+    setActiveStreamTab('live')
+    stopStreamMutation.mutate(streamId)
+  }
   const handleDeleteStream = (stream: Stream) => {
     const confirmed = window.confirm(
       `${tStreaming('streams.deleteConfirm.title')}\n\n${tStreaming('streams.deleteConfirm.description', {
@@ -438,10 +280,6 @@ export default function StreamingPage() {
       },
     })
   }
-  const pendingStartStreamId = startStreamMutation.isPending ? startStreamMutation.variables?.streamId ?? null : null
-  const pendingStopStreamId = stopStreamMutation.isPending ? stopStreamMutation.variables ?? null : null
-  const pendingDeleteStreamId = deleteStreamMutation.isPending ? deleteStreamMutation.variables ?? null : null
-
   const { data: logsResponse } = useQuery<StreamLogsResponse>({
     queryKey: ['stream-logs', user?.id, viewingLogs, logsMode],
     queryFn: () => api.streams.logs(viewingLogs!, { lines: 200, mode: logsMode }),

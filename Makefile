@@ -1,4 +1,4 @@
-.PHONY: help install install-backend install-frontend backend-venv dev dev-bootstrap dev-bootstrap-v2 dev-bootstrap-down dev-bootstrap-logs dev-bootstrap-v2-logs test test-backend-preflight test-backend-localdb lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate verify-v0
+.PHONY: help install install-backend install-frontend backend-venv dev dev-bootstrap dev-bootstrap-v2 dev-bootstrap-down dev-bootstrap-logs dev-bootstrap-v2-logs test test-localdb test-backend-preflight test-backend-localdb lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate verify-v0 verify-v0-localdb
 
 # Colors for output
 BLUE := \033[0;34m
@@ -138,6 +138,11 @@ test: test-backend ## Run all tests
 	cd frontend && CI=1 npm test
 	@echo "$(GREEN)✓ All tests passed$(NC)"
 
+test-localdb: test-backend-localdb ## Run all tests using existing local postgres/redis
+	@echo "$(BLUE)Running frontend tests...$(NC)"
+	cd frontend && CI=1 npm test
+	@echo "$(GREEN)✓ All tests passed$(NC)"
+
 test-backend-preflight: backend-venv ## Ensure local services needed by backend tests are available
 	@echo "$(BLUE)Ensuring postgres and redis are running for backend tests...$(NC)"
 	@if ! command -v docker >/dev/null 2>&1; then \
@@ -249,6 +254,18 @@ verify-v0: backend-venv ## Run the strict V0 stabilization gate
 	@echo "$(BLUE)Running frontend Playwright smoke/e2e...$(NC)"
 	cd frontend && npm run test:e2e
 	@echo "$(GREEN)✓ V0 verification gate passed$(NC)"
+
+verify-v0-localdb: backend-venv ## Run the V0 stabilization gate using existing local postgres/redis
+	@echo "$(BLUE)Running V0 verification gate against existing local postgres/redis...$(NC)"
+	$(MAKE) lint RUN_BLACK=1
+	$(MAKE) type-check RUN_MYPY=1
+	$(MAKE) i18n-check
+	$(MAKE) test-localdb
+	@echo "$(BLUE)Building frontend production bundle...$(NC)"
+	cd frontend && npm run build
+	@echo "$(BLUE)Running frontend Playwright smoke/e2e...$(NC)"
+	cd frontend && npm run test:e2e
+	@echo "$(GREEN)✓ V0 localdb verification gate passed$(NC)"
 
 # ==========================================
 # Database

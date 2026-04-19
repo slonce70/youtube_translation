@@ -77,6 +77,7 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 - Tokenized WebSocket transport remains available for explicit status/log flows and follow-up cleanup
 - Responsive dashboard with system metrics
 - Drag-and-drop playlist editor
+- `/dashboard/library` lazy-loads the upload modal so the page shell stays light.
 
 **Pages:**
 - `/` - Landing page
@@ -101,6 +102,7 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 
 #### API Routes (`app/api/routes/`)
 - С thin-ендпоінти, що лише приймають HTTP-запит, роблять базову валідацію та делегують роботу у відповідний сервіс. Це спрощує тестування й дає можливість повторно використовувати логіку в CLI/скриптах.
+- `app.core.database.get_db()` is a request-scoped session dependency that does not commit on success; `get_db_context(commit_on_success=True)` is the explicit commit-capable seam for background jobs and other managed workflows.
 
 #### Service Layer (`app/services/`)
 - `admin/` — `AdminService`, audit логіка, робота з алертами, моніторинг стрімів.
@@ -116,6 +118,7 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 - `validator.py` - FFprobe-based video validation
 - `ffmpeg_manager.py` - Process lifecycle management
 - `playlist_builder.py` - Concat demuxer file generation
+- `command_builder.py`, `hot_swap.py`, `process_support.py`, and `runtime_signals.py` hold extracted helper seams for FFmpeg command assembly, runtime handoffs, process helpers, and degraded-state signals.
 
 **Key Features:**
 - Asynchronous FFmpeg process management (через `StreamControlService` + `ffmpeg_manager`)
@@ -212,6 +215,8 @@ user_profiles (synced on first login)
 3. Webhook triggers backend validation
 4. FFprobe analyzes compatibility
 5. Metadata stored in database
+
+The frontend tusd helper in `frontend/src/lib/tusd.ts` normalizes the configured tusd origin so `/files/` is appended exactly once. Point `NEXT_PUBLIC_TUSD_URL` at the tusd origin itself, not a pre-suffixed path.
 
 **Current storage contract (Phase 1 seam):**
 - `assets.storage_path` still points to the local file/cache path used by validation, playlist prep and FFmpeg launch

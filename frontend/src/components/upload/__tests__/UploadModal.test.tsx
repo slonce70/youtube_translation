@@ -17,11 +17,17 @@ jest.mock('mediainfo.js/MediaInfoModule.wasm', () => 'mediainfo.wasm')
 
 class MockUppy {
   private handlers = new Map<string, Set<(...args: unknown[]) => void>>()
+  private files: unknown[] = []
 
   setOptions = jest.fn()
   removeFile = jest.fn()
   cancelAll = jest.fn()
   upload = jest.fn()
+  getFiles = jest.fn(() => this.files)
+
+  seedFiles(files: unknown[]) {
+    this.files = [...files]
+  }
 
   on(event: string, handler: (...args: unknown[]) => void) {
     const listeners = this.handlers.get(event) ?? new Set()
@@ -34,6 +40,14 @@ class MockUppy {
   }
 
   emit(event: string, ...args: unknown[]) {
+    if (event === 'file-added' && args[0]) {
+      const file = args[0] as { id: string }
+      this.files = [...this.files.filter((entry) => (entry as { id?: string }).id !== file.id), file]
+    }
+    if (event === 'file-removed' && args[0]) {
+      const file = args[0] as { id: string }
+      this.files = this.files.filter((entry) => (entry as { id?: string }).id !== file.id)
+    }
     this.handlers.get(event)?.forEach((handler) => handler(...args))
   }
 }
@@ -210,5 +224,24 @@ describe('UploadModal', () => {
 
     await user.click(screen.getByRole('button', { name: /close/i }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('hydrates files that were already queued before the modal mounted', async () => {
+    const uppy = new MockUppy()
+    const file = new File(['video'], 'queued.mp4', { type: 'video/mp4' })
+    uppy.seedFiles([
+      {
+        id: 'file-4',
+        name: 'queued.mp4',
+        size: file.size,
+        type: file.type,
+        data: file,
+        meta: { asset_type: 'video' },
+      },
+    ])
+
+    renderModal(uppy)
+
+    await waitFor(() => expect(screen.getByText('queued.mp4')).toBeInTheDocument())
   })
 })

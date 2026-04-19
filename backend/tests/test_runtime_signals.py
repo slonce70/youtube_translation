@@ -11,10 +11,11 @@ from app.streaming.runtime_signals import (
 
 
 def test_normalize_runtime_signal_state_converts_persisted_values():
+    observed_at = datetime(2026, 4, 19, tzinfo=timezone.utc)
     state = normalize_runtime_signal_state(
         {
             "remote_output_reset": {
-                "hits": [datetime(2026, 4, 19, tzinfo=timezone.utc).isoformat()],
+                "hits": [observed_at.isoformat()],
                 "last_emitted_at": "2026-04-19T10:00:00+00:00",
                 "last_seen_at": "not-a-timestamp",
                 "last_line": "reset",
@@ -25,6 +26,8 @@ def test_normalize_runtime_signal_state_converts_persisted_values():
     signal_state = state["remote_output_reset"]
     assert isinstance(signal_state["hits"], deque)
     assert signal_state["hits"].maxlen == 32
+    assert signal_state["hits"][0] == observed_at
+    assert count_recent_signal_hits(signal_state, now=observed_at, window_seconds=60) == 1
     assert signal_state["last_emitted_at"] == datetime(
         2026, 4, 19, 10, 0, tzinfo=timezone.utc
     )
@@ -58,6 +61,29 @@ def test_register_and_count_runtime_signal_hits():
     assert signal_cooldown_elapsed(
         signal_state, now=later, cooldown_seconds=900
     ) is True
+
+
+def test_register_runtime_signal_hit_normalizes_persisted_hits():
+    first = datetime(2026, 4, 19, 10, 0, tzinfo=timezone.utc)
+    second = first + timedelta(seconds=30)
+    runtime_state = {
+        "remote_output_reset": {
+            "hits": [first.isoformat()],
+            "last_emitted_at": None,
+            "last_seen_at": None,
+            "last_line": "stale",
+        }
+    }
+
+    signal_state = register_runtime_signal_hit(
+        runtime_state,
+        "remote_output_reset",
+        "connection reset by peer",
+        second,
+    )
+
+    assert list(signal_state["hits"]) == [first, second]
+    assert signal_state["last_line"] == "connection reset by peer"
 
 
 def test_summarize_runtime_incidents_reports_degraded_signals():
