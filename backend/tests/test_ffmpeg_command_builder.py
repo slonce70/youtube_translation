@@ -55,6 +55,18 @@ def test_apply_output_transport_options_for_rtmp_and_rtmps():
     )
 
 
+def test_apply_output_transport_options_preserves_existing_transport_params():
+    from app.streaming.command_builder import apply_output_transport_options
+
+    assert (
+        apply_output_transport_options(
+            "rtmp://example.com/live/stream?tcp_keepalive=9&rw_timeout=7&existing=1",
+            settings_module=_settings(),
+        )
+        == "rtmp://example.com/live/stream?tcp_keepalive=9&rw_timeout=7&existing=1"
+    )
+
+
 def test_build_tee_destination_renders_fifo_prefix():
     assert (
         build_tee_destination(
@@ -101,6 +113,15 @@ def test_build_destination_output_args_for_single_destination():
     ]
     assert result.multi_destination is False
     assert result.tee_onfail_policy is None
+
+
+def test_build_destination_output_args_requires_at_least_one_destination():
+    try:
+        build_destination_output_args([], settings_module=_settings())
+    except ValueError as exc:
+        assert str(exc) == "At least one destination is required"
+    else:
+        raise AssertionError("Expected ValueError for empty destinations")
 
 
 def test_build_destination_output_args_for_multi_destination():
