@@ -29,13 +29,17 @@ make dev-bootstrap
 
 ## Auth paths
 
-### Локальний smoke / e2e
+### Ручний локальний dashboard smoke / quick dev
 
 Рекомендований локальний шлях:
 - `backend/.env`: `ENABLE_DEV_AUTH=true`
 - `frontend/.env.local`: `NEXT_PUBLIC_DEV_BYPASS_AUTH=1`
 
-Цей режим потрібен для швидкої локальної перевірки флоу без залежності від реального Supabase проєкту.
+Цей режим потрібен для швидкої локальної перевірки dashboard flow без залежності від реального Supabase проєкту.
+
+### Managed Playwright smoke
+
+Якщо `cd frontend && npm run test:e2e` саме піднімає локальний Next server через `frontend/playwright.config.ts`, він примусово ставить `NEXT_PUBLIC_DEV_BYPASS_AUTH=0`. Це робить smoke-перевірки на редірект `/dashboard -> /login` детермінованими й не вимагає окремого ручного `start-frontend.sh`.
 
 ### Продуктова перевірка auth
 
@@ -80,6 +84,7 @@ make verify-v0-localdb
 ```
 
 Цей target повторює той самий frontend/static-analysis bar, але для backend використовує `make test-backend-localdb`. Він не замінює canonical release gate і не повинен тихо підміняти `make verify-v0`.
+Усередині цього gate `cd frontend && npm run test:e2e` сам підіймає локальний Next server, якщо `PLAYWRIGHT_BASE_URL` не заданий.
 
 ## Поточний baseline
 
@@ -183,6 +188,7 @@ npm run test:e2e
 
 ## Нотатки
 
-- Для e2e локально за замовчуванням використовується DEV auth (`NEXT_PUBLIC_DEV_BYPASS_AUTH=1`).
-- Якщо потрібно перевірити реальний редірект `/dashboard -> /login`, запустіть e2e з `NEXT_PUBLIC_DEV_BYPASS_AUTH=0`.
+- Для ручного dashboard smoke локально зручно використовувати DEV auth (`NEXT_PUBLIC_DEV_BYPASS_AUTH=1`).
+- Якщо `npm run test:e2e` сам піднімає локальний Next server, `playwright.config.ts` примусово ставить `NEXT_PUBLIC_DEV_BYPASS_AUTH=0`, тому smoke-редіректи перевіряються в real-auth режимі.
+- Якщо `PLAYWRIGHT_BASE_URL` вказує на вже запущений frontend, Playwright не керує server-процесом і auth mode визначається конфігурацією цього зовнішнього застосунку.
 - Визначення успішного локального rehearsal див. у `docs/operations/first_stream_checklist.md`.

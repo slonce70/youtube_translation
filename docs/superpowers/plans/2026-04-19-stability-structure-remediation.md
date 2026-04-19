@@ -1190,6 +1190,7 @@ Expected: PASS using a temporary database on the existing local PostgreSQL insta
 - 2026-04-19: `DATABASE_URL=postgresql://youtube_user:dev_password_local_only@localhost:5432/youtube_streaming make test-backend-localdb` -> PASS (`348 passed, 8 skipped`)
 - 2026-04-19: `make verify-v0` -> FAIL because the embedded `make test` step hit the same backend preflight guard on `127.0.0.1:5432`
 - 2026-04-19: `make verify-v0-localdb` -> PASS (`350 passed, 8 skipped`, `40/40` frontend suites, frontend build PASS, Playwright `2/2` PASS)
+- 2026-04-19 (post-merge on `main`): `make verify-v0-localdb` -> PASS (`350 passed, 8 skipped`, `41/41` frontend suites, frontend build PASS, Playwright `5/5` PASS after local Playwright web-server stabilization)
 ```
 
 - [ ] **Step 6: Commit**

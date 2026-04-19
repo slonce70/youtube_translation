@@ -21,7 +21,7 @@
 Поточний рекомендований baseline для розробки:
 - базові сервіси піднімаються через Docker Compose: `postgres`, `redis`, `tusd`, `runner`
 - FastAPI та Next.js запускаються локально через `start-backend.sh` і `start-frontend.sh`
-- для локального smoke/e2e шляху використовується **DEV auth**
+- для ручного локального dashboard smoke зручно використовувати **DEV auth**, але managed Playwright smoke-gate піднімає власний Next server у real-auth redirect режимі
 
 ### Передумови
 - macOS або Linux
@@ -72,10 +72,12 @@ make dev-bootstrap
 
 ### Крок 3: Обрати локальний auth path
 
-- **Локальний smoke / e2e шлях:** `ENABLE_DEV_AUTH=true` у `backend/.env` та `NEXT_PUBLIC_DEV_BYPASS_AUTH=1` у `frontend/.env.local`
+- **Ручний локальний dashboard smoke / швидкий UI dev path:** `ENABLE_DEV_AUTH=true` у `backend/.env` та `NEXT_PUBLIC_DEV_BYPASS_AUTH=1` у `frontend/.env.local`
 - **Продуктовий шлях:** Supabase Auth через `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_JWT_SECRET`
 
 Supabase у цьому проєкті використовується лише для автентифікації. Дані застосунку живуть у PostgreSQL.
+
+Якщо `npm run test:e2e` сам піднімає локальний Next server через `frontend/playwright.config.ts`, він примусово ставить `NEXT_PUBLIC_DEV_BYPASS_AUTH=0`, щоб smoke-тести на редіректи `/dashboard -> /login` були детермінованими.
 
 ### Крок 4: Застосувати міграції БД
 
@@ -151,6 +153,7 @@ make verify-v0-localdb
 ```
 
 `make verify-v0` лишається канонічним strict gate для compose-owned залежностей. `make verify-v0-localdb` існує лише як локальний explicit path і не підміняє canonical bootstrap/CI поведінку.
+У межах цього gate `cd frontend && npm run test:e2e` сам підіймає локальний Next server, якщо `PLAYWRIGHT_BASE_URL` не заданий, тож окремий ручний `start-frontend.sh` для smoke-специфікацій не потрібен.
 
 ## 🔑 Важливі змінні оточення
 
@@ -172,7 +175,8 @@ make verify-v0-localdb
 Для локальної розробки без Supabase:
 - backend/.env: `ENABLE_DEV_AUTH=true`
 - frontend/.env.local: `NEXT_PUBLIC_DEV_BYPASS_AUTH=1`
-- Для smoke/e2e це рекомендований локальний шлях за замовчуванням
+- Це рекомендований шлях для ручного dashboard smoke і швидкої локальної розробки
+- Managed Playwright smoke (`npm run test:e2e` без явного `PLAYWRIGHT_BASE_URL`) підіймає власний Next server і тимчасово форсує `NEXT_PUBLIC_DEV_BYPASS_AUTH=0`
 
 Для tusd uploads у фронтенді задавайте `NEXT_PUBLIC_TUSD_URL` на origin tusd, наприклад `http://localhost:1080`.
 Фронтенд сам додає `/files/` рівно один раз, тож у змінну не треба вписувати suffix вручну.
