@@ -49,7 +49,7 @@ _db_connection_semaphore = asyncio.Semaphore(max(settings.db_pool_size, 1))
 
 
 @asynccontextmanager
-async def _managed_session():
+async def _managed_session(commit_on_success: bool = True):
     async with _db_connection_semaphore:
         async with async_session_maker() as session:
             try:
@@ -71,12 +71,13 @@ async def _managed_session():
                 logger.exception(f"Database error, rolling back: {e}")
                 raise
             else:
-                try:
-                    await session.commit()
-                except Exception as e:
-                    await session.rollback()
-                    logger.exception(f"Commit failed, rolling back: {e}")
-                    raise
+                if commit_on_success:
+                    try:
+                        await session.commit()
+                    except Exception as e:
+                        await session.rollback()
+                        logger.exception(f"Commit failed, rolling back: {e}")
+                        raise
             finally:
                 await session.close()
 
@@ -91,12 +92,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         async def get_items(db: AsyncSession = Depends(get_db)):
             ...
     """
-    async with _managed_session() as session:
+    async with _managed_session(commit_on_success=False) as session:
         yield session
 
 
 @asynccontextmanager
-async def get_db_context():
+async def get_db_context(commit_on_success: bool = True):
     """
     Context manager for database session.
     Commits only on success, rolls back on error.
@@ -105,7 +106,7 @@ async def get_db_context():
         async with get_db_context() as db:
             result = await db.execute(...)
     """
-    async with _managed_session() as session:
+    async with _managed_session(commit_on_success=commit_on_success) as session:
         yield session
 
 
