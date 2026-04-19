@@ -4,12 +4,19 @@
 
 Важливо: цей шлях розрахований на host-native control plane. Якщо backend сам працює в контейнері, комбінація `STREAM_RUNTIME_MODE=systemd` для `staging`/`production` тепер fail-closed блокується конфіг-валідатором без явного `ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=true`, доки не буде окремо впроваджено і задокументовано підтриманий host-level control path.
 
+Поточний ownership contract для цього режиму навмисно мінімальний:
+
+- `systemd` unit лишається єдиним owner process lifecycle і restart policy
+- API та runner більше не координують ownership через DB lease як активний control plane
+- `runtime_last_heartbeat_at` лишається корисним diagnostic signal, але `runtime_owner_id/runtime_lease_expires_at` більше не є operational truth для `systemd`
+
 ## Коли використовувати
 
 Використовуйте `STREAM_RUNTIME_MODE=systemd`, якщо потрібно:
 - переживати рестарти API без втрати FFmpeg-процесів
 - керувати стрімами через systemd units
 - інтегрувати логи та рестарти з системним менеджером сервісів
+- мати один restart owner: `Restart=` у unit, а не app-level orchestration у backend
 
 ## Базова схема
 

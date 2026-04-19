@@ -137,6 +137,50 @@ def _create_runtime_incident_summary(items: Sequence[dict[str, Any]]) -> dict[st
     }
 
 
+def _is_degraded_runtime_alert(
+    alert_type: str,
+    alert_details: Mapping[str, Any] | None,
+) -> bool:
+    if alert_type != "ffmpeg_error":
+        return False
+    if not isinstance(alert_details, Mapping):
+        return False
+    return (
+        alert_details.get("category") == "stream_runtime_health"
+        and alert_details.get("status") == "degraded_running"
+        and bool(str(alert_details.get("signal") or "").strip())
+    )
+
+
+async def _find_matching_runtime_alert(
+    db: AsyncSession,
+    *,
+    stream_id: UUID,
+    alert_type: str,
+    signal_name: str,
+) -> SystemAlert | None:
+    result = await db.execute(
+        select(SystemAlert)
+        .where(
+            SystemAlert.stream_id == stream_id,
+            SystemAlert.alert_type == alert_type,
+            SystemAlert.resolved.is_(False),
+        )
+        .order_by(SystemAlert.created_at.desc())
+    )
+
+    for candidate in result.scalars():
+        details = candidate.details if isinstance(candidate.details, dict) else {}
+        if (
+            details.get("category") == "stream_runtime_health"
+            and details.get("status") == "degraded_running"
+            and str(details.get("signal") or "").strip() == signal_name
+        ):
+            return candidate
+
+    return None
+
+
 def merge_runtime_incident_summaries(
     *summaries: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
@@ -331,9 +375,7 @@ async def read_runtime_incident_summary_from_log(
         return _healthy_runtime_incident_summary()
 
     return summarize_runtime_incidents_from_log_lines(
-        filter_recent_runtime_log_lines(
-            lines, session_started_at=session_started_at
-        )
+        filter_recent_runtime_log_lines(lines, session_started_at=session_started_at)
     )
 
 
@@ -569,17 +611,34 @@ async def persist_stream_alert_event(
                 created_at=timestamp,
             )
         )
-        db.add(
-            SystemAlert(
-                alert_type=alert_type,
-                severity=alert_severity,
-                user_id=user_id,
+        existing_alert: SystemAlert | None = None
+        if _is_degraded_runtime_alert(alert_type, normalized_alert_details):
+            signal_name = str(normalized_alert_details.get("signal") or "").strip()
+            existing_alert = await _find_matching_runtime_alert(
+                db,
                 stream_id=stream_id,
-                message=message,
-                details=normalized_alert_details,
-                created_at=timestamp,
+                alert_type=alert_type,
+                signal_name=signal_name,
             )
-        )
+
+        if existing_alert is None:
+            db.add(
+                SystemAlert(
+                    alert_type=alert_type,
+                    severity=alert_severity,
+                    user_id=user_id,
+                    stream_id=stream_id,
+                    message=message,
+                    details=normalized_alert_details,
+                    created_at=timestamp,
+                )
+            )
+        else:
+            existing_alert.severity = alert_severity
+            existing_alert.user_id = user_id or existing_alert.user_id
+            existing_alert.message = message
+            existing_alert.details = normalized_alert_details
+            existing_alert.created_at = timestamp
         await db.commit()
 
     if log_path:
@@ -588,3 +647,38 @@ async def persist_stream_alert_event(
             Path(log_path),
             _format_log_line(timestamp, level, message, normalized_metadata),
         )
+
+
+async def resolve_stream_runtime_alerts(
+    stream_id: UUID,
+    *,
+    resolution_note: str,
+) -> int:
+    resolved_at = _utcnow()
+
+    async with async_session_maker() as db:
+        result = await db.execute(
+            select(SystemAlert).where(
+                SystemAlert.stream_id == stream_id,
+                SystemAlert.alert_type == "ffmpeg_error",
+                SystemAlert.resolved.is_(False),
+            )
+        )
+        alerts = result.scalars().all()
+
+        resolved_count = 0
+        for alert in alerts:
+            details = alert.details if isinstance(alert.details, dict) else {}
+            if details.get("category") != "stream_runtime_health":
+                continue
+            if details.get("status") != "degraded_running":
+                continue
+            alert.resolved = True
+            alert.resolved_at = resolved_at
+            alert.resolution_notes = resolution_note
+            resolved_count += 1
+
+        if resolved_count:
+            await db.commit()
+
+    return resolved_count

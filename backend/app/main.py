@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -53,7 +54,6 @@ from app.middleware.websocket_safe_csrf import WebSocketSafeCSRFMiddleware
 from app.core.logging_config import setup_logging, get_logger
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.services.streams.scheduler import scheduled_stream_launcher
-from app.services.streams.websocket import stream_ws_manager
 
 
 _background_tasks = set()
@@ -71,12 +71,23 @@ def schedule_background_task(coro):
 setup_logging(level="INFO", json_output=settings.environment == "production")
 logger = get_logger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await run_startup_tasks()
+    try:
+        yield
+    finally:
+        await run_shutdown_tasks()
+
+
 # Create FastAPI app
 app = FastAPI(
     title="YouTube Multi-Channel Streaming API",
     description="24/7 streaming service for multiple YouTube channels",
     version="1.0.0",
     default_response_class=ORJSONResponse,
+    lifespan=lifespan,
 )
 
 # Security headers middleware (first)
@@ -145,9 +156,8 @@ else:
     )
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize application on startup"""
+async def run_startup_tasks():
+    """Initialize application startup dependencies and periodic background tasks."""
     from app.core.database import (
         check_db_connection,
         apply_schema_patches,
@@ -175,8 +185,8 @@ async def startup_event():
     schedule_background_task(cleanup_ffmpeg_streams())
     schedule_background_task(scheduled_stream_launcher())
 
-    # Start periodic stream status sync (only in supervisor/systemd mode)
-    if settings.stream_runtime_mode in ("supervisor", "systemd"):
+    # Start periodic stream status sync only for systemd-managed streams.
+    if settings.stream_runtime_mode == "systemd":
         schedule_background_task(periodic_stream_status_sync())
 
 
@@ -201,27 +211,10 @@ async def cleanup_ffmpeg_streams():
             logger.error(f"Error cleaning up FFmpeg streams: {exc}")
 
 
-async def broadcast_stream_updates():
-    """Publish in-memory stream runtime updates to connected WebSocket clients."""
-    while True:
-        await asyncio.sleep(3)
-        try:
-            if not stream_ws_manager.active_connections:
-                continue
-            await stream_ws_manager.broadcast(
-                {
-                    "type": "stream_update",
-                    "payload": ffmpeg_manager.get_all_streams(),
-                }
-            )
-        except Exception as exc:
-            logger.error(f"Error broadcasting stream updates: {exc}")
-
-
 async def periodic_stream_status_sync():
-    """Periodically sync stream statuses with supervisor/systemd (every 10 seconds)."""
+    """Periodically sync stream statuses with systemd (every 10 seconds)."""
     from app.core.database import async_session_maker
-    from app.core.stream_reconciler import periodic_reconciliation, restart_due_streams
+    from app.core.stream_reconciler import periodic_reconciliation
 
     await asyncio.sleep(10)  # Initial delay
 
@@ -230,15 +223,28 @@ async def periodic_stream_status_sync():
         try:
             async with async_session_maker() as db:
                 await periodic_reconciliation(db)
-                await restart_due_streams(db)
         except Exception as exc:
             logger.error(f"Error syncing stream statuses: {exc}")
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
+async def run_shutdown_tasks():
+    """Cancel background tasks and release startup-owned resources."""
     logger.info("Shutting down...")
+    if not _background_tasks:
+        return
+
+    tasks = list(_background_tasks)
+    for task in tasks:
+        task.cancel()
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception) and not isinstance(
+            result, asyncio.CancelledError
+        ):
+            logger.error("Background task failed during shutdown: %s", result)
+
+    _background_tasks.clear()
 
 
 @app.get("/")

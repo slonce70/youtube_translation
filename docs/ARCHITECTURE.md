@@ -24,7 +24,7 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 ┌─────────┐ ┌──────────────────────────────────────┐
 │ Next.js │ │        FastAPI Backend               │
 │Frontend │ │  • REST API                          │
-│   :3000 │ │  • WebSocket/SSE для live статусів   │
+│   :3000 │ │  • WebSocket + polling-owned status  │
 └─────────┘ │  • Scheduler + FFmpeg control        │
             │  • File Validator (ffprobe)          │
             └───────┬──────────────┬──────────────┘
@@ -40,10 +40,10 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
                │ PostgreSQL    │
                │ (app data)    │
                └──────┬───────┘
-                      │ supervisorctl (localhost:9001)
+                      │ systemctl / unit status
                       ▼
             ┌──────────────────────────┐
-            │   Runner (supervisord)   │
+            │  Runner (systemd unit)   │
             │  • python -m app.cli...  │
             └──────────┬───────────────┘
                        ▼
@@ -73,17 +73,20 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 
 **Key Features:**
 - Server-side rendering for better SEO
-- Real-time updates via Server-Sent Events (SSE)
+- Polling-first live-status ownership on dashboard surfaces
+- Tokenized WebSocket transport remains available for explicit status/log flows and follow-up cleanup
 - Responsive dashboard with system metrics
 - Drag-and-drop playlist editor
 
 **Pages:**
-- `/` - Dashboard with active streams and metrics
+- `/` - Landing page
 - `/login` - Authentication
-- `/assets` - Video file management
-- `/playlists` - Playlist creation and editing
-- `/destinations` - YouTube channel configuration
-- `/streams` - Stream control and monitoring
+- `/dashboard` - Dashboard with active streams and metrics
+- `/dashboard/library` - Video/audio files, folders, playlists, uploads
+- `/dashboard/streaming` - Stream control, channels, logs, and live operations
+- `/dashboard/schedule` - Calendar-style schedule planning and upcoming stream events
+- `/dashboard/plans` - Plan and quota management
+- `/dashboard/profile` - Account settings and YouTube connection management
 
 ### 2. Backend (FastAPI)
 
@@ -116,28 +119,36 @@ The YouTube Multi-Channel Streaming Service is a self-hosted web application tha
 
 **Key Features:**
 - Asynchronous FFmpeg process management (через `StreamControlService` + `ffmpeg_manager`)
-- Реальний час логів та SSE подачі
+- REST-first control plane with polling-owned dashboard freshness
+- WebSocket endpoint available for explicit live-status/log consumers and follow-up transport cleanup
 - Моніторинг ресурсів / reconciliation (`app/core/stream_reconciler.py`)
-- Graceful shutdown + auto-restart (supervisor/systemd режими)
+- Graceful shutdown + auto-restart via `systemd`
 
-### 3. Runner (Supervisor)
+#### Current UI live-status owner map
+- `frontend/src/components/layout/DashboardShell.tsx` is cache-consumer only and does not own stream refresh.
+- `frontend/src/app/dashboard/page.tsx` owns dashboard overview freshness for `['streams', userId]`.
+- `frontend/src/app/dashboard/streaming/page.tsx` owns streaming-management freshness for `['streams', userId]`.
+- Per-stream status calls are bounded to explicit detail contexts rather than unconditional fan-out across overview surfaces.
 
-In Docker Compose the FFmpeg processes are hosted in a dedicated **runner** container.
-У поточному Docker Compose керування всередині мережі йде через
-`backend/supervisord.docker.conf` на `http://runner:9001`, а локальний
-`start-backend.sh` використовує `backend/supervisord.host-docker.conf` на
-`http://127.0.0.1:9001`. Порт публікується лише на loopback, тому перезапуск
-локального API не повинен роняти вже запущені FFmpeg-процеси і не відкриває
-management endpoint назовні ширше за localhost. Supervisor HTTP control
-додатково захищений username/password на базі `UPLOAD_TOKEN_SECRET`.
-Файли програм та логи (`/app/supervisord/programs/*.ini`, `/app/supervisord/logs`)
-зберігаються у спільному томі/маунті `/app/supervisord`.
+### 3. Runner (systemd)
+
+Production runtime тепер орієнтований на host-native `systemd` units:
+
+- API лишається control-plane і викликає лише `start/stop/status`
+- `ffmpeg@<stream_id>` unit лишається єдиним owner process lifecycle і restart policy
+- runner (`python -m app.cli.run_stream`) лише запускає FFmpeg і пише heartbeat
+- DB lease/heartbeat залишаються diagnostics/ownership signals, а не окремим restart orchestrator
 
 Для tranche-one production-ish rollout підтримувана топологія лишається
-**all-in-one node**: `frontend + backend + postgres + redis + tusd + runner +
+**all-in-one node**: `frontend + backend + postgres + redis + tusd + ffmpeg@ +
 uploads` на одному хості. Ранній split між backend і media host поки що
 небезпечний, бо upload finalization, локальна валідація, thumbnail generation і
 stream prep все ще очікують asset як локальний файл на backend host.
+
+Це означає, що поточний runtime вже не є "one process kills all streams", але ще
+не є повною stream isolation. Відмова хоста, локального storage path, disk
+pressure або shared backend/media storage все ще залишається single-host blast
+radius для всієї ноди.
 
 ### 4. FFmpeg Streaming Engine
 
@@ -236,7 +247,7 @@ user_profiles (synced on first login)
    ↓
 7. Process monitored in background task
    ↓
-8. Real-time logs streamed via SSE to frontend
+8. Frontend refreshes the owned stream list for its current route surface; explicit log/detail paths can use dedicated polling or WebSocket transport
    ↓
 9. Stream status updated in database
 ```
@@ -271,6 +282,7 @@ user_profiles (synced on first login)
 - **Recommended launch topology:** one all-in-one node for tranche one
 - **Why not split backend from media yet:** upload finalization, validation, thumbnail generation, and stream prep still expect the asset to exist on the backend host as a local file
 - **Do not do yet:** do not add multiple runner nodes before object storage becomes the canonical asset source
+- **Operational caveat:** this topology is still single-host by blast radius; host, disk, or shared storage failures can still impact every stream on the node
 
 ### Future Horizontal Scaling
 
@@ -291,6 +303,7 @@ user_profiles (synced on first login)
 
 Recommended order:
 1. Launch on one all-in-one node.
+   Treat it as the simplest supported topology, not as full stream isolation.
 2. Move uploads and asset origin to S3/MinIO-backed object storage.
 3. Add runner placement and horizontal media scaling.
 4. Add MediaMTX only if relay or observability needs justify the extra layer.
@@ -396,7 +409,7 @@ WantedBy=multi-user.target
 - Backend remains the **control-plane**: auth, quotas, destinations, scheduling, runtime APIs.
 - Runner remains the **execution-plane** for FFmpeg.
 - FFmpeg stays the playout/publish engine with `tee + fifo + copy-first`.
-- Supervisor/systemd + heartbeat + DB lease ownership remain the runtime safety model.
+- systemd remains the only runtime owner; heartbeat stays the primary liveness signal, while DB ownership fields are legacy diagnostics rather than active coordination.
 
 ### V2: what gets added with MediaMTX
 
@@ -415,7 +428,7 @@ Conceptually:
 ```mermaid
 flowchart LR
   UI["Frontend / API clients"] --> API["FastAPI control-plane"]
-  API --> RUNNER["Runner / supervisor / systemd"]
+  API --> RUNNER["Runner / systemd"]
   RUNNER --> FFMPEG["FFmpeg playout engine"]
   FFMPEG --> MTX["MediaMTX relay / media-plane"]
   MTX --> YT["YouTube RTMPS outputs"]

@@ -15,9 +15,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { LiveDot } from '@/components/ui/LiveDot'
 import { useDashboardContext } from './dashboard-context'
-import { useStreamSocket } from './streaming/hooks/useStreamSocket'
 import type { Asset, Stream, SubscriptionTierKey } from '@/lib/types'
-import { useStreamStatusMap } from './streaming/hooks/useStreamStatusMap'
 import { deriveStreamState, getStreamPriority } from '@/lib/stream-state'
 import { formatBytes, formatDuration } from '@/lib/utils'
 
@@ -28,7 +26,6 @@ export default function DashboardPage() {
   const nav = useTranslations('nav')
   const streamingToasts = useTranslations('streaming.toasts')
   const { user, quota, quotaLoading, currentTier, planDetail } = useDashboardContext()
-  useStreamSocket(user?.id)
 
   const { data: streams, isLoading: streamsLoading } = useQuery<Stream[]>({
     queryKey: ['streams', user?.id],
@@ -46,7 +43,6 @@ export default function DashboardPage() {
     refetchOnWindowFocus: true,
   })
 
-  const liveStatusMap = useStreamStatusMap(streams, user?.id)
   const stopStreamMutation = useMutation({
     mutationFn: (streamId: string) => api.streams.stop(streamId),
     onSuccess: async (_, streamId) => {
@@ -63,9 +59,9 @@ export default function DashboardPage() {
   const presentedStreams = useMemo(
     () =>
       (streams ?? [])
-        .map((stream) => ({ stream, derived: deriveStreamState(stream, liveStatusMap.get(stream.id)) }))
+        .map((stream) => ({ stream, derived: deriveStreamState(stream) }))
         .sort((a, b) => getStreamPriority(b.derived) - getStreamPriority(a.derived)),
-    [liveStatusMap, streams],
+    [streams],
   )
 
   const usage = useMemo(() => {

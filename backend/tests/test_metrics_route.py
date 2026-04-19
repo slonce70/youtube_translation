@@ -42,33 +42,24 @@ async def test_get_stream_metrics_includes_restart_orchestration_summary() -> No
                     user_id=user_id,
                     name="running",
                     status="running",
-                    runtime_restart_attempts=1,
-                    runtime_last_restart_at=now - timedelta(minutes=5),
                 ),
                 Stream(
                     id=uuid4(),
                     user_id=user_id,
                     name="scheduled-retry",
                     status="error",
-                    runtime_restart_attempts=2,
-                    runtime_next_restart_at=now + timedelta(seconds=30),
-                    runtime_last_failure_at=now - timedelta(seconds=20),
                 ),
                 Stream(
                     id=uuid4(),
                     user_id=user_id,
                     name="exhausted",
                     status="error",
-                    runtime_restart_attempts=5,
-                    runtime_last_failure_at=now - timedelta(minutes=1),
                 ),
                 Stream(
                     id=uuid4(),
                     user_id=other_user_id,
                     name="other-user",
                     status="error",
-                    runtime_restart_attempts=99,
-                    runtime_next_restart_at=now + timedelta(seconds=1),
                 ),
             ]
         )
@@ -81,10 +72,12 @@ async def test_get_stream_metrics_includes_restart_orchestration_summary() -> No
     assert metrics["error_streams"] == 2
 
     restart_summary = metrics["restart_orchestration"]
-    assert restart_summary["scheduled_restart_streams"] == 1
-    assert restart_summary["streams_with_retry_history"] == 3
-    assert restart_summary["total_restart_attempts"] == 8
-    assert restart_summary["next_restart_at"] is not None
+    assert restart_summary["auto_restart_enabled"] is False
+    assert restart_summary["scheduled_restart_streams"] == 0
+    assert restart_summary["streams_with_retry_history"] == 0
+    assert restart_summary["total_restart_attempts"] == 0
+    assert restart_summary["max_attempts"] == 0
+    assert restart_summary["next_restart_at"] is None
 
 
 @pytest.mark.asyncio
@@ -115,12 +108,7 @@ async def test_get_stream_metrics_without_user_id_returns_global_counts() -> Non
             [
                 Stream(user_id=user_a, name="A running", status="running"),
                 Stream(user_id=user_a, name="A stopped", status="stopped"),
-                Stream(
-                    user_id=user_b,
-                    name="B error",
-                    status="error",
-                    runtime_restart_attempts=1,
-                ),
+                Stream(user_id=user_b, name="B error", status="error"),
             ]
         )
         await session.commit()
@@ -133,8 +121,51 @@ async def test_get_stream_metrics_without_user_id_returns_global_counts() -> Non
     assert metrics["error_streams"] == baseline["error_streams"] + 1
     assert (
         metrics["restart_orchestration"]["streams_with_retry_history"]
-        == baseline["restart_orchestration"]["streams_with_retry_history"] + 1
+        == baseline["restart_orchestration"]["streams_with_retry_history"]
     )
+
+
+@pytest.mark.asyncio
+async def test_get_stream_metrics_hides_restart_orchestration_in_systemd_mode(
+    monkeypatch,
+) -> None:
+    user_id = uuid4()
+    monkeypatch.setattr(settings, "stream_runtime_mode", "systemd")
+
+    async with async_session_maker() as session:
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"metrics-systemd-{uuid4()}@example.com",
+                subscription_tier="free",
+                subscription_status="active",
+            )
+        )
+        session.add_all(
+            [
+                Stream(
+                    user_id=user_id,
+                    name="systemd-error",
+                    status="error",
+                ),
+                Stream(
+                    user_id=user_id,
+                    name="systemd-running",
+                    status="running",
+                ),
+            ]
+        )
+        await session.commit()
+
+        metrics = await get_stream_metrics(session, str(user_id))
+
+    restart_summary = metrics["restart_orchestration"]
+    assert restart_summary["auto_restart_enabled"] is False
+    assert restart_summary["scheduled_restart_streams"] == 0
+    assert restart_summary["streams_with_retry_history"] == 0
+    assert restart_summary["total_restart_attempts"] == 0
+    assert restart_summary["max_attempts"] == 0
+    assert restart_summary["next_restart_at"] is None
 
 
 @pytest.mark.asyncio
@@ -178,9 +209,13 @@ def test_estimate_stream_capacity_is_explicitly_marked_as_heuristic(
     class _Memory:
         total = 32 * 1024**3
 
-    monkeypatch.setattr("app.api.routes.metrics.psutil.virtual_memory", lambda: _Memory())
+    monkeypatch.setattr(
+        "app.api.routes.metrics.psutil.virtual_memory", lambda: _Memory()
+    )
 
-    capacity = estimate_stream_capacity(cpu_percent=12.5, memory_percent=25.0, active_streams=2)
+    capacity = estimate_stream_capacity(
+        cpu_percent=12.5, memory_percent=25.0, active_streams=2
+    )
 
     assert capacity["mode"] == "heuristic"
     assert capacity["recommended_for_production_decisions"] is False

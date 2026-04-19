@@ -9,7 +9,7 @@ def _cutover_script_path() -> Path:
 def test_cutover_script_refuses_non_systemd_runtime(tmp_path) -> None:
     script = _cutover_script_path()
     backend_env = tmp_path / ".env"
-    backend_env.write_text("STREAM_RUNTIME_MODE=supervisor\n", encoding="utf-8")
+    backend_env.write_text("STREAM_RUNTIME_MODE=manager\n", encoding="utf-8")
 
     result = subprocess.run(
         ["bash", str(script)],
@@ -78,7 +78,6 @@ def test_cutover_script_dry_run_prints_expected_commands_with_override(tmp_path)
     assert result.returncode == 0, result.stderr
     assert "[dry-run] verify host loopback ports 5432 and 6379 are present" in result.stdout
     assert "[dry-run] stop container youtube-streaming-backend if running" in result.stdout
-    assert "[dry-run] stop container youtube-streaming-runner if running" in result.stdout
     assert "[dry-run] systemctl daemon-reload" in result.stdout
     assert "[dry-run] systemctl enable --now youtube-backend" in result.stdout
     assert "[dry-run] systemctl enable --now ffmpeg@test-stream" in result.stdout

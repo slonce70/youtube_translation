@@ -12,11 +12,19 @@ interface TopbarProps {
   userName: string
   userEmail: string
   liveCount: number
+  showLiveBadge?: boolean
   onOpenPalette: () => void
   onSignOut: () => void
 }
 
-export function Topbar({ userName, userEmail, liveCount, onOpenPalette, onSignOut }: TopbarProps) {
+export function Topbar({
+  userName,
+  userEmail,
+  liveCount,
+  showLiveBadge = true,
+  onOpenPalette,
+  onSignOut,
+}: TopbarProps) {
   const nav = useTranslations('nav')
   const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -52,14 +60,16 @@ export function Topbar({ userName, userEmail, liveCount, onOpenPalette, onSignOu
         <span className="search-kbd">⌘K</span>
       </button>
 
-      <button
-        type="button"
-        className="topbar-live-badge"
-        onClick={() => router.push('/dashboard/streaming')}
-      >
-        <LiveDot />
-        {liveLabel}
-      </button>
+      {showLiveBadge ? (
+        <button
+          type="button"
+          className="topbar-live-badge"
+          onClick={() => router.push('/dashboard/streaming')}
+        >
+          <LiveDot />
+          {liveLabel}
+        </button>
+      ) : null}
 
       <div className="topbar-actions">
         <button

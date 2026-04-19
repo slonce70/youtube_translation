@@ -1,5 +1,5 @@
 services:
-  # Supported tranche-one topology keeps backend, tusd, runner, and uploads on the same host.
+  # Supported topology keeps backend, tusd, and media storage on the same host.
   # Compose expects POSTGRES_PASSWORD to be exported in the shell (or provided via a root .env)
   # before `docker compose` runs; in production we source `backend/.env` first so the secret
   # stays out of this file.
@@ -55,14 +55,12 @@ services:
       - ${HOST_UPLOADS_DIR:-../backend/uploads}:/app/uploads
       - ${HOST_STREAMS_DIR:-../backend/streams}:/app/streams
       - ${HOST_LOGS_DIR:-../backend/logs}:/app/logs
-      - ${HOST_SUPERVISORD_DIR:-../backend/supervisord}:/app/supervisord
-      - ../backend/supervisord.docker.conf:/app/supervisord.conf
     env_file:
       - ../backend/.env
     environment:
       - DATABASE_URL=postgresql://youtube_user:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/youtube_streaming
       - REDIS_URL=redis://redis:6379/0
-      - STREAM_RUNTIME_MODE=${STREAM_RUNTIME_MODE:-supervisor}
+      - STREAM_RUNTIME_MODE=${STREAM_RUNTIME_MODE:-manager}
       - ALLOW_UNSAFE_MANAGER_RUNTIME=${ALLOW_UNSAFE_MANAGER_RUNTIME:-false}
       - ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=${ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME:-false}
       - FFMPEG_BIN=/usr/bin/ffmpeg
@@ -81,8 +79,6 @@ services:
         condition: service_healthy
       tusd:
         condition: service_healthy
-      runner:
-        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -180,51 +176,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-
-  # Runner (Supervisor for FFmpeg processes)
-  runner:
-    image: ${BACKEND_IMAGE:-ghcr.io/slonce70/youtube_translation-backend:latest}
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-    container_name: youtube-streaming-runner
-    entrypoint: ["/app/scripts/start-runner.sh"]
-    ports:
-      - "127.0.0.1:9001:9001"
-    volumes:
-      - ${HOST_UPLOADS_DIR:-../backend/uploads}:/app/uploads
-      - ${HOST_STREAMS_DIR:-../backend/streams}:/app/streams
-      - ${HOST_LOGS_DIR:-../backend/logs}:/app/logs
-      - ${HOST_SUPERVISORD_DIR:-../backend/supervisord}:/app/supervisord
-      - ../backend/supervisord.docker.conf:/app/supervisord.conf
-    env_file:
-      - ../backend/.env
-    environment:
-      - DATABASE_URL=postgresql://youtube_user:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/youtube_streaming
-      - REDIS_URL=redis://redis:6379/0
-      - STREAM_RUNTIME_MODE=${STREAM_RUNTIME_MODE:-supervisor}
-      - ALLOW_UNSAFE_MANAGER_RUNTIME=${ALLOW_UNSAFE_MANAGER_RUNTIME:-false}
-      - ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=${ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME:-false}
-      - FFMPEG_BIN=/usr/bin/ffmpeg
-      - FFPROBE_BIN=/usr/bin/ffprobe
-    restart: unless-stopped
-    networks:
-      - app-network
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "python -m supervisor.supervisorctl -c /app/supervisord.conf status >/dev/null 2>&1 || exit 1"
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
   # MediaMTX (optional future media-plane relay / metrics hub)
   mediamtx:

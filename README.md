@@ -64,7 +64,7 @@ cp frontend/.env.example frontend/.env.local
 make dev-bootstrap
 ```
 
-Ця команда піднімає локальну PostgreSQL, Redis, `tusd` та окремий `runner` для supervisor-based FFmpeg процесів і автоматично підхоплює `POSTGRES_PASSWORD` з `backend/.env`.
+Ця команда піднімає локальну PostgreSQL, Redis та `tusd` і автоматично підхоплює `POSTGRES_PASSWORD` з `backend/.env`.
 
 Якщо ви запускаєте raw `docker compose` напряму, спочатку експортуйте змінні з `backend/.env`, інакше Compose коректно fail-fast з помилкою про відсутній `POSTGRES_PASSWORD`.
 
@@ -101,13 +101,11 @@ python3 apply_migrations.py
 
 ### Runtime policy локально
 
-- Бажаний локальний режим: `STREAM_RUNTIME_MODE=supervisor`
-- `start-backend.sh` спочатку намагається використати вже запущений Docker `runner` через loopback endpoint `127.0.0.1:9001`, а supervisor control захищений паролем на базі `UPLOAD_TOKEN_SECRET`
-- Якщо зовнішній supervisor недоступний і `supervisorctl` або `supervisord` відсутні, `start-backend.sh` автоматично переключає runtime на `manager`
+- Бажаний локальний режим: `STREAM_RUNTIME_MODE=manager`
+- `start-backend.sh` працює з `manager` як built-in local fallback
 - `systemd` лишається production/Linux-варіантом і не є канонічним локальним шляхом
 
 Деталі:
-- [docs/operations/supervisor.md](docs/operations/supervisor.md)
 - [docs/operations/systemd.md](docs/operations/systemd.md)
 
 ### Перевірка baseline
@@ -197,20 +195,14 @@ make verify-v0
 ### Stream Runtime
 | Змінна | Опції | Рекомендація |
 |--------|-------|--------------|
-| `STREAM_RUNTIME_MODE` | `manager` \| `supervisor` \| `systemd` | `supervisor` для macOS/Docker, `systemd` для Linux |
+| `STREAM_RUNTIME_MODE` | `manager` \| `systemd` | `manager` для local dev, `systemd` для Linux production |
+| `ENVIRONMENT` | `development` \| `test` \| `staging` \| `production` | Обов'язкова змінна; не покладайтеся на неявний dev fallback |
 | `STREAM_RUNTIME_NODE_ID` | Стабільний ідентифікатор runtime-вузла | hostname або явне ім'я ноди/worker-групи |
 | `ALLOW_UNSAFE_MANAGER_RUNTIME` | `true` \| `false` | `false`; у `staging`/`production` manager runtime заборонений без явного override |
 | `ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME` | `true` \| `false` | `false`; у `staging`/`production` containerized backend + `systemd` runtime блокується без явного override |
-| `STREAM_RUNTIME_LEASE_TTL_SECONDS` | TTL DB lease для ownership стріму (сек) | `60`; має бути >= heartbeat interval |
 | `STREAM_RUNTIME_HEARTBEAT_INTERVAL_SECONDS` | Інтервал heartbeat managed runner (сек) | `10` |
 | `STREAM_RUNTIME_HEARTBEAT_TTL_SECONDS` | Через скільки heartbeat вважається застарілим (сек) | `45` |
-| `STREAM_RUNTIME_AUTO_RESTART_ENABLED` | `true` \| `false` | `true`; backend-owned restart orchestration для supervisor/systemd |
-| `STREAM_RUNTIME_RESTART_MAX_ATTEMPTS` | Кількість persistent retry після unexpected failure | `5` |
-| `STREAM_RUNTIME_RESTART_BACKOFF_SECONDS` | Базовий exponential backoff (сек) | `5` |
-| `STREAM_RUNTIME_RESTART_BACKOFF_MAX_SECONDS` | Максимальний backoff (сек) | `300` |
-| `STREAM_RUNTIME_RESTART_JITTER_SECONDS` | Детермінований jitter між нодами (сек) | `3` |
-| `STREAM_RUNTIME_RESTART_RESET_AFTER_SECONDS` | Після скількох секунд стабільної роботи retry budget обнуляється | `900` |
-| `FFMPEG_OUTPUT_RECOVERY_MAX_ATTEMPTS` | Ліміт fifo-recovery для publish outputs; `0` залишає безлімітний budget FFmpeg | `0` |
+| `FFMPEG_OUTPUT_RECOVERY_MAX_ATTEMPTS` | Ліміт fifo-recovery для publish outputs; `0` залишає безлімітний budget FFmpeg | `12` |
 | `MEDIAMTX_ENABLED` | `true` \| `false` | `false` за замовчуванням; увімкніть для optional media-plane summary |
 | `MEDIAMTX_RTMP_PUBLISH_URL` | Internal RTMP relay URL | `rtmp://mediamtx:1935` |
 | `MEDIAMTX_CONTROL_API_URL` | Control API URL | `http://mediamtx:9997` |
@@ -247,11 +239,10 @@ Makefile               команди для розробки та CI
 - `docs/backend_api_contract.md` та `docs/backend_api_map.md` — контракти REST API  
 - `docs/postman/` — готові колекції та оточення Postman
 - `docs/operations/first_stream_checklist.md` — чекліст і визначення першого успішного стріму
-- `docs/operations/supervisor.md` — налаштування Supervisor для автономних стрімів (macOS/Docker)
 - `docs/operations/systemd.md` — налаштування host-native backend + systemd stream units для Linux production
 - `docs/operations/mediamtx.md` — optional MediaMTX relay/metrics layer для майбутнього scale-up
 - `docs/design/README.md` — archived standalone mockups і design reference assets, які не входять у shipping baseline
-- `LOCAL_DB_SETUP.md` — інструкції по локальній PostgreSQL БД
+- `docs/DATABASE_MIGRATIONS_LOCAL.md` — локальні нюанси міграцій і DB bootstrap
 
 ### Автономні стріми через systemd
 
@@ -272,9 +263,9 @@ CLI-скрипт `python -m app.cli.run_stream <stream_id>` може підні�
 
 Подробиці: `docs/operations/systemd.md`.
 
-### Альтернатива: Supervisord (macOS / Docker)
+### Local fallback: manager
 
-Якщо `systemd` недоступний, використовуйте `STREAM_RUNTIME_MODE=supervisor`. Саме цей режим є цільовим для macOS/Docker. Якщо `supervisorctl` або `supervisord` відсутні, локальний стартовий скрипт у `development` може перейти в `manager` fallback; у `staging`/`production` цей fallback заблокований, якщо ви явно не задали `ALLOW_UNSAFE_MANAGER_RUNTIME=true`. Managed runner пише heartbeat у shared `backend/streams/.runtime-heartbeats/`, а backend паралельно тримає DB lease (`runtime_owner_id`, `runtime_lease_expires_at`) для multi-worker/multi-node safety. Поверх цього backend веде persistent restart state (`runtime_restart_attempts`, `runtime_next_restart_at`, `runtime_last_failure_at`, `runtime_last_restart_at`) і сам orchestrat-ить retry/backoff для supervisor/systemd після unexpected failure або stale heartbeat. Для наступного етапу вже підготовлений optional MediaMTX layer: `make dev-bootstrap-v2` піднімає relay/metrics service, а `/api/metrics` вміє повертати `media_plane.mediamtx` summary разом з `active_paths`, якщо `MEDIAMTX_ENABLED=true`. Деталі винесені в `docs/operations/supervisor.md` і `docs/operations/mediamtx.md`.
+Якщо `systemd` недоступний, використовуйте `STREAM_RUNTIME_MODE=manager`. Це єдиний підтримуваний локальний fallback після спрощення runtime layer. Для `staging`/`production` такий fallback як і раніше блокується без явного `ALLOW_UNSAFE_MANAGER_RUNTIME=true`. Optional MediaMTX layer лишається доступним через `make dev-bootstrap-v2`; summary по relay/metrics описані в `docs/operations/mediamtx.md`.
 
 ### Моніторинг
 

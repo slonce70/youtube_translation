@@ -12,6 +12,10 @@ from app.core.database import async_session_maker
 from app.core.stream_runtime_heartbeat import write_runtime_heartbeat
 from app.core.quota import QuotaEnforcer
 from app.models.database import Stream, StreamEvent, SystemAlert, UserProfile
+from app.services.streams.audit import (
+    persist_stream_alert_event,
+    resolve_stream_runtime_alerts,
+)
 from app.services.streams.control import StreamControlService
 from app.streaming.ffmpeg_manager import FFmpegStreamManager
 
@@ -276,15 +280,12 @@ async def test_stream_status_reports_live_and_total_duration(
             status="running",
             started_at=now - timedelta(minutes=10),
             total_duration_seconds=1800,
-            runtime_restart_attempts=2,
-            runtime_last_restart_at=now - timedelta(minutes=2),
         )
 
         session.add_all([completed_stream, running_stream])
         await session.commit()
 
         monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
 
         class DummyManager:
             def __init__(self, info: Dict[str, Any]):
@@ -330,9 +331,11 @@ async def test_stream_status_reports_live_and_total_duration(
         assert status.remaining_daily_seconds is not None
         assert status.remaining_daily_seconds < status.daily_limit_seconds
         assert status.quota_limit_reached is False
-        assert status.runtime_restart.attempts == 2
-        assert status.runtime_restart.state == "retrying"
-        assert status.runtime_restart.last_restart_at is not None
+        assert status.runtime_restart.enabled is False
+        assert status.runtime_restart.attempts == 0
+        assert status.runtime_restart.max_attempts == 0
+        assert status.runtime_restart.state == "disabled"
+        assert status.runtime_restart.last_restart_at is None
         assert status.runtime_incident_summary.severity == "degraded"
         assert (
             status.runtime_incident_summary.headline
@@ -358,32 +361,11 @@ async def test_stream_status_disables_runtime_restart_when_attempt_budget_is_zer
             user_id=user_id,
             name="restart-disabled",
             status="error",
-            runtime_restart_attempts=1,
         )
         session.add_all([profile, stream])
         await session.commit()
 
         monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
-        monkeypatch.setattr(
-            streams_control.default_settings,
-            "stream_runtime_auto_restart_enabled",
-            True,
-        )
-        monkeypatch.setattr(
-            streams_control.default_settings,
-            "stream_runtime_restart_max_attempts",
-            0,
-        )
-        monkeypatch.setattr(
-            "app.schemas.api.settings.stream_runtime_auto_restart_enabled",
-            True,
-        )
-        monkeypatch.setattr(
-            "app.schemas.api.settings.stream_runtime_restart_max_attempts",
-            0,
-        )
-
         class DummyManager:
             def is_running(self, stream_id: str) -> bool:
                 return False
@@ -397,6 +379,11 @@ async def test_stream_status_disables_runtime_restart_when_attempt_budget_is_zer
 
         assert status.runtime_restart.enabled is False
         assert status.runtime_restart.state == "disabled"
+        assert status.runtime_restart.attempts == 0
+        assert status.runtime_restart.max_attempts == 0
+        assert status.runtime_restart.next_restart_at is None
+        assert status.runtime_restart.last_restart_at is None
+        assert status.runtime_restart.last_failure_at is None
 
 
 @pytest.mark.asyncio
@@ -437,20 +424,17 @@ async def test_stream_status_reads_degraded_runtime_summary_from_managed_log(
         session.add_all([profile, stream])
         await session.commit()
 
-        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
-        async def _supervisor_program_status(_stream_id: UUID) -> Dict[str, Any]:
-            return {
-                "state": "RUNNING",
-                "error": None,
-                "details": None,
-            }
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
+
+        async def _systemd_unit_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {"ActiveState": "active", "SubState": "running"}
 
         monkeypatch.setattr(
             streams_control,
-            "supervisor_program_status",
-            _supervisor_program_status,
+            "systemd_unit_status",
+            _systemd_unit_status,
         )
+        write_runtime_heartbeat(stream_id, runner_pid=321, runtime_mode="systemd")
 
         class DummyManager:
             def is_running(self, stream_id: str) -> bool:
@@ -511,21 +495,17 @@ async def test_stream_status_ignores_stale_runtime_faults_from_managed_log(
         session.add_all([profile, stream])
         await session.commit()
 
-        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
 
-        async def _supervisor_program_status(_stream_id: UUID) -> Dict[str, Any]:
-            return {
-                "state": "RUNNING",
-                "error": None,
-                "details": None,
-            }
+        async def _systemd_unit_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {"ActiveState": "active", "SubState": "running"}
 
         monkeypatch.setattr(
             streams_control,
-            "supervisor_program_status",
-            _supervisor_program_status,
+            "systemd_unit_status",
+            _systemd_unit_status,
         )
+        write_runtime_heartbeat(stream_id, runner_pid=654, runtime_mode="systemd")
 
         class DummyManager:
             def is_running(self, stream_id: str) -> bool:
@@ -583,21 +563,17 @@ async def test_stream_status_ignores_untimestamped_runtime_faults_from_previous_
         session.add_all([profile, stream])
         await session.commit()
 
-        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
+        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
 
-        async def _supervisor_program_status(_stream_id: UUID) -> Dict[str, Any]:
-            return {
-                "state": "RUNNING",
-                "error": None,
-                "details": None,
-            }
+        async def _systemd_unit_status(_stream_id: UUID) -> Dict[str, Any]:
+            return {"ActiveState": "active", "SubState": "running"}
 
         monkeypatch.setattr(
             streams_control,
-            "supervisor_program_status",
-            _supervisor_program_status,
+            "systemd_unit_status",
+            _systemd_unit_status,
         )
+        write_runtime_heartbeat(stream_id, runner_pid=777, runtime_mode="systemd")
 
         class DummyManager:
             def is_running(self, stream_id: str) -> bool:
@@ -663,7 +639,6 @@ async def test_stream_status_falls_back_to_persisted_runtime_alert_when_log_miss
         await session.commit()
 
         monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
 
         class DummyManager:
             def is_running(self, stream_id: str) -> bool:
@@ -730,7 +705,6 @@ async def test_stream_status_ignores_persisted_runtime_alert_from_previous_sessi
         await session.commit()
 
         monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
 
         class DummyManager:
             def is_running(self, stream_id: str) -> bool:
@@ -755,299 +729,143 @@ async def test_stream_status_ignores_persisted_runtime_alert_from_previous_sessi
 
 
 @pytest.mark.asyncio
-async def test_scheduled_stream_status_stays_scheduled_when_supervisor_has_not_started_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_persist_stream_alert_event_deduplicates_ongoing_runtime_signal() -> None:
     user_id = uuid4()
-    start_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    stream_id = uuid4()
 
     async with async_session_maker() as session:
-        profile = UserProfile(
-            user_id=user_id,
-            email=f"scheduled-status-{uuid4()}@example.com",
-            subscription_tier="free",
-            subscription_status="active",
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"dedupe-alert-{uuid4()}@example.com",
+                subscription_tier="free",
+                subscription_status="active",
+            )
         )
-        stream = Stream(
-            id=uuid4(),
-            user_id=user_id,
-            name="scheduled",
-            status="scheduled",
-            scheduled_start_enabled=True,
-            scheduled_start_time=start_at,
+        session.add(
+            Stream(
+                id=stream_id,
+                user_id=user_id,
+                name="dedupe-live",
+                status="running",
+                started_at=datetime.now(timezone.utc) - timedelta(minutes=2),
+            )
         )
-        session.add_all([profile, stream])
         await session.commit()
 
-        async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
-            return {
-                "state": "NOT_FOUND",
-                "error": "supervisor socket missing",
-            }
+    await persist_stream_alert_event(
+        stream_id,
+        level="warning",
+        message="Stream degraded while still running: repeated remote output resets detected in FFmpeg logs.",
+        alert_type="ffmpeg_error",
+        alert_severity="warning",
+        metadata={
+            "category": "stream_runtime_health",
+            "signal": "remote_output_reset",
+            "status": "degraded_running",
+            "occurrence_count": 3,
+            "window_seconds": 180,
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+        },
+        user_id=user_id,
+    )
+    await persist_stream_alert_event(
+        stream_id,
+        level="warning",
+        message="Stream degraded while still running: repeated remote output resets detected in FFmpeg logs.",
+        alert_type="ffmpeg_error",
+        alert_severity="warning",
+        metadata={
+            "category": "stream_runtime_health",
+            "signal": "remote_output_reset",
+            "status": "degraded_running",
+            "occurrence_count": 6,
+            "window_seconds": 180,
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+        },
+        user_id=user_id,
+    )
 
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
-        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(
-            streams_control, "supervisor_program_status", fake_program_status
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(SystemAlert).where(
+                SystemAlert.stream_id == stream_id,
+                SystemAlert.alert_type == "ffmpeg_error",
+                SystemAlert.resolved.is_(False),
+            )
         )
+        alerts = result.scalars().all()
 
-        service = StreamControlService(session, user_id)
-        status = await service.get_stream_status(stream.id)
-
-        assert status.status == "scheduled"
-        assert status.is_running is False
-        assert status.error_message is None
+    assert len(alerts) == 1
+    assert alerts[0].details["occurrence_count"] == 6
 
 
 @pytest.mark.asyncio
-async def test_supervisor_status_repairs_lease_and_clears_retry_metadata_from_fresh_heartbeat(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path,
-) -> None:
+async def test_resolve_stream_runtime_alerts_marks_only_runtime_health_alerts() -> None:
     user_id = uuid4()
-    started_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    stream_id = uuid4()
 
     async with async_session_maker() as session:
-        profile = UserProfile(
-            user_id=user_id,
-            email=f"status-heartbeat-{uuid4()}@example.com",
-            subscription_tier="free",
-            subscription_status="active",
+        session.add(
+            UserProfile(
+                user_id=user_id,
+                email=f"resolve-alert-{uuid4()}@example.com",
+                subscription_tier="free",
+                subscription_status="active",
+            )
         )
-        stream = Stream(
-            id=uuid4(),
-            user_id=user_id,
-            name="running-supervisor",
-            status="running",
-            started_at=started_at,
-            runtime_restart_attempts=2,
-            runtime_last_restart_at=started_at + timedelta(minutes=5),
+        session.add(
+            Stream(
+                id=stream_id,
+                user_id=user_id,
+                name="resolve-live",
+                status="running",
+                started_at=datetime.now(timezone.utc) - timedelta(minutes=2),
+            )
         )
-        session.add_all([profile, stream])
+        session.add_all(
+            [
+                SystemAlert(
+                    user_id=user_id,
+                    stream_id=stream_id,
+                    alert_type="ffmpeg_error",
+                    severity="warning",
+                    message="degraded runtime",
+                    details={
+                        "category": "stream_runtime_health",
+                        "signal": "remote_output_reset",
+                        "status": "degraded_running",
+                    },
+                ),
+                SystemAlert(
+                    user_id=user_id,
+                    stream_id=stream_id,
+                    alert_type="ffmpeg_error",
+                    severity="warning",
+                    message="generic ffmpeg failure",
+                    details={"category": "stream_failure"},
+                ),
+            ]
+        )
         await session.commit()
 
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
-        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(
-            streams_control.default_settings, "stream_dir", str(tmp_path)
-        )
-        monkeypatch.setattr(
-            streams_control.default_settings,
-            "stream_runtime_restart_reset_after_seconds",
-            60,
-        )
-
-        async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
-            return {"state": "RUNNING", "details": "pid 321"}
-
-        monkeypatch.setattr(
-            streams_control, "supervisor_program_status", fake_program_status
-        )
-
-        write_runtime_heartbeat(stream.id, runner_pid=321)
-
-        service = StreamControlService(session, user_id)
-        status = await service.get_stream_status(stream.id)
-        await session.refresh(stream)
-
-        assert status.status == "running"
-        assert status.runtime_restart.attempts == 0
-        assert status.runtime_restart.state == "idle"
-        assert (
-            stream.runtime_owner_id
-            == streams_control.default_settings.stream_runtime_node_id
-        )
-        assert stream.runtime_lease_expires_at is not None
-        assert stream.runtime_restart_attempts == 0
-
-
-@pytest.mark.asyncio
-async def test_supervisor_status_fails_closed_when_heartbeat_is_stale(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path,
-) -> None:
-    user_id = uuid4()
-    started_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    resolved = await resolve_stream_runtime_alerts(
+        stream_id,
+        resolution_note="Auto-resolved after clean stream shutdown.",
+    )
 
     async with async_session_maker() as session:
-        profile = UserProfile(
-            user_id=user_id,
-            email=f"stale-heartbeat-{uuid4()}@example.com",
-            subscription_tier="free",
-            subscription_status="active",
+        result = await session.execute(
+            select(SystemAlert).where(SystemAlert.stream_id == stream_id)
         )
-        stream = Stream(
-            id=uuid4(),
-            user_id=user_id,
-            name="ghost-running-supervisor",
-            status="running",
-            started_at=started_at,
-        )
-        session.add_all([profile, stream])
-        await session.commit()
+        alerts = sorted(result.scalars().all(), key=lambda alert: alert.message)
 
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
-        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-        monkeypatch.setattr(
-            streams_control.default_settings, "stream_dir", str(tmp_path)
-        )
-        monkeypatch.setattr(
-            streams_control.default_settings,
-            "stream_runtime_auto_restart_enabled",
-            True,
-        )
-        monkeypatch.setattr(
-            streams_control.default_settings,
-            "stream_runtime_heartbeat_ttl_seconds",
-            15,
-        )
-        monkeypatch.setattr(
-            streams_control.default_settings,
-            "stream_runtime_restart_backoff_seconds",
-            0,
-        )
-        monkeypatch.setattr(
-            streams_control.default_settings,
-            "stream_runtime_restart_backoff_max_seconds",
-            0,
-        )
-        monkeypatch.setattr(
-            streams_control.default_settings,
-            "stream_runtime_restart_jitter_seconds",
-            0,
-        )
-        monkeypatch.setattr(
-            streams_control.default_settings,
-            "stream_runtime_restart_max_attempts",
-            5,
-        )
-
-        async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
-            return {"state": "RUNNING", "details": "pid 654"}
-
-        monkeypatch.setattr(
-            streams_control, "supervisor_program_status", fake_program_status
-        )
-
-        write_runtime_heartbeat(
-            stream.id,
-            runner_pid=654,
-            now=datetime.now(timezone.utc) - timedelta(seconds=60),
-            ttl_seconds=5,
-        )
-
-        service = StreamControlService(session, user_id)
-        status = await service.get_stream_status(stream.id)
-        await session.refresh(stream)
-
-        assert status.status == "error"
-        assert status.is_running is False
-        assert status.error_message is not None
-        assert "heartbeat expired" in status.error_message
-        assert status.runtime_restart.attempts == 1
-        assert status.runtime_restart.state == "scheduled"
-        assert stream.status == "error"
-        assert stream.runtime_restart_attempts == 1
-        assert stream.runtime_next_restart_at is not None
-
-
-@pytest.mark.asyncio
-async def test_supervisor_status_preserves_queued_runtime_restart(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    user_id = uuid4()
-    next_restart_at = datetime.now(timezone.utc) + timedelta(minutes=1)
-    queued_error = "Runtime state EXITED: process exited unexpectedly."
-
-    async with async_session_maker() as session:
-        profile = UserProfile(
-            user_id=user_id,
-            email=f"queued-restart-{uuid4()}@example.com",
-            subscription_tier="free",
-            subscription_status="active",
-        )
-        stream = Stream(
-            id=uuid4(),
-            user_id=user_id,
-            name="queued-restart",
-            status="error",
-            error_message=queued_error,
-            runtime_restart_attempts=1,
-            runtime_next_restart_at=next_restart_at,
-        )
-        session.add_all([profile, stream])
-        await session.commit()
-
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
-        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-
-        async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
-            return {"state": "NOT_FOUND", "error": "supervisor reports no process"}
-
-        monkeypatch.setattr(
-            streams_control, "supervisor_program_status", fake_program_status
-        )
-
-        service = StreamControlService(session, user_id)
-        status = await service.get_stream_status(stream.id)
-        await session.refresh(stream)
-
-        assert status.status == "error"
-        assert status.is_running is False
-        assert status.error_message == queued_error
-        assert status.runtime_restart.state == "scheduled"
-        assert stream.status == "error"
-        assert stream.runtime_next_restart_at == next_restart_at
-
-
-@pytest.mark.asyncio
-async def test_supervisor_status_preserves_quota_stop_message_when_runtime_probe_degraded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    user_id = uuid4()
-    quota_message = "Daily streaming limit reached (8h). Stream stopped automatically."
-
-    async with async_session_maker() as session:
-        profile = UserProfile(
-            user_id=user_id,
-            email=f"quota-status-{uuid4()}@example.com",
-            subscription_tier="free",
-            subscription_status="active",
-        )
-        stream = Stream(
-            id=uuid4(),
-            user_id=user_id,
-            name="quota-terminal",
-            status="stopped",
-            started_at=datetime.now(timezone.utc) - timedelta(hours=8, minutes=5),
-            stopped_at=datetime.now(timezone.utc),
-            total_duration_seconds=8 * 3600,
-            error_message=quota_message,
-        )
-        session.add_all([profile, stream])
-        await session.commit()
-
-        monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
-        monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-
-        async def fake_program_status(_stream_id: UUID) -> Dict[str, Any]:
-            return {
-                "state": "SUPERVISOR_UNAVAILABLE",
-                "error": "unix:///tmp/supervisor.sock no such file",
-            }
-
-        monkeypatch.setattr(
-            streams_control, "supervisor_program_status", fake_program_status
-        )
-
-        service = StreamControlService(session, user_id)
-        status = await service.get_stream_status(stream.id)
-
-        assert status.status == "stopped"
-        assert status.is_running is False
-        assert status.error_message == quota_message
-        assert status.remaining_daily_seconds == 0
-        assert status.quota_limit_reached is True
+    assert resolved == 1
+    assert alerts[0].message == "degraded runtime"
+    assert alerts[0].resolved is True
+    assert alerts[0].resolution_notes == "Auto-resolved after clean stream shutdown."
+    assert alerts[1].message == "generic ffmpeg failure"
+    assert alerts[1].resolved is False
 
 
 @pytest.mark.asyncio
@@ -1114,12 +932,7 @@ async def test_runner_exit_preserves_quota_stop_state(
             name="quota-stopped",
             status="running",
             started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            runtime_owner_id="runner-node",
             runtime_last_heartbeat_at=datetime.now(timezone.utc) - timedelta(seconds=5),
-            runtime_lease_expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
-            runtime_restart_attempts=2,
-            runtime_next_restart_at=datetime.now(timezone.utc) + timedelta(minutes=1),
-            runtime_last_failure_at=datetime.now(timezone.utc) - timedelta(seconds=30),
         )
         session.add_all([profile, stream])
         await session.commit()
@@ -1144,9 +957,4 @@ async def test_runner_exit_preserves_quota_stop_state(
         assert refreshed is not None
         assert refreshed.status == "stopped"
         assert refreshed.error_message == quota_message
-        assert refreshed.runtime_owner_id is None
-        assert refreshed.runtime_last_heartbeat_at is None
-        assert refreshed.runtime_lease_expires_at is None
-        assert refreshed.runtime_restart_attempts == 0
-        assert refreshed.runtime_next_restart_at is None
-        assert refreshed.runtime_last_failure_at is None
+        assert refreshed.runtime_last_heartbeat_at is not None

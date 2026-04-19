@@ -21,12 +21,6 @@ from app.core.stream_runtime_heartbeat import (
     clear_runtime_heartbeat,
     write_runtime_heartbeat,
 )
-from app.core.stream_runtime_lease import (
-    clear_stream_runtime_lease,
-    release_stream_runtime_lease,
-    renew_stream_runtime_lease,
-)
-from app.core.stream_runtime_restart import clear_stream_runtime_restart_state
 from app.models.database import Stream
 from app.services.streams.audit import (
     persist_stream_alert_event,
@@ -160,8 +154,6 @@ async def _update_stream_status_after_exit(stream: Stream) -> None:
             # Update timestamps
             db_stream.stopped_at = _utcnow()
             db_stream.pid = None
-            clear_stream_runtime_lease(db_stream)
-            clear_stream_runtime_restart_state(db_stream)
 
             await db.commit()
             LOGGER.info(
@@ -189,26 +181,6 @@ async def _heartbeat_loop(stream_id: str) -> None:
             launcher="cli",
             metadata=stream_info.get("metadata") or {},
         )
-        try:
-            async with async_session_maker() as db:
-                renewed = await renew_stream_runtime_lease(
-                    db,
-                    stream_id,
-                    owner_id=settings.stream_runtime_node_id,
-                    ttl_seconds=settings.stream_runtime_lease_ttl_seconds,
-                )
-                await db.commit()
-        except Exception as exc:  # pylint: disable=broad-except
-            LOGGER.warning("Failed to renew runtime lease for %s: %s", stream_id, exc)
-            renewed = True
-
-        if not renewed:
-            LOGGER.error(
-                "Runtime lease for %s moved to another node. Stopping local FFmpeg runner.",
-                stream_id,
-            )
-            await ffmpeg_manager.stop_stream(stream_id)
-            return
         await asyncio.sleep(interval)
 
 
@@ -225,17 +197,6 @@ async def _stop_heartbeat_task(stream_id: str) -> None:
             pass
 
     clear_runtime_heartbeat(stream_id)
-    try:
-        async with async_session_maker() as db:
-            await release_stream_runtime_lease(
-                db,
-                stream_id,
-                owner_id=settings.stream_runtime_node_id,
-                force=True,
-            )
-            await db.commit()
-    except Exception as exc:  # pylint: disable=broad-except
-        LOGGER.warning("Failed to release runtime lease for %s: %s", stream_id, exc)
 
 
 async def _start_stream(stream_id: UUID, wait: bool = True) -> None:
@@ -245,7 +206,7 @@ async def _start_stream(stream_id: UUID, wait: bool = True) -> None:
         stream, user_id = await _load_stream_with_relations(db, stream_id)
         if stream.status in TERMINAL_STREAM_STATES:
             await _refuse_terminal_state_launch(stream)
-        # Конкурентні ліміти вже перевіряються у FastAPI перед запуском supervisor
+        # Конкурентні ліміти вже перевіряються у FastAPI перед запуском systemd
         # Повторна перевірка тут призводить до хибних спрацювань, бо цей самий
         # стрім уже має статус "starting". Тому просто передаємо Enforcer у
         # будівник плейлистів без другого check_concurrent_streams().
@@ -283,6 +244,13 @@ async def _start_stream(stream_id: UUID, wait: bool = True) -> None:
         stream.stopped_at = None
         stream.error_message = None
         info = ffmpeg_manager.get_stream_info(CURRENT_STREAM_ID) or {}
+        write_runtime_heartbeat(
+            CURRENT_STREAM_ID,
+            runner_pid=os.getpid(),
+            ffmpeg_pid=info.get("pid"),
+            launcher="cli",
+            metadata=info.get("metadata") or {},
+        )
         stream.pid = info.get("pid")
         stream.log_path = str(log_file)
         await db.commit()

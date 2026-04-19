@@ -241,12 +241,11 @@ async def collect_live_output_compatibility_violations(
     selection: StreamAssetSelection,
     destinations: List[Dict[str, str]],
 ) -> List[Dict[str, Any]]:
-    """Revalidate source assets before direct RTMP/RTMPS launch.
+    """Probe copy-safe assets for explicit quality diagnostics.
 
-    We intentionally run a fresh ffprobe-based validation here instead of relying
-    solely on stored `compatible_for_copy`, so older uploaded assets pick up
-    stricter live-output requirements (for example keyframe cadence checks)
-    without requiring manual re-upload.
+    This is intentionally kept out of the launch path so production starts stay
+    lightweight and predictable. The result is still useful for explicit
+    diagnostics, for example when a user opens the quality-check surface.
     """
 
     if not _requires_rtmp_copy_safety(destinations):
@@ -392,11 +391,6 @@ async def validate_stream_launch_prerequisites(
         mix_mode=selection.mix_mode,
     )
     destinations = gather_stream_destinations(stream)
-    quality["violations"].extend(
-        await collect_live_output_compatibility_violations(selection, destinations)
-    )
-    if quality["violations"]:
-        quality["ok"] = False
     if not quality["ok"]:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

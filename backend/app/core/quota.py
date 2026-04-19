@@ -6,7 +6,7 @@ across all API operations.
 """
 
 from functools import wraps
-from typing import Optional, Callable, List, Dict, Any, Tuple
+from typing import Optional, Callable, List, Dict, Any, Tuple, TypedDict, cast
 from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +28,31 @@ from app.streaming.validator import VideoValidator
 
 logger = logging.getLogger(__name__)
 
-AUDIO_QUALITY_GUIDANCE = {
+
+class AudioQualityGuidance(TypedDict):
+    codec: str
+    codec_label: str
+    sample_rate_hz: int
+    min_bitrate_kbps: int
+    target_bitrate_kbps: int
+    channels: int
+
+
+class VideoBitrateGuidanceEntry(TypedDict):
+    label: str
+    fps: int
+    min_height: int
+    max_height: int
+    min_bitrate_mbps: int
+    target_bitrate_mbps: int
+    max_bitrate_mbps: int
+    video_codec: str
+    audio_codec: str
+    protocol: str
+    keyframe_interval_seconds: int
+
+
+AUDIO_QUALITY_GUIDANCE: AudioQualityGuidance = {
     "codec": "aac",
     "codec_label": "AAC or MP3",
     "sample_rate_hz": 48_000,
@@ -47,8 +71,8 @@ class QuotaExceededError(HTTPException):
     def __init__(
         self,
         resource: str,
-        current: int,
-        limit: int,
+        current: int | float,
+        limit: int | float,
         tier: str,
         upgrade_required: bool = True,
     ):
@@ -103,14 +127,19 @@ class QuotaEnforcer:
                     detail="User profile not found",
                 )
 
+    def _require_profile(self) -> UserProfile:
+        assert self._profile is not None
+        return self._profile
+
     async def _load_limits(self):
         """Load tier limits if not already loaded"""
         await self._load_profile()
+        profile = self._require_profile()
 
         if self._limits is None:
             result = await self.db.execute(
                 select(SubscriptionTierLimits).where(
-                    SubscriptionTierLimits.tier == self._profile.subscription_tier
+                    SubscriptionTierLimits.tier == profile.subscription_tier
                 )
             )
             self._limits = result.scalar_one_or_none()
@@ -118,19 +147,24 @@ class QuotaEnforcer:
             if not self._limits:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=missing_tier_limits_detail(self._profile.subscription_tier),
+                    detail=missing_tier_limits_detail(profile.subscription_tier),
                 )
+
+    def _require_limits(self) -> SubscriptionTierLimits:
+        assert self._limits is not None
+        return self._limits
 
     async def check_suspended(self):
         """Check if user is suspended"""
         await self._load_profile()
+        profile = self._require_profile()
 
-        if self._profile.is_suspended:
+        if profile.is_suspended:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error": "account_suspended",
-                    "reason": self._profile.suspension_reason
+                    "reason": profile.suspension_reason
                     or "Account suspended. Contact support.",
                     "contact": "support@yourplatform.com",
                 },
@@ -148,6 +182,8 @@ class QuotaEnforcer:
         """
         await self.check_suspended()
         await self._load_limits()
+        limits = self._require_limits()
+        profile = self._require_profile()
 
         # Get current active streams count
         result = await self.db.execute(
@@ -156,9 +192,9 @@ class QuotaEnforcer:
                 Stream.status.in_(["running", "starting"]),
             )
         )
-        active_count = result.scalar()
+        active_count = result.scalar() or 0
 
-        limit = self._limits.max_concurrent_streams
+        limit = limits.max_concurrent_streams
 
         if limit is not None and active_count >= limit:
             # Create system alert
@@ -172,7 +208,7 @@ class QuotaEnforcer:
                 resource="concurrent streams",
                 current=active_count,
                 limit=limit,
-                tier=self._profile.subscription_tier,
+                tier=profile.subscription_tier,
             )
 
         await self._check_daily_streaming_limit()
@@ -183,9 +219,11 @@ class QuotaEnforcer:
         """Return detailed usage data for the rolling 24-hour streaming window."""
 
         await self._load_limits()
+        limits = self._require_limits()
+        profile = self._require_profile()
 
-        limit_hours = self._limits.daily_streaming_limit_hours
-        tier = self._profile.subscription_tier if self._profile else None
+        limit_hours = limits.daily_streaming_limit_hours
+        tier = profile.subscription_tier
 
         usage: Dict[str, Any] = {
             "limit_hours": float(limit_hours) if limit_hours is not None else None,
@@ -252,7 +290,7 @@ class QuotaEnforcer:
             resource="daily streaming hours",
             current=round(used_hours, 2),
             limit=limit_hours,
-            tier=self._profile.subscription_tier,
+            tier=self._require_profile().subscription_tier,
         )
 
     async def _streams_within_window(self, window_start: datetime) -> List[Stream]:
@@ -263,7 +301,7 @@ class QuotaEnforcer:
                 func.coalesce(Stream.stopped_at, func.now()) >= window_start,
             )
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @staticmethod
     def _calculate_streaming_seconds(
@@ -310,13 +348,15 @@ class QuotaEnforcer:
         """
         await self.check_suspended()
         await self._load_limits()
+        limits = self._require_limits()
+        profile = self._require_profile()
 
         result = await self.db.execute(
             select(func.count(Asset.id)).where(Asset.user_id == self.user_id)
         )
-        count = result.scalar()
+        count = result.scalar() or 0
 
-        limit = self._limits.max_assets
+        limit = limits.max_assets
 
         if limit is not None and count >= limit:
             await self._create_alert(
@@ -329,7 +369,7 @@ class QuotaEnforcer:
                 resource="assets",
                 current=count,
                 limit=limit,
-                tier=self._profile.subscription_tier,
+                tier=profile.subscription_tier,
             )
 
         return True
@@ -339,6 +379,8 @@ class QuotaEnforcer:
 
         await self.check_suspended()
         await self._load_limits()
+        limits = self._require_limits()
+        profile = self._require_profile()
 
         parsed = urlparse(rtmps_url or "")
 
@@ -361,14 +403,14 @@ class QuotaEnforcer:
                 },
             )
 
-        if not self._limits.custom_rtmps_enabled:
+        if not limits.custom_rtmps_enabled:
             if not hostname.endswith("rtmp.youtube.com"):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail={
                         "error": "custom_rtmps_not_allowed",
                         "message": "Your plan does not allow custom RTMPS destinations",
-                        "tier": self._profile.subscription_tier,
+                        "tier": profile.subscription_tier,
                     },
                 )
 
@@ -383,6 +425,8 @@ class QuotaEnforcer:
 
         await self.check_suspended()
         await self._load_limits()
+        limits = self._require_limits()
+        profile = self._require_profile()
 
         audio_assets = list(audio_assets or [])
         normalized_mix = (mix_mode or "video_only").lower()
@@ -401,9 +445,8 @@ class QuotaEnforcer:
         else:
             mode = "video"
 
-        limits = self._limits
         result: Dict[str, Any] = {
-            "tier": self._profile.subscription_tier,
+            "tier": profile.subscription_tier,
             "limits": {
                 "max_resolution_height": limits.max_resolution_height,
                 "max_fps": limits.max_fps,
@@ -429,7 +472,9 @@ class QuotaEnforcer:
         if not limits.enforce_stream_quality:
             return result
 
-        guidance_table = VideoValidator.BITRATE_GUIDANCE
+        guidance_table = cast(
+            List[VideoBitrateGuidanceEntry], VideoValidator.BITRATE_GUIDANCE
+        )
 
         def _safe_int(value: Any) -> Optional[int]:
             if isinstance(value, (int, float)):
@@ -563,7 +608,7 @@ class QuotaEnforcer:
             video = meta.get("video") or {}
             allowed_codecs = {
                 (codec or "").lower()
-                for codec in (self._limits.allowed_video_codecs or [])
+                for codec in (limits.allowed_video_codecs or [])
                 if codec
             }
 
@@ -951,13 +996,15 @@ class QuotaEnforcer:
         """
         await self.check_suspended()
         await self._load_limits()
+        limits = self._require_limits()
+        profile = self._require_profile()
 
         result = await self.db.execute(
             select(func.count(Playlist.id)).where(Playlist.user_id == self.user_id)
         )
-        count = result.scalar()
+        count = result.scalar() or 0
 
-        limit = self._limits.max_playlists
+        limit = limits.max_playlists
 
         if limit is not None and count >= limit:
             await self._create_alert(
@@ -970,7 +1017,7 @@ class QuotaEnforcer:
                 resource="playlists",
                 current=count,
                 limit=limit,
-                tier=self._profile.subscription_tier,
+                tier=profile.subscription_tier,
             )
 
         return True
@@ -987,15 +1034,17 @@ class QuotaEnforcer:
         """
         await self.check_suspended()
         await self._load_limits()
+        limits = self._require_limits()
+        profile = self._require_profile()
 
         result = await self.db.execute(
             select(func.count(Destination.id)).where(
                 Destination.user_id == self.user_id
             )
         )
-        count = result.scalar()
+        count = result.scalar() or 0
 
-        limit = self._limits.max_destinations
+        limit = limits.max_destinations
 
         if limit is not None and count >= limit:
             await self._create_alert(
@@ -1008,7 +1057,7 @@ class QuotaEnforcer:
                 resource="destinations",
                 current=count,
                 limit=limit,
-                tier=self._profile.subscription_tier,
+                tier=profile.subscription_tier,
             )
 
         return True
@@ -1028,32 +1077,30 @@ class QuotaEnforcer:
         """
         await self.check_suspended()
         await self._load_limits()
+        limits = self._require_limits()
+        profile = self._require_profile()
 
-        current_bytes = self._profile.current_storage_bytes or 0
-        limit_bytes = (
-            self._limits.storage_gb * 1024**3
-            if self._limits.storage_gb
-            else float("inf")
-        )
+        current_bytes = profile.current_storage_bytes or 0
+        limit_bytes = limits.storage_gb * 1024**3 if limits.storage_gb else float("inf")
 
         if current_bytes + additional_bytes > limit_bytes:
             used_gb = current_bytes / (1024**3)
 
             await self._create_alert(
                 "quota_exceeded",
-                f"Storage quota exceeded: {used_gb:.2f}/{self._limits.storage_gb} GB",
+                f"Storage quota exceeded: {used_gb:.2f}/{limits.storage_gb} GB",
                 {
                     "resource": "storage",
                     "used_gb": used_gb,
-                    "limit_gb": self._limits.storage_gb,
+                    "limit_gb": limits.storage_gb,
                 },
             )
 
             raise QuotaExceededError(
                 resource="storage",
                 current=round(used_gb, 2),
-                limit=self._limits.storage_gb,
-                tier=self._profile.subscription_tier,
+                limit=limits.storage_gb or 0,
+                tier=profile.subscription_tier,
             )
 
         return True

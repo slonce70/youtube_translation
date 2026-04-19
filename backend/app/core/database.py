@@ -1,10 +1,12 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import text
-from sqlalchemy.pool import NullPool
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 import asyncio
 import logging
+from typing import Any
+
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import text
+from sqlalchemy.pool import NullPool
 
 from fastapi import HTTPException
 
@@ -18,7 +20,7 @@ SCHEMA_PATCH_LOCK_ID = 872634  # Arbitrary advisory lock id to serialize schema 
 DATABASE_URL = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
 
 # Create async engine
-engine_kwargs = {
+engine_kwargs: dict[str, Any] = {
     "echo": settings.db_echo_sql,
     "pool_pre_ping": True,
 }
@@ -40,7 +42,7 @@ engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 async_engine = engine
 
 # Create async session factory
-async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 
 _db_connection_semaphore = asyncio.Semaphore(max(settings.db_pool_size, 1))
@@ -79,7 +81,7 @@ async def _managed_session():
                 await session.close()
 
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency for getting database session.
     Commits only on success, rolls back on error.
@@ -248,13 +250,7 @@ async def _apply_schema_changes(conn):
         "schedule_weekdays",
         "schedule_window_end_time",
         "schedule_stop_after_seconds",
-        "runtime_owner_id",
-        "runtime_lease_expires_at",
         "runtime_last_heartbeat_at",
-        "runtime_restart_attempts",
-        "runtime_next_restart_at",
-        "runtime_last_restart_at",
-        "runtime_last_failure_at",
     ]
     if await _missing_columns(conn, "streams", streams_columns):
         await conn.execute(
@@ -271,32 +267,27 @@ async def _apply_schema_changes(conn):
                 ADD COLUMN IF NOT EXISTS schedule_weekdays INTEGER[],
                 ADD COLUMN IF NOT EXISTS schedule_window_end_time TIME,
                 ADD COLUMN IF NOT EXISTS schedule_stop_after_seconds INTEGER,
-                ADD COLUMN IF NOT EXISTS runtime_owner_id TEXT,
-                ADD COLUMN IF NOT EXISTS runtime_lease_expires_at TIMESTAMPTZ,
-                ADD COLUMN IF NOT EXISTS runtime_last_heartbeat_at TIMESTAMPTZ,
-                ADD COLUMN IF NOT EXISTS runtime_restart_attempts INTEGER NOT NULL DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS runtime_next_restart_at TIMESTAMPTZ,
-                ADD COLUMN IF NOT EXISTS runtime_last_restart_at TIMESTAMPTZ,
-                ADD COLUMN IF NOT EXISTS runtime_last_failure_at TIMESTAMPTZ
+                ADD COLUMN IF NOT EXISTS runtime_last_heartbeat_at TIMESTAMPTZ
                 """
             )
         )
 
+    await conn.execute(text("DROP INDEX IF EXISTS idx_streams_runtime_owner_id"))
     await conn.execute(
-        text(
-            "CREATE INDEX IF NOT EXISTS idx_streams_runtime_owner_id ON streams(runtime_owner_id)"
-        )
+        text("DROP INDEX IF EXISTS idx_streams_runtime_lease_expires_at")
     )
+    await conn.execute(text("DROP INDEX IF EXISTS idx_streams_runtime_next_restart_at"))
     await conn.execute(
         text(
-            "CREATE INDEX IF NOT EXISTS idx_streams_runtime_lease_expires_at "
-            "ON streams(runtime_lease_expires_at)"
-        )
-    )
-    await conn.execute(
-        text(
-            "CREATE INDEX IF NOT EXISTS idx_streams_runtime_next_restart_at "
-            "ON streams(runtime_next_restart_at)"
+            """
+            ALTER TABLE streams
+            DROP COLUMN IF EXISTS runtime_owner_id,
+            DROP COLUMN IF EXISTS runtime_lease_expires_at,
+            DROP COLUMN IF EXISTS runtime_restart_attempts,
+            DROP COLUMN IF EXISTS runtime_next_restart_at,
+            DROP COLUMN IF EXISTS runtime_last_restart_at,
+            DROP COLUMN IF EXISTS runtime_last_failure_at
+            """
         )
     )
 

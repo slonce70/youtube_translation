@@ -317,6 +317,46 @@ ensure_host_runtime_mode_alignment() {
   export STREAM_RUNTIME_MODE="systemd"
 }
 
+ensure_environment_alignment() {
+  local deploy_environment="${DEPLOY_ENVIRONMENT:-production}"
+  deploy_environment="$(printf '%s' "$deploy_environment" | tr '[:upper:]' '[:lower:]')"
+
+  case "$deploy_environment" in
+    development|test|staging|production)
+      ;;
+    *)
+      echo "DEPLOY_ENVIRONMENT must be one of development, test, staging, production." >&2
+      exit 1
+      ;;
+  esac
+
+  local effective_environment="${ENVIRONMENT:-}"
+  if [[ -n "$effective_environment" ]]; then
+    effective_environment="$(printf '%s' "$effective_environment" | tr '[:upper:]' '[:lower:]')"
+  else
+    effective_environment="$deploy_environment"
+    echo "ENVIRONMENT missing in backend/.env; aligning deploy environment to ${effective_environment}."
+  fi
+
+  case "$effective_environment" in
+    development|test|staging|production)
+      ;;
+    *)
+      echo "ENVIRONMENT must be one of development, test, staging, production." >&2
+      exit 1
+      ;;
+  esac
+
+  if ! grep -Eq '^[[:space:]]*ENVIRONMENT=' "$backend_env"; then
+    upsert_env_kv "$backend_env" "ENVIRONMENT" "$effective_environment"
+  fi
+  if [[ -f "$root_env" ]] && ! grep -Eq '^[[:space:]]*ENVIRONMENT=' "$root_env"; then
+    upsert_env_kv "$root_env" "ENVIRONMENT" "$effective_environment"
+  fi
+
+  export ENVIRONMENT="$effective_environment"
+}
+
 ensure_host_storage_env_alignment() {
   if ! host_runtime_refresh_requested; then
     return 0
@@ -429,7 +469,6 @@ maybe_run_host_runtime_cutover() {
     "CURL_BIN=${CURL_BIN:-curl}"
     "POSTGRES_CONTAINER_NAME=${POSTGRES_CONTAINER_NAME:-youtube-streaming-postgres}"
     "BACKEND_CONTAINER_NAME=${BACKEND_CONTAINER_NAME:-youtube-streaming-backend}"
-    "RUNNER_CONTAINER_NAME=${RUNNER_CONTAINER_NAME:-youtube-streaming-runner}"
     "HOST_BACKEND_UNIT_NAME=${HOST_BACKEND_UNIT_NAME:-youtube-backend}"
     "HOST_BACKEND_HEALTH_URL=${HOST_BACKEND_HEALTH_URL:-http://127.0.0.1:8000/health}"
     "CUTOVER_STOP_DOCKER_RUNTIME=${CUTOVER_STOP_DOCKER_RUNTIME:-1}"
@@ -459,7 +498,7 @@ maybe_run_host_runtime_rollback() {
     "HOST_BACKEND_UNIT_NAME=${HOST_BACKEND_UNIT_NAME:-youtube-backend}"
     "DOCKER_BACKEND_HEALTH_URL=${DOCKER_BACKEND_HEALTH_URL:-http://127.0.0.1:8000/health}"
     "ROLLBACK_START_DOCKER_RUNTIME=${ROLLBACK_START_DOCKER_RUNTIME:-1}"
-    "ROLLBACK_DOCKER_STREAM_RUNTIME_MODE=${ROLLBACK_DOCKER_STREAM_RUNTIME_MODE:-supervisor}"
+    "ROLLBACK_DOCKER_STREAM_RUNTIME_MODE=${ROLLBACK_DOCKER_STREAM_RUNTIME_MODE:-manager}"
     "ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK=${ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK:-0}"
   )
   if [[ -n "${DEPLOY_ROLLBACK_STREAM_UNIT:-}" ]]; then
@@ -553,7 +592,6 @@ prepare_linux_persistence() {
   export HOST_UPLOADS_DIR="${HOST_UPLOADS_DIR:-$PERSISTENT_STORAGE_ROOT/uploads}"
   export HOST_STREAMS_DIR="${HOST_STREAMS_DIR:-$PERSISTENT_STORAGE_ROOT/streams}"
   export HOST_LOGS_DIR="${HOST_LOGS_DIR:-$PERSISTENT_STORAGE_ROOT/logs}"
-  export HOST_SUPERVISORD_DIR="${HOST_SUPERVISORD_DIR:-$PERSISTENT_STORAGE_ROOT/supervisord}"
   export POSTGRES_VOLUME_NAME="${POSTGRES_VOLUME_NAME:-youtube_translation_postgres_data}"
   export CADDY_DATA_VOLUME_NAME="${CADDY_DATA_VOLUME_NAME:-youtube_translation_caddy_data}"
   export CADDY_CONFIG_VOLUME_NAME="${CADDY_CONFIG_VOLUME_NAME:-youtube_translation_caddy_config}"
@@ -569,8 +607,7 @@ verify_linux_persistence() {
   for persistent_target in \
     "$HOST_UPLOADS_DIR" \
     "$HOST_STREAMS_DIR" \
-    "$HOST_LOGS_DIR" \
-    "$HOST_SUPERVISORD_DIR"; do
+    "$HOST_LOGS_DIR"; do
     if [[ "$persistent_target" != /* ]]; then
       echo "Persistence target must be an absolute path on Linux: $persistent_target" >&2
       exit 1
@@ -636,7 +673,6 @@ ensure_persistent_storage() {
   sync_legacy_dir "uploads" "$repo_root/backend/uploads" "$HOST_UPLOADS_DIR"
   sync_legacy_dir "streams" "$repo_root/backend/streams" "$HOST_STREAMS_DIR"
   sync_legacy_dir "logs" "$repo_root/backend/logs" "$HOST_LOGS_DIR"
-  sync_legacy_dir "supervisord state" "$repo_root/backend/supervisord" "$HOST_SUPERVISORD_DIR"
 
   if docker volume inspect "$POSTGRES_VOLUME_NAME" >/dev/null 2>&1; then
     return 0
@@ -665,7 +701,6 @@ align_host_storage_links() {
   ensure_repo_path_symlink "uploads" "$backend_root/uploads" "$HOST_UPLOADS_DIR"
   ensure_repo_path_symlink "streams" "$backend_root/streams" "$HOST_STREAMS_DIR"
   ensure_repo_path_symlink "logs" "$backend_root/logs" "$HOST_LOGS_DIR"
-  ensure_repo_path_symlink "supervisord state" "$backend_root/supervisord" "$HOST_SUPERVISORD_DIR"
 }
 
 align_host_storage_permissions() {
@@ -678,8 +713,7 @@ align_host_storage_permissions() {
   for target_dir in \
     "$HOST_UPLOADS_DIR" \
     "$HOST_STREAMS_DIR" \
-    "$HOST_LOGS_DIR" \
-    "$HOST_SUPERVISORD_DIR"; do
+    "$HOST_LOGS_DIR"; do
     run_as_root mkdir -p "$target_dir"
     run_as_root chgrp -R "$service_group" "$target_dir"
     run_as_root chmod g+rwX "$target_dir"
@@ -768,6 +802,7 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
   exit 1
 fi
 
+ensure_environment_alignment
 ensure_host_runtime_mode_alignment
 ensure_host_storage_env_alignment
 ensure_host_ffmpeg_env_alignment

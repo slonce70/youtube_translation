@@ -31,10 +31,6 @@ jest.mock('@/lib/api', () => ({
   },
 }))
 
-jest.mock('../streaming/hooks/useStreamSocket', () => ({
-  useStreamSocket: () => false,
-}))
-
 const { api } = jest.requireMock('@/lib/api')
 
 describe('DashboardPage', () => {
@@ -114,6 +110,7 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(api.assets.list).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.getByText('Дашборд')).toBeInTheDocument())
     expect(screen.getByText('🎙️ Почати трансляцію')).toBeInTheDocument()
+    expect(api.streams.createWsToken).not.toHaveBeenCalled()
   })
 
   it('does not render an empty live placeholder as an active live stream', async () => {

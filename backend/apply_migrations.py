@@ -56,6 +56,7 @@ MIGRATIONS = [
     'migrations/033_upload_ingests.sql',
     'migrations/034_fix_uhd_bitrate_caps.sql',
     'migrations/035_stream_runtime_refusal_alert_type.sql',
+    'migrations/036_drop_legacy_stream_runtime_state.sql',
 ]
 
 
@@ -533,7 +534,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     definition = result.scalar()
     status['027'] = bool(definition and 'scheduled' in definition)
 
-    for migration_num in ('028', '029', '030', '031', '032', '033', '034'):
+    for migration_num in ('028', '029', '030', '031', '032', '033', '034', '035', '036'):
         status[migration_num] = await verify_migration(conn, migration_num)
 
     return status
@@ -1135,20 +1136,16 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
 
     elif migration_num == '030':
         query = text("""
-            SELECT COUNT(*) = 3
+            SELECT COUNT(*) = 1
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'streams'
-              AND column_name IN (
-                  'runtime_owner_id',
-                  'runtime_lease_expires_at',
-                  'runtime_last_heartbeat_at'
-              )
+              AND column_name = 'runtime_last_heartbeat_at'
         """)
         columns_ok = bool((await conn.execute(query)).scalar())
 
         query = text("""
-            SELECT COUNT(*) = 2
+            SELECT COUNT(*) = 0
             FROM pg_indexes
             WHERE schemaname = 'public'
               AND indexname IN (
@@ -1161,7 +1158,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
 
     elif migration_num == '031':
         query = text("""
-            SELECT COUNT(*) = 4
+            SELECT COUNT(*) = 0
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'streams'
@@ -1175,7 +1172,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         columns_ok = bool((await conn.execute(query)).scalar())
 
         query = text("""
-            SELECT COUNT(*) = 1
+            SELECT COUNT(*) = 0
             FROM pg_indexes
             WHERE schemaname = 'public'
               AND indexname = 'idx_streams_runtime_next_restart_at'
@@ -1280,6 +1277,45 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
             """
         )
         return bool((await conn.execute(query)).scalar())
+
+    elif migration_num == '036':
+        query = text("""
+            SELECT COUNT(*) = 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name = 'runtime_last_heartbeat_at'
+        """)
+        heartbeat_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT COUNT(*) = 0
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name IN (
+                  'runtime_owner_id',
+                  'runtime_lease_expires_at',
+                  'runtime_restart_attempts',
+                  'runtime_next_restart_at',
+                  'runtime_last_restart_at',
+                  'runtime_last_failure_at'
+              )
+        """)
+        dropped_columns_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT COUNT(*) = 0
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname IN (
+                  'idx_streams_runtime_owner_id',
+                  'idx_streams_runtime_lease_expires_at',
+                  'idx_streams_runtime_next_restart_at'
+              )
+        """)
+        dropped_indexes_ok = bool((await conn.execute(query)).scalar())
+        return bool(heartbeat_ok and dropped_columns_ok and dropped_indexes_ok)
 
     return False
 

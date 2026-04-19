@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_workers: int = 4
-    environment: str = "development"  # development, staging, production
+    environment: str  # development, test, staging, production
 
     # Supabase
     supabase_url: str
@@ -81,8 +81,13 @@ class Settings(BaseSettings):
     ffmpeg_audio_bitrate_kbps: int = 160
     ffmpeg_keyframe_interval_seconds: float = 2.0  # YouTube/Twitch recommend 2s, max 4s
     ffmpeg_tee_onfail_policy: str = "ignore"
-    # 0 keeps FFmpeg's default unlimited fifo recovery budget for transient output faults.
-    ffmpeg_output_recovery_max_attempts: int = 0
+    # Bound fifo recovery by default so persistent RTMP(S) faults do not loop forever
+    # inside a single process and inflate cgroup memory pressure.
+    ffmpeg_output_recovery_max_attempts: int = 12
+    ffmpeg_output_fifo_queue_size: int = 240
+    ffmpeg_output_drop_pkts_on_overflow: bool = True
+    ffmpeg_output_rw_timeout_us: int = 15000000
+    ffmpeg_output_tcp_keepalive: bool = True
     ffmpeg_cleanup_interval_seconds: int = 60
     stream_log_max_bytes: int = 52428800  # 50MB
     stream_log_max_backups: int = 5
@@ -103,26 +108,14 @@ class Settings(BaseSettings):
     # FFmpeg Manager Configuration
     ffmpeg_error_history_size: int = 20  # Number of recent errors to keep
     user_cache_max_size: int = 512  # Maximum number of cached users
-    stream_runtime_mode: str = "manager"  # manager | systemd | supervisor
+    stream_runtime_mode: str = "manager"  # manager | systemd
     allow_unsafe_manager_runtime: bool = False
     allow_unsafe_containerized_systemd_runtime: bool = False
     systemd_unit_template: str = "ffmpeg@{stream_id}"
     systemctl_path: str = "systemctl"
-    supervisor_program_template: str = "stream_{stream_id}"
-    supervisor_ctl_path: str = "supervisorctl"
-    supervisor_conf_path: str = "supervisord.conf"
-    supervisor_config_dir: str = "supervisord/programs"
-    supervisor_log_dir: str = "supervisord/logs"
     stream_runtime_node_id: str = socket.gethostname()
-    stream_runtime_lease_ttl_seconds: int = 60
     stream_runtime_heartbeat_interval_seconds: int = 10
     stream_runtime_heartbeat_ttl_seconds: int = 45
-    stream_runtime_auto_restart_enabled: bool = True
-    stream_runtime_restart_max_attempts: int = 5
-    stream_runtime_restart_backoff_seconds: int = 5
-    stream_runtime_restart_backoff_max_seconds: int = 300
-    stream_runtime_restart_jitter_seconds: int = 3
-    stream_runtime_restart_reset_after_seconds: int = 900
     stream_schedule_poll_interval_seconds: int = 15
     stream_schedule_retry_interval_seconds: int = 60
     playlist_shuffle_seed_mode: str = "deterministic"
@@ -187,6 +180,16 @@ class Settings(BaseSettings):
                 scope.strip() for scope in self.google_oauth_scopes if scope.strip()
             ]
         return scopes or ["https://www.googleapis.com/auth/youtube.readonly"]
+
+    @field_validator("environment")
+    @classmethod
+    def validate_environment(cls, value: str) -> str:
+        normalized = str(value).strip().lower()
+        if normalized not in {"development", "test", "staging", "production"}:
+            raise ValueError(
+                "ENVIRONMENT must be one of development, test, staging, or production"
+            )
+        return normalized
 
     @field_validator("database_url")
     @classmethod
@@ -321,41 +324,21 @@ class Settings(BaseSettings):
     @classmethod
     def validate_stream_runtime_mode(cls, value: str) -> str:
         normalized = value.lower()
-        if normalized not in {"manager", "systemd", "supervisor"}:
-            raise ValueError(
-                "STREAM_RUNTIME_MODE must be 'manager', 'systemd', or 'supervisor'"
-            )
+        if normalized not in {"manager", "systemd"}:
+            raise ValueError("STREAM_RUNTIME_MODE must be 'manager' or 'systemd'")
         return normalized
 
     @field_validator(
-        "stream_runtime_lease_ttl_seconds",
         "stream_runtime_heartbeat_interval_seconds",
         "stream_runtime_heartbeat_ttl_seconds",
         "ffmpeg_output_recovery_max_attempts",
-        "stream_runtime_restart_backoff_seconds",
-        "stream_runtime_restart_backoff_max_seconds",
-        "stream_runtime_restart_max_attempts",
-        "stream_runtime_restart_jitter_seconds",
-        "stream_runtime_restart_reset_after_seconds",
     )
     @classmethod
     def validate_stream_runtime_heartbeat_seconds(
         cls, value: int, info: ValidationInfo
     ) -> int:
         field_name = info.field_name or "stream runtime value"
-        minimum = (
-            0
-            if field_name
-            in {
-                "ffmpeg_output_recovery_max_attempts",
-                "stream_runtime_restart_max_attempts",
-                "stream_runtime_restart_backoff_seconds",
-                "stream_runtime_restart_backoff_max_seconds",
-                "stream_runtime_restart_jitter_seconds",
-                "stream_runtime_restart_reset_after_seconds",
-            }
-            else 1
-        )
+        minimum = 0 if field_name in {"ffmpeg_output_recovery_max_attempts"} else 1
         if int(value) < minimum:
             qualifier = "at least 0" if minimum == 0 else "at least 1 second"
             raise ValueError(f"{field_name.upper()} must be {qualifier}")
@@ -371,7 +354,7 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "STREAM_RUNTIME_MODE=manager is disabled for staging/production. "
-                "Use supervisor/systemd or explicitly set ALLOW_UNSAFE_MANAGER_RUNTIME=true."
+                "Use systemd or explicitly set ALLOW_UNSAFE_MANAGER_RUNTIME=true."
             )
 
         if (
@@ -394,22 +377,6 @@ class Settings(BaseSettings):
                 "STREAM_RUNTIME_HEARTBEAT_TTL_SECONDS must be greater than or equal to "
                 "STREAM_RUNTIME_HEARTBEAT_INTERVAL_SECONDS."
             )
-        if (
-            self.stream_runtime_lease_ttl_seconds
-            < self.stream_runtime_heartbeat_interval_seconds
-        ):
-            raise ValueError(
-                "STREAM_RUNTIME_LEASE_TTL_SECONDS must be greater than or equal to "
-                "STREAM_RUNTIME_HEARTBEAT_INTERVAL_SECONDS."
-            )
-        if (
-            self.stream_runtime_restart_backoff_max_seconds
-            < self.stream_runtime_restart_backoff_seconds
-        ):
-            raise ValueError(
-                "STREAM_RUNTIME_RESTART_BACKOFF_MAX_SECONDS must be greater than or equal to "
-                "STREAM_RUNTIME_RESTART_BACKOFF_SECONDS."
-            )
 
         return self
 
@@ -419,15 +386,6 @@ class Settings(BaseSettings):
         if "{stream_id}" not in value:
             raise ValueError(
                 "SYSTEMD_UNIT_TEMPLATE must include '{stream_id}' placeholder"
-            )
-        return value
-
-    @field_validator("supervisor_program_template")
-    @classmethod
-    def validate_supervisor_program_template(cls, value: str) -> str:
-        if "{stream_id}" not in value:
-            raise ValueError(
-                "SUPERVISOR_PROGRAM_TEMPLATE must include '{stream_id}' placeholder"
             )
         return value
 
@@ -447,6 +405,23 @@ class Settings(BaseSettings):
         if normalized not in {"ignore", "abort"}:
             raise ValueError("FFMPEG_TEE_ONFAIL_POLICY must be 'ignore' or 'abort'")
         return normalized
+
+    @field_validator(
+        "ffmpeg_output_recovery_max_attempts",
+        "ffmpeg_output_rw_timeout_us",
+    )
+    @classmethod
+    def validate_non_negative_ffmpeg_output_values(cls, value: int) -> int:
+        if int(value) < 0:
+            raise ValueError("FFMPEG output recovery values must be non-negative")
+        return int(value)
+
+    @field_validator("ffmpeg_output_fifo_queue_size")
+    @classmethod
+    def validate_ffmpeg_output_fifo_queue_size(cls, value: int) -> int:
+        if int(value) < 1:
+            raise ValueError("FFMPEG_OUTPUT_FIFO_QUEUE_SIZE must be at least 1")
+        return int(value)
 
 
 settings = Settings()  # type: ignore[call-arg]

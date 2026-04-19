@@ -18,7 +18,7 @@ frontend_health_url="${FRONTEND_HEALTH_URL:-http://127.0.0.1:3000/api/health}"
 dry_run="${ROLLBACK_DRY_RUN:-0}"
 allow_live_rollback="${ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK:-0}"
 start_docker_runtime="${ROLLBACK_START_DOCKER_RUNTIME:-1}"
-docker_runtime_mode="${ROLLBACK_DOCKER_STREAM_RUNTIME_MODE:-supervisor}"
+docker_runtime_mode="${ROLLBACK_DOCKER_STREAM_RUNTIME_MODE:-manager}"
 restart_frontend_and_tusd="${ROLLBACK_RESTART_FRONTEND_TUSD:-1}"
 host_backend_bridge_port="${HOST_BACKEND_DOCKER_PORT:-8000}"
 
@@ -143,11 +143,15 @@ if [[ -n "$stream_unit" ]]; then
 fi
 
 if [[ "$start_docker_runtime" == "1" ]]; then
+  allow_unsafe_manager_runtime="false"
+  if [[ "$docker_runtime_mode" == "manager" ]]; then
+    allow_unsafe_manager_runtime="true"
+  fi
   run_cmd env \
     STREAM_RUNTIME_MODE="$docker_runtime_mode" \
-    ALLOW_UNSAFE_MANAGER_RUNTIME=false \
+    ALLOW_UNSAFE_MANAGER_RUNTIME="$allow_unsafe_manager_runtime" \
     ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=false \
-    "$docker_bin" compose -f "$compose_file" up -d backend runner
+    "$docker_bin" compose -f "$compose_file" up -d backend
 fi
 
 if [[ "$dry_run" != "1" && "$start_docker_runtime" == "1" ]]; then

@@ -1,5 +1,4 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import type { UseQueryResult } from '@tanstack/react-query'
 import type { ComponentProps, ReactNode } from 'react'
 import { NextIntlClientProvider, type AbstractIntlMessages, type TranslationValues } from 'next-intl'
 
@@ -9,7 +8,6 @@ import type {
   Playlist,
   Stream,
   StreamRuntimeRestartInfo,
-  StreamStatusResponse,
   StreamStatusValue,
 } from '@/lib/types'
 
@@ -115,37 +113,6 @@ function createStream(
   }
 }
 
-function createStatusQuery(
-  data?: StreamStatusResponse,
-): UseQueryResult<StreamStatusResponse> {
-  return {
-    data,
-    dataUpdatedAt: Date.now(),
-    error: null,
-    errorUpdatedAt: 0,
-    failureCount: 0,
-    failureReason: null,
-    fetchStatus: 'idle',
-    isError: false,
-    isFetched: true,
-    isFetchedAfterMount: true,
-    isFetching: false,
-    isInitialLoading: false,
-    isLoading: false,
-    isLoadingError: false,
-    isPaused: false,
-    isPending: false,
-    isPlaceholderData: false,
-    isRefetchError: false,
-    isRefetching: false,
-    isStale: false,
-    isSuccess: true,
-    refetch: jest.fn(),
-    remove: jest.fn(),
-    status: 'success',
-  } as unknown as UseQueryResult<StreamStatusResponse>
-}
-
 function openDropdownFor(card: HTMLElement) {
   const trigger = within(card).getByRole('button', { name: 'More actions' })
   fireEvent.click(trigger)
@@ -189,7 +156,6 @@ describe('StreamsList restart visibility', () => {
 
   function renderList(
     streams: Stream[],
-    liveStatusMap?: Map<string, UseQueryResult<StreamStatusResponse>>,
     overrides: Partial<ComponentProps<typeof StreamsList>> = {},
   ) {
     render(
@@ -197,7 +163,6 @@ describe('StreamsList restart visibility', () => {
         <StreamsList
           streams={streams}
           isLoading={false}
-          liveStatusMap={liveStatusMap ?? new Map()}
           onCreateStream={jest.fn()}
           onViewLogs={jest.fn()}
           onOpenLiveEditor={jest.fn()}
@@ -220,27 +185,18 @@ describe('StreamsList restart visibility', () => {
     )
   }
 
-  it('prefers live status restart data over stale list data', () => {
+  it('renders retry details from stream list runtime restart data', () => {
     const stream = createStream({
-      runtime_restart: createRestartInfo({
-        state: 'idle',
-      }),
-    })
-    const nextRestartAt = new Date(Date.now() + 30_000).toISOString()
-    const statusData: StreamStatusResponse = {
-      id: stream.id,
-      status: 'error',
-      is_running: false,
       error_message: 'runner lost lease',
       runtime_restart: createRestartInfo({
         state: 'scheduled',
         attempts: 2,
-        next_restart_at: nextRestartAt,
+        next_restart_at: new Date(Date.now() + 30_000).toISOString(),
         last_failure_at: new Date(Date.now() - 15_000).toISOString(),
       }),
-    }
+    })
 
-    renderList([stream], new Map([[stream.id, createStatusQuery(statusData)]]))
+    renderList([stream])
 
     expect(screen.getByText('Attempt 2 of 5')).toBeInTheDocument()
     expect(screen.getByText('runner lost lease')).toBeInTheDocument()
@@ -272,32 +228,22 @@ describe('StreamsList restart visibility', () => {
     expect(screen.queryByText('Attempt 0 of 5')).not.toBeInTheDocument()
   })
 
-  it('uses live running status for the action button when the list is stale', () => {
+  it('uses stream list status for the action button', () => {
     const onStartStream = jest.fn()
     const onStopStream = jest.fn()
     const stream = createStream({
       id: 'stream-live',
-      status: 'stopped',
+      status: 'running',
       name: 'Live stream',
       error_message: null,
       runtime_restart: createRestartInfo(),
     })
-    const statusData: StreamStatusResponse = {
-      id: stream.id,
-      status: 'running',
-      is_running: true,
-      error_message: null,
-      live_duration_seconds: 12,
-      total_duration_seconds: 12,
-      runtime_restart: createRestartInfo(),
-    }
 
     render(
       <NextIntlClientProvider locale="en" messages={{} as AbstractIntlMessages}>
         <StreamsList
           streams={[stream]}
           isLoading={false}
-          liveStatusMap={new Map([[stream.id, createStatusQuery(statusData)]])}
           onCreateStream={jest.fn()}
           onViewLogs={jest.fn()}
           onOpenLiveEditor={jest.fn()}
@@ -349,7 +295,6 @@ describe('StreamsList restart visibility', () => {
     const onDeleteStream = jest.fn()
     renderList(
       [createStream({ id: 'stream-delete', runtime_restart: createRestartInfo({ enabled: false }) })],
-      undefined,
       { onDeleteStream },
     )
 
@@ -381,7 +326,7 @@ describe('StreamsList restart visibility', () => {
       runtime_restart: createRestartInfo({ enabled: false }),
     })
 
-    renderList([running, stopped], undefined, {
+    renderList([running, stopped], {
       pendingStopStreamId: 'stream-running',
       pendingDeleteStreamId: null,
       pendingStartStreamId: null,
@@ -431,7 +376,6 @@ describe('StreamsList restart visibility', () => {
             }),
           ]}
           isLoading={false}
-          liveStatusMap={new Map()}
           onCreateStream={jest.fn()}
           onViewLogs={jest.fn()}
           onOpenLiveEditor={jest.fn()}

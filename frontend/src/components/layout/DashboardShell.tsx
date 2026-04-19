@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { usePathname } from 'next/navigation'
 import { api } from '@/lib/api'
 import type { Stream } from '@/lib/types'
 import { useDashboardContext } from '@/app/dashboard/dashboard-context'
 import { CommandPalette } from '@/components/ui/CommandPalette'
-import { useStreamStatusMap } from '@/app/dashboard/streaming/hooks/useStreamStatusMap'
 import { deriveStreamState } from '@/lib/stream-state'
 import { Sidebar, readSidebarCollapsed, writeSidebarCollapsed } from './Sidebar'
 import { Topbar } from './Topbar'
@@ -20,16 +20,18 @@ interface DashboardShellProps {
 
 export function DashboardShell({ userName, userEmail, onSignOut, children }: DashboardShellProps) {
   const { user } = useDashboardContext()
+  const pathname = usePathname()
+  const currentPath = pathname ?? ''
   const [collapsed, setCollapsed] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  // Dashboard routes own stream-data freshness. The shell only subscribes to shared cache state.
   const { data: streams } = useQuery<Stream[]>({
     queryKey: ['streams', user?.id],
     queryFn: api.streams.list,
-    enabled: !!user,
-    refetchInterval: 10000,
-    refetchOnWindowFocus: true,
+    enabled: false,
+    staleTime: Infinity,
   })
-  const liveStatusMap = useStreamStatusMap(streams, user?.id)
+  const showLiveBadge = currentPath === '/dashboard' || currentPath.startsWith('/dashboard/streaming')
 
   useEffect(() => {
     setCollapsed(readSidebarCollapsed())
@@ -47,11 +49,8 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
   }, [])
 
   const liveCount = useMemo(
-    () =>
-      (streams ?? []).filter((stream) =>
-        deriveStreamState(stream, liveStatusMap.get(stream.id)).isRunning,
-      ).length,
-    [liveStatusMap, streams],
+    () => (streams ?? []).filter((stream) => deriveStreamState(stream).isRunning).length,
+    [streams],
   )
 
   const commandItems = useMemo(
@@ -73,6 +72,7 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
           userName={userName}
           userEmail={userEmail}
           liveCount={liveCount}
+          showLiveBadge={showLiveBadge}
           onOpenPalette={() => setPaletteOpen(true)}
           onSignOut={onSignOut}
         />

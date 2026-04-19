@@ -11,7 +11,7 @@ from uuid import UUID, uuid5, NAMESPACE_DNS
 import httpx
 import jwt
 from fastapi import Depends, HTTPException, Header, status
-from gotrue.errors import AuthRetryableError
+from gotrue.errors import AuthRetryableError  # type: ignore[import-untyped]
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
