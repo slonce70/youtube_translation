@@ -82,8 +82,8 @@ make verify-v0
 | Backend streaming | playlist validation, live edit, hot swap, scheduler, runtime stop/restart, FFmpeg negative paths, storage-backed asset payload resolution | `backend/tests/test_playlist_builder.py`, `backend/tests/test_playlist_storage_resolution.py`, `backend/tests/test_stream_asset_payload.py`, `backend/tests/test_stream_live_edit.py`, `backend/tests/test_hot_swap.py`, `backend/tests/test_stream_scheduler.py`, `backend/tests/test_stream_schedule_update.py`, `backend/tests/test_ffmpeg_manager.py`, `backend/tests/test_stream_reconciler.py` | rehearsal одного реального локального стріму за `docs/operations/first_stream_checklist.md` |
 | Backend security/runtime | encryption, rate limit, websocket middleware, health/startup | `backend/tests/test_security.py`, `backend/tests/test_rate_limiter.py`, `backend/tests/test_websocket_safe_csrf.py`, `backend/tests/test_main.py` | перевірка `/health` і логів під час rehearsal |
 | Frontend app shell | dashboard bootstrap, admin page, локалізація, API auth wrapper | `frontend/src/app/dashboard/__tests__/page.test.tsx`, `frontend/src/app/admin/__tests__/page.test.tsx`, `frontend/src/components/__tests__/localization-smoke.test.tsx`, `frontend/src/lib/__tests__/*` | ручна перевірка DEV auth та real auth path |
-| Frontend library/upload | asset cards, asset display rules, upload modal/token flow, tusd endpoint contract | `frontend/src/components/library/__tests__/AssetCard.test.tsx`, `frontend/src/app/dashboard/library/__tests__/*`, `frontend/src/lib/__tests__/tusd.test.ts`, `frontend/e2e/dashboard-flows.spec.ts` | manual upload через tusd origin з оновленням списку файлів |
-| Frontend streaming UX | builder helpers, schedule utils, start/stop/live edit | `frontend/src/app/dashboard/streaming/__tests__/*`, `frontend/e2e/dashboard-flows.spec.ts` | manual stream start/stop з перевіркою статусу і логів |
+| Frontend library/upload | asset cards, asset display rules, lazy-loaded upload modal/token flow, `frontend/src/lib/tusd.ts` endpoint normalization | `frontend/src/components/library/__tests__/AssetCard.test.tsx`, `frontend/src/app/dashboard/library/__tests__/*`, `frontend/src/lib/__tests__/tusd.test.ts`, `frontend/e2e/dashboard-flows.spec.ts` | manual upload через tusd origin з оновленням списку файлів |
+| Frontend streaming UX | extracted builder helpers, log audit, platform detection, schedule utils, start/stop/live edit | `frontend/src/app/dashboard/streaming/__tests__/*`, `frontend/e2e/dashboard-flows.spec.ts` | manual stream start/stop з перевіркою статусу і логів |
 
 Для стабілізаційного tranche canonical gate = `make verify-v0`, а для точкового аудиту/static-analysis використовуйте явні команди:
 
@@ -164,7 +164,7 @@ cd frontend
 npm run test:e2e
 ```
 
-Для frontend e2e `NEXT_PUBLIC_TUSD_URL` має вказувати на origin tusd, наприклад `http://localhost:1080`; helper у `frontend/src/lib/tusd.ts` додає рівно один `/files/`.
+Для frontend e2e `NEXT_PUBLIC_TUSD_URL` має вказувати на origin tusd, наприклад `http://localhost:1080`; helper у `frontend/src/lib/tusd.ts` додає рівно один `/files/`. Library upload modal now loads lazily, so opening the modal is the point where the upload bundle is fetched.
 
 ## Нотатки
 
