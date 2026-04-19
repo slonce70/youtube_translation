@@ -281,7 +281,7 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 
 ## Зауваження
 
-- Для локальної розробки prefer `supervisor`, а не `systemd`
+- Для локальної розробки prefer `manager`, а не `systemd`
 - Якщо вам потрібен лише local smoke path, використовуйте DEV auth і hybrid boot з `docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner`
 - Containerized backend + `systemd` runtime не вважається підтриманим production control path за замовчуванням
 - Якщо ви переходите на host-native backend control plane, не запускайте одночасно Docker `backend`/`runner` як production executors для тих самих live streams
@@ -290,6 +290,7 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 - `scripts/deploy_vps.sh` також вирівнює `backend/{uploads,streams,logs,supervisord}` на symlink-и до `/opt/youtube_translation_data/...`, щоб host-native backend і containerized edge дивилися в один persistent storage root
 - той самий deploy path тепер рекурсивно вирівнює group ownership і mode на `/opt/youtube_translation_data/{uploads,streams,logs,supervisord}` під `SYSTEMD_SERVICE_GROUP`, щоб host-native backend не впирався в `Permission denied` на старих assets після cutover
 - коли host-native backend already active або deploy явно робить host-native refresh (`DEPLOY_RESTART_HOST_BACKEND`, `DEPLOY_PREPARE_HOST_NATIVE`, `DEPLOY_CUTOVER_HOST_RUNTIME`), `scripts/deploy_vps.sh` тепер ідемпотентно проганяє `install_systemd_runtime.sh` навіть без окремого `DEPLOY_INSTALL_SYSTEMD_UNITS=1`, щоб не загубити polkit rule / unit drift на VPS
+- legacy `SUPERVISOR_*` ключі в production `backend/.env` можна безпечно прибрати під час cleanup; config loader тимчасово толерує їх лише для backward-compatible host refresh
 - `scripts/check_host_runtime_readiness.sh` тепер окремо показує `backend/.venv` vs repo-root `.venv` і перевіряє, чи service user реально може зробити `systemctl start --dry-run ffmpeg@__readiness_probe`
 - `scripts/cutover_host_runtime.sh` навмисно fail-closed відмовляється від cutover при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_CUTOVER=1`
 - `scripts/cutover_host_runtime.sh` також fail-closed перевіряє, що host loopback `127.0.0.1:5432` і `127.0.0.1:6379` вже слухають, інакше host-native backend не отримає доступу до PostgreSQL/Redis після відключення Docker `backend`/`runner`
