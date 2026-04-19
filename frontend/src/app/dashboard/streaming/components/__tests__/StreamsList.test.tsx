@@ -433,13 +433,38 @@ describe('StreamsList row interactions', () => {
       }),
     ])
 
-    fireEvent.click(screen.getByText('Ready preview').closest('article')!)
+    const row = screen.getByText('Ready preview').closest('article')!
+
+    expect(row).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(row)
 
     expect(screen.getByTitle('Live preview')).toBeInTheDocument()
     expect(screen.getByTitle('Live preview')).toHaveAttribute(
       'src',
       'https://www.youtube.com/embed/abc123xyz?autoplay=1&mute=1&playsinline=1&rel=0',
     )
+    expect(row).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('does not toggle preview when details disclosure is used', () => {
+    renderList([
+      createStream({
+        id: 'stream-preview-details',
+        name: 'Disclosure preview',
+        status: 'running',
+        error_message: null,
+        provider_status: 'live',
+        provider_video_id: 'abc123xyz',
+      }),
+    ])
+
+    const row = screen.getByText('Disclosure preview').closest('article')!
+
+    fireEvent.click(within(row).getByText('Details'))
+
+    expect(screen.queryByTitle('Live preview')).not.toBeInTheDocument()
+    expect(row).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('shows a pending state when the stream is live but youtube has not exposed a video id', () => {
@@ -513,5 +538,28 @@ describe('StreamsList row interactions', () => {
       'src',
       expect.stringContaining('abc123xyz'),
     )
+  })
+
+  it('does not toggle preview when the mounted preview surface is clicked', () => {
+    renderList([
+      createStream({
+        id: 'stream-preview-surface',
+        name: 'Preview surface stream',
+        status: 'running',
+        error_message: null,
+        provider_status: 'live',
+        provider_video_id: 'abc123xyz',
+      }),
+    ])
+
+    const row = screen.getByText('Preview surface stream').closest('article')!
+
+    fireEvent.click(row)
+    expect(screen.getByTitle('Live preview')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTitle('Live preview'))
+
+    expect(screen.getByTitle('Live preview')).toBeInTheDocument()
+    expect(row).toHaveAttribute('aria-expanded', 'true')
   })
 })
