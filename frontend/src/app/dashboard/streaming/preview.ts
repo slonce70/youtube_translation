@@ -27,3 +27,8 @@ export function getStreamPreviewState(stream: Stream): StreamPreviewState {
 
   return { kind: 'unavailable', videoId: null }
 }
+
+export function getStreamPreviewEmbedUrl(stream: Stream): string | null {
+  const preview = getStreamPreviewState(stream)
+  return preview.kind === 'ready' ? buildYouTubeEmbedUrl(preview.videoId) : null
+}
