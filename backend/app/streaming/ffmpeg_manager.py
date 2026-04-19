@@ -962,24 +962,13 @@ class FFmpegStreamManager:
             log_task = None
             if log_file:
                 log_task = asyncio.create_task(
-                    process_support.write_logs_to_file(
-                        stream_id=stream_id,
-                        process=process,
-                        log_file=log_file,
-                        stream_info=self.stream_info,
-                        record_runtime_log_health=self._record_runtime_log_health,
-                    )
+                    self._write_logs_to_file(stream_id, process, log_file)
                 )
 
             quota_task: Optional[asyncio.Task] = None
             try:
                 quota_task = asyncio.create_task(
-                    process_support.enforce_runtime_limit(
-                        stream_id=stream_id,
-                        process=process,
-                        stream_info=self.stream_info,
-                        fetch_daily_usage=process_support.fetch_daily_usage,
-                    )
+                    self._enforce_runtime_limit(stream_id, process)
                 )
             except Exception:  # pragma: no cover - defensive logging
                 logger.exception(
@@ -1555,7 +1544,7 @@ class FFmpegStreamManager:
             stream_id=stream_id,
             process=process,
             stream_info=self.stream_info,
-            fetch_daily_usage=process_support.fetch_daily_usage,
+            fetch_daily_usage=self._fetch_daily_usage,
         )
 
     async def _fetch_daily_usage(self, user_id: UUID) -> Optional[Dict[str, Any]]:
