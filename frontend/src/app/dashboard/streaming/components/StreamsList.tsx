@@ -347,6 +347,7 @@ export function StreamsList({
                           onClick={canTogglePreview ? handleTogglePreview : undefined}
                           role={canTogglePreview ? 'button' : undefined}
                           tabIndex={canTogglePreview ? 0 : undefined}
+                          aria-expanded={canTogglePreview ? isPreviewOpen : undefined}
                           onKeyDown={
                             canTogglePreview
                               ? (event) => {
@@ -399,7 +400,11 @@ export function StreamsList({
                                 </div>
                               )}
 
-                              <details className="group rounded-lg border border-slate-200 bg-white/70 dark:border-slate-800 dark:bg-slate-900/40">
+                              <details
+                                className="group rounded-lg border border-slate-200 bg-white/70 dark:border-slate-800 dark:bg-slate-900/40"
+                                onClick={stopRowToggle}
+                                onKeyDown={(event) => event.stopPropagation()}
+                              >
                                 <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200">
                                   {t('streams.buttons.details')}
                                   <ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
@@ -485,25 +490,29 @@ export function StreamsList({
                             </div>
                           </div>
                           {isPreviewOpen && previewState.kind === 'ready' ? (
-                            <StreamPreviewPanel
-                              title={t('streams.preview.title')}
-                              badge={t('streams.preview.badge')}
-                              latencyHint={t('streams.preview.latencyHint')}
-                              pendingTitle={t('streams.preview.pendingTitle')}
-                              pendingDescription={t('streams.preview.pendingDescription')}
-                              embedUrl={previewEmbedUrl}
-                              state="ready"
-                            />
+                            <div onClick={stopRowToggle} onKeyDown={(event) => event.stopPropagation()}>
+                              <StreamPreviewPanel
+                                title={t('streams.preview.title')}
+                                badge={t('streams.preview.badge')}
+                                latencyHint={t('streams.preview.latencyHint')}
+                                pendingTitle={t('streams.preview.pendingTitle')}
+                                pendingDescription={t('streams.preview.pendingDescription')}
+                                embedUrl={previewEmbedUrl}
+                                state="ready"
+                              />
+                            </div>
                           ) : null}
                           {isPreviewOpen && previewState.kind === 'pending' ? (
-                            <StreamPreviewPanel
-                              title={t('streams.preview.title')}
-                              badge={t('streams.preview.badge')}
-                              latencyHint={t('streams.preview.latencyHint')}
-                              pendingTitle={t('streams.preview.pendingTitle')}
-                              pendingDescription={t('streams.preview.pendingDescription')}
-                              state="pending"
-                            />
+                            <div onClick={stopRowToggle} onKeyDown={(event) => event.stopPropagation()}>
+                              <StreamPreviewPanel
+                                title={t('streams.preview.title')}
+                                badge={t('streams.preview.badge')}
+                                latencyHint={t('streams.preview.latencyHint')}
+                                pendingTitle={t('streams.preview.pendingTitle')}
+                                pendingDescription={t('streams.preview.pendingDescription')}
+                                state="pending"
+                              />
+                            </div>
                           ) : null}
                         </motion.article>
                       )
