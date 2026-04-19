@@ -43,6 +43,12 @@ const translations: Record<string, string> = {
   'streams.deleteConfirm.confirm': 'Delete stream',
   'streams.buttons.reviewIssue': 'Review issue',
   'streams.liveEdit.button': 'Edit',
+  'streams.preview.title': 'Live preview',
+  'streams.preview.badge': 'YouTube preview',
+  'streams.preview.latencyHint': 'Preview may lag behind live output by a few seconds',
+  'streams.preview.pendingTitle': 'YouTube preview is not ready yet',
+  'streams.preview.pendingDescription':
+    'The stream may already be live, but YouTube has not exposed the video link yet.',
   'streams.empty.title': 'No streams',
   'streams.empty.description': 'Nothing here yet',
   'streams.empty.cta': 'Create stream',
@@ -413,5 +419,76 @@ describe('StreamsList restart visibility', () => {
     ])
 
     expect(screen.getByText('Custom queue (2)')).toBeInTheDocument()
+  })
+
+  it('opens an inline preview for a ready live stream', () => {
+    renderList([
+      createStream({
+        id: 'stream-preview-ready',
+        name: 'Ready preview',
+        status: 'running',
+        provider_status: 'live',
+        provider_video_id: 'abc123xyz',
+      }),
+    ])
+
+    fireEvent.click(screen.getByText('Ready preview'))
+
+    expect(screen.getByTitle('Live preview')).toBeInTheDocument()
+    expect(screen.getByTitle('Live preview')).toHaveAttribute(
+      'src',
+      'https://www.youtube.com/embed/abc123xyz?autoplay=1&mute=1&playsinline=1&rel=0',
+    )
+  })
+
+  it('shows a pending state when the stream is live but youtube has not exposed a video id', () => {
+    renderList([
+      createStream({
+        id: 'stream-preview-pending',
+        name: 'Pending preview',
+        status: 'running',
+        provider_status: 'unknown',
+        provider_video_id: null,
+      }),
+    ])
+
+    fireEvent.click(screen.getByText('Pending preview'))
+
+    expect(screen.getByText('YouTube preview is not ready yet')).toBeInTheDocument()
+    expect(screen.queryByTitle('Live preview')).not.toBeInTheDocument()
+  })
+
+  it('keeps only one preview open at a time', () => {
+    renderList([
+      createStream({ id: 'stream-a', name: 'First stream', status: 'running', provider_video_id: 'aaa111' }),
+      createStream({ id: 'stream-b', name: 'Second stream', status: 'running', provider_video_id: 'bbb222' }),
+    ])
+
+    fireEvent.click(screen.getByText('First stream'))
+    expect(screen.getByTitle('Live preview')).toHaveAttribute('src', expect.stringContaining('aaa111'))
+
+    fireEvent.click(screen.getByText('Second stream'))
+    expect(screen.getByTitle('Live preview')).toHaveAttribute('src', expect.stringContaining('bbb222'))
+    expect(screen.queryByText('First stream')).toBeInTheDocument()
+  })
+
+  it('does not toggle preview when stop is clicked', () => {
+    const onStopStream = jest.fn()
+    renderList(
+      [
+        createStream({
+          id: 'stream-stop',
+          name: 'Stop stream',
+          status: 'running',
+          provider_video_id: 'abc123xyz',
+        }),
+      ],
+      { onStopStream },
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+
+    expect(onStopStream).toHaveBeenCalledWith('stream-stop')
+    expect(screen.queryByTitle('Live preview')).not.toBeInTheDocument()
   })
 })
