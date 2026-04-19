@@ -73,3 +73,26 @@ async def test_get_db_context_commits_by_default_and_closes(monkeypatch):
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
     session.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_db_context_can_disable_commit_on_success(monkeypatch):
+    from app.core import database
+
+    events = []
+    session = AsyncMock()
+    session.commit = AsyncMock(side_effect=lambda: events.append("commit"))
+    session.rollback = AsyncMock(side_effect=lambda: events.append("rollback"))
+    session.close = AsyncMock(side_effect=lambda: events.append("close"))
+    monkeypatch.setattr(
+        database, "async_session_maker", _build_session_factory(session, events)
+    )
+
+    async with database.get_db_context(commit_on_success=False) as managed_session:
+        assert managed_session is session
+        events.append("body")
+
+    assert events == ["session_factory_enter", "body", "close", "session_factory_exit"]
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
+    session.close.assert_awaited_once()
