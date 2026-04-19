@@ -1802,7 +1802,17 @@
     color: #fff;
     font-weight: 600;
     font-size: 13px;
+    justify-content: flex-start;
     transition: background .15s, transform .1s;
+  }
+  .dashboard-v2 .nav-go-live.is-collapsed {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .dashboard-v2 .nav-go-live .nav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .dashboard-v2 .nav-go-live:hover { background: var(--indigo-dk); transform: translateY(-1px); }
 

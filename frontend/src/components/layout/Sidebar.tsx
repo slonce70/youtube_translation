@@ -1,6 +1,7 @@
 'use client'
 /* eslint-disable i18next/no-literal-string */
 
+import { ChevronLeft, ChevronRight, Radio } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -37,8 +38,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <nav className="sidebar">
       <div className="nav-group">
-        <Link href="/dashboard/streaming?new=1" className="nav-go-live">
-          <span className="nav-icon">🎙️</span>
+        <Link href="/dashboard/streaming?new=1" className={cn('nav-go-live', collapsed && 'is-collapsed')}>
+          <span className="nav-icon" aria-hidden="true">
+            <Radio className="h-5 w-5" />
+          </span>
           <span className="nav-txt">Почати трансляцію</span>
         </Link>
 
@@ -56,7 +59,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       <div className="sidebar-bottom">
         <button type="button" className="collapse-btn" onClick={onToggle}>
-          <span className="nav-icon">{collapsed ? '▶' : '◀'}</span>
+          <span className="nav-icon" aria-hidden="true">
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </span>
           <span className="nav-txt">Згорнути</span>
         </button>
       </div>
