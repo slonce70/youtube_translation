@@ -18,6 +18,7 @@ import { format } from 'date-fns'
 
 import { api, ApiError } from '@/lib/api'
 import { formatBytes, formatDuration, isValidUUID } from '@/lib/utils'
+import { resolveTusEndpoint } from '@/lib/tusd'
 import { LoadingState } from '@/components/LoadingState'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -190,10 +191,7 @@ export default function LibraryPage() {
   }, [assetSort])
 
   // Uppy configuration
-  const tusEndpoint = useMemo(() => {
-    const base = process.env.NEXT_PUBLIC_TUSD_URL || ''
-    return `${base.replace(/\/$/, '')}/files/`
-  }, [])
+  const tusEndpoint = useMemo(() => resolveTusEndpoint(process.env.NEXT_PUBLIC_TUSD_URL), [])
 
   const [uppy] = useState(() =>
     new Uppy<Record<string, string>, Record<string, any>>({

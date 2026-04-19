@@ -166,6 +166,9 @@ make verify-v0
 - frontend/.env.local: `NEXT_PUBLIC_DEV_BYPASS_AUTH=1`
 - Для smoke/e2e це рекомендований локальний шлях за замовчуванням
 
+Для tusd uploads у фронтенді задавайте `NEXT_PUBLIC_TUSD_URL` на origin tusd, наприклад `http://localhost:1080`.
+Фронтенд сам додає `/files/` рівно один раз, тож у змінну не треба вписувати suffix вручну.
+
 ### Безпека
 | Змінна | Призначення | Генерація |
 |--------|-------------|-----------|
