@@ -7,9 +7,9 @@ import {
 
 describe('streaming page module', () => {
   it('still exports the route component after mutation hook extraction', async () => {
-    const module = await import('../page')
+    const pageModule = await import('../page')
 
-    expect(typeof module.default).toBe('function')
+    expect(typeof pageModule.default).toBe('function')
   })
 })
 

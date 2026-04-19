@@ -159,9 +159,7 @@ async def write_logs_to_file(
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         max_bytes = max(int(getattr(settings, "stream_log_max_bytes", 0) or 0), 0)
-        max_backups = max(
-            int(getattr(settings, "stream_log_max_backups", 0) or 0), 0
-        )
+        max_backups = max(int(getattr(settings, "stream_log_max_backups", 0) or 0), 0)
         bytes_written = log_file.stat().st_size if log_file.exists() else 0
 
         async def _open_log():

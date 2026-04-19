@@ -80,8 +80,7 @@ def _has_remote_output_reset_evidence(recent_errors: List[str]) -> bool:
     for line in recent_errors:
         lowered = str(line).lower()
         if any(
-            marker in lowered
-            for marker in runtime_signals.REMOTE_OUTPUT_RESET_MARKERS
+            marker in lowered for marker in runtime_signals.REMOTE_OUTPUT_RESET_MARKERS
         ):
             return True
     return False

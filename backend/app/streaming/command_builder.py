@@ -71,7 +71,9 @@ def build_tee_destination(uri: str, *, settings_module: Optional[Any] = None) ->
     )
     queue_size = max(int(getattr(settings_obj, "ffmpeg_output_fifo_queue_size", 1)), 1)
     drop_pkts_on_overflow = (
-        "1" if bool(getattr(settings_obj, "ffmpeg_output_drop_pkts_on_overflow", False)) else "0"
+        "1"
+        if bool(getattr(settings_obj, "ffmpeg_output_drop_pkts_on_overflow", False))
+        else "0"
     )
     target_uri = apply_output_transport_options(uri, settings_module=settings_obj)
     return (
@@ -84,13 +86,14 @@ def build_tee_destination(uri: str, *, settings_module: Optional[Any] = None) ->
         "restart_with_keyframe=1:"
         f"drop_pkts_on_overflow={drop_pkts_on_overflow}:"
         f"queue_size={queue_size}:"
-        f"max_recovery_attempts={max_recovery_attempts}]"
-        + target_uri
+        f"max_recovery_attempts={max_recovery_attempts}]" + target_uri
     )
 
 
 def build_destination_output_args(
-    normalized_destinations: List[Dict[str, str]], *, settings_module: Optional[Any] = None
+    normalized_destinations: List[Dict[str, str]],
+    *,
+    settings_module: Optional[Any] = None,
 ) -> FFmpegDestinationOutputArgs:
     settings_obj = _resolve_settings(settings_module)
 
@@ -104,7 +107,9 @@ def build_destination_output_args(
         max_recovery_attempts = max(
             int(getattr(settings_obj, "ffmpeg_output_recovery_max_attempts", 0)), 0
         )
-        queue_size = max(int(getattr(settings_obj, "ffmpeg_output_fifo_queue_size", 1)), 1)
+        queue_size = max(
+            int(getattr(settings_obj, "ffmpeg_output_fifo_queue_size", 1)), 1
+        )
         command = [
             "-f",
             "fifo",
@@ -119,9 +124,13 @@ def build_destination_output_args(
             "-restart_with_keyframe",
             "1",
             "-drop_pkts_on_overflow",
-            "1"
-            if bool(getattr(settings_obj, "ffmpeg_output_drop_pkts_on_overflow", False))
-            else "0",
+            (
+                "1"
+                if bool(
+                    getattr(settings_obj, "ffmpeg_output_drop_pkts_on_overflow", False)
+                )
+                else "0"
+            ),
             "-queue_size",
             str(queue_size),
             "-max_recovery_attempts",
