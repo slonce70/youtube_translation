@@ -73,6 +73,14 @@ cd frontend && npm run test:e2e
 make verify-v0
 ```
 
+Якщо canonical Compose path недоступний, бо `127.0.0.1:5432` / `127.0.0.1:6379` уже зайняті свідомо піднятим host `postgres` / `redis`, існує окремий explicit fallback:
+
+```bash
+make verify-v0-localdb
+```
+
+Цей target повторює той самий frontend/static-analysis bar, але для backend використовує `make test-backend-localdb`. Він не замінює canonical release gate і не повинен тихо підміняти `make verify-v0`.
+
 ## Поточний baseline
 
 | Surface | Що має бути перевірено | Автоматичний baseline | Додатково перед release |
@@ -131,6 +139,12 @@ make test
 
 ```bash
 make verify-v0
+```
+
+Для локального аудиту на машині з host-owned `postgres` / `redis` використовуйте лише явний fallback:
+
+```bash
+make verify-v0-localdb
 ```
 
 Після automated gate обов'язковий ручний rehearsal:
