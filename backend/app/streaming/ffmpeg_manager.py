@@ -4,7 +4,7 @@ import logging
 import re
 import signal
 import shutil
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 from collections import deque
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -21,6 +21,10 @@ from app.core.metrics import track_stream_error, track_stream_start, track_strea
 from app.core.observability import capture_alert
 from app.core.quota import QuotaEnforcer
 from app.models.database import Stream, SystemAlert
+from app.streaming.command_builder import (
+    build_destination_output_args,
+    normalize_destinations,
+)
 from app.streaming.hot_swap import hot_swap_manager
 from app.streaming.playlist_builder import PlaylistFileSet
 
@@ -178,64 +182,9 @@ def _build_stream_failure_message(returncode: int, recent_errors: List[str]) -> 
     return base_message[:500]
 
 
-def _build_tee_destination(uri: str) -> str:
-    tee_fail_policy = settings.ffmpeg_tee_onfail_policy
-    max_recovery_attempts = max(int(settings.ffmpeg_output_recovery_max_attempts), 0)
-    queue_size = max(int(settings.ffmpeg_output_fifo_queue_size), 1)
-    drop_pkts_on_overflow = (
-        "1" if bool(settings.ffmpeg_output_drop_pkts_on_overflow) else "0"
-    )
-    target_uri = _apply_output_transport_options(uri)
-    # FFmpeg's fifo muxer is explicitly recommended for network outputs when
-    # temporary failures should be recovered transparently; see ffmpeg-formats
-    # "fifo" muxer docs (attempt_recovery / recovery_wait_time).
-    return (
-        "[select='v\\:0,a\\:0':"
-        f"onfail={tee_fail_policy}:"
-        "f=fifo:fifo_format=flv:"
-        "attempt_recovery=1:"
-        "recovery_wait_time=5:"
-        "recover_any_error=1:"
-        "restart_with_keyframe=1:"
-        f"drop_pkts_on_overflow={drop_pkts_on_overflow}:"
-        f"queue_size={queue_size}:"
-        f"max_recovery_attempts={max_recovery_attempts}]" + target_uri
-    )
-
-
 def _line_matches_markers(line: str, markers: Tuple[str, ...]) -> bool:
     lowered = line.lower()
     return any(marker in lowered for marker in markers)
-
-
-def _apply_output_transport_options(uri: str) -> str:
-    try:
-        parts = urlsplit(uri)
-    except Exception:
-        return uri
-
-    if parts.scheme.lower() not in {"rtmp", "rtmps"}:
-        return uri
-
-    query_pairs = parse_qsl(parts.query, keep_blank_values=True)
-    query = dict(query_pairs)
-
-    if bool(settings.ffmpeg_output_tcp_keepalive):
-        query.setdefault("tcp_keepalive", "1")
-
-    rw_timeout = max(int(settings.ffmpeg_output_rw_timeout_us), 0)
-    if rw_timeout > 0:
-        query.setdefault("rw_timeout", str(rw_timeout))
-
-    return urlunsplit(
-        (
-            parts.scheme,
-            parts.netloc,
-            parts.path,
-            urlencode(query, doseq=True),
-            parts.fragment,
-        )
-    )
 
 
 def _normalize_runtime_signal_state(
@@ -742,16 +691,7 @@ class FFmpegStreamManager:
     ) -> FFmpegCommandPlan:
         """Build FFmpeg command for streaming across supported modes."""
 
-        normalized_destinations: List[Dict[str, str]] = []
-        for dest in destinations:
-            base_url = str(dest.get("url") or "").rstrip("/")
-            stream_key = str(dest.get("key") or "").strip()
-            if not base_url:
-                normalized_destinations.append({"uri": stream_key})
-            else:
-                normalized_destinations.append({"uri": f"{base_url}/{stream_key}"})
-
-        multi_destination = len(normalized_destinations) > 1
+        normalized_destinations = normalize_destinations(destinations)
 
         copy_video = (
             playlists.video_playlist is not None
@@ -976,51 +916,11 @@ class FFmpegStreamManager:
             )
         audio_bitrate_value = audio_bitrate if not copy_audio else None
 
-        if len(normalized_destinations) == 1:
-            target = _apply_output_transport_options(normalized_destinations[0]["uri"])
-            max_recovery_attempts = max(
-                int(settings.ffmpeg_output_recovery_max_attempts), 0
-            )
-            queue_size = max(int(settings.ffmpeg_output_fifo_queue_size), 1)
-            # Even a single RTMP(S) destination benefits from fifo-based recovery,
-            # otherwise a transient remote disconnect immediately tears down the
-            # FFmpeg process.
-            cmd.extend(
-                [
-                    "-f",
-                    "fifo",
-                    "-fifo_format",
-                    "flv",
-                    "-attempt_recovery",
-                    "1",
-                    "-recovery_wait_time",
-                    "5",
-                    "-recover_any_error",
-                    "1",
-                    "-restart_with_keyframe",
-                    "1",
-                    "-drop_pkts_on_overflow",
-                    "1" if bool(settings.ffmpeg_output_drop_pkts_on_overflow) else "0",
-                    "-queue_size",
-                    str(queue_size),
-                    "-max_recovery_attempts",
-                    str(max_recovery_attempts),
-                    target,
-                ]
-            )
-            destination_uris = [target]
-            tee_onfail_policy = None
-        else:
-            tee_outputs = []
-            destination_uris = []
-            for dest in normalized_destinations:
-                uri = dest["uri"]
-                target_uri = _apply_output_transport_options(uri)
-                destination_uris.append(target_uri)
-                tee_outputs.append(_build_tee_destination(uri))
-
-            cmd.extend(["-f", "tee", "|".join(tee_outputs)])
-            tee_onfail_policy = settings.ffmpeg_tee_onfail_policy
+        output_args = build_destination_output_args(normalized_destinations)
+        cmd.extend(output_args.command)
+        destination_uris = output_args.destination_uris
+        tee_onfail_policy = output_args.tee_onfail_policy
+        multi_destination = output_args.multi_destination
 
         return FFmpegCommandPlan(
             command=cmd,
