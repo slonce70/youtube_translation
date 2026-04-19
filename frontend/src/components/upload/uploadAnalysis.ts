@@ -1,5 +1,3 @@
-'use client'
-
 import {
   matchBitrateRecommendation,
 } from '@/lib/videoRecommendations'

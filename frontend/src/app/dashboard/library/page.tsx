@@ -1069,14 +1069,16 @@ export default function LibraryPage() {
       ) : null}
 
       {/* Upload Modal */}
-      <LazyUploadModal
-        isOpen={isUploadOpen}
-        onClose={closeUploadModal}
-        uppy={uppy}
-        isProcessingUpload={isProcessingUpload}
-        uploadStatusOverrides={uploadStatusOverrides}
-        folders={folders}
-      />
+      {isUploadOpen ? (
+        <LazyUploadModal
+          isOpen={isUploadOpen}
+          onClose={closeUploadModal}
+          uppy={uppy}
+          isProcessingUpload={isProcessingUpload}
+          uploadStatusOverrides={uploadStatusOverrides}
+          folders={folders}
+        />
+      ) : null}
 
       <MoveAssetsModal
         assets={moveModalAssets}

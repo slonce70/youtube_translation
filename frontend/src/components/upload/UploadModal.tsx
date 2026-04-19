@@ -252,28 +252,30 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
   }, [folders])
 
   useEffect(() => {
-    if (!mediaInfoPromiseRef.current) {
-      mediaInfoPromiseRef.current = MediaInfoFactory({
-        format: 'JSON',
-        locateFile: (path) => {
-          if (path.endsWith('.wasm')) {
-            return mediaInfoWasmUrl
-          }
-          return path
-        },
-      })
-      mediaInfoPromiseRef.current
-        .then((instance) => {
-          mediaInfoRef.current = instance
-        })
-        .catch((error) => {
-          logger.error('Failed to initialise MediaInfo', error, { component: 'UploadModal' })
-          if (isMountedRef.current) {
-            setMediaInfoError(t('errors.metadataHelper'))
-          }
-        })
+    if (!isOpen || mediaInfoPromiseRef.current) {
+      return
     }
-  }, [t])
+
+    mediaInfoPromiseRef.current = MediaInfoFactory({
+      format: 'JSON',
+      locateFile: (path) => {
+        if (path.endsWith('.wasm')) {
+          return mediaInfoWasmUrl
+        }
+        return path
+      },
+    })
+    mediaInfoPromiseRef.current
+      .then((instance) => {
+        mediaInfoRef.current = instance
+      })
+      .catch((error) => {
+        logger.error('Failed to initialise MediaInfo', error, { component: 'UploadModal' })
+        if (isMountedRef.current) {
+          setMediaInfoError(t('errors.metadataHelper'))
+        }
+      })
+  }, [isOpen, t])
 
   const analyzeFile = useCallback(
     (file: DashboardFile, assetKindHint: 'video' | 'audio' = 'video') => {
@@ -391,6 +393,10 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
   )
 
   useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
     const handleFileAdded = (file: DashboardFile) => {
       const fileKind = file.meta?.asset_type === 'audio' ? 'audio' : 'video'
       setUploadItems((items) => {
@@ -501,6 +507,9 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
     uppy.on('upload-success', handleUploadSuccess)
     uppy.on('upload-error', handleUploadError)
     uppy.on('complete', handleComplete)
+    uppy.getFiles().forEach((file) => {
+      handleFileAdded(file as DashboardFile)
+    })
 
     return () => {
       uppy.off('file-added', handleFileAdded)
@@ -510,7 +519,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
       uppy.off('upload-error', handleUploadError)
       uppy.off('complete', handleComplete)
     }
-  }, [uppy, analyzeFile])
+  }, [isOpen, uppy, analyzeFile])
 
   useEffect(() => {
     if (!uploadStatusOverrides || Object.keys(uploadStatusOverrides).length === 0) {
