@@ -162,10 +162,10 @@
       },
       "preview": {
         "title": "Предпросмотр",
-        "badge": "YouTube preview",
+        "badge": "Предпросмотр YouTube",
         "latencyHint": "Предпросмотр может отставать от эфира на несколько секунд",
-        "pendingTitle": "YouTube preview ещё не готов",
-        "pendingDescription": "Стрим уже может идти, но YouTube ещё не отдал video link."
+        "pendingTitle": "Предпросмотр YouTube ещё не готов",
+        "pendingDescription": "Стрим уже может идти, но YouTube ещё не отдал ссылку на видео."
       },
       "form": {
         "title": "Создать трансляцию",

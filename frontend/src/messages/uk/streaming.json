@@ -162,10 +162,10 @@
       },
       "preview": {
         "title": "Попередній перегляд",
-        "badge": "YouTube preview",
+        "badge": "Попередній перегляд YouTube",
         "latencyHint": "Попередній перегляд може відставати від ефіру на кілька секунд",
-        "pendingTitle": "YouTube preview ще не готовий",
-        "pendingDescription": "Стрім уже може бути в ефірі, але YouTube ще не віддав video link."
+        "pendingTitle": "Попередній перегляд YouTube ще не готовий",
+        "pendingDescription": "Стрім уже може бути в ефірі, але YouTube ще не надав посилання на відео."
       },
       "form": {
         "title": "Створити трансляцію",
