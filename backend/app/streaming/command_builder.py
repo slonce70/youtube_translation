@@ -94,6 +94,9 @@ def build_destination_output_args(
 ) -> FFmpegDestinationOutputArgs:
     settings_obj = _resolve_settings(settings_module)
 
+    if not normalized_destinations:
+        raise ValueError("At least one destination is required")
+
     if len(normalized_destinations) == 1:
         target = apply_output_transport_options(
             normalized_destinations[0]["uri"], settings_module=settings_obj
