@@ -160,6 +160,13 @@
         "lastFailure": "Последний сбой {value}",
         "exhausted": "Лимит автоперезапусков исчерпан после {count} попыток"
       },
+      "preview": {
+        "title": "Предпросмотр",
+        "badge": "YouTube preview",
+        "latencyHint": "Предпросмотр может отставать от эфира на несколько секунд",
+        "pendingTitle": "YouTube preview ещё не готов",
+        "pendingDescription": "Стрим уже может идти, но YouTube ещё не отдал video link."
+      },
       "form": {
         "title": "Создать трансляцию",
         "nameLabel": "Название трансляции",
