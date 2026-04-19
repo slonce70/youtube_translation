@@ -14,6 +14,7 @@ from sqlalchemy import select, text
 from app.core.config import settings
 from app.core.database import async_session_maker
 from app.models.database import Stream, StreamEvent, SystemAlert, UserProfile
+from app.streaming import process_support
 from app.streaming.ffmpeg_manager import FFmpegStreamManager
 from app.streaming.hot_swap import hot_swap_manager
 from app.streaming.playlist_builder import PlaylistFileSet
@@ -30,6 +31,82 @@ class _FakeStreamReader:
 class _FakeProcess:
     def __init__(self, lines):
         self.stderr = _FakeStreamReader(lines)
+
+
+class _QuotaProcess:
+    def __init__(self):
+        self.returncode = None
+        self.send_signal = MagicMock()
+
+
+@pytest.mark.asyncio
+async def test_process_support_writes_logs_and_triggers_runtime_health_callback(
+    tmp_path, monkeypatch
+):
+    log_file = tmp_path / "stream.log"
+    stream_info = {
+        "stream-1": {
+            "recent_errors": deque(maxlen=20),
+            "runtime_signal_state": {},
+        }
+    }
+    process = _FakeProcess(["Connection reset by peer", "Recovery successful"])
+    callback = AsyncMock()
+
+    monkeypatch.setattr(settings, "stream_log_max_bytes", 1)
+    monkeypatch.setattr(settings, "stream_log_max_backups", 1)
+
+    await process_support.write_logs_to_file(
+        stream_id="stream-1",
+        process=process,
+        log_file=log_file,
+        stream_info=stream_info,
+        record_runtime_log_health=callback,
+    )
+
+    assert callback.await_count == 2
+    assert callback.await_args_list[0].args == ("stream-1", "Connection reset by peer")
+    assert callback.await_args_list[1].args == ("stream-1", "Recovery successful")
+    assert stream_info["stream-1"]["recent_errors"] == deque(
+        ["Connection reset by peer", "Recovery successful"], maxlen=20
+    )
+    assert log_file.exists()
+    assert log_file.with_suffix(".log.1").exists()
+    assert "Recovery successful" in log_file.read_text(encoding="utf-8")
+    assert "Connection reset by peer" in log_file.with_suffix(".log.1").read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_support_enforces_quota_and_marks_stream_for_stop(
+    monkeypatch,
+):
+    stream_id = "quota-stream"
+    user_id = uuid4()
+    process = _QuotaProcess()
+    stream_info = {
+        stream_id: {"metadata": {"user_id": str(user_id)}},
+    }
+    usage = {
+        "limit_seconds": 10,
+        "used_seconds": 10,
+        "remaining_seconds": 0,
+        "limit_hours": 1,
+        "tier": "free",
+    }
+
+    await process_support.enforce_runtime_limit(
+        stream_id=stream_id,
+        process=process,
+        stream_info=stream_info,
+        fetch_daily_usage=AsyncMock(return_value=usage),
+    )
+
+    assert stream_info[stream_id]["manual_stop"] is True
+    assert stream_info[stream_id]["quota_stop"]["limit_seconds"] == 10
+    assert stream_info[stream_id]["quota_stop"]["tier"] == "free"
+    process.send_signal.assert_called_once_with(signal.SIGINT)
 
 
 async def _create_owned_stream_record(*, user_id, stream_id, log_file, name, email_prefix):
