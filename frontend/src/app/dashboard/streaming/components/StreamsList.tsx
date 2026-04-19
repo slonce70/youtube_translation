@@ -32,7 +32,7 @@ import type {
 } from '@/lib/types'
 import { StreamPreviewPanel } from './StreamPreviewPanel'
 import {
-  getStreamPreviewEmbedUrl,
+  buildYouTubeEmbedUrl,
   getStreamPreviewState,
 } from '../preview'
 
@@ -257,7 +257,6 @@ export function StreamsList({
                       const isDeletePending = pendingDeleteStreamId === stream.id
                       const isRowPending = isStartPending || isStopPending || isDeletePending
                       const previewState = getStreamPreviewState(stream)
-                      const previewEmbedUrl = getStreamPreviewEmbedUrl(stream)
                       const isPreviewOpen = openPreviewStreamId === stream.id
                       const canTogglePreview = previewState.kind !== 'unavailable'
                       const totalDurationLabel =
@@ -497,7 +496,7 @@ export function StreamsList({
                                 latencyHint={t('streams.preview.latencyHint')}
                                 pendingTitle={t('streams.preview.pendingTitle')}
                                 pendingDescription={t('streams.preview.pendingDescription')}
-                                embedUrl={previewEmbedUrl}
+                                embedUrl={buildYouTubeEmbedUrl(previewState.videoId)}
                                 state="ready"
                               />
                             </div>
