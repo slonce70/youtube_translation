@@ -85,7 +85,8 @@ async def _managed_session(commit_on_success: bool = True):
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency for getting database session.
-    Commits only on success, rolls back on error.
+    Does not commit on success; callers own persistence.
+    Rolls back on error and always closes the session.
 
     Usage in FastAPI:
         @app.get("/items")
@@ -100,7 +101,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def get_db_context(commit_on_success: bool = True):
     """
     Context manager for database session.
-    Commits only on success, rolls back on error.
+    Commits on success by default, rolls back on error,
+    and allows commit behavior to be overridden.
 
     Usage:
         async with get_db_context() as db:
