@@ -532,19 +532,19 @@ class TestStreamMixModeConstraint:
 
 
 class TestRLSPolicies:
-    """Test the schema seams that stand in for row-scoped access control."""
+    """Test schema seams that back row-scoped access control."""
     
     @pytest.mark.asyncio
-    async def test_user_can_only_see_own_assets(self, db: AsyncSession):
-        """Assets should remain keyed to user_profiles via user_id."""
+    async def test_assets_user_scope_schema_seams_exist(self, db: AsyncSession):
+        """Assets keep the user-scoping columns and foreign keys we rely on."""
         await _require_table(db, "assets")
         await _require_column(db, "assets", "user_id")
         assert await _has_foreign_key(db, "assets", "user_id", "user_profiles")
         assert "project_id" not in Asset.__table__.columns.keys()
     
     @pytest.mark.asyncio
-    async def test_admin_policies_exist(self, db: AsyncSession):
-        """Admin-facing tables should link back to user_profiles."""
+    async def test_admin_tables_keep_user_link_schema_seams(self, db: AsyncSession):
+        """Admin-facing tables keep the user/admin foreign-key seams we depend on."""
         await _require_table(db, "admin_actions")
         await _require_table(db, "system_alerts")
         assert await _has_foreign_key(

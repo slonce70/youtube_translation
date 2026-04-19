@@ -18,6 +18,11 @@ from app.models.database import (
     SystemAlert, Stream, Asset
 )
 
+pytest.skip(
+    "Legacy admin database sandbox tests remain opt-in; route coverage lives in test_admin_api_routes.py",
+    allow_module_level=True,
+)
+
 
 @pytest.fixture
 async def api_client():
