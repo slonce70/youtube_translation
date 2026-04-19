@@ -1,6 +1,8 @@
 # systemd для Linux production
 
-`systemd` у цьому проєкті призначений для Linux/VPS production-сценарію. Це не канонічний локальний bootstrap path.
+`systemd` у цьому проєкті призначений для Linux/VPS production-сценарію. Це не канонічний локальний bootstrap path і не обов'язковий фінальний MVP gate.
+
+Вважайте цей документ post-MVP rollout runbook для host-native production hardening.
 
 Важливо: цей шлях розрахований на host-native control plane. Якщо backend сам працює в контейнері, комбінація `STREAM_RUNTIME_MODE=systemd` для `staging`/`production` тепер fail-closed блокується конфіг-валідатором без явного `ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=true`, доки не буде окремо впроваджено і задокументовано підтриманий host-level control path.
 

@@ -2,6 +2,8 @@
 
 Цей список допоможе підготуватися до першої трансляції, щоб старт був стабільним і без помилок.
 
+Для фінального MVP саме цей single-node, single-destination rehearsal є launch bar. `systemd` hardening і multi-destination readiness існують окремо як post-MVP rollout lanes.
+
 ## Визначення "першого успішного стріму"
 
 Перший локально успішний стрім у цьому проєкті означає:
@@ -68,8 +70,12 @@
 - Слідкуйте за статусом і залишком денного ліміту.
 - У разі помилки перевірте лог‑панель та повідомлення системи.
 
-## 8) Multi-destination rehearsal
-- Для першого публічного запуску вважайте multi-destination окремим rehearsal gate, а не автоматично “готовою” можливістю.
+## 8) Post-MVP multi-destination rehearsal
+- Для post-MVP публічного запуску вважайте multi-destination окремим rehearsal gate, а не автоматично “готовою” можливістю.
 - Рекомендований дефолт: `FFMPEG_TEE_ONFAIL_POLICY=ignore`.
 - Якщо один destination падає, перевірте, що інші продовжують ефір, а degraded destination видно в логах.
 - Не запускайте публічний multi-destination сценарій без окремої перевірки цього кейсу на своїх RTMPS endpoints.
+
+## 9) Post-MVP systemd rollout
+- Host-native `systemd` path для Linux production не є частиною фінального MVP gate.
+- Якщо переходите до нього після MVP, використовуйте `docs/operations/systemd.md` як окремий rollout runbook.
