@@ -180,10 +180,18 @@ class StreamControlService:
                 previous_stopped_at = stream.stopped_at
                 previous_error_message = stream.error_message
                 previous_log_path = stream.log_path
+                previous_scheduled_start_enabled = stream.scheduled_start_enabled
+                previous_scheduled_start_time = stream.scheduled_start_time
+                previous_scheduled_start_attempted_at = (
+                    stream.scheduled_start_attempted_at
+                )
                 stream.status = "starting"
+                stream.started_at = None
                 stream.stopped_at = None
                 stream.error_message = None
                 stream.log_path = str(log_file)
+                if not preserve_schedule:
+                    self._clear_start_schedule(stream)
                 await self.db.commit()
                 try:
                     await systemd_start_unit(stream_id)
@@ -193,21 +201,16 @@ class StreamControlService:
                     stream.stopped_at = previous_stopped_at
                     stream.error_message = previous_error_message
                     stream.log_path = previous_log_path
+                    stream.scheduled_start_enabled = previous_scheduled_start_enabled
+                    stream.scheduled_start_time = previous_scheduled_start_time
+                    stream.scheduled_start_attempted_at = (
+                        previous_scheduled_start_attempted_at
+                    )
                     await self.db.commit()
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail=str(err),
                     ) from err
-                stream = await self._get_stream_basic_for_update(stream_id)
-                if stream.status != "running":
-                    stream.status = "starting"
-                    stream.started_at = None
-                stream.stopped_at = None
-                stream.error_message = None
-                stream.log_path = str(log_file)
-                if not preserve_schedule:
-                    self._clear_start_schedule(stream)
-                await self.db.commit()
                 usage = await self._get_usage_snapshot(enforcer)
                 return self._status_payload(
                     stream,

@@ -5,6 +5,14 @@ import {
   summarizeStreamLogIncidents,
 } from '@/lib/stream-state'
 
+describe('streaming page module', () => {
+  it('still exports the route component after mutation hook extraction', async () => {
+    const pageModule = await import('../page')
+
+    expect(typeof pageModule.default).toBe('function')
+  })
+})
+
 describe('streaming page incident helpers', () => {
   it('builds a degraded incident notice for running provider-health issues', () => {
     const summary = summarizeRuntimeIncidentState({

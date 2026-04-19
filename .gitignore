@@ -93,3 +93,4 @@ FIXES_*.md
 # Local agent/runtime artifacts
 .omx/
 .playwright-mcp/
+.worktrees/

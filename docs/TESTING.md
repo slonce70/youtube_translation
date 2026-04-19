@@ -73,17 +73,26 @@ cd frontend && npm run test:e2e
 make verify-v0
 ```
 
+Якщо canonical Compose path недоступний, бо `127.0.0.1:5432` / `127.0.0.1:6379` уже зайняті свідомо піднятим host `postgres` / `redis`, існує окремий explicit fallback:
+
+```bash
+make verify-v0-localdb
+```
+
+Цей target повторює той самий frontend/static-analysis bar, але для backend використовує `make test-backend-localdb`. Він не замінює canonical release gate і не повинен тихо підміняти `make verify-v0`.
+
 ## Поточний baseline
 
 | Surface | Що має бути перевірено | Автоматичний baseline | Додатково перед release |
 | --- | --- | --- | --- |
 | Backend auth | login/logout/current-user, multi-tenant scoping, quota auth binding | `backend/tests/test_auth_api.py`, `backend/tests/test_auth_multitenancy.py` | один manual прогін реального Supabase auth path без DEV bypass |
 | Backend assets | list/filter/delete/download/optimization, asset typing, folder routing, storage seam resolution | `backend/tests/test_assets_api.py`, `backend/tests/test_assets_helpers.py`, `backend/tests/test_asset_storage.py` | manual upload + delete flow у локальному UI |
+| Backend admin | admin access, route alias normalization, admin-only guardrails on key routes | `backend/tests/test_admin_api_routes.py` | manual sanity check адмін-панелі після auth |
 | Backend streaming | playlist validation, live edit, hot swap, scheduler, runtime stop/restart, FFmpeg negative paths, storage-backed asset payload resolution | `backend/tests/test_playlist_builder.py`, `backend/tests/test_playlist_storage_resolution.py`, `backend/tests/test_stream_asset_payload.py`, `backend/tests/test_stream_live_edit.py`, `backend/tests/test_hot_swap.py`, `backend/tests/test_stream_scheduler.py`, `backend/tests/test_stream_schedule_update.py`, `backend/tests/test_ffmpeg_manager.py`, `backend/tests/test_stream_reconciler.py` | rehearsal одного реального локального стріму за `docs/operations/first_stream_checklist.md` |
 | Backend security/runtime | encryption, rate limit, websocket middleware, health/startup | `backend/tests/test_security.py`, `backend/tests/test_rate_limiter.py`, `backend/tests/test_websocket_safe_csrf.py`, `backend/tests/test_main.py` | перевірка `/health` і логів під час rehearsal |
 | Frontend app shell | dashboard bootstrap, admin page, локалізація, API auth wrapper | `frontend/src/app/dashboard/__tests__/page.test.tsx`, `frontend/src/app/admin/__tests__/page.test.tsx`, `frontend/src/components/__tests__/localization-smoke.test.tsx`, `frontend/src/lib/__tests__/*` | ручна перевірка DEV auth та real auth path |
-| Frontend library/upload | asset cards, asset display rules, upload modal/token flow | `frontend/src/components/library/__tests__/AssetCard.test.tsx`, `frontend/src/app/dashboard/library/__tests__/*`, `frontend/e2e/dashboard-flows.spec.ts` | manual upload через tusd з оновленням списку файлів |
-| Frontend streaming UX | builder helpers, schedule utils, start/stop/live edit | `frontend/src/app/dashboard/streaming/__tests__/*`, `frontend/e2e/dashboard-flows.spec.ts` | manual stream start/stop з перевіркою статусу і логів |
+| Frontend library/upload | asset cards, asset display rules, lazy-loaded upload modal/token flow, `frontend/src/lib/tusd.ts` endpoint normalization | `frontend/src/components/library/__tests__/AssetCard.test.tsx`, `frontend/src/app/dashboard/library/__tests__/*`, `frontend/src/lib/__tests__/tusd.test.ts`, `frontend/e2e/dashboard-flows.spec.ts` | manual upload через tusd origin з оновленням списку файлів |
+| Frontend streaming UX | extracted builder helpers, log audit, platform detection, schedule utils, start/stop/live edit | `frontend/src/app/dashboard/streaming/__tests__/*`, `frontend/e2e/dashboard-flows.spec.ts` | manual stream start/stop з перевіркою статусу і логів |
 
 Для стабілізаційного tranche canonical gate = `make verify-v0`, а для точкового аудиту/static-analysis використовуйте явні команди:
 
@@ -132,6 +141,12 @@ make test
 make verify-v0
 ```
 
+Для локального аудиту на машині з host-owned `postgres` / `redis` використовуйте лише явний fallback:
+
+```bash
+make verify-v0-localdb
+```
+
 Після automated gate обов'язковий ручний rehearsal:
 
 1. `curl http://localhost:8000/health`
@@ -163,6 +178,8 @@ Frontend e2e (Playwright):
 cd frontend
 npm run test:e2e
 ```
+
+Для frontend e2e `NEXT_PUBLIC_TUSD_URL` має вказувати на origin tusd, наприклад `http://localhost:1080`; helper у `frontend/src/lib/tusd.ts` додає рівно один `/files/`. Library upload modal now loads lazily, so opening the modal is the point where the upload bundle is fetched.
 
 ## Нотатки
 

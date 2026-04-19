@@ -51,6 +51,38 @@ async def _require_column(db: AsyncSession, table_name: str, column_name: str) -
         )
 
 
+async def _has_foreign_key(
+    db: AsyncSession, table_name: str, column_name: str, referenced_table: str
+) -> bool:
+    """Return whether a table column has the expected foreign key target."""
+    result = await db.execute(
+        text(
+            """
+            SELECT 1
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage ccu
+              ON ccu.constraint_name = tc.constraint_name
+             AND ccu.table_schema = tc.table_schema
+            WHERE tc.table_schema = 'public'
+              AND tc.table_name = :table
+              AND tc.constraint_type = 'FOREIGN KEY'
+              AND kcu.column_name = :column
+              AND ccu.table_name = :referenced_table
+            LIMIT 1
+            """
+        ),
+        {
+            "table": table_name,
+            "column": column_name,
+            "referenced_table": referenced_table,
+        },
+    )
+    return result.scalar() is not None
+
+
 class TestUserProfilesMigration:
     """Test user_profiles table creation and triggers"""
     
@@ -500,20 +532,25 @@ class TestStreamMixModeConstraint:
 
 
 class TestRLSPolicies:
-    """Test Row Level Security policies"""
+    """Test schema seams that back row-scoped access control."""
     
     @pytest.mark.asyncio
-    async def test_user_can_only_see_own_assets(self, db: AsyncSession):
-        """Test RLS policy for assets"""
-        # This would need to be tested with actual auth context
-        # For now, just verify policies exist
-        pass
+    async def test_assets_user_scope_schema_seams_exist(self, db: AsyncSession):
+        """Assets keep the user-scoping columns and foreign keys we rely on."""
+        await _require_table(db, "assets")
+        await _require_column(db, "assets", "user_id")
+        assert await _has_foreign_key(db, "assets", "user_id", "user_profiles")
+        assert "project_id" not in Asset.__table__.columns.keys()
     
     @pytest.mark.asyncio
-    async def test_admin_policies_exist(self, db: AsyncSession):
-        """Test that admin-specific policies were created"""
-        # Query pg_policies to verify
-        pass
+    async def test_admin_tables_keep_user_link_schema_seams(self, db: AsyncSession):
+        """Admin-facing tables keep the user/admin foreign-key seams we depend on."""
+        await _require_table(db, "admin_actions")
+        await _require_table(db, "system_alerts")
+        assert await _has_foreign_key(
+            db, "admin_actions", "admin_user_id", "user_profiles"
+        )
+        assert await _has_foreign_key(db, "system_alerts", "resolved_by", "user_profiles")
 
 
 # Pytest fixtures

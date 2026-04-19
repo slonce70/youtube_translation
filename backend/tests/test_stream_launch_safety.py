@@ -577,6 +577,98 @@ async def test_systemd_start_keeps_stream_starting_until_runtime_confirms_launch
 
 
 @pytest.mark.asyncio
+async def test_systemd_start_does_not_depend_on_second_commit_to_clear_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
+    user_id, stream_id = await _create_stream_fixture(
+        tmp_path,
+        stream_status="scheduled",
+    )
+    log_file = tmp_path / "stream.log"
+    scheduled_start = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    async with async_session_maker() as seed_session:
+        stream = await seed_session.get(Stream, stream_id)
+        assert stream is not None
+        stream.started_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        stream.scheduled_start_enabled = True
+        stream.scheduled_start_time = scheduled_start
+        await seed_session.commit()
+
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
+
+    async def fake_enrich_streams(self, streams):
+        return None
+
+    async def fake_attach_runtime_incident_summaries(_db, _streams, manager=None):
+        return None
+
+    async def fake_validate(*args, **kwargs):
+        return None, None, log_file
+
+    async def fake_systemd_is_active(_stream_id):
+        return False
+
+    async def fake_systemd_unit_status(_stream_id):
+        return {}
+
+    async def fake_systemd_start_unit(_stream_id):
+        return None
+
+    monkeypatch.setattr(
+        streams_control.YoutubeProviderStatusService,
+        "enrich_streams",
+        fake_enrich_streams,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "attach_runtime_incident_summaries",
+        fake_attach_runtime_incident_summaries,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "validate_stream_launch_prerequisites",
+        fake_validate,
+    )
+    monkeypatch.setattr(streams_control, "systemd_is_active", fake_systemd_is_active)
+    monkeypatch.setattr(
+        streams_control, "systemd_unit_status", fake_systemd_unit_status
+    )
+    monkeypatch.setattr(streams_control, "systemd_start_unit", fake_systemd_start_unit)
+
+    async with async_session_maker() as session:
+        real_commit = session.commit
+        commit_calls = 0
+
+        async def fail_only_on_second_commit():
+            nonlocal commit_calls
+            commit_calls += 1
+            if commit_calls == 2:
+                raise RuntimeError("finalize commit failed")
+            await real_commit()
+
+        monkeypatch.setattr(session, "commit", fail_only_on_second_commit)
+
+        service = StreamControlService(session, user_id)
+        status_payload = await service.start_stream(stream_id)
+
+        stream = await session.get(Stream, stream_id)
+        assert stream is not None
+        assert stream.status == "starting"
+        assert stream.log_path == str(log_file)
+        assert stream.started_at is None
+        assert stream.scheduled_start_enabled is False
+        assert stream.scheduled_start_time is None
+
+    assert status_payload.is_running is False
+    assert status_payload.status == "starting"
+
+
+@pytest.mark.asyncio
 async def test_systemd_start_restores_stream_when_unit_launch_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -586,6 +678,19 @@ async def test_systemd_start_restores_stream_when_unit_launch_fails(
     )
     user_id, stream_id = await _create_stream_fixture(tmp_path)
     log_file = tmp_path / "stream.log"
+    previous_started_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    previous_scheduled_start = datetime.now(timezone.utc) + timedelta(minutes=20)
+    previous_scheduled_attempt = previous_scheduled_start - timedelta(minutes=5)
+
+    async with async_session_maker() as seed_session:
+        stream = await seed_session.get(Stream, stream_id)
+        assert stream is not None
+        stream.status = "scheduled"
+        stream.started_at = previous_started_at
+        stream.scheduled_start_enabled = True
+        stream.scheduled_start_time = previous_scheduled_start
+        stream.scheduled_start_attempted_at = previous_scheduled_attempt
+        await seed_session.commit()
 
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
 
@@ -639,8 +744,12 @@ async def test_systemd_start_restores_stream_when_unit_launch_fails(
 
         stream = await session.get(Stream, stream_id)
         assert stream is not None
-        assert stream.status == "stopped"
+        assert stream.status == "scheduled"
+        assert stream.started_at == previous_started_at
         assert stream.log_path is None
+        assert stream.scheduled_start_enabled is True
+        assert stream.scheduled_start_time == previous_scheduled_start
+        assert stream.scheduled_start_attempted_at == previous_scheduled_attempt
 
 
 @pytest.mark.asyncio

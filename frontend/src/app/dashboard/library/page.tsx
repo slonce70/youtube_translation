@@ -2,11 +2,9 @@
 /* eslint-disable i18next/no-literal-string */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import Uppy from '@uppy/core'
-import type { UploadResult } from '@uppy/core'
-import Tus from '@uppy/tus'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { 
@@ -32,7 +30,6 @@ import type {
   PlaylistItemInput,
   PlaylistUpdatePayload,
 } from '@/lib/types'
-import { UploadModal } from '@/components/upload/UploadModal'
 import { AssetActionsMenu } from '@/components/AssetActionsMenu'
 import {
   deriveAssetDisplayInfo,
@@ -49,16 +46,8 @@ import { usePlaylistManager } from './hooks/usePlaylistManager'
 import { useFolderManager } from './hooks/useFolderManager'
 import { useAssetActions } from './hooks/useAssetActions'
 import { useDeleteAssetsFlow } from './hooks/useDeleteAssetsFlow'
+import { useLibraryUploads } from './hooks/useLibraryUploads'
 import { applyAssetView, type AssetSortValue } from './asset-view'
-import {
-  applyUploadStatusEntries,
-  buildUploadFailureOverrides,
-  resolveUploadFailureTargets,
-  summarizeUploadStatusEntries,
-  UPLOAD_STATUS_POLL_SCHEDULE_MS,
-  type TrackedUpload,
-  type UploadModalStatusOverride,
-} from './upload-status-poll'
 import { useDashboardContext } from '../dashboard-context'
 import { Breadcrumbs } from '@/components/library/Breadcrumbs'
 import { FolderCard } from '@/components/library/FolderCard'
@@ -73,39 +62,10 @@ import { AssetValidationModal } from './components/AssetValidationModal'
 import type { AssetFilterValue } from './empty-state-copy'
 
 type PlaylistFormState = PlaylistCreatePayload & { description: string }
-
-function extractTusUploadId(file: {
-  response?: {
-    uploadURL?: string
-    body?: Record<string, unknown>
-  }
-}): string | null {
-  const candidates = [
-    file.response?.body?.upload_id,
-    file.response?.body?.id,
-    file.response?.uploadURL,
-  ]
-
-  for (const candidate of candidates) {
-    if (typeof candidate !== 'string' || !candidate.trim()) {
-      continue
-    }
-    if (!candidate.includes('/')) {
-      return candidate.trim()
-    }
-
-    try {
-      const url = new URL(candidate)
-      const parts = url.pathname.split('/').filter(Boolean)
-      return parts.at(-1) ?? null
-    } catch {
-      const parts = candidate.split('/').filter(Boolean)
-      return parts.at(-1) ?? null
-    }
-  }
-
-  return null
-}
+const LazyUploadModal = dynamic(
+  () => import('@/components/upload/UploadModal').then((module) => module.UploadModal),
+  { ssr: false },
+)
 
 export default function LibraryPage() {
   const router = useRouter()
@@ -128,25 +88,21 @@ export default function LibraryPage() {
     selectedFolderId,
     setSelectedFolderId,
   } = useLibraryRouteState({ tLibrary })
-
-  const handleFolderSelect = (folderId: string | 'all') => {
-    setSelectedFolderId(folderId)
-    setSelectedAssets(new Set())
-    router.push(buildLibraryRoute({ folder: folderId === 'all' ? null : folderId }), {
-      scroll: false,
-    })
-  }
-
-  const handleCloseUploadModal = useCallback(() => {
-    setUploadStatusOverrides({})
-    setIsProcessingUpload(false)
-    setIsUploadOpen(false)
-  }, [])
+  const {
+    clearUploadStatusOverrides,
+    closeUploadModal,
+    isProcessingUpload,
+    isUploadOpen,
+    openUploadModal,
+    uppy,
+    uploadStatusEntries,
+    uploadStatusOverrides,
+  } = useLibraryUploads({
+    libraryToasts,
+    userId: user?.id,
+  })
 
   // Assets state
-  const [isUploadOpen, setIsUploadOpen] = useState(false)
-  const [isProcessingUpload, setIsProcessingUpload] = useState(false)
-  const [uploadStatusOverrides, setUploadStatusOverrides] = useState<Record<string, UploadModalStatusOverride>>({})
   const [assetSearchQuery, setAssetSearchQuery] = useState('')
   const [assetSort, setAssetSort] = useState<AssetSortValue>('newest')
   const [assetDensity, setAssetDensity] = useState<'compact' | 'comfortable'>('compact')
@@ -156,7 +112,6 @@ export default function LibraryPage() {
     open: false,
     assetIds: [],
   })
-  const [uploadTokenState, setUploadTokenState] = useState<{ token: string; expiresAt: number } | null>(null)
   const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>('')
   const [draggedAssetIds, setDraggedAssetIds] = useState<string[] | null>(null)
   const [dragOverFolderId, setDragOverFolderId] = useState<string | 'all' | null>(null)
@@ -189,234 +144,13 @@ export default function LibraryPage() {
     window.localStorage.setItem('yt.library.assetSort', assetSort)
   }, [assetSort])
 
-  // Uppy configuration
-  const tusEndpoint = useMemo(() => {
-    const base = process.env.NEXT_PUBLIC_TUSD_URL || ''
-    return `${base.replace(/\/$/, '')}/files/`
-  }, [])
-
-  const [uppy] = useState(() =>
-    new Uppy<Record<string, string>, Record<string, any>>({
-      autoProceed: false,
-      restrictions: {
-        allowedFileTypes: ['video/*', 'audio/*'],
-        maxFileSize: 10 * 1024 * 1024 * 1024, // 10 GB
-      },
+  const handleFolderSelect = (folderId: string | 'all') => {
+    setSelectedFolderId(folderId)
+    setSelectedAssets(new Set())
+    router.push(buildLibraryRoute({ folder: folderId === 'all' ? null : folderId }), {
+      scroll: false,
     })
-  )
-
-  useEffect(() => {
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-    const existingPlugin = uppy.getPlugin('Tus')
-    if (existingPlugin) {
-      uppy.removePlugin(existingPlugin)
-    }
-
-    uppy.use(Tus, {
-      endpoint: tusEndpoint,
-      chunkSize: 16 * 1024 * 1024,
-      retryDelays: [0, 1000, 3000, 5000],
-    })
-
-    const refreshAssetLists = async () => {
-      await queryClient.invalidateQueries({ queryKey: ['assets', user?.id] })
-      await queryClient.refetchQueries({ queryKey: ['assets', user?.id], type: 'active' })
-    }
-
-    const handleComplete = async (result: UploadResult<Record<string, string>, Record<string, any>>) => {
-      if (!result.successful || !result.successful.length) {
-        return
-      }
-      if (!user?.id) {
-        return
-      }
-
-      const successfulUploads = result.successful
-      const successfulFileIds = successfulUploads.map((file) => file.id)
-      setIsProcessingUpload(true)
-      setUploadStatusOverrides((current) => {
-        const next = { ...current }
-        successfulUploads.forEach((file) => {
-          next[file.id] = { status: 'processing' }
-        })
-        return next
-      })
-      const toastId = toast.loading(libraryToasts('upload.finalizing'))
-
-      let trackedUploads: TrackedUpload[] = []
-
-      try {
-        trackedUploads = successfulUploads.map<TrackedUpload>((file) => {
-          const uploadId = extractTusUploadId(file)
-          if (!uploadId) {
-            throw new Error(`Missing upload id for ${file.name}`)
-          }
-          return {
-            fileId: file.id,
-            uploadId,
-            name: file.name,
-            size: typeof file.size === 'number' ? file.size : undefined,
-          }
-        })
-
-        let finalizedCount = 0
-        let failedCount = 0
-        let lastFailureMessage: string | null = null
-
-        for (const delayMs of UPLOAD_STATUS_POLL_SCHEDULE_MS) {
-          if (delayMs) {
-            await sleep(delayMs)
-          }
-
-          const defaultFailureMessage = libraryToasts('upload.failed', {
-            message: libraryToasts('generic.unknownError'),
-          })
-          const statuses = await Promise.all(
-            trackedUploads.map(async (upload) => {
-              try {
-                const ingest = await api.assets.getUploadStatus(upload.uploadId)
-                return { upload, ingest }
-              } catch (error) {
-                if (error instanceof ApiError && error.status === 404) {
-                  return null
-                }
-                throw error
-              }
-            })
-          )
-
-          const statusSummary = summarizeUploadStatusEntries(statuses, defaultFailureMessage)
-
-          setUploadStatusOverrides((current) => {
-            return applyUploadStatusEntries(statuses, current, defaultFailureMessage)
-          })
-
-          finalizedCount = statusSummary.finalizedCount
-          failedCount = statusSummary.failedCount
-          lastFailureMessage = statusSummary.failureMessage
-
-          if (statusSummary.pendingCount === 0) {
-            break
-          }
-        }
-
-        if (finalizedCount > 0) {
-          await refreshAssetLists()
-        }
-
-        if (failedCount > 0) {
-          const failureMessage =
-            lastFailureMessage ??
-            libraryToasts('upload.failed', {
-              message: libraryToasts('generic.unknownError'),
-            })
-          setUploadStatusOverrides((current) =>
-            buildUploadFailureOverrides(trackedUploads, current, failureMessage)
-          )
-          toast.error(
-            failureMessage,
-            { id: toastId }
-          )
-          return
-        }
-
-        if (finalizedCount !== trackedUploads.length) {
-          throw new Error(libraryToasts('upload.refreshFailed', { message: 'Timed out waiting for upload finalization' }))
-        }
-
-        toast.success(libraryToasts('upload.processed'), { id: toastId })
-        setUploadStatusOverrides({})
-        setIsUploadOpen(false)
-        uppy.cancelAll()
-        const fileIds = uppy.getFiles().map((file) => file.id)
-        if (fileIds.length) {
-          uppy.removeFiles(fileIds)
-        }
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : libraryToasts('generic.unknownError')
-        const failureTargets = resolveUploadFailureTargets(trackedUploads, successfulFileIds)
-        setUploadStatusOverrides((current) =>
-          buildUploadFailureOverrides(failureTargets, current, message)
-        )
-        toast.error(libraryToasts('upload.refreshFailed', { message }), { id: toastId })
-      } finally {
-        setIsProcessingUpload(false)
-      }
-    }
-
-    const handleError = (error: Error) => {
-      toast.error(libraryToasts('upload.failed', { message: error.message }))
-    }
-
-    uppy.on('complete', handleComplete)
-    uppy.on('error', handleError)
-
-    return () => {
-      uppy.off('complete', handleComplete)
-      uppy.off('error', handleError)
-      const plugin = uppy.getPlugin('Tus')
-      if (plugin) {
-        uppy.removePlugin(plugin)
-      }
-    }
-  }, [libraryToasts, queryClient, tusEndpoint, uppy, user?.id])
-
-  const refreshUploadToken = useCallback(async () => {
-    if (!user?.id) {
-      setUploadTokenState(null)
-      return
-    }
-
-    try {
-      const response = await api.assets.createUploadToken()
-      const expiresAt = new Date(response.expires_at).getTime()
-      setUploadTokenState({ token: response.token, expiresAt })
-      uppy.setMeta({ upload_token: response.token })
-    } catch (error) {
-      const message =
-        error instanceof ApiError
-          ? error.message
-          : (error as Error)?.message ?? libraryToasts('upload.tokenRefreshFailed')
-      toast.error(libraryToasts('generic.errorWithMessage', { message }))
-    }
-  }, [libraryToasts, uppy, user?.id])
-
-  useEffect(() => {
-    if (!user?.id) {
-      setUploadTokenState(null)
-      return
-    }
-    void refreshUploadToken()
-  }, [refreshUploadToken, user?.id])
-
-  useEffect(() => {
-    if (!uploadTokenState || typeof window === 'undefined') {
-      return
-    }
-
-    const now = Date.now()
-    const refreshIn = Math.max(uploadTokenState.expiresAt - now - 60_000, 5_000)
-    const timer = window.setTimeout(() => {
-      void refreshUploadToken()
-    }, refreshIn)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [refreshUploadToken, uploadTokenState])
-
-  useEffect(() => {
-    if (!user?.id) {
-      return
-    }
-    const meta: Record<string, string> = { user_id: user.id }
-    if (uploadTokenState?.token) {
-      meta.upload_token = uploadTokenState.token
-    }
-    uppy.setMeta(meta)
-  }, [uppy, uploadTokenState?.token, user?.id])
+  }
 
   const {
     assetMap,
@@ -758,7 +492,7 @@ export default function LibraryPage() {
     setIsGlobalDragOver(false)
     const files = Array.from(event.dataTransfer.files || [])
     if (!files.length) return
-    setIsUploadOpen(true)
+    openUploadModal()
     uppy.addFiles(
       files.map((file) => ({
         name: file.name,
@@ -780,8 +514,6 @@ export default function LibraryPage() {
     return <LoadingState text={tLibrary('loading')} />
   }
 
-  const uploadStatusEntries = Object.entries(uploadStatusOverrides)
-
   return (
     <div
       className="page-shell"
@@ -799,7 +531,7 @@ export default function LibraryPage() {
         </div>
         <div className="page-actions">
           <Button variant="outline" size="sm" onClick={() => setAssetDensity(assetDensity === 'compact' ? 'comfortable' : 'compact')}>⊞ {assetDensity === 'compact' ? 'Сітка' : 'Список'}</Button>
-          <Button onClick={() => setIsUploadOpen(true)} aria-label="Завантажити файли" title="Завантажити файли">⬆ Завантажити</Button>
+          <Button onClick={openUploadModal} aria-label="Завантажити файли" title="Завантажити файли">⬆ Завантажити</Button>
         </div>
       </div>
 
@@ -1066,7 +798,7 @@ export default function LibraryPage() {
 
                 {/* Empty state - shown when no folders and no assets */}
                 {!currentFolders.length && visibleAssets.length === 0 && (
-                  <button type="button" onClick={() => setIsUploadOpen(true)} className="library-upload-tile" style={{ margin: 0 }}>
+                  <button type="button" onClick={openUploadModal} className="library-upload-tile" style={{ margin: 0 }}>
                     <div className="empty-state" style={{ padding: 0 }}>
                       <div className="empty-icon">⬆</div>
                       <div className="empty-title">Завантажити файл</div>
@@ -1311,7 +1043,7 @@ export default function LibraryPage() {
         <div className="floating-panel">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <strong style={{ fontSize: 13 }}>Завантаження</strong>
-            <button type="button" style={{ marginLeft: 'auto', color: 'var(--txt-3)', fontSize: 18 }} onClick={() => setUploadStatusOverrides({})}>×</button>
+            <button type="button" style={{ marginLeft: 'auto', color: 'var(--txt-3)', fontSize: 18 }} onClick={clearUploadStatusOverrides}>×</button>
           </div>
           <div className="summary-list">
             {uploadStatusEntries.map(([uploadId, status]) => (
@@ -1337,14 +1069,16 @@ export default function LibraryPage() {
       ) : null}
 
       {/* Upload Modal */}
-      <UploadModal
-        isOpen={isUploadOpen}
-        onClose={handleCloseUploadModal}
-        uppy={uppy}
-        isProcessingUpload={isProcessingUpload}
-        uploadStatusOverrides={uploadStatusOverrides}
-        folders={folders}
-      />
+      {isUploadOpen ? (
+        <LazyUploadModal
+          isOpen={isUploadOpen}
+          onClose={closeUploadModal}
+          uppy={uppy}
+          isProcessingUpload={isProcessingUpload}
+          uploadStatusOverrides={uploadStatusOverrides}
+          folders={folders}
+        />
+      ) : null}
 
       <MoveAssetsModal
         assets={moveModalAssets}
