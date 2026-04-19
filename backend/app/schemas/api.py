@@ -3,7 +3,6 @@ from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, time, timezone
 from uuid import UUID
 
-from app.core.config import settings
 from app.core.stream_schedule import (
     ensure_utc,
     normalize_schedule_repeat,
@@ -25,11 +24,8 @@ def _aggregate_provider_health_status(statuses: List[str]) -> Optional[str]:
     )
 
 
-def _runtime_restart_enabled() -> bool:
-    return (
-        bool(settings.stream_runtime_auto_restart_enabled)
-        and max(int(settings.stream_runtime_restart_max_attempts), 0) > 0
-    )
+def _runtime_restart_enabled(max_attempts: int) -> bool:
+    return max(int(max_attempts), 0) > 0
 
 
 # Asset schemas
@@ -537,20 +533,16 @@ def _stream_runtime_restart_state(
     status: str,
     attempts: int,
     next_restart_at: Optional[datetime],
+    enabled: bool,
+    max_attempts: int,
 ) -> StreamRuntimeRestartState:
-    enabled = _runtime_restart_enabled()
     if not enabled:
         return "disabled"
     if next_restart_at is not None:
         return "scheduled"
-    if status in {"starting", "running"} and attempts > 0:
+    if status == "starting" and attempts > 0:
         return "retrying"
-    max_attempts = max(int(settings.stream_runtime_restart_max_attempts), 0)
-    if (
-        status == "error"
-        and attempts > 0
-        and (max_attempts == 0 or attempts >= max_attempts)
-    ):
+    if status == "error" and attempts >= max_attempts:
         return "exhausted"
     return "idle"
 
@@ -569,26 +561,32 @@ def build_stream_runtime_restart_info(
     *,
     status: str,
     attempts: int,
+    max_attempts: int = 0,
     next_restart_at: Optional[datetime],
     last_restart_at: Optional[datetime] = None,
     last_failure_at: Optional[datetime] = None,
 ) -> StreamRuntimeRestartInfo:
-    normalized_attempts = max(int(attempts or 0), 0)
-    normalized_max_attempts = max(int(settings.stream_runtime_restart_max_attempts), 0)
-    enabled = _runtime_restart_enabled()
+    normalized_max_attempts = max(int(max_attempts), 0)
+    enabled = _runtime_restart_enabled(normalized_max_attempts)
+    normalized_attempts = max(int(attempts), 0) if enabled else 0
+    normalized_next_restart_at = next_restart_at if enabled else None
+    normalized_last_restart_at = last_restart_at if enabled else None
+    normalized_last_failure_at = last_failure_at if enabled else None
 
     return StreamRuntimeRestartInfo(
         enabled=enabled,
         state=_stream_runtime_restart_state(
             status=status,
             attempts=normalized_attempts,
-            next_restart_at=next_restart_at,
+            next_restart_at=normalized_next_restart_at,
+            enabled=enabled,
+            max_attempts=normalized_max_attempts,
         ),
         attempts=normalized_attempts,
         max_attempts=normalized_max_attempts,
-        next_restart_at=next_restart_at,
-        last_restart_at=last_restart_at,
-        last_failure_at=last_failure_at,
+        next_restart_at=normalized_next_restart_at,
+        last_restart_at=normalized_last_restart_at,
+        last_failure_at=normalized_last_failure_at,
     )
 
 
@@ -638,12 +636,8 @@ class StreamResponse(StreamBase):
     schedule_window_end_time: Optional[time] = None
     schedule_stop_after_seconds: Optional[int] = None
     scheduled_stop_time: Optional[datetime] = None
-    runtime_restart_attempts: int = Field(default=0, exclude=True)
-    runtime_next_restart_at: Optional[datetime] = Field(default=None, exclude=True)
-    runtime_last_restart_at: Optional[datetime] = Field(default=None, exclude=True)
-    runtime_last_failure_at: Optional[datetime] = Field(default=None, exclude=True)
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def runtime_incident_summary(self) -> StreamIncidentSummary:
         payload = getattr(self, "_runtime_incident_summary", None)
@@ -685,7 +679,7 @@ class StreamResponse(StreamBase):
             ),
         )
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def destinations(self) -> List[DestinationSummary]:
         summaries: List[DestinationSummary] = []
@@ -695,7 +689,7 @@ class StreamResponse(StreamBase):
                 summaries.append(destination)
         return summaries
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def provider_status(self) -> ProviderStatusValue:
         connected = [
@@ -714,7 +708,7 @@ class StreamResponse(StreamBase):
             return "offline"
         return "unknown"
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def provider_viewers(self) -> Optional[int]:
         viewers = {
@@ -726,7 +720,7 @@ class StreamResponse(StreamBase):
         total = sum(viewer for _, viewer in viewers)
         return total if viewers else None
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def provider_last_checked_at(self) -> Optional[datetime]:
         timestamps = [
@@ -736,7 +730,7 @@ class StreamResponse(StreamBase):
         ]
         return max(timestamps) if timestamps else None
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def provider_video_id(self) -> Optional[str]:
         video_ids = {
@@ -748,7 +742,7 @@ class StreamResponse(StreamBase):
             return next(iter(video_ids))
         return None
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def provider_stream_status(self) -> Optional[str]:
         stream_statuses = {
@@ -760,7 +754,7 @@ class StreamResponse(StreamBase):
             return next(iter(stream_statuses))
         return None
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def provider_health_status(self) -> Optional[str]:
         statuses = [
@@ -770,7 +764,7 @@ class StreamResponse(StreamBase):
         ]
         return _aggregate_provider_health_status(statuses)
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def provider_health_issues(self) -> List[str]:
         issues = {
@@ -781,7 +775,7 @@ class StreamResponse(StreamBase):
         }
         return sorted(issues)
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def provider_mismatch(self) -> bool:
         if self.provider_status == "unknown":
@@ -790,15 +784,21 @@ class StreamResponse(StreamBase):
         provider_live = self.provider_status == "live"
         return runtime_running != provider_live
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def runtime_restart(self) -> StreamRuntimeRestartInfo:
+        payload = getattr(self, "_runtime_restart_info", None)
+        if isinstance(payload, StreamRuntimeRestartInfo):
+            return payload
+        if isinstance(payload, dict):
+            return StreamRuntimeRestartInfo.model_validate(payload)
         return build_stream_runtime_restart_info(
             status=self.status,
-            attempts=int(self.runtime_restart_attempts or 0),
-            next_restart_at=self.runtime_next_restart_at,
-            last_restart_at=self.runtime_last_restart_at,
-            last_failure_at=self.runtime_last_failure_at,
+            attempts=0,
+            max_attempts=0,
+            next_restart_at=None,
+            last_restart_at=None,
+            last_failure_at=None,
         )
 
 

@@ -10,6 +10,7 @@ import logging
 import inspect
 from collections import deque
 from ipaddress import ip_address, ip_network
+from urllib.parse import unquote
 from typing import Dict, Tuple, Iterable, List
 from threading import RLock
 from fastapi import Request, status
@@ -93,6 +94,8 @@ class RateLimitStatus:
 class RateLimiter:
     """Rate limiter with configurable limits per route pattern"""
 
+    _STREAM_ROUTE_ACTIONS = {"start", "stop", "status"}
+
     def __init__(self, trusted_proxies: Iterable[str] | None = None):
         self.clients: Dict[str, RateLimitEntry] = {}
         self.lock = RLock()
@@ -128,9 +131,7 @@ class RateLimiter:
     def _get_client_key(self, request: Request) -> str:
         """Generate unique key for client (IP + endpoint)"""
         client_ip = self._get_client_ip(request)
-
-        # Include endpoint pattern for different limits per route
-        endpoint = request.url.path
+        endpoint = self._normalize_endpoint_path(request.url.path)
 
         return f"{client_ip}:{endpoint}"
 
@@ -154,15 +155,32 @@ class RateLimiter:
             return False
         return any(ip in network for network in self._trusted_proxy_networks)
 
+    def _normalize_endpoint_path(self, path: str) -> str:
+        """Normalize dynamic paths into stable route families when needed."""
+        normalized_path = unquote(path or "").strip() or "/"
+        parts = [part for part in normalized_path.split("/") if part]
+
+        if (
+            len(parts) == 4
+            and parts[0] == "api"
+            and parts[1] == "streams"
+            and parts[3] in self._STREAM_ROUTE_ACTIONS
+        ):
+            return f"/api/streams/{parts[3]}"
+
+        return normalized_path
+
     def _get_limits_for_endpoint(self, path: str) -> Tuple[int, int]:
         """Get rate limits for specific endpoint"""
+        normalized_path = self._normalize_endpoint_path(path)
+
         # Check for exact match
-        if path in self.limits:
-            return self.limits[path]
+        if normalized_path in self.limits:
+            return self.limits[normalized_path]
 
         # Check for prefix match
         for pattern, limits in self.limits.items():
-            if path.startswith(pattern):
+            if normalized_path.startswith(pattern):
                 return limits
 
         # Return default limits

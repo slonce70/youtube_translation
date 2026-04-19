@@ -44,6 +44,10 @@ def _build_app_with_limiter(limiter: RateLimiter) -> FastAPI:
     async def login():
         return {"ok": True}
 
+    @app.post("/api/streams/{stream_id}/start")
+    async def start_stream(stream_id: str):
+        return {"ok": True, "stream_id": stream_id}
+
     return app
 
 
@@ -51,11 +55,20 @@ def test_sensitive_route_limits():
     limiter = RateLimiter()
 
     assert limiter._get_limits_for_endpoint("/api/streams/start") == (3, 120)
+    assert limiter._get_limits_for_endpoint("/api/streams/123/start") == (3, 120)
+    assert limiter._get_limits_for_endpoint("/api/streams/123/stop") == (10, 60)
     assert limiter._get_limits_for_endpoint("/api/assets/upload-complete") == (12, 60)
     assert limiter._get_limits_for_endpoint("/api/admin/users/summary") == (12, 60)
     assert limiter._get_limits_for_endpoint("/api/admin/alerts") == (8, 60)
     # Fallback to general admin limit when no specific match
     assert limiter._get_limits_for_endpoint("/api/admin/dashboard") == (20, 60)
+
+
+def test_stream_status_route_uses_normalized_limit_lookup():
+    limiter = RateLimiter()
+    limiter.limits["/api/streams/status"] = (7, 70)
+
+    assert limiter._get_limits_for_endpoint("/api/streams/123/status") == (7, 70)
 
 
 def test_client_key_uses_forwarded_for_for_trusted_proxy():
@@ -91,6 +104,16 @@ def test_client_key_ignores_forwarded_for_for_untrusted_proxy():
     assert limiter._get_client_key(request) == "203.0.113.9:/api/auth/login"
 
 
+def test_client_key_normalizes_dynamic_stream_control_routes():
+    limiter = RateLimiter()
+
+    first = _make_request("/api/streams/stream-a/start")
+    second = _make_request("/api/streams/stream-b/start")
+
+    assert limiter._get_client_key(first) == "198.51.100.10:/api/streams/start"
+    assert limiter._get_client_key(second) == "198.51.100.10:/api/streams/start"
+
+
 def test_rate_limit_middleware_returns_429_with_headers():
     limiter = RateLimiter()
     app = _build_app_with_limiter(limiter)
@@ -109,6 +132,24 @@ def test_rate_limit_middleware_returns_429_with_headers():
     assert limited.headers["X-RateLimit-Limit"] == "5"
     assert limited.headers["X-RateLimit-Remaining"] == "0"
     assert limited.headers["X-RateLimit-Reset"].isdigit()
+
+
+def test_dynamic_stream_start_route_shares_rate_limit_bucket():
+    limiter = RateLimiter()
+    app = _build_app_with_limiter(limiter)
+    client = TestClient(app)
+
+    for stream_id in ["stream-a", "stream-b", "stream-c"]:
+        response = client.post(f"/api/streams/{stream_id}/start")
+        assert response.status_code == 200
+        assert response.headers["X-RateLimit-Limit"] == "3"
+
+    limited = client.post("/api/streams/stream-d/start")
+
+    assert limited.status_code == 429
+    assert limited.json()["detail"]["error"] == "Rate limit exceeded"
+    assert limited.headers["X-RateLimit-Limit"] == "3"
+    assert limited.headers["X-RateLimit-Remaining"] == "0"
 
 
 def test_build_rate_limiter_uses_redis_when_configured(monkeypatch):

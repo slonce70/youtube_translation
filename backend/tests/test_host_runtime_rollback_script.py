@@ -9,7 +9,7 @@ def _rollback_script_path() -> Path:
 def test_rollback_script_refuses_non_systemd_runtime(tmp_path) -> None:
     script = _rollback_script_path()
     backend_env = tmp_path / ".env"
-    backend_env.write_text("STREAM_RUNTIME_MODE=supervisor\n", encoding="utf-8")
+    backend_env.write_text("STREAM_RUNTIME_MODE=manager\n", encoding="utf-8")
 
     result = subprocess.run(
         ["bash", str(script)],
@@ -78,6 +78,7 @@ def test_rollback_script_dry_run_prints_expected_commands_with_override(tmp_path
     assert result.returncode == 0, result.stderr
     assert "[dry-run] systemctl disable --now youtube-backend" in result.stdout
     assert "[dry-run] systemctl disable --now ffmpeg@test-stream" in result.stdout
-    assert "[dry-run] env STREAM_RUNTIME_MODE=supervisor" in result.stdout
+    assert "[dry-run] env STREAM_RUNTIME_MODE=manager" in result.stdout
+    assert "ALLOW_UNSAFE_MANAGER_RUNTIME=true" in result.stdout
     assert "FRONTEND_API_PROXY_TARGET=http://backend:8000" in result.stdout
     assert "TUSD_BACKEND_URL=http://backend:8000" in result.stdout

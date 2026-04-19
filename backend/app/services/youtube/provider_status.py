@@ -5,7 +5,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Iterable, Optional, Sequence
+from typing import Any, Iterable, Optional, Sequence
 from uuid import UUID
 
 from sqlalchemy import select
@@ -19,10 +19,14 @@ from .client import YoutubeApiError, YoutubeClient
 
 logger = logging.getLogger(__name__)
 
+redis_asyncio: Any | None = None
+
 try:
-    import redis.asyncio as redis  # type: ignore
+    import redis.asyncio as _redis_asyncio
 except Exception:  # pragma: no cover
-    redis = None
+    pass
+else:
+    redis_asyncio = _redis_asyncio
 
 
 @dataclass
@@ -39,7 +43,7 @@ class ProviderStatusSnapshot:
 
 _memory_cache: dict[str, tuple[float, str]] = {}
 _memory_lock = asyncio.Lock()
-_redis_client = None
+_redis_client: Any | None = None
 
 
 class YoutubeProviderStatusService:
@@ -56,10 +60,10 @@ class YoutubeProviderStatusService:
         }
         snapshots = await self._get_snapshots(connection_ids)
         for destination in destinations:
+            connection_id = destination.provider_connection_id
             snapshot = (
-                snapshots.get(destination.provider_connection_id)
-                or ProviderStatusSnapshot()
-            )
+                snapshots.get(connection_id) if connection_id is not None else None
+            ) or ProviderStatusSnapshot()
             self._apply_snapshot(destination, snapshot)
 
     async def enrich_streams(self, streams: Sequence[Stream]) -> None:
@@ -245,10 +249,10 @@ class YoutubeProviderStatusService:
 
     async def _redis_client(self):
         global _redis_client
-        if not self.settings.redis_url or redis is None:
+        if not self.settings.redis_url or redis_asyncio is None:
             return None
         if _redis_client is None:
-            _redis_client = redis.from_url(
+            _redis_client = redis_asyncio.from_url(
                 self.settings.redis_url,
                 encoding="utf-8",
                 decode_responses=True,

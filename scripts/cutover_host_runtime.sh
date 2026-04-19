@@ -13,7 +13,6 @@ ufw_bin="${UFW_BIN:-ufw}"
 ss_bin="${SS_BIN:-ss}"
 postgres_container="${POSTGRES_CONTAINER_NAME:-youtube-streaming-postgres}"
 backend_container="${BACKEND_CONTAINER_NAME:-youtube-streaming-backend}"
-runner_container="${RUNNER_CONTAINER_NAME:-youtube-streaming-runner}"
 backend_unit="${HOST_BACKEND_UNIT_NAME:-youtube-backend}"
 stream_unit="${HOST_STREAM_UNIT_NAME:-}"
 backend_health_url="${HOST_BACKEND_HEALTH_URL:-http://127.0.0.1:8000/health}"
@@ -202,7 +201,6 @@ fi
 
 if [[ "$stop_docker_runtime" == "1" ]]; then
   ensure_service_inactive "$backend_container"
-  ensure_service_inactive "$runner_container"
 fi
 
 run_cmd "$systemctl_bin" daemon-reload

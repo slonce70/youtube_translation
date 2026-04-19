@@ -1,14 +1,16 @@
 """Helpers for optional alerting integrations (Sentry)."""
 
-from typing import Any, Mapping, Optional
+from typing import Any, Literal, Mapping, Optional
 
 from app.core.config import settings
+
+AlertLevel = Literal["fatal", "critical", "error", "warning", "info", "debug"]
 
 
 def capture_alert(
     message: str,
     *,
-    level: str = "warning",
+    level: AlertLevel = "warning",
     tags: Optional[Mapping[str, str]] = None,
     extra: Optional[Mapping[str, Any]] = None,
 ) -> None:

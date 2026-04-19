@@ -340,22 +340,19 @@ async def test_live_edit_updates_without_restart_uses_hot_swap(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
-async def test_live_edit_without_restart_falls_back_to_managed_runtime_restart(
+async def test_live_edit_without_restart_falls_back_to_systemd_restart(
     monkeypatch, tmp_path
 ):
     user_id = uuid4()
     upload_root = tmp_path / "uploads"
 
     mock_replace_queue = AsyncMock()
-    mock_supervisor_restart = AsyncMock()
+    mock_systemd_restart = AsyncMock()
     monkeypatch.setattr(
         streams_control.hot_swap_manager, "replace_queue", mock_replace_queue
     )
-    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
-    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-    monkeypatch.setattr(
-        streams_control, "supervisor_restart_program", mock_supervisor_restart
-    )
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
+    monkeypatch.setattr(streams_control, "systemd_restart_unit", mock_systemd_restart)
     monkeypatch.setattr(streams_routes.settings, "stream_dir", str(tmp_path))
     monkeypatch.setattr(streams_routes.settings, "upload_dir", str(upload_root))
 
@@ -471,7 +468,7 @@ async def test_live_edit_without_restart_falls_back_to_managed_runtime_restart(
 
         assert response.id == stream.id
         mock_replace_queue.assert_not_awaited()
-        mock_supervisor_restart.assert_awaited_once_with(stream.id)
+        mock_systemd_restart.assert_awaited_once_with(stream.id)
 
 
 @pytest.mark.asyncio

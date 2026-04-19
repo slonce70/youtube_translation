@@ -110,38 +110,35 @@ export const useLibraryPageData = ({
     const effectiveParentId =
       selectedFolderId === 'all' ? rootFolderId ?? null : selectedFolderId
 
-    return folders
-      .filter((folder) => {
-        if (folder.is_root) return false
-        if (effectiveParentId === null) {
-          return folder.parent_id === null
-        }
-        return folder.parent_id === effectiveParentId
-      })
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [folders, rootFolderId, selectedFolderId])
+    return (folderChildren.get(effectiveParentId) ?? []).filter((folder) => !folder.is_root)
+  }, [folderChildren, folders, rootFolderId, selectedFolderId])
 
   const folderItemCounts = useMemo(() => {
     if (!folders || !assets) return new Map<string, number>()
 
     const counts = new Map<string, number>()
+    const parentByFolderId = new Map(folders.map((folder) => [folder.id, folder.parent_id ?? null]))
 
-    const getDescendantIds = (folderId: string): string[] => {
-      const descendants: string[] = [folderId]
-      const children = folders.filter((folder) => folder.parent_id === folderId)
-      children.forEach((child) => {
-        descendants.push(...getDescendantIds(child.id))
-      })
-      return descendants
+    for (const folder of folders) {
+      counts.set(folder.id, 0)
     }
 
-    folders.forEach((folder) => {
-      const folderIds = getDescendantIds(folder.id)
-      const count = assets.filter((asset) =>
-        asset.folders?.some((assetFolder) => folderIds.includes(assetFolder.folder_id)),
-      ).length
-      counts.set(folder.id, count)
-    })
+    for (const asset of assets) {
+      const visitedAncestors = new Set<string>()
+
+      for (const assetFolder of asset.folders ?? []) {
+        let currentFolderId: string | null = assetFolder.folder_id
+
+        while (currentFolderId) {
+          if (!visitedAncestors.has(currentFolderId)) {
+            counts.set(currentFolderId, (counts.get(currentFolderId) ?? 0) + 1)
+            visitedAncestors.add(currentFolderId)
+          }
+
+          currentFolderId = parentByFolderId.get(currentFolderId) ?? null
+        }
+      }
+    }
 
     return counts
   }, [assets, folders])

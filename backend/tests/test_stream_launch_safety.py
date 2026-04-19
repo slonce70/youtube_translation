@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -11,6 +12,7 @@ import app.services.streams.helpers as streams_helpers
 from app.core.config import settings
 from app.core.database import async_session_maker
 from app.core.security import encrypt_stream_key, mask_stream_key
+from app.core.stream_runtime_heartbeat import write_runtime_heartbeat
 from app.main import app
 from app.models.database import (
     Asset,
@@ -161,7 +163,7 @@ async def test_destination_responses_only_expose_masked_keys() -> None:
 
 
 @pytest.mark.asyncio
-async def test_supervisor_start_fails_closed_when_all_destinations_disabled(
+async def test_manager_start_fails_closed_when_all_destinations_disabled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -174,26 +176,22 @@ async def test_supervisor_start_fails_closed_when_all_destinations_disabled(
     )
 
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
     monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
 
-    async def fake_supervisor_program_status(_stream_id):
-        return {"state": "STOPPED"}
+    class DummyManager:
+        def is_running(self, _stream_id: str) -> bool:
+            return False
 
-    async def fake_supervisor_start_program(_stream_id):
-        raise AssertionError(
-            "supervisor start should not be called for disabled destinations"
-        )
+        def get_stream_info(self, _stream_id: str) -> dict:
+            return {}
 
-    monkeypatch.setattr(
-        streams_control, "supervisor_program_status", fake_supervisor_program_status
-    )
-    monkeypatch.setattr(
-        streams_control, "supervisor_start_program", fake_supervisor_start_program
-    )
+        async def start_stream(self, *_args, **_kwargs) -> bool:
+            raise AssertionError(
+                "manager start should not be called for disabled destinations"
+            )
 
     async with async_session_maker() as session:
-        service = StreamControlService(session, user_id)
+        service = StreamControlService(session, user_id, manager=DummyManager())
 
         with pytest.raises(HTTPException) as exc_info:
             await service.start_stream(stream_id)
@@ -207,7 +205,7 @@ async def test_supervisor_start_fails_closed_when_all_destinations_disabled(
 
 
 @pytest.mark.asyncio
-async def test_quality_and_supervisor_start_reject_incompatible_copy_first_media(
+async def test_quality_and_manager_start_reject_incompatible_copy_first_media(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -221,26 +219,22 @@ async def test_quality_and_supervisor_start_reject_incompatible_copy_first_media
     )
 
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
     monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
 
-    async def fake_supervisor_program_status(_stream_id):
-        return {"state": "STOPPED"}
+    class DummyManager:
+        def is_running(self, _stream_id: str) -> bool:
+            return False
 
-    async def fake_supervisor_start_program(_stream_id):
-        raise AssertionError(
-            "supervisor start should not be called for incompatible media"
-        )
+        def get_stream_info(self, _stream_id: str) -> dict:
+            return {}
 
-    monkeypatch.setattr(
-        streams_control, "supervisor_program_status", fake_supervisor_program_status
-    )
-    monkeypatch.setattr(
-        streams_control, "supervisor_start_program", fake_supervisor_start_program
-    )
+        async def start_stream(self, *_args, **_kwargs) -> bool:
+            raise AssertionError(
+                "manager start should not be called for incompatible media"
+            )
 
     async with async_session_maker() as session:
-        service = StreamControlService(session, user_id)
+        service = StreamControlService(session, user_id, manager=DummyManager())
 
         quality = await service.evaluate_quality(stream_id)
         assert quality.ok is False
@@ -273,7 +267,6 @@ async def test_http_start_route_rejects_incompatible_media_for_dev_auth_user(
     )
 
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
     monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
     monkeypatch.setattr(streams_control.default_settings, "enable_dev_auth", True)
     monkeypatch.setattr(streams_control.default_settings, "dev_user_id", str(user_id))
@@ -283,19 +276,18 @@ async def test_http_start_route_rejects_incompatible_media_for_dev_auth_user(
         f"{user_id}@stream-safety.test",
     )
 
-    async def fake_supervisor_program_status(_stream_id):
-        return {"state": "STOPPED"}
-
-    async def fake_supervisor_start_program(_stream_id):
-        raise AssertionError(
-            "supervisor start should not be called for incompatible media"
-        )
-
     monkeypatch.setattr(
-        streams_control, "supervisor_program_status", fake_supervisor_program_status
+        streams_control.default_ffmpeg_manager, "is_running", lambda _stream_id: False
     )
     monkeypatch.setattr(
-        streams_control, "supervisor_start_program", fake_supervisor_start_program
+        streams_control.default_ffmpeg_manager, "get_stream_info", lambda _stream_id: {}
+    )
+
+    async def fake_manager_start(*_args, **_kwargs):
+        raise AssertionError("manager start should not be called for incompatible media")
+
+    monkeypatch.setattr(
+        streams_control.default_ffmpeg_manager, "start_stream", fake_manager_start
     )
 
     async with AsyncClient(app=app, base_url="http://testserver") as client:
@@ -309,7 +301,7 @@ async def test_http_start_route_rejects_incompatible_media_for_dev_auth_user(
 
 
 @pytest.mark.asyncio
-async def test_quality_and_start_reject_stale_copy_safe_asset_for_rtmp(
+async def test_quality_reports_stale_copy_safe_asset_but_start_skips_fresh_revalidation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -322,7 +314,11 @@ async def test_quality_and_start_reject_stale_copy_safe_asset_for_rtmp(
         validation_errors=[],
     )
 
+    validate_calls = 0
+
     async def fake_validate_file(self, _file_path: Path) -> dict:
+        nonlocal validate_calls
+        validate_calls += 1
         return {
             "compatible_for_copy": False,
             "meta": {},
@@ -335,39 +331,40 @@ async def test_quality_and_start_reject_stale_copy_safe_asset_for_rtmp(
         "validate_file",
         fake_validate_file,
     )
-    monkeypatch.setattr(streams_helpers.shutil, "which", lambda _value: "/usr/bin/ffprobe")
+    monkeypatch.setattr(
+        streams_helpers.shutil, "which", lambda _value: "/usr/bin/ffprobe"
+    )
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
     monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
 
-    async def fake_supervisor_program_status(_stream_id):
-        return {"state": "STOPPED"}
+    class DummyManager:
+        def is_running(self, _stream_id: str) -> bool:
+            return False
 
-    async def fake_supervisor_start_program(_stream_id):
-        raise AssertionError("supervisor start should not be called for stale copy-safe media")
+        def get_stream_info(self, _stream_id: str) -> dict:
+            return {"pid": 321, "uptime_seconds": 0}
 
-    monkeypatch.setattr(
-        streams_control, "supervisor_program_status", fake_supervisor_program_status
-    )
-    monkeypatch.setattr(
-        streams_control, "supervisor_start_program", fake_supervisor_start_program
-    )
+        async def start_stream(self, *_args, **_kwargs) -> bool:
+            return True
 
     async with async_session_maker() as session:
-        service = StreamControlService(session, user_id)
+        service = StreamControlService(session, user_id, manager=DummyManager())
 
         quality = await service.evaluate_quality(stream_id)
         assert quality.ok is False
         assert {violation.code for violation in quality.violations} == {
             "copy_source_not_live_safe"
         }
+        assert validate_calls == 1
 
-        with pytest.raises(HTTPException) as exc_info:
-            await service.start_stream(stream_id)
+        status_payload = await service.start_stream(stream_id)
+        stream = await session.get(Stream, stream_id)
+        assert stream is not None
 
-        assert exc_info.value.status_code == 422
-        assert exc_info.value.detail["error"] == "quality_rejected"
-        assert exc_info.value.detail["violations"][0]["code"] == "copy_source_not_live_safe"
+        assert status_payload.status == "running"
+        assert status_payload.is_running is True
+        assert stream.status == "running"
+        assert validate_calls == 1
 
 
 @pytest.mark.asyncio
@@ -481,28 +478,26 @@ async def test_start_returns_authoritative_running_status_before_prerequisite_er
     )
 
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: False)
-    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: True)
-
-    async def fake_supervisor_program_status(_stream_id):
-        return {"state": "RUNNING"}
 
     async def fail_validation(*args, **kwargs):
         raise AssertionError("launch prerequisites should not run for repeated starts")
 
     monkeypatch.setattr(
         streams_control,
-        "supervisor_program_status",
-        fake_supervisor_program_status,
-    )
-    monkeypatch.setattr(
-        streams_control,
         "validate_stream_launch_prerequisites",
         fail_validation,
     )
 
+    class RunningManager:
+        def is_running(self, _stream_id: str) -> bool:
+            return True
+
+        def get_stream_info(self, _stream_id: str) -> dict:
+            return {"uptime_seconds": 15}
+
     async with async_session_maker() as session:
         await _remove_tier_limits(session, "fhd_start")
-        service = StreamControlService(session, user_id)
+        service = StreamControlService(session, user_id, manager=RunningManager())
         status_payload = await service.start_stream(stream_id)
 
     assert status_payload.is_running is True
@@ -511,7 +506,7 @@ async def test_start_returns_authoritative_running_status_before_prerequisite_er
 
 
 @pytest.mark.asyncio
-async def test_systemd_start_marks_stream_starting_before_unit_launch(
+async def test_systemd_start_keeps_stream_starting_until_runtime_confirms_launch(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -522,7 +517,6 @@ async def test_systemd_start_marks_stream_starting_before_unit_launch(
     log_file = tmp_path / "stream.log"
 
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
-    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
 
     async def fake_enrich_streams(self, streams):
         return None
@@ -544,7 +538,7 @@ async def test_systemd_start_marks_stream_starting_before_unit_launch(
             db_stream = await check_session.get(Stream, stream_id)
             assert db_stream is not None
             assert db_stream.status == "starting"
-            assert db_stream.runtime_owner_id == settings.stream_runtime_node_id
+            assert db_stream.runtime_last_heartbeat_at is None
             assert db_stream.log_path == str(log_file)
 
     monkeypatch.setattr(
@@ -574,12 +568,12 @@ async def test_systemd_start_marks_stream_starting_before_unit_launch(
 
         stream = await session.get(Stream, stream_id)
         assert stream is not None
-        assert stream.status == "running"
+        assert stream.status == "starting"
         assert stream.log_path == str(log_file)
-        assert stream.started_at is not None
+        assert stream.started_at is None
 
-    assert status_payload.is_running is True
-    assert status_payload.status == "running"
+    assert status_payload.is_running is False
+    assert status_payload.status == "starting"
 
 
 @pytest.mark.asyncio
@@ -594,7 +588,6 @@ async def test_systemd_start_restores_stream_when_unit_launch_fails(
     log_file = tmp_path / "stream.log"
 
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
-    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
 
     async def fake_enrich_streams(self, streams):
         return None
@@ -647,7 +640,6 @@ async def test_systemd_start_restores_stream_when_unit_launch_fails(
         stream = await session.get(Stream, stream_id)
         assert stream is not None
         assert stream.status == "stopped"
-        assert stream.runtime_owner_id is None
         assert stream.log_path is None
 
 
@@ -659,10 +651,11 @@ async def test_systemd_start_returns_existing_starting_status_before_relaunch(
     monkeypatch.setattr(
         streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
     )
-    user_id, stream_id = await _create_stream_fixture(tmp_path, stream_status="starting")
+    user_id, stream_id = await _create_stream_fixture(
+        tmp_path, stream_status="starting"
+    )
 
     monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
-    monkeypatch.setattr(streams_control, "supervisor_enabled", lambda: False)
 
     async def fake_enrich_streams(self, streams):
         return None
@@ -677,7 +670,9 @@ async def test_systemd_start_returns_existing_starting_status_before_relaunch(
         return {"ActiveState": "inactive"}
 
     async def fail_validate(*args, **kwargs):
-        raise AssertionError("launch prerequisites should not run for existing starting state")
+        raise AssertionError(
+            "launch prerequisites should not run for existing starting state"
+        )
 
     async def fail_systemd_start(_stream_id):
         raise AssertionError("systemd start should not run for existing starting state")
@@ -710,6 +705,207 @@ async def test_systemd_start_returns_existing_starting_status_before_relaunch(
     assert status_payload.is_running is False
     assert status_payload.status == "starting"
     assert status_payload.id == stream_id
+
+
+@pytest.mark.asyncio
+async def test_systemd_status_stays_starting_when_unit_is_active_without_runtime_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+    user_id, stream_id = await _create_stream_fixture(
+        tmp_path,
+        stream_status="running",
+    )
+
+    async def fake_enrich_streams(self, streams):
+        return None
+
+    async def fake_attach_runtime_incident_summaries(_db, _streams, manager=None):
+        return None
+
+    async def fake_systemd_is_active(_stream_id):
+        return True
+
+    async def fake_systemd_unit_status(_stream_id):
+        return {"ActiveState": "active", "SubState": "running"}
+
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
+    monkeypatch.setattr(
+        streams_control.YoutubeProviderStatusService,
+        "enrich_streams",
+        fake_enrich_streams,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "attach_runtime_incident_summaries",
+        fake_attach_runtime_incident_summaries,
+    )
+    monkeypatch.setattr(streams_control, "systemd_is_active", fake_systemd_is_active)
+    monkeypatch.setattr(
+        streams_control, "systemd_unit_status", fake_systemd_unit_status
+    )
+
+    async with async_session_maker() as session:
+        stream = await session.get(Stream, stream_id)
+        assert stream is not None
+        stream.started_at = datetime.now(timezone.utc) - timedelta(minutes=2)
+        await session.commit()
+
+        service = StreamControlService(session, user_id)
+        status_payload = await service.get_stream_status(stream_id)
+        await session.refresh(stream)
+
+        assert status_payload.status == "starting"
+        assert status_payload.is_running is False
+        assert status_payload.error_message is None
+        assert stream.status == "starting"
+        assert stream.started_at is None
+
+
+@pytest.mark.asyncio
+async def test_systemd_status_turns_running_after_fresh_runtime_heartbeat(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+    user_id, stream_id = await _create_stream_fixture(
+        tmp_path,
+        stream_status="starting",
+    )
+
+    async def fake_enrich_streams(self, streams):
+        return None
+
+    async def fake_attach_runtime_incident_summaries(_db, _streams, manager=None):
+        return None
+
+    async def fake_systemd_is_active(_stream_id):
+        return True
+
+    async def fake_systemd_unit_status(_stream_id):
+        return {"ActiveState": "active", "SubState": "running"}
+
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
+    monkeypatch.setattr(
+        streams_control.YoutubeProviderStatusService,
+        "enrich_streams",
+        fake_enrich_streams,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "attach_runtime_incident_summaries",
+        fake_attach_runtime_incident_summaries,
+    )
+    monkeypatch.setattr(streams_control, "systemd_is_active", fake_systemd_is_active)
+    monkeypatch.setattr(
+        streams_control, "systemd_unit_status", fake_systemd_unit_status
+    )
+
+    async with async_session_maker() as session:
+        stream = await session.get(Stream, stream_id)
+        assert stream is not None
+
+        write_runtime_heartbeat(
+            stream_id,
+            runner_pid=321,
+            runtime_mode="systemd",
+        )
+
+        service = StreamControlService(session, user_id)
+        status_payload = await service.get_stream_status(stream_id)
+        await session.refresh(stream)
+
+        assert status_payload.status == "running"
+        assert status_payload.is_running is True
+        assert stream.status == "running"
+        assert stream.started_at is not None
+        assert stream.runtime_last_heartbeat_at is not None
+
+
+@pytest.mark.asyncio
+async def test_systemd_status_fails_closed_when_heartbeat_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        streams_control.default_settings, "upload_dir", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(streams_control.default_settings, "stream_dir", str(tmp_path))
+    monkeypatch.setattr(
+        streams_control.default_settings,
+        "stream_runtime_mode",
+        "systemd",
+    )
+    monkeypatch.setattr(
+        streams_control.default_settings,
+        "stream_runtime_heartbeat_ttl_seconds",
+        15,
+    )
+    user_id, stream_id = await _create_stream_fixture(
+        tmp_path,
+        stream_status="starting",
+    )
+
+    async def fake_enrich_streams(self, streams):
+        return None
+
+    async def fake_attach_runtime_incident_summaries(_db, _streams, manager=None):
+        return None
+
+    async def fake_systemd_is_active(_stream_id):
+        return True
+
+    async def fake_systemd_unit_status(_stream_id):
+        return {"ActiveState": "active", "SubState": "running"}
+
+    monkeypatch.setattr(streams_control, "systemd_enabled", lambda: True)
+    monkeypatch.setattr(
+        streams_control.YoutubeProviderStatusService,
+        "enrich_streams",
+        fake_enrich_streams,
+    )
+    monkeypatch.setattr(
+        streams_control,
+        "attach_runtime_incident_summaries",
+        fake_attach_runtime_incident_summaries,
+    )
+    monkeypatch.setattr(streams_control, "systemd_is_active", fake_systemd_is_active)
+    monkeypatch.setattr(
+        streams_control, "systemd_unit_status", fake_systemd_unit_status
+    )
+
+    async with async_session_maker() as session:
+        stream = await session.get(Stream, stream_id)
+        assert stream is not None
+
+        write_runtime_heartbeat(
+            stream_id,
+            runner_pid=654,
+            runtime_mode="systemd",
+            now=datetime.now(timezone.utc) - timedelta(seconds=60),
+            ttl_seconds=5,
+        )
+
+        service = StreamControlService(session, user_id)
+        status_payload = await service.get_stream_status(stream_id)
+        await session.refresh(stream)
+
+        assert status_payload.status == "error"
+        assert status_payload.is_running is False
+        assert status_payload.error_message is not None
+        assert "heartbeat expired" in status_payload.error_message
+        assert status_payload.runtime_restart.enabled is False
+        assert status_payload.runtime_restart.attempts == 0
+        assert status_payload.runtime_restart.max_attempts == 0
+        assert status_payload.runtime_restart.state == "disabled"
+        assert stream.status == "error"
 
 
 @pytest.mark.asyncio

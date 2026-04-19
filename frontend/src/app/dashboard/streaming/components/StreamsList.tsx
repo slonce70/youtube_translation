@@ -14,7 +14,6 @@ import {
   Square,
   Trash2,
 } from 'lucide-react'
-import type { UseQueryResult } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocale, type TranslationValues } from 'next-intl'
 
@@ -29,7 +28,6 @@ import type {
   MediaCollection,
   Playlist,
   Stream,
-  StreamStatusResponse,
   StreamStatusValue,
 } from '@/lib/types'
 
@@ -38,7 +36,6 @@ type Translator = (key: string, values?: TranslationValues) => string
 export type StreamsListProps = {
   streams?: Stream[]
   isLoading: boolean
-  liveStatusMap: Map<string, UseQueryResult<StreamStatusResponse>>
   onCreateStream: () => void
   onViewLogs: (streamId: string) => void
   onOpenLiveEditor: (stream: Stream) => void
@@ -125,7 +122,6 @@ function hasRetryHistory(runtimeRestart: Stream['runtime_restart'] | null | unde
 export function StreamsList({
   streams,
   isLoading,
-  liveStatusMap,
   onCreateStream,
   onViewLogs,
   onOpenLiveEditor,
@@ -170,12 +166,12 @@ export function StreamsList({
     }
 
     for (const stream of streams ?? []) {
-      const derived = deriveStreamState(stream, liveStatusMap.get(stream.id), nowTick)
+      const derived = deriveStreamState(stream, undefined, nowTick)
       groups[derived.group].push({ stream, derived })
     }
 
     return groups
-  }, [liveStatusMap, nowTick, streams])
+  }, [nowTick, streams])
 
   return (
     <Card>

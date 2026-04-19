@@ -30,7 +30,6 @@ import { QualityGateModal } from './components/QualityGateModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamingPageData } from './hooks/useStreamingPageData'
-import { useStreamStatusMap } from './hooks/useStreamStatusMap'
 import { AddChannelModal } from '@/components/streaming/AddChannelModal'
 import {
   buildStreamIncidentNotice,
@@ -116,8 +115,6 @@ export default function StreamingPage() {
     quota,
     tStreaming,
   })
-
-  const liveStatusMap = useStreamStatusMap(streams, user?.id)
 
   const createDestinationMutation = useMutation({
     mutationFn: (data: DestinationFormState) => api.destinations.create(data),
@@ -489,9 +486,9 @@ export default function StreamingPage() {
     () =>
       (streams ?? []).map((stream) => ({
         stream,
-        derived: deriveStreamState(stream, liveStatusMap.get(stream.id)),
+        derived: deriveStreamState(stream),
       })),
-    [liveStatusMap, streams],
+    [streams],
   )
 
   const liveEntries = useMemo(

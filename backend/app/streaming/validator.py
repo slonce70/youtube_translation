@@ -3,11 +3,23 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, TypedDict
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class VideoBitrateGuidanceEntry(TypedDict):
+    label: str
+    min_height: int
+    max_height: int
+    fps: int
+    min_bitrate_mbps: float
+    max_bitrate_mbps: float
+    target_bitrate_mbps: float
+    video_codec: str
+    audio_codec: str
 
 
 class VideoValidator:
@@ -30,7 +42,7 @@ class VideoValidator:
         "ffprobe binary not found. Install FFmpeg or set FFMPEG_BIN/FFPROBE_BIN in .env"
     )
 
-    BITRATE_GUIDANCE = [
+    BITRATE_GUIDANCE: list[VideoBitrateGuidanceEntry] = [
         {
             "label": "4K / 2160p",
             "min_height": 2000,
@@ -361,7 +373,7 @@ class VideoValidator:
         video_stream, cover_art_stream = self._split_video_streams(streams)
         audio_stream = next((s for s in streams if s["codec_type"] == "audio"), None)
 
-        info = {
+        info: Dict[str, Any] = {
             "duration": float(format_info.get("duration", 0)),
             "size_bytes": int(format_info.get("size", 0)),
             "bitrate": int(format_info.get("bit_rate", 0)),
@@ -478,7 +490,7 @@ class VideoValidator:
 
     def _match_bitrate_guidance(
         self, height: Optional[int], fps_value: Optional[float]
-    ):
+    ) -> Tuple[Optional[VideoBitrateGuidanceEntry], Optional[int], bool]:
         """Find the best matching bitrate recommendation for provided height/fps."""
         if not height:
             return None, None, True
@@ -545,9 +557,12 @@ class VideoValidator:
         )
         if codec in {"mjpeg", "png", "bmp", "jpeg"} and (fps is None or fps <= 1):
             nb_frames = stream.get("nb_frames")
-            try:
-                nb_frames_value = int(nb_frames)
-            except (TypeError, ValueError):
+            if isinstance(nb_frames, (int, float, str)):
+                try:
+                    nb_frames_value = int(nb_frames)
+                except ValueError:
+                    nb_frames_value = None
+            else:
                 nb_frames_value = None
             if nb_frames_value is None or nb_frames_value <= 1:
                 return True

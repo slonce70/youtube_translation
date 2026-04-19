@@ -2,7 +2,7 @@ import os
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-import psutil
+import psutil  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select, func
@@ -85,10 +85,10 @@ async def get_stream_metrics(
     stream_filters = []
     if user_id is not None:
         try:
-            user_uuid = UUID(user_id)
+            user_key: UUID | str = UUID(user_id)
         except (ValueError, TypeError):
-            user_uuid = user_id
-        stream_filters.append(Stream.user_id == user_uuid)
+            user_key = user_id
+        stream_filters.append(Stream.user_id == user_key)
 
     # Count total streams
     result = await db.execute(select(func.count(Stream.id)).where(*stream_filters))
@@ -112,36 +112,11 @@ async def get_stream_metrics(
     )
     error_streams = result.scalar()
 
-    result = await db.execute(
-        select(func.count(Stream.id)).where(
-            *stream_filters,
-            Stream.runtime_next_restart_at.is_not(None),
-        )
-    )
-    scheduled_restart_streams = result.scalar()
-
-    result = await db.execute(
-        select(func.count(Stream.id)).where(
-            *stream_filters,
-            Stream.runtime_restart_attempts > 0,
-        )
-    )
-    streams_with_retry_history = result.scalar()
-
-    result = await db.execute(
-        select(func.coalesce(func.sum(Stream.runtime_restart_attempts), 0)).where(
-            *stream_filters,
-        )
-    )
-    total_restart_attempts = int(result.scalar() or 0)
-
-    result = await db.execute(
-        select(func.min(Stream.runtime_next_restart_at)).where(
-            *stream_filters,
-            Stream.runtime_next_restart_at.is_not(None),
-        )
-    )
-    next_restart_at = result.scalar()
+    restart_enabled = False
+    scheduled_restart_streams = 0
+    streams_with_retry_history = 0
+    total_restart_attempts = 0
+    next_restart_at = None
 
     return {
         "total_streams": total_streams,
@@ -149,11 +124,11 @@ async def get_stream_metrics(
         "idle_streams": idle_streams,
         "error_streams": error_streams,
         "restart_orchestration": {
-            "auto_restart_enabled": bool(settings.stream_runtime_auto_restart_enabled),
+            "auto_restart_enabled": restart_enabled,
             "scheduled_restart_streams": scheduled_restart_streams,
             "streams_with_retry_history": streams_with_retry_history,
             "total_restart_attempts": total_restart_attempts,
-            "max_attempts": max(int(settings.stream_runtime_restart_max_attempts), 0),
+            "max_attempts": 0,
             "next_restart_at": next_restart_at,
         },
     }

@@ -469,13 +469,7 @@ class Stream(Base):
     schedule_stop_after_seconds = Column(Integer)
     scheduled_stop_time = Column(TIMESTAMP(timezone=True))
     scheduled_stop_attempted_at = Column(TIMESTAMP(timezone=True))
-    runtime_owner_id = Column(Text, index=True)
-    runtime_lease_expires_at = Column(TIMESTAMP(timezone=True), index=True)
     runtime_last_heartbeat_at = Column(TIMESTAMP(timezone=True))
-    runtime_restart_attempts = Column(Integer, nullable=False, server_default=text("0"))
-    runtime_next_restart_at = Column(TIMESTAMP(timezone=True), index=True)
-    runtime_last_restart_at = Column(TIMESTAMP(timezone=True))
-    runtime_last_failure_at = Column(TIMESTAMP(timezone=True))
 
     # Track total duration for billing
     total_duration_seconds = Column(Float, default=0)

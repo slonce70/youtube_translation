@@ -4,7 +4,7 @@ import logging
 import re
 import signal
 import shutil
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from collections import deque
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -20,8 +20,6 @@ from app.core.database import get_db_context
 from app.core.metrics import track_stream_error, track_stream_start, track_stream_stop
 from app.core.observability import capture_alert
 from app.core.quota import QuotaEnforcer
-from app.core.stream_runtime_lease import clear_stream_runtime_lease
-from app.core.stream_runtime_restart import clear_stream_runtime_restart_state
 from app.models.database import Stream, SystemAlert
 from app.streaming.hot_swap import hot_swap_manager
 from app.streaming.playlist_builder import PlaylistFileSet
@@ -183,6 +181,11 @@ def _build_stream_failure_message(returncode: int, recent_errors: List[str]) -> 
 def _build_tee_destination(uri: str) -> str:
     tee_fail_policy = settings.ffmpeg_tee_onfail_policy
     max_recovery_attempts = max(int(settings.ffmpeg_output_recovery_max_attempts), 0)
+    queue_size = max(int(settings.ffmpeg_output_fifo_queue_size), 1)
+    drop_pkts_on_overflow = (
+        "1" if bool(settings.ffmpeg_output_drop_pkts_on_overflow) else "0"
+    )
+    target_uri = _apply_output_transport_options(uri)
     # FFmpeg's fifo muxer is explicitly recommended for network outputs when
     # temporary failures should be recovered transparently; see ffmpeg-formats
     # "fifo" muxer docs (attempt_recovery / recovery_wait_time).
@@ -194,13 +197,45 @@ def _build_tee_destination(uri: str) -> str:
         "recovery_wait_time=5:"
         "recover_any_error=1:"
         "restart_with_keyframe=1:"
-        f"max_recovery_attempts={max_recovery_attempts}]" + uri
+        f"drop_pkts_on_overflow={drop_pkts_on_overflow}:"
+        f"queue_size={queue_size}:"
+        f"max_recovery_attempts={max_recovery_attempts}]" + target_uri
     )
 
 
 def _line_matches_markers(line: str, markers: Tuple[str, ...]) -> bool:
     lowered = line.lower()
     return any(marker in lowered for marker in markers)
+
+
+def _apply_output_transport_options(uri: str) -> str:
+    try:
+        parts = urlsplit(uri)
+    except Exception:
+        return uri
+
+    if parts.scheme.lower() not in {"rtmp", "rtmps"}:
+        return uri
+
+    query_pairs = parse_qsl(parts.query, keep_blank_values=True)
+    query = dict(query_pairs)
+
+    if bool(settings.ffmpeg_output_tcp_keepalive):
+        query.setdefault("tcp_keepalive", "1")
+
+    rw_timeout = max(int(settings.ffmpeg_output_rw_timeout_us), 0)
+    if rw_timeout > 0:
+        query.setdefault("rw_timeout", str(rw_timeout))
+
+    return urlunsplit(
+        (
+            parts.scheme,
+            parts.netloc,
+            parts.path,
+            urlencode(query, doseq=True),
+            parts.fragment,
+        )
+    )
 
 
 def _normalize_runtime_signal_state(
@@ -495,6 +530,9 @@ class FFmpegStreamManager:
                 "restart_attempts": (
                     existing_info.get("restart_attempts", 0) if restart else 0
                 ),
+                "last_restart_at": _utcnow() if restart else None,
+                "last_failure_at": existing_info.get("last_failure_at"),
+                "next_restart_at": None,
                 "metadata": combined_metadata,
                 "recent_errors": (
                     recent_errors
@@ -939,10 +977,11 @@ class FFmpegStreamManager:
         audio_bitrate_value = audio_bitrate if not copy_audio else None
 
         if len(normalized_destinations) == 1:
-            target = normalized_destinations[0]["uri"]
+            target = _apply_output_transport_options(normalized_destinations[0]["uri"])
             max_recovery_attempts = max(
                 int(settings.ffmpeg_output_recovery_max_attempts), 0
             )
+            queue_size = max(int(settings.ffmpeg_output_fifo_queue_size), 1)
             # Even a single RTMP(S) destination benefits from fifo-based recovery,
             # otherwise a transient remote disconnect immediately tears down the
             # FFmpeg process.
@@ -960,6 +999,10 @@ class FFmpegStreamManager:
                     "1",
                     "-restart_with_keyframe",
                     "1",
+                    "-drop_pkts_on_overflow",
+                    "1" if bool(settings.ffmpeg_output_drop_pkts_on_overflow) else "0",
+                    "-queue_size",
+                    str(queue_size),
                     "-max_recovery_attempts",
                     str(max_recovery_attempts),
                     target,
@@ -972,7 +1015,8 @@ class FFmpegStreamManager:
             destination_uris = []
             for dest in normalized_destinations:
                 uri = dest["uri"]
-                destination_uris.append(uri)
+                target_uri = _apply_output_transport_options(uri)
+                destination_uris.append(target_uri)
                 tee_outputs.append(_build_tee_destination(uri))
 
             cmd.extend(["-f", "tee", "|".join(tee_outputs)])
@@ -1698,10 +1742,13 @@ class FFmpegStreamManager:
                     settings.ffmpeg_restart_backoff_max_seconds, base_backoff
                 )
                 backoff = min(base_backoff * (2**attempts), max_backoff)
+                info["next_restart_at"] = _utcnow() + timedelta(seconds=backoff)
                 if backoff:
                     await asyncio.sleep(backoff)
             except Exception:
                 pass
+            finally:
+                info["next_restart_at"] = None
 
             async with self._cleanup_lock:
                 self.active_streams.pop(stream_id, None)
@@ -2169,14 +2216,19 @@ class FFmpegStreamManager:
 
                     stream.pid = None
                     stream.stopped_at = now
-                    clear_stream_runtime_lease(stream)
-                    clear_stream_runtime_restart_state(stream)
                     if quota_context and quota_context.get("message"):
                         stream.error_message = str(quota_context["message"])[:500]
                     else:
                         stream.error_message = None
                     if stream.status != "stopped":
                         stream.status = "stopped"
+
+            from app.services.streams.audit import resolve_stream_runtime_alerts
+
+            await resolve_stream_runtime_alerts(
+                stream_uuid,
+                resolution_note="Auto-resolved after clean stream shutdown.",
+            )
 
         except SQLAlchemyError as exc:
             logger.exception(

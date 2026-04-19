@@ -8,6 +8,8 @@ from app.streaming.validator import VideoValidator
 
 logger = logging.getLogger(__name__)
 
+validator: VideoValidator | None
+
 try:
     validator = VideoValidator()
 except FileNotFoundError as exc:  # pragma: no cover - depends on env

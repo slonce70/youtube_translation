@@ -95,7 +95,6 @@ EOF
     assert "host_service_user_exists=present" in result.stdout
     assert "active_runtime_streams=0" in result.stdout
     assert "docker_backend=running" in result.stdout
-    assert "docker_runner=running" in result.stdout
     assert "host_backend_unit=disabled/inactive" in result.stdout
     assert "ffmpeg_template_unit=present" in result.stdout
     assert "streaming_slice=present" in result.stdout

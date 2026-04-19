@@ -59,7 +59,7 @@ def test_deploy_vps_script_aligns_stream_runtime_mode_for_active_host_backend(
 ) -> None:
     script = _script_path()
     backend_env = tmp_path / ".env"
-    backend_env.write_text("STREAM_RUNTIME_MODE=supervisor\n", encoding="utf-8")
+    backend_env.write_text("STREAM_RUNTIME_MODE=manager\n", encoding="utf-8")
 
     result = subprocess.run(
         [
@@ -68,7 +68,7 @@ def test_deploy_vps_script_aligns_stream_runtime_mode_for_active_host_backend(
             (
                 f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
                 f"backend_env='{backend_env}'; "
-                "STREAM_RUNTIME_MODE=supervisor; "
+                "STREAM_RUNTIME_MODE=manager; "
                 "DEPLOY_RESTART_HOST_BACKEND=true; "
                 "host_backend_is_active(){ return 0; }; "
                 "ensure_host_runtime_mode_alignment; "
@@ -92,7 +92,7 @@ def test_deploy_vps_script_aligns_effective_runtime_mode_for_cutover_path(
     backend_env = tmp_path / "backend.env"
     root_env = tmp_path / "root.env"
     backend_env.write_text("STREAM_RUNTIME_MODE=systemd\n", encoding="utf-8")
-    root_env.write_text("STREAM_RUNTIME_MODE=supervisor\n", encoding="utf-8")
+    root_env.write_text("STREAM_RUNTIME_MODE=manager\n", encoding="utf-8")
 
     result = subprocess.run(
         [
@@ -102,7 +102,7 @@ def test_deploy_vps_script_aligns_effective_runtime_mode_for_cutover_path(
                 f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
                 f"backend_env='{backend_env}'; "
                 f"root_env='{root_env}'; "
-                "STREAM_RUNTIME_MODE=supervisor; "
+                "STREAM_RUNTIME_MODE=manager; "
                 "DEPLOY_CUTOVER_HOST_RUNTIME=true; "
                 "host_backend_is_active(){ return 1; }; "
                 "ensure_host_runtime_mode_alignment; "
@@ -118,6 +118,39 @@ def test_deploy_vps_script_aligns_effective_runtime_mode_for_cutover_path(
     assert "STREAM_RUNTIME_MODE=systemd" in backend_env.read_text(encoding="utf-8")
     assert "STREAM_RUNTIME_MODE=systemd" in root_env.read_text(encoding="utf-8")
     assert "effective=systemd" in result.stdout
+
+
+def test_deploy_vps_script_aligns_environment_when_missing(tmp_path) -> None:
+    script = _script_path()
+    backend_env = tmp_path / "backend.env"
+    root_env = tmp_path / "root.env"
+    backend_env.write_text("STREAM_RUNTIME_MODE=manager\n", encoding="utf-8")
+    root_env.write_text("POSTGRES_PASSWORD=test\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                f"backend_env='{backend_env}'; "
+                f"root_env='{root_env}'; "
+                "unset ENVIRONMENT; "
+                "DEPLOY_ENVIRONMENT=staging; "
+                "ensure_environment_alignment; "
+                "printf 'effective=%s\\n' \"$ENVIRONMENT\""
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ENVIRONMENT=staging" in backend_env.read_text(encoding="utf-8")
+    assert "ENVIRONMENT=staging" in root_env.read_text(encoding="utf-8")
+    assert "effective=staging" in result.stdout
+    assert "aligning deploy environment to staging" in result.stdout
 
 
 def test_deploy_vps_script_aligns_host_storage_env_for_active_backend(tmp_path) -> None:
@@ -223,8 +256,7 @@ def test_deploy_vps_aligns_repo_storage_paths_to_persistent_symlinks(tmp_path) -
     uploads_dir = backend_root / "uploads"
     streams_dir = backend_root / "streams"
     logs_dir = backend_root / "logs"
-    supervisord_dir = backend_root / "supervisord"
-    for directory in (uploads_dir, streams_dir, logs_dir, supervisord_dir):
+    for directory in (uploads_dir, streams_dir, logs_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
     legacy_file = uploads_dir / "legacy.mp4"
@@ -234,7 +266,6 @@ def test_deploy_vps_aligns_repo_storage_paths_to_persistent_symlinks(tmp_path) -
     host_uploads_dir = persistent_root / "uploads"
     host_streams_dir = persistent_root / "streams"
     host_logs_dir = persistent_root / "logs"
-    host_supervisord_dir = persistent_root / "supervisord"
 
     result = subprocess.run(
         [
@@ -248,7 +279,6 @@ def test_deploy_vps_aligns_repo_storage_paths_to_persistent_symlinks(tmp_path) -
                 f"HOST_UPLOADS_DIR='{host_uploads_dir}'; "
                 f"HOST_STREAMS_DIR='{host_streams_dir}'; "
                 f"HOST_LOGS_DIR='{host_logs_dir}'; "
-                f"HOST_SUPERVISORD_DIR='{host_supervisord_dir}'; "
                 "align_host_storage_links"
             ),
         ],
@@ -261,11 +291,9 @@ def test_deploy_vps_aligns_repo_storage_paths_to_persistent_symlinks(tmp_path) -
     assert uploads_dir.is_symlink()
     assert streams_dir.is_symlink()
     assert logs_dir.is_symlink()
-    assert supervisord_dir.is_symlink()
     assert uploads_dir.resolve() == host_uploads_dir.resolve()
     assert streams_dir.resolve() == host_streams_dir.resolve()
     assert logs_dir.resolve() == host_logs_dir.resolve()
-    assert supervisord_dir.resolve() == host_supervisord_dir.resolve()
     assert (host_uploads_dir / "legacy.mp4").read_text(encoding="utf-8") == "video"
 
 
@@ -288,8 +316,7 @@ def test_deploy_vps_aligns_host_storage_permissions_for_service_group(tmp_path) 
 
     streams_dir = tmp_path / "persistent" / "streams"
     logs_dir = tmp_path / "persistent" / "logs"
-    supervisord_dir = tmp_path / "persistent" / "supervisord"
-    for directory in (streams_dir, logs_dir, supervisord_dir):
+    for directory in (streams_dir, logs_dir):
         directory.mkdir(parents=True, exist_ok=True)
         directory.chmod(0o700)
 
@@ -304,7 +331,6 @@ def test_deploy_vps_aligns_host_storage_permissions_for_service_group(tmp_path) 
                 f"HOST_UPLOADS_DIR='{uploads_dir}'; "
                 f"HOST_STREAMS_DIR='{streams_dir}'; "
                 f"HOST_LOGS_DIR='{logs_dir}'; "
-                f"HOST_SUPERVISORD_DIR='{supervisord_dir}'; "
                 f"SYSTEMD_SERVICE_GROUP='{current_group}'; "
                 "align_host_storage_permissions"
             ),

@@ -210,9 +210,6 @@ async def test_launch_due_streams_clears_runtime_lease_after_failed_start(monkey
         await session.commit()
 
         monkeypatch.setattr("app.services.streams.control.systemd_enabled", lambda: True)
-        monkeypatch.setattr(
-            "app.services.streams.control.supervisor_enabled", lambda: False
-        )
 
         async def fake_systemd_unit_status(_stream_id):
             assert _stream_id == stream.id
@@ -234,8 +231,6 @@ async def test_launch_due_streams_clears_runtime_lease_after_failed_start(monkey
         await session.refresh(stream)
 
         assert launched == 0
-        assert stream.runtime_owner_id is None
-        assert stream.runtime_lease_expires_at is None
 
 
 def test_compute_next_repeating_start_preserves_local_time_across_dst():

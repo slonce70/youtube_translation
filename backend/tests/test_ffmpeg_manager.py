@@ -386,6 +386,17 @@ class TestFFmpegStreamManager:
         assert any(
             "onfail=ignore" in part for part in cmd if part.startswith("[select")
         )
+        assert any(
+            "drop_pkts_on_overflow=1" in part for part in cmd if part.startswith("[select")
+        )
+        assert any(
+            "queue_size=240" in part for part in cmd if part.startswith("[select")
+        )
+        assert any(
+            "tcp_keepalive=1" in part and "rw_timeout=15000000" in part
+            for part in cmd
+            if part.startswith("[select")
+        )
 
         assert plan.copy_video is False
         assert plan.copy_audio is False
@@ -401,8 +412,8 @@ class TestFFmpegStreamManager:
         assert plan.multi_destination is True
         assert plan.tee_onfail_policy == "ignore"
         assert plan.destination_uris == [
-            "rtmp://a.youtube.com/live/primary",
-            "rtmp://b.youtube.com/live/backup",
+            "rtmp://a.youtube.com/live/primary?tcp_keepalive=1&rw_timeout=15000000",
+            "rtmp://b.youtube.com/live/backup?tcp_keepalive=1&rw_timeout=15000000",
         ]
 
     def test_build_command_keeps_copy_mode_for_multi_destination_when_compatible(
@@ -850,7 +861,9 @@ class TestFFmpegStreamManagerMonitor:
         assert plan is not None
         assert plan["copy_video"] is False
         assert plan["copy_audio"] is False
-        assert plan["destination_uris"] == ["rtmp://youtube.com/live/<redacted>"]
+        assert plan["destination_uris"] == [
+            "rtmp://youtube.com/live/<redacted>?tcp_keepalive=1&rw_timeout=15000000"
+        ]
         assert plan["multi_destination"] is False
         assert plan["tee_onfail_policy"] is None
         assert plan["uses_video_placeholder"] is False
@@ -860,7 +873,10 @@ class TestFFmpegStreamManagerMonitor:
         assert "-attempt_recovery" in captured_cmd and captured_cmd[captured_cmd.index("-attempt_recovery") + 1] == "1"
         assert "-recover_any_error" in captured_cmd and captured_cmd[captured_cmd.index("-recover_any_error") + 1] == "1"
         assert "-restart_with_keyframe" in captured_cmd and captured_cmd[captured_cmd.index("-restart_with_keyframe") + 1] == "1"
+        assert "-drop_pkts_on_overflow" in captured_cmd and captured_cmd[captured_cmd.index("-drop_pkts_on_overflow") + 1] == "1"
+        assert "-queue_size" in captured_cmd and captured_cmd[captured_cmd.index("-queue_size") + 1] == "240"
         assert "-max_recovery_attempts" in captured_cmd and captured_cmd[captured_cmd.index("-max_recovery_attempts") + 1] == "9"
+        assert captured_cmd[-1] == "rtmp://youtube.com/live/stream?tcp_keepalive=1&rw_timeout=15000000"
 
         # ensure telemetry persisted even after retrieving info
         assert (

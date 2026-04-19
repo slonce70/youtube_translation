@@ -140,7 +140,7 @@ async def fetch_mediamtx_summary(
             metrics_response = await metrics_task
             control_response = None
 
-        if isinstance(metrics_response, Exception):
+        if isinstance(metrics_response, BaseException):
             raise metrics_response
         metrics_response.raise_for_status()
 
@@ -161,7 +161,7 @@ async def fetch_mediamtx_summary(
                         "control_api_error": str(control_exc),
                     }
                 )
-        elif isinstance(control_response, Exception):
+        elif isinstance(control_response, BaseException):
             summary.update(
                 {
                     "active_paths": [],

@@ -18,31 +18,10 @@ from app.core.quota import (
     QuotaEnforcer as DefaultQuotaEnforcer,
     missing_tier_limits_detail,
 )
-from app.core.stream_runtime_lease import (
-    claim_stream_runtime_lease,
-    clear_stream_runtime_lease,
-    runtime_lease_is_active,
-    sync_stream_runtime_lease,
-)
-from app.core.stream_runtime_restart import (
-    clear_stream_runtime_restart_state,
-    mark_stream_runtime_restart_dispatched,
-    reset_stream_runtime_restart_state_if_healthy,
-    schedule_stream_runtime_restart,
-)
 from app.core.stream_runtime_heartbeat import (
     get_runtime_heartbeat_datetime,
     read_runtime_heartbeat,
-    runtime_heartbeat_is_stale,
-)
-from app.core.supervisor_control import (
-    supervisor_enabled,
-    is_running as supervisor_is_running,
-    program_status as supervisor_program_status,
-    remove_program as supervisor_remove_program,
-    restart_program as supervisor_restart_program,
-    start_program as supervisor_start_program,
-    stop_program as supervisor_stop_program,
+    stale_runtime_heartbeat_reason,
 )
 from app.core.systemd_control import (
     systemd_enabled,
@@ -70,18 +49,11 @@ from .helpers import (
 from .status_helpers import (
     aware_datetime,
     filter_important_ffmpeg_logs,
-    has_pending_runtime_restart,
     provider_summary_for_stream,
-    runtime_lease_conflict_detail,
     runtime_restart_payload,
     uptime_seconds as compute_uptime_seconds,
 )
 from .audit import record_stream_audit_event
-
-
-def _is_removed_process_group_error(exc: RuntimeError) -> bool:
-    message = " ".join(str(exc).split()).lower()
-    return "removed process group" in message or "no such process" in message
 
 
 def _utcnow() -> datetime:
@@ -89,7 +61,7 @@ def _utcnow() -> datetime:
 
 
 class StreamControlService:
-    """Coordinates FFmpeg/systemd/supervisor interactions for streams."""
+    """Coordinates FFmpeg and systemd interactions for streams."""
 
     def __init__(
         self,
@@ -108,16 +80,12 @@ class StreamControlService:
 
     def supports_hot_swap(self) -> bool:
         """Hot swap is currently available only for in-process manager runtime."""
-        return not (systemd_enabled() or supervisor_enabled())
+        return not systemd_enabled()
 
     async def ensure_schedule_update_allowed(self, stream: Stream) -> None:
         """Fail closed if managed runtime might still own the stream."""
         if systemd_enabled():
             await self._ensure_systemd_schedule_update_allowed(stream)
-            return
-
-        if supervisor_enabled():
-            await self._ensure_supervisor_schedule_update_allowed(stream)
             return
 
         if stream.status in {"running", "starting", "stopping"}:
@@ -170,6 +138,15 @@ class StreamControlService:
                 status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found"
             )
 
+        if systemd_enabled() and stream.status == "starting":
+            usage = await self._get_usage_snapshot()
+            return self._status_payload(
+                stream,
+                False,
+                status_override="starting",
+                usage=usage,
+            )
+
         already_running = await self.get_stream_status(stream_id)
         if already_running.status in {"running", "starting", "stopping"}:
             return already_running
@@ -183,20 +160,6 @@ class StreamControlService:
 
         enforcer = self.quota_cls(self.db, self.user_id)
         await enforcer.check_concurrent_streams()
-
-        lease = await claim_stream_runtime_lease(
-            self.db,
-            stream_id,
-            owner_id=self.settings.stream_runtime_node_id,
-            ttl_seconds=self.settings.stream_runtime_lease_ttl_seconds,
-        )
-        if not lease.acquired:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=runtime_lease_conflict_detail(lease.owner_id, lease.expires_at),
-            )
-
-        runtime_started = False
 
         try:
             if systemd_enabled():
@@ -230,64 +193,27 @@ class StreamControlService:
                     stream.stopped_at = previous_stopped_at
                     stream.error_message = previous_error_message
                     stream.log_path = previous_log_path
-                    clear_stream_runtime_lease(stream)
                     await self.db.commit()
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail=str(err),
                     ) from err
-                runtime_started = True
-                stream.status = "running"
-                stream.started_at = _utcnow()
+                stream = await self._get_stream_basic_for_update(stream_id)
+                if stream.status != "running":
+                    stream.status = "starting"
+                    stream.started_at = None
                 stream.stopped_at = None
                 stream.error_message = None
                 stream.log_path = str(log_file)
-                if reset_restart_policy:
-                    clear_stream_runtime_restart_state(stream)
-                else:
-                    mark_stream_runtime_restart_dispatched(stream)
                 if not preserve_schedule:
                     self._clear_start_schedule(stream)
                 await self.db.commit()
                 usage = await self._get_usage_snapshot(enforcer)
-                return self._status_payload(stream, True, usage=usage)
-
-            if supervisor_enabled():
-                _, _, log_file = await validate_stream_launch_prerequisites(
-                    self.db,
-                    self.user_id,
+                return self._status_payload(
                     stream,
-                    quota_evaluator=enforcer,
-                    settings_obj=self.settings,
+                    stream.status == "running",
+                    usage=usage,
                 )
-                info = await supervisor_program_status(stream_id)
-                if info.get("state") == "RUNNING":
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Stream already running",
-                    )
-                try:
-                    await supervisor_start_program(stream_id)
-                except RuntimeError as err:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=str(err),
-                    ) from err
-                runtime_started = True
-                stream.status = "running"
-                stream.started_at = _utcnow()
-                stream.stopped_at = None
-                stream.error_message = None
-                stream.log_path = str(log_file)
-                if reset_restart_policy:
-                    clear_stream_runtime_restart_state(stream)
-                else:
-                    mark_stream_runtime_restart_dispatched(stream)
-                if not preserve_schedule:
-                    self._clear_start_schedule(stream)
-                await self.db.commit()
-                usage = await self._get_usage_snapshot(enforcer)
-                return self._status_payload(stream, True, usage=usage)
 
             playlists, destinations, log_file = await prepare_stream_launch(
                 self.db,
@@ -317,7 +243,6 @@ class StreamControlService:
                     detail="Failed to start stream",
                 )
 
-            runtime_started = True
             stream.status = "running"
             stream.started_at = _utcnow()
             stream.stopped_at = None
@@ -325,10 +250,6 @@ class StreamControlService:
             info = self.manager.get_stream_info(str(stream_id)) or {}
             stream.pid = info.get("pid")
             stream.log_path = str(log_file)
-            if reset_restart_policy:
-                clear_stream_runtime_restart_state(stream)
-            else:
-                mark_stream_runtime_restart_dispatched(stream)
             if not preserve_schedule:
                 self._clear_start_schedule(stream)
             await self.db.commit()
@@ -340,8 +261,6 @@ class StreamControlService:
                 usage=usage,
             )
         except Exception:
-            if not runtime_started:
-                clear_stream_runtime_lease(stream)
             raise
 
     async def _acquire_user_start_lock(self) -> None:
@@ -411,18 +330,6 @@ class StreamControlService:
                 status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found"
             )
 
-        lease = await claim_stream_runtime_lease(
-            self.db,
-            stream_id,
-            owner_id=self.settings.stream_runtime_node_id,
-            ttl_seconds=self.settings.stream_runtime_lease_ttl_seconds,
-        )
-        if not lease.acquired:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=runtime_lease_conflict_detail(lease.owner_id, lease.expires_at),
-            )
-
         if systemd_enabled():
             try:
                 await systemd_restart_unit(stream_id)
@@ -430,18 +337,9 @@ class StreamControlService:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err)
                 ) from err
-            self._mark_restart_success(stream, orchestrated=orchestrated)
-            await self.db.commit()
-            return
-
-        if supervisor_enabled():
-            try:
-                await supervisor_restart_program(stream_id)
-            except RuntimeError as err:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err)
-                ) from err
-            self._mark_restart_success(stream, orchestrated=orchestrated)
+            stream = await self._get_stream_basic_for_update(stream_id)
+            self._mark_restart_success(stream, orchestrated=False)
+            stream.started_at = None
             await self.db.commit()
             return
 
@@ -475,7 +373,7 @@ class StreamControlService:
     async def enqueue_hot_swap(
         self, stream_id: UUID, target: str, asset_payload: Dict[str, Any]
     ) -> None:
-        if systemd_enabled() or supervisor_enabled():
+        if systemd_enabled():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Hot swapping is not supported for managed runtime streams",
@@ -557,37 +455,6 @@ class StreamControlService:
             stream.status = "stopped"
             stream.pid = None
             stream.stopped_at = _utcnow()
-            clear_stream_runtime_lease(stream)
-            clear_stream_runtime_restart_state(stream)
-            self._clear_schedule(stream)
-            await self._record_stop_audit(
-                stream, phase="completed", metadata=audit_metadata
-            )
-            return
-
-        if supervisor_enabled():
-            if await supervisor_is_running(stream.id):
-                try:
-                    await supervisor_stop_program(stream.id)
-                except RuntimeError as err:
-                    if not _is_removed_process_group_error(err):
-                        raise HTTPException(
-                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=str(err),
-                        ) from err
-            try:
-                await supervisor_remove_program(stream.id)
-            except RuntimeError as err:
-                import logging
-
-                logging.getLogger(__name__).warning(
-                    "Failed to remove stream %s from supervisor: %s", stream.id, err
-                )
-            stream.status = "stopped"
-            stream.pid = None
-            stream.stopped_at = _utcnow()
-            clear_stream_runtime_lease(stream)
-            clear_stream_runtime_restart_state(stream)
             self._clear_schedule(stream)
             await self._record_stop_audit(
                 stream, phase="completed", metadata=audit_metadata
@@ -599,8 +466,6 @@ class StreamControlService:
         stream.status = "stopped"
         stream.pid = None
         stream.stopped_at = _utcnow()
-        clear_stream_runtime_lease(stream)
-        clear_stream_runtime_restart_state(stream)
         self._clear_schedule(stream)
         await self._record_stop_audit(
             stream, phase="completed", metadata=audit_metadata
@@ -617,137 +482,32 @@ class StreamControlService:
         await attach_runtime_incident_summaries(self.db, [stream], manager=self.manager)
 
         if systemd_enabled():
-            is_running = await systemd_is_active(stream_id)
             info = await systemd_unit_status(stream_id)
-            active_state = info.get("ActiveState", stream.status)
-            uptime_seconds = compute_uptime_seconds(stream) if is_running else 0
             usage = await self._get_usage_snapshot()
-            preserve_starting = not is_running and stream.status == "starting"
-            preserve_restart_queue = (
-                not is_running
-                and stream.status == "error"
-                and has_pending_runtime_restart(stream)
-            )
-            status_override = (
-                stream.status
-                if (
-                    preserve_starting
-                    or (stream.status == "scheduled" and not is_running)
-                    or preserve_restart_queue
-                )
-                else active_state
-            )
-            return self._status_payload(
-                stream,
-                is_running,
-                uptime_seconds,
-                status_override=status_override,
-                usage=usage,
-            )
-
-        if supervisor_enabled():
-            info = await supervisor_program_status(stream_id)
-            state = info.get("state", stream.status)
             previous_status = stream.status
-
-            raw_state = (state or "").lower()
-            supervisor_status_map = {
-                "running": "running",
-                "backoff": "error",
-                "fatal": "error",
-                "error": "error",
-                "starting": "starting",
-                "stopping": "stopping",
-                "stopped": "stopped",
-                "exited": "stopped",
-                "unknown": stream.status,
-                "not_found": "stopped",
-            }
-            preserve_scheduled = stream.status == "scheduled" and raw_state in {
+            active_state = str(info.get("ActiveState") or "").lower()
+            heartbeat_payload = read_runtime_heartbeat(stream_id)
+            stale_heartbeat = stale_runtime_heartbeat_reason(heartbeat_payload)
+            fresh_heartbeat = heartbeat_payload is not None and not stale_heartbeat
+            preserve_starting = (
+                active_state in {"", "unknown", "inactive", "dead"}
+                and previous_status == "starting"
+            )
+            preserve_scheduled = previous_status == "scheduled" and active_state in {
                 "",
                 "unknown",
-                "not_found",
-                "stopped",
-                "exited",
+                "inactive",
+                "dead",
             }
-            preserve_restart_queue = (
-                stream.status == "error"
-                and has_pending_runtime_restart(stream)
-                and raw_state in {"", "unknown", "not_found", "stopped", "exited"}
-            )
-            normalized_status = (
-                "scheduled"
-                if preserve_scheduled
-                else (
-                    "error"
-                    if preserve_restart_queue
-                    else supervisor_status_map.get(
-                        raw_state,
-                        (
-                            stream.status
-                            if stream.status
-                            in {
-                                "stopped",
-                                "starting",
-                                "running",
-                                "error",
-                                "stopping",
-                                "scheduled",
-                            }
-                            else "stopped"
-                        ),
-                    )
-                )
-            )
 
-            stale_heartbeat_reason = None
-            heartbeat_payload = None
-            if normalized_status == "running":
-                heartbeat_payload = read_runtime_heartbeat(stream_id)
-                if heartbeat_payload and runtime_heartbeat_is_stale(heartbeat_payload):
-                    expires_at = (
-                        heartbeat_payload.get("expires_at")
-                        or heartbeat_payload.get("updated_at")
-                        or "unknown"
-                    )
-                    runner_pid = heartbeat_payload.get("runner_pid")
-                    runtime_mode = heartbeat_payload.get("runtime_mode") or "managed"
-                    stale_heartbeat_reason = (
-                        f"{runtime_mode} runner heartbeat expired at {expires_at}"
-                    )
-                    if runner_pid:
-                        stale_heartbeat_reason += f" (runner_pid={runner_pid})"
-
-            if stale_heartbeat_reason:
+            if stale_heartbeat:
                 effective_now = _utcnow()
                 stream.status = "error"
                 stream.pid = None
                 if stream.stopped_at is None:
                     stream.stopped_at = effective_now
-                clear_stream_runtime_lease(stream)
-                if previous_status in {"running", "starting"}:
-                    decision = schedule_stream_runtime_restart(
-                        stream, now=effective_now
-                    )
-                    if decision.scheduled and decision.next_restart_at is not None:
-                        next_attempt_iso = decision.next_restart_at.astimezone(
-                            timezone.utc
-                        ).isoformat()
-                        stream.error_message = (
-                            f"{stale_heartbeat_reason}. Auto-restart scheduled at "
-                            f"{next_attempt_iso} (attempt {decision.attempt}/"
-                            f"{decision.max_attempts}, backoff {decision.delay_seconds}s)."
-                        )[:500]
-                    else:
-                        stream.error_message = (
-                            f"{stale_heartbeat_reason}. Auto-restart exhausted after "
-                            f"{decision.attempt}/{decision.max_attempts} attempts."
-                        )[:500]
-                else:
-                    stream.error_message = stale_heartbeat_reason[:500]
-
+                stream.error_message = stale_heartbeat[:500]
                 await self.db.commit()
-                usage = await self._get_usage_snapshot()
                 return self._status_payload(
                     stream,
                     False,
@@ -757,105 +517,124 @@ class StreamControlService:
                     usage=usage,
                 )
 
-            running = normalized_status == "running"
-            uptime_seconds = compute_uptime_seconds(stream) if running else 0
-            state_dirty = False
+            if preserve_scheduled:
+                normalized_status = "scheduled"
+            elif active_state == "active":
+                normalized_status = "running" if fresh_heartbeat else "starting"
+            elif active_state == "activating":
+                normalized_status = "starting"
+            elif active_state == "deactivating":
+                normalized_status = "stopping"
+            elif active_state in {"inactive", "dead"}:
+                normalized_status = "stopped"
+            elif active_state == "failed":
+                normalized_status = "error"
+            elif preserve_starting:
+                normalized_status = "starting"
+            else:
+                normalized_status = (
+                    previous_status
+                    if previous_status
+                    in {
+                        "stopped",
+                        "starting",
+                        "running",
+                        "error",
+                        "stopping",
+                        "scheduled",
+                    }
+                    else "stopped"
+                )
 
-            if running:
-                if not stream.started_at:
-                    stream.started_at = _utcnow()
+            state_dirty = False
+            running = normalized_status == "running"
+            heartbeat_updated_at = (
+                get_runtime_heartbeat_datetime(heartbeat_payload, "updated_at")
+                if fresh_heartbeat
+                else None
+            )
+            legacy_restart_message = bool(
+                stream.error_message and "auto-restart" in stream.error_message.lower()
+            )
+            error_payload = info.get("error") or info.get("details")
+            compact_error_payload = (
+                " ".join(str(error_payload).split()) if error_payload else None
+            )
+            resolved_error_message = None
+            if normalized_status == "error":
+                resolved_error_message = (
+                    f"Runtime state {active_state}: {compact_error_payload}"
+                    if compact_error_payload
+                    else f"Runtime state {active_state}"
+                )[:500]
+
+            if normalized_status == "starting":
+                if aware_datetime(stream.started_at) is not None:
+                    stream.started_at = None
                     state_dirty = True
-                stream.stopped_at = None
-                if heartbeat_payload:
-                    owner_id = (
-                        heartbeat_payload.get("lease_owner_id")
-                        or heartbeat_payload.get("node_id")
-                        or stream.runtime_owner_id
-                    )
-                    updated_at = get_runtime_heartbeat_datetime(
-                        heartbeat_payload, "updated_at"
-                    )
-                    expires_at = get_runtime_heartbeat_datetime(
-                        heartbeat_payload, "expires_at"
-                    )
-                    if owner_id and updated_at and expires_at:
-                        if (
-                            stream.runtime_owner_id != owner_id
-                            or not runtime_lease_is_active(stream, now=updated_at)
-                        ):
-                            sync_stream_runtime_lease(
-                                stream,
-                                owner_id=owner_id,
-                                now=updated_at,
-                                ttl_seconds=max(
-                                    int((expires_at - updated_at).total_seconds()), 1
-                                ),
-                            )
-                            state_dirty = True
-                if reset_stream_runtime_restart_state_if_healthy(stream):
+                if stream.stopped_at is not None:
+                    stream.stopped_at = None
                     state_dirty = True
+                if stream.error_message:
+                    stream.error_message = None
+                    state_dirty = True
+            elif running:
+                if (
+                    previous_status == "starting"
+                    or aware_datetime(stream.started_at) is None
+                ):
+                    stream.started_at = heartbeat_updated_at or _utcnow()
+                    state_dirty = True
+                if stream.stopped_at is not None:
+                    stream.stopped_at = None
+                    state_dirty = True
+                if stream.error_message:
+                    stream.error_message = None
+                    state_dirty = True
+                if fresh_heartbeat:
+                    if (
+                        heartbeat_updated_at
+                        and stream.runtime_last_heartbeat_at != heartbeat_updated_at
+                    ):
+                        stream.runtime_last_heartbeat_at = heartbeat_updated_at
+                        state_dirty = True
+            elif legacy_restart_message and stream.error_message is not None:
+                stream.error_message = None
+                state_dirty = True
 
             status_changed = normalized_status != previous_status
             if status_changed:
                 stream.status = normalized_status
                 state_dirty = True
                 if normalized_status in {"stopped", "error"}:
-                    if previous_status in {"running", "starting"}:
-                        effective_now = _utcnow()
-                        decision = schedule_stream_runtime_restart(
-                            stream,
-                            now=effective_now,
-                        )
-                        if decision.scheduled and decision.next_restart_at is not None:
-                            next_attempt_iso = decision.next_restart_at.astimezone(
-                                timezone.utc
-                            ).isoformat()
-                            stream.error_message = (
-                                f"Runtime state {state}: "
-                                f"{' '.join(str(info.get('error') or info.get('details') or '').split())}. "
-                                f"Auto-restart scheduled at {next_attempt_iso} "
-                                f"(attempt {decision.attempt}/{decision.max_attempts}, "
-                                f"backoff {decision.delay_seconds}s)."
-                            )[:500]
-                            stream.status = "error"
-                            normalized_status = "error"
-                        else:
-                            stream.error_message = (
-                                f"Runtime state {state}: "
-                                f"{' '.join(str(info.get('error') or info.get('details') or '').split())}. "
-                                f"Auto-restart exhausted after {decision.attempt}/"
-                                f"{decision.max_attempts} attempts."
-                            )[:500]
-                            stream.status = "error"
-                            normalized_status = "error"
-                    else:
-                        stream.pid = None
+                    stream.pid = None
+                    if stream.stopped_at is None:
                         stream.stopped_at = _utcnow()
-                        clear_stream_runtime_lease(stream)
                 elif normalized_status == "stopping":
-                    # Transitional state: do not mark stopped_at yet. The periodic reconciler
-                    # will finalize once supervisor reports STOPPED/EXITED/NOT_FOUND.
                     stream.pid = None
 
-                error_payload = info.get("error") or info.get("details")
-                if (
-                    normalized_status == "error"
-                    and error_payload
-                    and not stream.error_message
-                ):
-                    stream.error_message = str(error_payload)[:500]
+            if (
+                normalized_status == "error"
+                and resolved_error_message
+                and (
+                    status_changed or not stream.error_message or legacy_restart_message
+                )
+            ):
+                if stream.error_message != resolved_error_message:
+                    stream.error_message = resolved_error_message
+                    state_dirty = True
 
             if state_dirty:
                 await self.db.commit()
 
+            uptime_seconds = compute_uptime_seconds(stream) if running else 0
             error_message = None if preserve_scheduled else stream.error_message
             if normalized_status in {"running", "starting", "stopping"}:
-                error_message = info.get("error") or error_message
+                error_message = (
+                    None if normalized_status == "starting" else error_message
+                )
             elif normalized_status == "error" and not error_message:
                 error_message = info.get("error") or info.get("details")
-            if preserve_restart_queue:
-                error_message = stream.error_message
-            usage = await self._get_usage_snapshot()
             return self._status_payload(
                 stream,
                 running,
@@ -863,6 +642,7 @@ class StreamControlService:
                 status_override=stream.status,
                 error_message=error_message,
                 usage=usage,
+                manager_info=None,
             )
 
         is_running = self.manager.is_running(str(stream_id))
@@ -876,6 +656,7 @@ class StreamControlService:
             is_running,
             uptime_seconds,
             usage=usage,
+            manager_info=stream_info,
         )
 
     async def get_stream_logs(
@@ -925,6 +706,7 @@ class StreamControlService:
         status_override: Optional[str] = None,
         error_message: Optional[str] = None,
         usage: Optional[Dict[str, Any]] = None,
+        manager_info: Optional[Dict[str, Any]] = None,
     ) -> StreamStatus:
         uptime = (
             uptime_seconds
@@ -988,7 +770,12 @@ class StreamControlService:
                 provider_summary["provider_status"] != "unknown"
                 and (is_running != (provider_summary["provider_status"] == "live"))
             ),
-            runtime_restart=runtime_restart_payload(stream, status_value=status_value),
+            runtime_restart=runtime_restart_payload(
+                stream,
+                status_value=status_value,
+                manager_info=manager_info,
+                settings_provider=self.settings,
+            ),
             runtime_incident_summary=runtime_incident_summary or {},
         )
 
@@ -1019,25 +806,6 @@ class StreamControlService:
                 try:
                     await systemd_stop_unit(stream.id)
                 except RuntimeError as err:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=str(err),
-                    ) from err
-        elif supervisor_enabled():
-            if await supervisor_is_running(stream.id):
-                await self._mark_stop_requested(stream)
-                try:
-                    await supervisor_stop_program(stream.id)
-                except RuntimeError as err:
-                    if not _is_removed_process_group_error(err):
-                        raise HTTPException(
-                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=str(err),
-                        ) from err
-            try:
-                await supervisor_remove_program(stream.id)
-            except RuntimeError as err:
-                if not _is_removed_process_group_error(err):
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail=str(err),
@@ -1194,8 +962,6 @@ class StreamControlService:
         stream.status = "stopped"
         stream.pid = None
         stream.stopped_at = _utcnow()
-        clear_stream_runtime_lease(stream)
-        clear_stream_runtime_restart_state(stream)
 
     async def _get_stream_basic(self, stream_id: UUID) -> Stream:
         query = select(Stream).where(
@@ -1209,25 +975,19 @@ class StreamControlService:
             )
         return stream
 
-    async def _ensure_supervisor_schedule_update_allowed(self, stream: Stream) -> None:
-        info = await supervisor_program_status(stream.id)
-        raw_state = str(info.get("state") or "").lower()
-
-        if raw_state in {"running", "starting", "stopping"}:
+    async def _get_stream_basic_for_update(self, stream_id: UUID) -> Stream:
+        query = (
+            select(Stream)
+            .where(Stream.id == stream_id, Stream.user_id == self.user_id)
+            .with_for_update()
+        )
+        result = await self.db.execute(query)
+        stream = result.scalar_one_or_none()
+        if not stream:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot schedule start while stream is running",
+                status_code=status.HTTP_404_NOT_FOUND, detail="Stream not found"
             )
-
-        if raw_state in {"supervisor_unavailable", "permission_denied", "unknown"}:
-            if self._stream_may_still_be_live(stream):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "Cannot schedule start while runtime liveness cannot be "
-                        "verified"
-                    ),
-                )
+        return stream
 
     async def _ensure_systemd_schedule_update_allowed(self, stream: Stream) -> None:
         info = await systemd_unit_status(stream.id)
@@ -1256,12 +1016,7 @@ class StreamControlService:
             stopped_at is None or started_at > stopped_at
         )
 
-        return bool(
-            started_without_newer_stop
-            or stream.pid is not None
-            or runtime_lease_is_active(stream)
-            or stream.runtime_owner_id
-        )
+        return bool(started_without_newer_stop or stream.pid is not None)
 
     @staticmethod
     def _clear_start_schedule(stream: Stream) -> None:
@@ -1284,10 +1039,6 @@ class StreamControlService:
         stream.status = "starting"
         stream.stopped_at = None
         stream.error_message = None
-        if orchestrated:
-            mark_stream_runtime_restart_dispatched(stream)
-        else:
-            clear_stream_runtime_restart_state(stream)
 
 
 __all__ = ["StreamControlService"]

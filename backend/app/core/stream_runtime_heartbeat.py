@@ -128,5 +128,18 @@ def runtime_heartbeat_is_stale(
     return updated_at + timedelta(seconds=ttl) < effective_now
 
 
+def stale_runtime_heartbeat_reason(payload: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not payload or not runtime_heartbeat_is_stale(payload):
+        return None
+
+    expires_at = payload.get("expires_at") or payload.get("updated_at") or "unknown"
+    runner_pid = payload.get("runner_pid")
+    runtime_mode = payload.get("runtime_mode") or "managed"
+    details = f"{runtime_mode} runner heartbeat expired at {expires_at}"
+    if runner_pid:
+        details += f" (runner_pid={runner_pid})"
+    return details
+
+
 def clear_runtime_heartbeat(stream_id: UUID | str) -> None:
     get_runtime_heartbeat_path(stream_id).unlink(missing_ok=True)

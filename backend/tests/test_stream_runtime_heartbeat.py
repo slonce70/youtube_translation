@@ -6,6 +6,7 @@ from app.core.stream_runtime_heartbeat import (
     clear_runtime_heartbeat,
     get_runtime_heartbeat_path,
     read_runtime_heartbeat,
+    stale_runtime_heartbeat_reason,
     runtime_heartbeat_is_stale,
     write_runtime_heartbeat,
 )
@@ -55,3 +56,26 @@ def test_runtime_heartbeat_detects_staleness_from_expiry(tmp_path, monkeypatch) 
     )
 
     assert runtime_heartbeat_is_stale(payload, now=now) is True
+
+
+def test_stale_runtime_heartbeat_reason_reports_runtime_and_runner_pid(
+    tmp_path, monkeypatch
+) -> None:
+    stream_id = uuid4()
+    monkeypatch.setattr(settings, "stream_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "stream_runtime_heartbeat_ttl_seconds", 10)
+
+    now = datetime.now(timezone.utc)
+    payload = write_runtime_heartbeat(
+        stream_id,
+        runner_pid=444,
+        runtime_mode="systemd",
+        now=now - timedelta(seconds=20),
+        ttl_seconds=5,
+    )
+
+    reason = stale_runtime_heartbeat_reason(payload)
+
+    assert reason is not None
+    assert "systemd runner heartbeat expired" in reason
+    assert "runner_pid=444" in reason

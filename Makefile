@@ -1,4 +1,4 @@
-.PHONY: help install install-backend install-frontend backend-venv dev dev-bootstrap dev-bootstrap-v2 dev-bootstrap-down dev-bootstrap-logs dev-bootstrap-v2-logs test test-backend-preflight lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate verify-v0
+.PHONY: help install install-backend install-frontend backend-venv dev dev-bootstrap dev-bootstrap-v2 dev-bootstrap-down dev-bootstrap-logs dev-bootstrap-v2-logs test test-backend-preflight test-backend-localdb lint lint-backend lint-frontend i18n-check clean build docker-up docker-down migrate verify-v0
 
 # Colors for output
 BLUE := \033[0;34m
@@ -90,12 +90,12 @@ dev: ## Start all services (local only)
 
 dev-local: dev ## Start all services (local only)
 
-dev-bootstrap: ## Start base services for hybrid local dev (postgres, redis, tusd, runner)
+dev-bootstrap: ## Start base services for hybrid local dev (postgres, redis, tusd)
 	@echo "$(BLUE)Starting hybrid dev base services via Docker Compose...$(NC)"
 	@set -eu; \
 	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,5432,$(POSTGRES_CONTAINER),postgres,Stop the conflicting local service or free the port before running make dev-bootstrap.); \
 	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,6379,$(REDIS_CONTAINER),redis,Stop the conflicting local service or free the port before running make dev-bootstrap.); \
-	$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) up -d postgres redis tusd runner
+	$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) up -d postgres redis tusd
 	@echo "$(GREEN)✓ Base services ready$(NC)"
 
 dev-bootstrap-v2: ## Start base services plus optional MediaMTX relay/metrics layer
@@ -103,19 +103,19 @@ dev-bootstrap-v2: ## Start base services plus optional MediaMTX relay/metrics la
 	@set -eu; \
 	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,5432,$(POSTGRES_CONTAINER),postgres,Stop the conflicting local service or free the port before running make dev-bootstrap-v2.); \
 	$(call ASSERT_COMPOSE_PORT_OWNERSHIP,6379,$(REDIS_CONTAINER),redis,Stop the conflicting local service or free the port before running make dev-bootstrap-v2.); \
-	$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) up -d postgres redis tusd runner mediamtx
+	$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) up -d postgres redis tusd mediamtx
 	@echo "$(GREEN)✓ V2 base services ready$(NC)"
 
 dev-bootstrap-down: ## Stop hybrid local dev base services
 	@echo "$(BLUE)Stopping hybrid dev base services...$(NC)"
-	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) stop mediamtx runner tusd redis postgres
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) stop mediamtx tusd redis postgres
 	@echo "$(GREEN)✓ Base services stopped$(NC)"
 
 dev-bootstrap-logs: ## Tail logs for hybrid local dev base services
-	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) logs -f postgres redis tusd runner
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) logs -f postgres redis tusd
 
 dev-bootstrap-v2-logs: ## Tail logs for hybrid local dev v2 services
-	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) logs -f postgres redis tusd runner mediamtx
+	@$(LOAD_BACKEND_ENV); $(DOCKER_COMPOSE) logs -f postgres redis tusd mediamtx
 
 dev-backend: ## Start backend only
 	@echo "$(BLUE)Starting backend at http://localhost:8000...$(NC)"
@@ -154,6 +154,32 @@ test-backend-preflight: backend-venv ## Ensure local services needed by backend 
 test-backend: test-backend-preflight ## Run backend tests
 	@echo "$(BLUE)Running backend tests...$(NC)"
 	cd backend && PYTHONDONTWRITEBYTECODE=1 FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest --import-mode=importlib -v
+
+test-backend-localdb: backend-venv ## Run backend tests against existing local postgres/redis using a temporary database
+	@echo "$(BLUE)Running backend tests against local services with a temporary database...$(NC)"
+	@set -eu; \
+	if ! command -v psql >/dev/null 2>&1; then \
+		echo "psql is required for test-backend-localdb." >&2; \
+		exit 1; \
+	fi; \
+	if ! nc -z 127.0.0.1 5432 >/dev/null 2>&1; then \
+		echo "Local PostgreSQL is not listening on 127.0.0.1:5432." >&2; \
+		exit 1; \
+	fi; \
+	if ! nc -z 127.0.0.1 6379 >/dev/null 2>&1; then \
+		echo "Local Redis is not listening on 127.0.0.1:6379." >&2; \
+		exit 1; \
+	fi; \
+	$(LOAD_BACKEND_ENV); \
+	test_db_name="$${TEST_BACKEND_LOCAL_DB_NAME:-youtube_translation_test_tmp}"; \
+	base_db_url="$${DATABASE_URL:?DATABASE_URL is required}"; \
+	test_db_url="$${base_db_url%/*}/$${test_db_name}"; \
+	psql postgres -c "DROP DATABASE IF EXISTS $$test_db_name" >/dev/null; \
+	psql postgres -c "CREATE DATABASE $$test_db_name OWNER youtube_user" >/dev/null; \
+	status=0; \
+	( cd backend && DATABASE_URL="$$test_db_url" PYTHONDONTWRITEBYTECODE=1 FFMPEG_BIN=tests/bin/ffmpeg $(BACKEND_PY) -m pytest --import-mode=importlib -v ) || status=$$?; \
+	psql postgres -c "DROP DATABASE IF EXISTS $$test_db_name" >/dev/null; \
+	exit $$status
 
 test-backend-coverage: test-backend-preflight ## Run backend tests with coverage
 	@echo "$(BLUE)Running backend tests with coverage...$(NC)"

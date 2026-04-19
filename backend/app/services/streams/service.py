@@ -52,6 +52,7 @@ from .helpers import (
     get_collection_for_user,
     load_stream_with_relations,
 )
+from .status_helpers import runtime_restart_payload
 
 if TYPE_CHECKING:  # pragma: no cover - for type hints only
     from .control import StreamControlService
@@ -763,6 +764,20 @@ class StreamService:
         await attach_runtime_incident_summaries(
             self.db, streams, manager=ffmpeg_manager
         )
+        for stream in streams:
+            manager_info = None
+            if self.settings.stream_runtime_mode == "manager":
+                manager_info = ffmpeg_manager.get_stream_info(str(stream.id))
+            setattr(
+                stream,
+                "_runtime_restart_info",
+                runtime_restart_payload(
+                    stream,
+                    status_value=stream.status,
+                    manager_info=manager_info,
+                    settings_provider=self.settings,
+                ).model_dump(),
+            )
 
 
 def load_stream_with_relations_options():  # pragma: no cover - helper for readability

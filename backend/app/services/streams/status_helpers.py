@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Mapping, Optional
 
+from app.core.config import settings as default_settings
 from app.models.database import Stream
 from app.schemas.api import StreamRuntimeRestartInfo, build_stream_runtime_restart_info
 
@@ -75,20 +76,6 @@ def filter_important_ffmpeg_logs(lines: list[str]) -> list[str]:
     return filtered
 
 
-def runtime_lease_conflict_detail(
-    owner_id: Optional[str], expires_at: Optional[datetime]
-) -> str:
-    detail = "Stream is currently managed by another runtime node"
-    if owner_id:
-        detail += f" ({owner_id})"
-    if expires_at:
-        expiry = (
-            expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=timezone.utc)
-        )
-        detail += f" until {expiry.astimezone(timezone.utc).isoformat()}"
-    return detail + "."
-
-
 def aware_datetime(dt: Optional[datetime]) -> Optional[datetime]:
     if not dt:
         return None
@@ -100,10 +87,6 @@ def uptime_seconds(stream: Stream) -> int:
     if not start:
         return 0
     return max(0, int((_utcnow() - start).total_seconds()))
-
-
-def has_pending_runtime_restart(stream: Stream) -> bool:
-    return aware_datetime(stream.runtime_next_restart_at) is not None
 
 
 def provider_summary_for_stream(stream: Stream) -> dict[str, object]:
@@ -204,13 +187,20 @@ def runtime_restart_payload(
     stream: Stream,
     *,
     status_value: Optional[str] = None,
+    manager_info: Optional[Mapping[str, Any]] = None,
+    settings_provider=default_settings,
 ) -> StreamRuntimeRestartInfo:
     effective_status = status_value or stream.status
-    next_restart_at = aware_datetime(stream.runtime_next_restart_at)
+    restart_budget = max(
+        int(getattr(settings_provider, "ffmpeg_auto_restart_attempts", 0) or 0), 0
+    )
+    info = manager_info or {}
+
     return build_stream_runtime_restart_info(
         status=effective_status,
-        attempts=int(stream.runtime_restart_attempts or 0),
-        next_restart_at=next_restart_at,
-        last_restart_at=aware_datetime(stream.runtime_last_restart_at),
-        last_failure_at=aware_datetime(stream.runtime_last_failure_at),
+        attempts=int(info.get("restart_attempts", 0) or 0),
+        max_attempts=restart_budget,
+        next_restart_at=aware_datetime(info.get("next_restart_at")),
+        last_restart_at=aware_datetime(info.get("last_restart_at")),
+        last_failure_at=aware_datetime(info.get("last_failure_at")),
     )
