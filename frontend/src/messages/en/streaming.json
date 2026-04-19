@@ -160,6 +160,13 @@
         "lastFailure": "Last failure {value}",
         "exhausted": "Auto-restart budget exhausted after {count} attempts"
       },
+      "preview": {
+        "title": "Live preview",
+        "badge": "YouTube preview",
+        "latencyHint": "Preview may lag behind live output by a few seconds",
+        "pendingTitle": "YouTube preview is not ready yet",
+        "pendingDescription": "The stream may already be live, but YouTube has not exposed the video link yet."
+      },
       "form": {
         "title": "Create Stream",
         "nameLabel": "Stream Name",

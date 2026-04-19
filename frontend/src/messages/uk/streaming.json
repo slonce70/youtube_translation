@@ -160,6 +160,13 @@
         "lastFailure": "Останній збій {value}",
         "exhausted": "Ліміт автоперезапусків вичерпано після {count} спроб"
       },
+      "preview": {
+        "title": "Попередній перегляд",
+        "badge": "YouTube preview",
+        "latencyHint": "Попередній перегляд може відставати від ефіру на кілька секунд",
+        "pendingTitle": "YouTube preview ще не готовий",
+        "pendingDescription": "Стрім уже може бути в ефірі, але YouTube ще не віддав video link."
+      },
       "form": {
         "title": "Створити трансляцію",
         "nameLabel": "Назва трансляції",

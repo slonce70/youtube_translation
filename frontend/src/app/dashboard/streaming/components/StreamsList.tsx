@@ -14,7 +14,7 @@ import {
   Square,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type MouseEventHandler, type ReactNode } from 'react'
 import { useLocale, type TranslationValues } from 'next-intl'
 
 import { Button } from '@/components/ui/Button'
@@ -30,6 +30,11 @@ import type {
   Stream,
   StreamStatusValue,
 } from '@/lib/types'
+import { StreamPreviewPanel } from './StreamPreviewPanel'
+import {
+  getStreamPreviewEmbedUrl,
+  getStreamPreviewState,
+} from '../preview'
 
 type Translator = (key: string, values?: TranslationValues) => string
 
@@ -141,6 +146,7 @@ export function StreamsList({
 }: StreamsListProps) {
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [deleteDialogStream, setDeleteDialogStream] = useState<Stream | null>(null)
+  const [openPreviewStreamId, setOpenPreviewStreamId] = useState<string | null>(null)
   const locale = useLocale()
 
   useEffect(() => {
@@ -250,12 +256,25 @@ export function StreamsList({
                       const isStopPending = pendingStopStreamId === stream.id
                       const isDeletePending = pendingDeleteStreamId === stream.id
                       const isRowPending = isStartPending || isStopPending || isDeletePending
+                      const previewState = getStreamPreviewState(stream)
+                      const previewEmbedUrl = getStreamPreviewEmbedUrl(stream)
+                      const isPreviewOpen = openPreviewStreamId === stream.id
+                      const canTogglePreview = previewState.kind !== 'unavailable'
                       const totalDurationLabel =
                         derived.totalDurationSeconds && derived.totalDurationSeconds > 0
                           ? formatDuration(derived.totalDurationSeconds)
                           : stream.playlist_id || (stream.stream_assets?.length ?? 0) > 0
                             ? formatDuration(derived.totalDurationSeconds)
                             : '—'
+                      const handleTogglePreview = () => {
+                        if (!canTogglePreview) return
+                        setOpenPreviewStreamId((current) => (current === stream.id ? null : stream.id))
+                      }
+
+                      const stopRowToggle: MouseEventHandler<HTMLElement> = (event) => {
+                        event.stopPropagation()
+                      }
+
                       const primaryButton = (() => {
                         if (derived.primaryAction === 'stop') {
                           return (
@@ -325,6 +344,19 @@ export function StreamsList({
                                 ? 'bg-success-50/40 dark:bg-success-950/10'
                                 : '',
                           )}
+                          onClick={canTogglePreview ? handleTogglePreview : undefined}
+                          role={canTogglePreview ? 'button' : undefined}
+                          tabIndex={canTogglePreview ? 0 : undefined}
+                          onKeyDown={
+                            canTogglePreview
+                              ? (event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    handleTogglePreview()
+                                  }
+                                }
+                              : undefined
+                          }
                         >
                           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div className="min-w-0 flex-1 space-y-3">
@@ -413,7 +445,11 @@ export function StreamsList({
                             </div>
 
                             {/* Actions: primary button + overflow menu */}
-                            <div className="flex items-center gap-2 xl:flex-col xl:items-end">
+                            <div
+                              className="flex items-center gap-2 xl:flex-col xl:items-end"
+                              onClick={stopRowToggle}
+                              onKeyDown={(event) => event.stopPropagation()}
+                            >
                               {primaryButton}
                               <Button
                                 size="sm"
@@ -448,6 +484,27 @@ export function StreamsList({
                               </DropdownMenu>
                             </div>
                           </div>
+                          {isPreviewOpen && previewState.kind === 'ready' ? (
+                            <StreamPreviewPanel
+                              title={t('streams.preview.title')}
+                              badge={t('streams.preview.badge')}
+                              latencyHint={t('streams.preview.latencyHint')}
+                              pendingTitle={t('streams.preview.pendingTitle')}
+                              pendingDescription={t('streams.preview.pendingDescription')}
+                              embedUrl={previewEmbedUrl}
+                              state="ready"
+                            />
+                          ) : null}
+                          {isPreviewOpen && previewState.kind === 'pending' ? (
+                            <StreamPreviewPanel
+                              title={t('streams.preview.title')}
+                              badge={t('streams.preview.badge')}
+                              latencyHint={t('streams.preview.latencyHint')}
+                              pendingTitle={t('streams.preview.pendingTitle')}
+                              pendingDescription={t('streams.preview.pendingDescription')}
+                              state="pending"
+                            />
+                          ) : null}
                         </motion.article>
                       )
                     })}
