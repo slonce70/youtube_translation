@@ -9,7 +9,6 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 from uuid import UUID
 
 import aiofiles
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.core.database import get_db_context
@@ -45,13 +44,6 @@ async def fetch_daily_usage(user_id: UUID) -> Optional[Dict[str, Any]]:
         async with get_db_context() as session:
             enforcer = QuotaEnforcer(session, user_id)
             return await enforcer.get_daily_streaming_usage()
-    except SQLAlchemyError as exc:  # pragma: no cover - defensive logging
-        logger.exception(
-            "Failed to compute daily streaming usage for user %s: %s",
-            user_id,
-            exc,
-        )
-        return None
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.exception(
             "Failed to compute daily streaming usage for user %s: %s",

@@ -866,6 +866,42 @@ class TestFFmpegStreamManagerMonitor:
         assert stream_id not in manager.stream_info
 
     @pytest.mark.asyncio
+    async def test_monitor_process_uses_manager_process_support_seams(
+        self, tmp_path, monkeypatch
+    ):
+        manager = FFmpegStreamManager()
+        stream_id = "delegated-monitor-stream"
+        process = AsyncMock()
+        process.wait = AsyncMock(return_value=0)
+        log_file = tmp_path / "monitor.log"
+
+        manager.active_streams[stream_id] = process
+        manager.stream_info[stream_id] = {
+            "manual_stop": False,
+            "recent_errors": deque(maxlen=20),
+        }
+
+        log_writer = AsyncMock()
+        quota_guard = AsyncMock()
+        finalize = AsyncMock()
+
+        monkeypatch.setattr(manager, "_write_logs_to_file", log_writer)
+        monkeypatch.setattr(manager, "_enforce_runtime_limit", quota_guard)
+        monkeypatch.setattr(manager, "_finalize_stream_success", finalize)
+        monkeypatch.setattr(
+            "app.streaming.ffmpeg_manager.hot_swap_manager.unregister_stream",
+            AsyncMock(),
+        )
+
+        await manager._monitor_process(stream_id, process, log_file)
+
+        log_writer.assert_awaited_once_with(stream_id, process, log_file)
+        quota_guard.assert_awaited_once_with(stream_id, process)
+        finalize.assert_awaited_once()
+        assert stream_id not in manager.active_streams
+        assert stream_id not in manager.stream_info
+
+    @pytest.mark.asyncio
     async def test_start_stream_records_plan_telemetry(self, tmp_path, monkeypatch):
         """Ensure start_stream stores FFmpeg plan telemetry alongside process info."""
 
