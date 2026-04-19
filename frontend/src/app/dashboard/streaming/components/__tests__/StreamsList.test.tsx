@@ -124,7 +124,7 @@ function openDropdownFor(card: HTMLElement) {
   fireEvent.click(trigger)
 }
 
-describe('StreamsList restart visibility', () => {
+describe('StreamsList row interactions', () => {
   const playlistMap = new Map<string, Playlist>([
     [
       'playlist-1',
@@ -427,12 +427,13 @@ describe('StreamsList restart visibility', () => {
         id: 'stream-preview-ready',
         name: 'Ready preview',
         status: 'running',
+        error_message: null,
         provider_status: 'live',
         provider_video_id: 'abc123xyz',
       }),
     ])
 
-    fireEvent.click(screen.getByText('Ready preview'))
+    fireEvent.click(screen.getByText('Ready preview').closest('article')!)
 
     expect(screen.getByTitle('Live preview')).toBeInTheDocument()
     expect(screen.getByTitle('Live preview')).toHaveAttribute(
@@ -447,12 +448,13 @@ describe('StreamsList restart visibility', () => {
         id: 'stream-preview-pending',
         name: 'Pending preview',
         status: 'running',
+        error_message: null,
         provider_status: 'live',
         provider_video_id: null,
       }),
     ])
 
-    fireEvent.click(screen.getByText('Pending preview'))
+    fireEvent.click(screen.getByText('Pending preview').closest('article')!)
 
     expect(screen.getByText('YouTube preview is not ready yet')).toBeInTheDocument()
     expect(screen.queryByTitle('Live preview')).not.toBeInTheDocument()
@@ -460,15 +462,27 @@ describe('StreamsList restart visibility', () => {
 
   it('keeps only one preview open at a time', () => {
     renderList([
-      createStream({ id: 'stream-a', name: 'First stream', status: 'running', provider_video_id: 'aaa111' }),
-      createStream({ id: 'stream-b', name: 'Second stream', status: 'running', provider_video_id: 'bbb222' }),
+      createStream({
+        id: 'stream-a',
+        name: 'First stream',
+        status: 'running',
+        error_message: null,
+        provider_video_id: 'aaa111',
+      }),
+      createStream({
+        id: 'stream-b',
+        name: 'Second stream',
+        status: 'running',
+        error_message: null,
+        provider_video_id: 'bbb222',
+      }),
     ])
 
-    fireEvent.click(screen.getByText('First stream'))
+    fireEvent.click(screen.getByText('First stream').closest('article')!)
     expect(screen.getAllByTitle('Live preview')).toHaveLength(1)
     expect(screen.getByTitle('Live preview')).toHaveAttribute('src', expect.stringContaining('aaa111'))
 
-    fireEvent.click(screen.getByText('Second stream'))
+    fireEvent.click(screen.getByText('Second stream').closest('article')!)
     expect(screen.getAllByTitle('Live preview')).toHaveLength(1)
     expect(screen.getByTitle('Live preview')).toHaveAttribute('src', expect.stringContaining('bbb222'))
     expect(screen.queryByTitle('Live preview')).toBeInTheDocument()
@@ -482,13 +496,14 @@ describe('StreamsList restart visibility', () => {
           id: 'stream-stop',
           name: 'Stop stream',
           status: 'running',
+          error_message: null,
           provider_video_id: 'abc123xyz',
         }),
       ],
       { onStopStream },
     )
 
-    fireEvent.click(screen.getByText('Stop stream'))
+    fireEvent.click(screen.getByText('Stop stream').closest('article')!)
     expect(screen.getByTitle('Live preview')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
