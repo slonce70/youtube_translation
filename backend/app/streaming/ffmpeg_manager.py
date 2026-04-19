@@ -23,6 +23,7 @@ from app.core.quota import QuotaEnforcer
 from app.models.database import Stream, SystemAlert
 from app.streaming.hot_swap import hot_swap_manager
 from app.streaming.playlist_builder import PlaylistFileSet
+from app.streaming import runtime_signals
 
 logger = logging.getLogger(__name__)
 
@@ -33,68 +34,9 @@ MAX_KEYFRAME_INTERVAL_SECONDS = 4.0
 
 
 _RTMP_URL_PATTERN = re.compile(r"rtmps?://[^\s'\"|]+", re.IGNORECASE)
-_REMOTE_OUTPUT_RESET_MARKERS = (
-    "broken pipe",
-    "connection reset by peer",
-    "the specified session has been invalidated",
-    "error writing trailer",
-)
-_RECOVERY_SUCCESS_MARKERS = ("recovery successful",)
-_NON_MONOTONIC_DTS_MARKERS = (
-    "non-monotonic dts",
-    "non monotonically increasing dts",
-)
 _RUNTIME_LOG_TIMESTAMP_PATTERN = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})\b"
 )
-_DEGRADED_SIGNAL_SPECS: Dict[str, Dict[str, Union[int, str, Tuple[str, ...]]]] = {
-    "remote_output_reset": {
-        "threshold": 3,
-        "window_seconds": 180,
-        "cooldown_seconds": 900,
-        "level": "warning",
-        "alert_severity": "warning",
-        "message": (
-            "Stream degraded while still running: repeated remote output resets "
-            "detected in FFmpeg logs."
-        ),
-        "markers": _REMOTE_OUTPUT_RESET_MARKERS,
-    },
-    "non_monotonic_dts": {
-        "threshold": 5,
-        "window_seconds": 300,
-        "cooldown_seconds": 900,
-        "level": "warning",
-        "alert_severity": "warning",
-        "message": (
-            "Stream degraded while still running: repeated Non-monotonic DTS "
-            "warnings detected in FFmpeg logs."
-        ),
-        "markers": _NON_MONOTONIC_DTS_MARKERS,
-    },
-    "recovery_storm": {
-        "threshold": 3,
-        "window_seconds": 300,
-        "cooldown_seconds": 900,
-        "level": "warning",
-        "alert_severity": "warning",
-        "message": (
-            "Stream degraded while still running: repeated output recoveries "
-            "indicate a recovery storm."
-        ),
-    },
-}
-
-_RUNTIME_INCIDENT_LABELS = {
-    "remote_output_reset": "Runtime зафіксував повторні remote output resets",
-    "recovery_storm": "Runtime увійшов у recovery storm",
-    "non_monotonic_dts": "Runtime зафіксував повторні Non-monotonic DTS warnings",
-}
-_RUNTIME_INCIDENT_CODES = {
-    "remote_output_reset": "transport_connection_reset",
-    "recovery_storm": "transport_recovery",
-    "non_monotonic_dts": "timeline_drift",
-}
 
 
 def _utcnow() -> datetime:
@@ -151,7 +93,10 @@ def _redact_rtmp_text(value: str) -> str:
 def _has_remote_output_reset_evidence(recent_errors: List[str]) -> bool:
     for line in recent_errors:
         lowered = str(line).lower()
-        if any(marker in lowered for marker in _REMOTE_OUTPUT_RESET_MARKERS):
+        if any(
+            marker in lowered
+            for marker in runtime_signals.REMOTE_OUTPUT_RESET_MARKERS
+        ):
             return True
     return False
 
@@ -236,42 +181,6 @@ def _apply_output_transport_options(uri: str) -> str:
             parts.fragment,
         )
     )
-
-
-def _normalize_runtime_signal_state(
-    state: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Dict[str, Any]]:
-    normalized: Dict[str, Dict[str, Any]] = {}
-
-    for signal_name, raw_state in (state or {}).items():
-        if not isinstance(raw_state, dict):
-            continue
-
-        hits = deque(raw_state.get("hits") or [], maxlen=32)
-        last_emitted_at = raw_state.get("last_emitted_at")
-        if isinstance(last_emitted_at, str):
-            try:
-                last_emitted_at = datetime.fromisoformat(last_emitted_at)
-            except ValueError:
-                last_emitted_at = None
-
-        normalized[signal_name] = {
-            "hits": hits,
-            "last_emitted_at": last_emitted_at,
-            "last_seen_at": raw_state.get("last_seen_at"),
-            "last_line": raw_state.get("last_line"),
-        }
-
-    return normalized
-
-
-def _healthy_runtime_incident_summary() -> Dict[str, Any]:
-    return {
-        "severity": "healthy",
-        "headline": None,
-        "details": [],
-        "items": [],
-    }
 
 
 @dataclass
@@ -506,7 +415,7 @@ class FFmpegStreamManager:
             existing_info = self.stream_info.get(stream_id, {}) if restart else {}
             recent_errors = existing_info.get("recent_errors") if restart else None
             runtime_signal_state = (
-                _normalize_runtime_signal_state(
+                runtime_signals.normalize_runtime_signal_state(
                     existing_info.get("runtime_signal_state") or {}
                 )
                 if restart
@@ -1291,7 +1200,9 @@ class FFmpegStreamManager:
         normalized_line = _redact_rtmp_text(line.strip())[:500]
         runtime_state = info.setdefault("runtime_signal_state", {})
 
-        if _line_matches_markers(normalized_line, _REMOTE_OUTPUT_RESET_MARKERS):
+        if _line_matches_markers(
+            normalized_line, runtime_signals.REMOTE_OUTPUT_RESET_MARKERS
+        ):
             await self._track_runtime_signal(
                 stream_id,
                 info,
@@ -1301,7 +1212,9 @@ class FFmpegStreamManager:
                 now,
             )
 
-        if _line_matches_markers(normalized_line, _RECOVERY_SUCCESS_MARKERS):
+        if _line_matches_markers(
+            normalized_line, runtime_signals.RECOVERY_SUCCESS_MARKERS
+        ):
             self._register_runtime_signal_hit(
                 runtime_state,
                 "recovery_success",
@@ -1315,7 +1228,9 @@ class FFmpegStreamManager:
                 now,
             )
 
-        if _line_matches_markers(normalized_line, _NON_MONOTONIC_DTS_MARKERS):
+        if _line_matches_markers(
+            normalized_line, runtime_signals.NON_MONOTONIC_DTS_MARKERS
+        ):
             await self._track_runtime_signal(
                 stream_id,
                 info,
@@ -1332,25 +1247,12 @@ class FFmpegStreamManager:
         log_line: str,
         observed_at: datetime,
     ) -> Dict[str, Any]:
-        signal_state = runtime_state.setdefault(
+        return runtime_signals.register_runtime_signal_hit(
+            runtime_state,
             signal_name,
-            {
-                "hits": deque(maxlen=32),
-                "last_emitted_at": None,
-                "last_seen_at": None,
-                "last_line": None,
-            },
+            log_line,
+            observed_at,
         )
-
-        hits = signal_state.get("hits")
-        if not isinstance(hits, deque):
-            hits = deque(hits or [], maxlen=32)
-            signal_state["hits"] = hits
-
-        hits.append(observed_at)
-        signal_state["last_seen_at"] = observed_at
-        signal_state["last_line"] = log_line[:500]
-        return signal_state
 
     def _count_recent_signal_hits(
         self,
@@ -1359,15 +1261,11 @@ class FFmpegStreamManager:
         now: datetime,
         window_seconds: int,
     ) -> int:
-        hits = signal_state.get("hits")
-        if not isinstance(hits, deque):
-            hits = deque(hits or [], maxlen=32)
-            signal_state["hits"] = hits
-
-        cutoff = now - timedelta(seconds=max(window_seconds, 1))
-        while hits and hits[0] < cutoff:
-            hits.popleft()
-        return len(hits)
+        return runtime_signals.count_recent_signal_hits(
+            signal_state,
+            now=now,
+            window_seconds=window_seconds,
+        )
 
     def _signal_cooldown_elapsed(
         self,
@@ -1376,22 +1274,11 @@ class FFmpegStreamManager:
         now: datetime,
         cooldown_seconds: int,
     ) -> bool:
-        last_emitted_at = signal_state.get("last_emitted_at")
-        if isinstance(last_emitted_at, str):
-            try:
-                last_emitted_at = datetime.fromisoformat(last_emitted_at)
-            except ValueError:
-                last_emitted_at = None
-            else:
-                signal_state["last_emitted_at"] = last_emitted_at
-
-        if not isinstance(last_emitted_at, datetime):
-            return True
-
-        if last_emitted_at.tzinfo is None:
-            last_emitted_at = last_emitted_at.replace(tzinfo=timezone.utc)
-
-        return (now - last_emitted_at).total_seconds() >= max(cooldown_seconds, 0)
+        return runtime_signals.signal_cooldown_elapsed(
+            signal_state,
+            now=now,
+            cooldown_seconds=cooldown_seconds,
+        )
 
     async def _track_runtime_signal(
         self,
@@ -1402,7 +1289,7 @@ class FFmpegStreamManager:
         log_line: str,
         observed_at: datetime,
     ) -> None:
-        spec = _DEGRADED_SIGNAL_SPECS[signal_name]
+        spec = runtime_signals.DEGRADED_SIGNAL_SPECS[signal_name]
         signal_state = self._register_runtime_signal_hit(
             runtime_state,
             signal_name,
@@ -1440,60 +1327,11 @@ class FFmpegStreamManager:
     def get_runtime_incident_summary(self, stream_id: str) -> Dict[str, Any]:
         info = self.stream_info.get(stream_id)
         if not info:
-            return _healthy_runtime_incident_summary()
+            return runtime_signals.healthy_runtime_incident_summary()
 
-        runtime_state = _normalize_runtime_signal_state(
+        return runtime_signals.summarize_runtime_incidents(
             info.get("runtime_signal_state") or {}
         )
-        if not runtime_state:
-            return _healthy_runtime_incident_summary()
-
-        now = _utcnow()
-        items: List[Dict[str, Any]] = []
-        for signal_name, spec in _DEGRADED_SIGNAL_SPECS.items():
-            signal_state = runtime_state.get(signal_name)
-            if not isinstance(signal_state, dict):
-                continue
-
-            count = self._count_recent_signal_hits(
-                signal_state,
-                now=now,
-                window_seconds=int(spec["window_seconds"]),
-            )
-            if count < int(spec["threshold"]):
-                continue
-
-            detail = (
-                f"Remote output reset / recovery storm за останні "
-                f"{int(spec['window_seconds'])}с."
-                if signal_name == "recovery_storm"
-                else f"{count} подій за останні {int(spec['window_seconds'])}с."
-            )
-            items.append(
-                {
-                    "code": _RUNTIME_INCIDENT_CODES[signal_name],
-                    "severity": "degraded",
-                    "label": _RUNTIME_INCIDENT_LABELS[signal_name],
-                    "detail": detail,
-                    "count": count,
-                }
-            )
-
-        if not items:
-            return _healthy_runtime_incident_summary()
-
-        headline = str(items[0]["label"])
-        details = [
-            str(item.get("detail") or item.get("label") or "").strip()
-            for item in items
-            if str(item.get("detail") or item.get("label") or "").strip()
-        ]
-        return {
-            "severity": "degraded",
-            "headline": headline,
-            "details": details,
-            "items": items,
-        }
 
     async def _maybe_emit_recovery_storm(
         self,
@@ -1502,7 +1340,7 @@ class FFmpegStreamManager:
         runtime_state: Dict[str, Dict[str, Any]],
         observed_at: datetime,
     ) -> None:
-        spec = _DEGRADED_SIGNAL_SPECS["recovery_storm"]
+        spec = runtime_signals.DEGRADED_SIGNAL_SPECS["recovery_storm"]
         storm_state = runtime_state.setdefault(
             "recovery_storm",
             {
