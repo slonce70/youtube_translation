@@ -17,15 +17,16 @@ export function buildYouTubeEmbedUrl(videoId: string): string {
 }
 
 export function getStreamPreviewState(stream: Stream): StreamPreviewState {
+  const isLiveLike = stream.status === 'running' || stream.status === 'starting'
+  if (!isLiveLike) {
+    return { kind: 'unavailable', videoId: null }
+  }
+
   if (stream.provider_video_id) {
     return { kind: 'ready', videoId: stream.provider_video_id }
   }
 
-  if (stream.status === 'running' || stream.status === 'starting') {
-    return { kind: 'pending', videoId: null }
-  }
-
-  return { kind: 'unavailable', videoId: null }
+  return { kind: 'pending', videoId: null }
 }
 
 export function getStreamPreviewEmbedUrl(stream: Stream): string | null {
