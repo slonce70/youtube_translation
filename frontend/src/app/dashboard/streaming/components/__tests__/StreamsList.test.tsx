@@ -434,8 +434,9 @@ describe('StreamsList row interactions', () => {
     ])
 
     const row = screen.getByText('Ready preview').closest('article')!
+    const toggle = screen.getByRole('button', { name: /Ready preview/i })
 
-    expect(row).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
     fireEvent.click(row)
 
@@ -444,7 +445,7 @@ describe('StreamsList row interactions', () => {
       'src',
       'https://www.youtube.com/embed/abc123xyz?autoplay=1&mute=1&playsinline=1&rel=0',
     )
-    expect(row).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('does not toggle preview when details disclosure is used', () => {
@@ -460,11 +461,12 @@ describe('StreamsList row interactions', () => {
     ])
 
     const row = screen.getByText('Disclosure preview').closest('article')!
+    const toggle = screen.getByRole('button', { name: /Disclosure preview/i })
 
     fireEvent.click(within(row).getByText('Details'))
 
     expect(screen.queryByTitle('Live preview')).not.toBeInTheDocument()
-    expect(row).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('shows a pending state when the stream is live but youtube has not exposed a video id', () => {
@@ -483,6 +485,24 @@ describe('StreamsList row interactions', () => {
 
     expect(screen.getByText('YouTube preview is not ready yet')).toBeInTheDocument()
     expect(screen.queryByTitle('Live preview')).not.toBeInTheDocument()
+  })
+
+  it('does not open preview for a stopped stream with a lingering provider video id', () => {
+    renderList([
+      createStream({
+        id: 'stream-preview-stale',
+        name: 'Stale preview',
+        status: 'stopped',
+        error_message: null,
+        provider_status: 'live',
+        provider_video_id: 'stale123',
+      }),
+    ])
+
+    fireEvent.click(screen.getByText('Stale preview').closest('article')!)
+
+    expect(screen.queryByTitle('Live preview')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Stale preview/i })).not.toBeInTheDocument()
   })
 
   it('keeps only one preview open at a time', () => {
@@ -553,6 +573,7 @@ describe('StreamsList row interactions', () => {
     ])
 
     const row = screen.getByText('Preview surface stream').closest('article')!
+    const toggle = screen.getByRole('button', { name: /Preview surface stream/i })
 
     fireEvent.click(row)
     expect(screen.getByTitle('Live preview')).toBeInTheDocument()
@@ -560,6 +581,6 @@ describe('StreamsList row interactions', () => {
     fireEvent.click(screen.getByTitle('Live preview'))
 
     expect(screen.getByTitle('Live preview')).toBeInTheDocument()
-    expect(row).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
   })
 })

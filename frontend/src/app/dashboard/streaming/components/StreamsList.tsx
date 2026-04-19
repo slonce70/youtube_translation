@@ -336,6 +336,7 @@ export function StreamsList({
                           animate={{ opacity: 1, y: 0 }}
                           className={cn(
                             'rounded-xl border p-4',
+                            canTogglePreview && 'cursor-pointer',
                             getStatusBorderClass(derived.group),
                             derived.group === 'attention'
                               ? 'bg-amber-50/40 dark:bg-amber-950/10'
@@ -344,19 +345,6 @@ export function StreamsList({
                                 : '',
                           )}
                           onClick={canTogglePreview ? handleTogglePreview : undefined}
-                          role={canTogglePreview ? 'button' : undefined}
-                          tabIndex={canTogglePreview ? 0 : undefined}
-                          aria-expanded={canTogglePreview ? isPreviewOpen : undefined}
-                          onKeyDown={
-                            canTogglePreview
-                              ? (event) => {
-                                  if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault()
-                                    handleTogglePreview()
-                                  }
-                                }
-                              : undefined
-                          }
                         >
                           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div className="min-w-0 flex-1 space-y-3">
@@ -368,28 +356,61 @@ export function StreamsList({
                                 )}>
                                   {getStreamInitial(streamName)}
                                 </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
-                                      {streamName}
-                                    </h4>
-                                    {renderStatusBadge(derived.derivedStatus)}
-                                    {derived.statusUnavailable && (
-                                      <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                                        <AlertTriangle className="w-3 h-3" />
-                                        {t('streams.statusCheck.unreachable')}
-                                      </span>
-                                    )}
+                                {canTogglePreview ? (
+                                  <button
+                                    type="button"
+                                    className="min-w-0 border-0 bg-transparent p-0 text-left"
+                                    aria-expanded={isPreviewOpen}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      handleTogglePreview()
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <h4 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
+                                        {streamName}
+                                      </h4>
+                                      {renderStatusBadge(derived.derivedStatus)}
+                                      {derived.statusUnavailable && (
+                                        <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                                          <AlertTriangle className="w-3 h-3" />
+                                          {t('streams.statusCheck.unreachable')}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                                      {destinationLabel}
+                                      {derived.isRunning && (
+                                        <span className="ml-2 text-success-600 dark:text-success-400 font-medium">
+                                          {formatDuration(derived.liveDurationSeconds)}
+                                        </span>
+                                      )}
+                                    </p>
+                                  </button>
+                                ) : (
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <h4 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
+                                        {streamName}
+                                      </h4>
+                                      {renderStatusBadge(derived.derivedStatus)}
+                                      {derived.statusUnavailable && (
+                                        <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                                          <AlertTriangle className="w-3 h-3" />
+                                          {t('streams.statusCheck.unreachable')}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                                      {destinationLabel}
+                                      {derived.isRunning && (
+                                        <span className="ml-2 text-success-600 dark:text-success-400 font-medium">
+                                          {formatDuration(derived.liveDurationSeconds)}
+                                        </span>
+                                      )}
+                                    </p>
                                   </div>
-                                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                                    {destinationLabel}
-                                    {derived.isRunning && (
-                                      <span className="ml-2 text-success-600 dark:text-success-400 font-medium">
-                                        {formatDuration(derived.liveDurationSeconds)}
-                                      </span>
-                                    )}
-                                  </p>
-                                </div>
+                                )}
                               </div>
 
                               {derived.effectiveErrorMessage && (

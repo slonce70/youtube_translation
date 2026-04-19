@@ -93,4 +93,19 @@ describe('stream preview helpers', () => {
       videoId: null,
     })
   })
+
+  it('does not allow preview for a stopped stream with a lingering provider video id', () => {
+    expect(
+      getStreamPreviewState(
+        makeStream({
+          status: 'stopped',
+          provider_status: 'live',
+          provider_video_id: 'stale123',
+        }),
+      ),
+    ).toEqual({
+      kind: 'unavailable',
+      videoId: null,
+    })
+  })
 })
