@@ -54,6 +54,16 @@ What to do:
 - verify the destination is enabled and the RTMPS credentials are correct
 - inspect backend logs and stream logs before retrying
 
+## systemd stream worker crashes on `supervisor_*` env validation
+
+Cause:
+- the host `backend/.env` still contains legacy `SUPERVISOR_*` keys from the pre-systemd runtime era
+
+What to do:
+- update to a build that accepts these legacy keys during transition
+- remove stale `SUPERVISOR_*` lines from the production `backend/.env` during the next config cleanup
+- rerun the canary stream after the backend restart
+
 ## Do we need `systemd` before MVP?
 
 No.

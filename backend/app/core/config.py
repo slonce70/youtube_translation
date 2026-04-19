@@ -113,6 +113,14 @@ class Settings(BaseSettings):
     allow_unsafe_containerized_systemd_runtime: bool = False
     systemd_unit_template: str = "ffmpeg@{stream_id}"
     systemctl_path: str = "systemctl"
+    # Deprecated supervisor-era settings remain accepted so older production
+    # .env files do not crash the systemd worker before launch. They are inert
+    # and can be removed during config cleanup.
+    supervisor_program_template: Optional[str] = None
+    supervisor_ctl_path: Optional[str] = None
+    supervisor_config_dir: Optional[str] = None
+    supervisor_log_dir: Optional[str] = None
+    supervisor_conf_path: Optional[str] = None
     stream_runtime_node_id: str = socket.gethostname()
     stream_runtime_heartbeat_interval_seconds: int = 10
     stream_runtime_heartbeat_ttl_seconds: int = 45

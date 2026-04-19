@@ -176,3 +176,33 @@ def test_supervisor_runtime_mode_is_rejected() -> None:
             stream_runtime_mode="supervisor",
             **_base_settings_kwargs(),
         )
+
+
+def test_legacy_supervisor_env_keys_do_not_break_systemd_runtime(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "SUPERVISOR_PROGRAM_TEMPLATE=ffmpeg-%(stream_id)s",
+                "SUPERVISOR_CTL_PATH=/usr/bin/supervisorctl",
+                "SUPERVISOR_CONFIG_DIR=/etc/supervisor/conf.d",
+                "SUPERVISOR_LOG_DIR=/var/log/supervisor",
+                "SUPERVISOR_CONF_PATH=/etc/supervisord.conf",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = Settings(
+        _env_file=env_file,
+        environment="production",
+        stream_runtime_mode="systemd",
+        systemd_unit_template="ffmpeg@{stream_id}",
+        systemctl_path="/bin/systemctl",
+        **_base_settings_kwargs(),
+    )
+
+    assert settings.stream_runtime_mode == "systemd"
+    assert settings.systemctl_path == "/bin/systemctl"
