@@ -25,9 +25,15 @@ type StartStreamVariables = {
   streamName?: string | null
 }
 
+type StreamingToastTranslator = (
+  key: string,
+  values?: any,
+  formats?: any,
+) => string
+
 type UseStreamMutationsParams = {
   userId?: string
-  streamingToasts: (key: string, values?: Record<string, unknown>) => string
+  streamingToasts: StreamingToastTranslator
   openQualityGate: (state: {
     streamName?: string | null
     quality: StreamQualityResponse

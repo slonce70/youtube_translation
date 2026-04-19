@@ -371,6 +371,23 @@ describe('useStreamMutations', () => {
     expect(toastInfo).toHaveBeenCalledWith('stream.stopped')
   })
 
+  it('clears optimistic stopping state and shows an error when stop fails', async () => {
+    streamsStop.mockRejectedValue(new Error('stop failed'))
+
+    const { result } = renderUseStreamMutations()
+
+    act(() => {
+      result.current.stopStreamMutation.mutate('stream-1')
+    })
+
+    await waitFor(() => {
+      expect(result.current.pendingStopStreamId).toBeNull()
+    })
+
+    expect(result.current.optimisticStoppingStreamIds).toEqual([])
+    expect(toastError).toHaveBeenCalledWith('Error: stop failed')
+  })
+
   it('deletes a stream, invalidates the list, and lets the page clear any open logs for that stream', async () => {
     streamsDelete.mockResolvedValue(undefined)
 
