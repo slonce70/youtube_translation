@@ -79,6 +79,7 @@
         "namePlaceholder": "Мой YouTube-канал",
         "urlLabel": "RTMPS URL",
         "keyLabel": "Ключ трансляции",
+        "keyPlaceholder": "Вставьте ключ из YouTube Studio",
         "keepExisting": "(оставьте пустым, чтобы сохранить текущий)",
         "keyHint": "Ключ шифруется и хранится безопасно",
         "help": {
@@ -518,7 +519,8 @@
       "youtubeCta": "Подключить YouTube OAuth",
       "youtubeBadge": "Live",
       "twitchCta": "Twitch OAuth",
-      "twitchBadge": "Out of scope",
+      "twitchBadge": "Вне релиза",
+      "twitchDisabledTitle": "Вне рамок этого релиза",
       "scopeHint": "В этом MVP активен только YouTube OAuth. Twitch намеренно исключён из релиза.",
       "oauth": {
         "startFailed": "Не удалось начать YouTube OAuth"
@@ -553,7 +555,8 @@
     "youtubeCta": "Подключить YouTube OAuth",
     "youtubeBadge": "Live",
     "twitchCta": "Twitch OAuth",
-    "twitchBadge": "Out of scope",
+    "twitchBadge": "Вне релиза",
+    "twitchDisabledTitle": "Вне рамок этого релиза",
     "scopeHint": "В этом MVP активен только YouTube OAuth. Twitch намеренно исключён из релиза.",
     "oauth": {
       "startFailed": "Не удалось начать YouTube OAuth"

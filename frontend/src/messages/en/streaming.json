@@ -79,6 +79,7 @@
         "namePlaceholder": "My YouTube Channel",
         "urlLabel": "RTMPS URL",
         "keyLabel": "Stream Key",
+        "keyPlaceholder": "Paste the key from YouTube Studio",
         "keepExisting": "(leave empty to keep existing)",
         "keyHint": "Your stream key is encrypted and stored securely",
         "help": {
@@ -519,6 +520,7 @@
       "youtubeBadge": "Live",
       "twitchCta": "Twitch OAuth",
       "twitchBadge": "Out of scope",
+      "twitchDisabledTitle": "Out of scope for this release",
       "scopeHint": "Only YouTube OAuth is active in this MVP. Twitch is intentionally excluded from this release.",
       "oauth": {
         "startFailed": "Failed to start YouTube OAuth"
@@ -554,6 +556,7 @@
     "youtubeBadge": "Live",
     "twitchCta": "Twitch OAuth",
     "twitchBadge": "Out of scope",
+    "twitchDisabledTitle": "Out of scope for this release",
     "scopeHint": "Only YouTube OAuth is active in this MVP. Twitch is intentionally excluded from this release.",
     "oauth": {
       "startFailed": "Failed to start YouTube OAuth"
