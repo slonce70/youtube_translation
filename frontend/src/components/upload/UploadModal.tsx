@@ -543,27 +543,27 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
     )
   }, [uploadStatusOverrides])
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !isProcessingUpload && !hasBlockingUpload) {
-        onClose()
-      }
-    }
-
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown)
-    }
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  })
-
   const hasBlockingUpload = useMemo(
     () =>
       isProcessingUpload ||
       uploadItems.some((item) => item.status === 'uploading' || item.status === 'processing'),
     [isProcessingUpload, uploadItems]
   )
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isProcessingUpload && !hasBlockingUpload) {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, isProcessingUpload, hasBlockingUpload, onClose])
 
   const overallProgress = useMemo(() => {
     if (!uploadItems.length) return 0
@@ -728,17 +728,29 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-sm">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="upload-modal-title"
+      aria-describedby="upload-modal-description"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-sm"
+    >
       <div className="flex min-h-full items-center justify-center px-4 py-12">
         <Card className="w-full max-w-4xl animate-scale-in shadow-2xl max-h-[calc(100vh-4rem)] overflow-hidden">
           <CardContent className="relative space-y-6 overflow-y-auto p-6 max-h-[calc(100vh-4rem)]">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <h3
+                id="upload-modal-title"
+                className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2"
+              >
                 <Upload className="w-5 h-5 text-primary-500" />
                 {t('title')}
               </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-3xl">
+              <p
+                id="upload-modal-description"
+                className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-3xl"
+              >
                 {t('description')}
               </p>
             </div>
@@ -1106,7 +1118,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                   <a
                     href="https://support.google.com/youtube/answer/2853702"
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="text-xs text-primary-600 dark:text-primary-400 underline"
                   >
                     {t('info.link')}

@@ -67,6 +67,7 @@ jobs:
       - name: Prepare test environment
         run: |
           cat <<'ENV' > .env.ci
+          ENVIRONMENT=development
           SUPABASE_URL=https://example.supabase.co
           SUPABASE_KEY=dummy-key
           SUPABASE_JWT_SECRET=dummy-jwt-secret
@@ -76,11 +77,24 @@ jobs:
           DOWNLOAD_TOKEN_SECRET=test_download_secret
           TUSD_HMAC_SECRET=test_tusd_secret
           UPLOAD_TOKEN_SECRET=test_upload_secret
+          METRICS_ACCESS_TOKEN=test_metrics_token
           ENV
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage gate
         env:
           ENV_FILE: .env.ci
         run: |
           export $(grep -v '^#' "$ENV_FILE" | xargs)
-          FFMPEG_BIN=tests/bin/ffmpeg pytest -v
+          FFMPEG_BIN=tests/bin/ffmpeg pytest -v \
+            --cov=app \
+            --cov-report=term-missing:skip-covered \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=68
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          retention-days: 14

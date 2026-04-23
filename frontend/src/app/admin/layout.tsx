@@ -123,28 +123,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     )
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className="admin-shell min-h-screen bg-slate-50 dark:bg-slate-950">
       {/* Admin Header */}
-      <header className="sticky top-0 z-50 glass border-b border-slate-200/60 dark:border-slate-700/60">
+      <header className="admin-header sticky top-0 z-50 border-b border-slate-200/60 dark:border-slate-800/80">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-error-500 to-error-600 flex items-center justify-center shadow-glow">
+              <div className="admin-brand-mark w-10 h-10 rounded-xl flex items-center justify-center">
                 <Shield className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold gradient-text">{layout('header.title')}</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{layout('header.subtitle')}</p>
+                <h1 className="admin-title text-xl font-bold">{layout('header.title')}</h1>
+                <p className="admin-subtitle text-xs">{layout('header.subtitle')}</p>
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-slate-600 dark:text-slate-300">
+              <span className="admin-user-pill text-sm">
                 {user?.email ?? layout('userFallback')}
               </span>
               <button
                 onClick={() => router.push('/dashboard')}
-                className="text-sm text-primary-600 hover:text-primary-700"
+                className="admin-exit-btn text-sm"
               >
                 {layout('actions.exit')}
               </button>
@@ -153,7 +153,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </header>
 
-      <div className="border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 lg:hidden">
+      <div className="admin-mobile-nav border-b border-slate-200 dark:border-slate-800 lg:hidden">
         <nav className="overflow-x-auto px-4 sm:px-6">
           <div className="flex min-w-max items-center gap-2 py-3">
             {adminNavItems.map((item) => {
@@ -177,7 +177,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       <div className="flex min-w-0">
         {/* Sidebar */}
-        <aside className="hidden lg:block w-64 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 min-h-[calc(100vh-4rem)]">
+        <aside className="admin-sidebar hidden lg:block w-72 min-h-[calc(100vh-4rem)]">
           <nav className="p-4 space-y-2">
             {adminNavItems.map((item) => {
               const Icon = item.icon
@@ -186,7 +186,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               return (
                 <Link key={item.href} href={item.href}>
                   <motion.div
-                    className={cn(getNavItemClasses(isActive), 'space-x-3 px-4 py-3')}
+                    className={cn(getNavItemClasses(isActive), 'admin-nav-item space-x-3 px-4 py-3')}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >

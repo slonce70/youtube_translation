@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     stream_dir: str = "/app/streams"
     max_upload_size: int = 10737418240  # 10GB
 
+    # Schema patch runner (keep True only where deploy has no migrate step)
+    run_schema_patches_on_boot: bool = True
+
     # FFmpeg
     ffmpeg_bin: str = "/usr/bin/ffmpeg"
     ffprobe_bin: str = "/usr/bin/ffprobe"
@@ -326,6 +329,20 @@ class Settings(BaseSettings):
         environment = (info.data or {}).get("environment", "development")
         if environment != "development" and value == "change_this_upload_secret":
             raise ValueError("UPLOAD_TOKEN_SECRET must be configured")
+        return value
+
+    @field_validator("metrics_access_token")
+    @classmethod
+    def validate_metrics_access_token(
+        cls, value: Optional[str], info: ValidationInfo
+    ) -> Optional[str]:
+        environment = (info.data or {}).get("environment", "development")
+        if environment == "development":
+            return value
+        if not value or value == "change_this_metrics_token":
+            raise ValueError(
+                "METRICS_ACCESS_TOKEN must be set to a non-default value in non-dev environments"
+            )
         return value
 
     @field_validator("stream_runtime_mode")

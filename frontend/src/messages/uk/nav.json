@@ -6,15 +6,73 @@
     "dashboard": "Панель",
     "library": "Файли",
     "streaming": "Трансляції",
-    "plans": "Тарифи"
+    "plans": "Тарифи",
+    "schedule": "Розклад",
+    "profile": "Налаштування"
+  },
+  "sidebar": {
+    "goLive": "Почати трансляцію",
+    "goLiveSub": "Швидкий запуск live",
+    "main": "Головне",
+    "statusOnline": "Studio online",
+    "statusReady": "Готово до ефіру",
+    "collapse": "Згорнути",
+    "collapseLabel": "Згорнути навігацію",
+    "expandLabel": "Розгорнути навігацію",
+    "expandTitle": "Розгорнути",
+    "items": {
+      "dashboard": { "label": "Дашборд", "sub": "Огляд системи" },
+      "streaming": { "label": "Трансляції", "sub": "Live та канали" },
+      "library": { "label": "Файли", "sub": "Медіа й плейлисти" },
+      "schedule": { "label": "Розклад", "sub": "Запуски ефірів" },
+      "plans": { "label": "Тарифи", "sub": "Ліміти та апгрейд" },
+      "profile": { "label": "Налаштування", "sub": "Акаунт і канали" }
+    }
+  },
+  "search": {
+    "openCommand": "Відкрити пошук команд",
+    "placeholder": "Пошук або ⌘K…"
+  },
+  "notifications": {
+    "label": "Сповіщення",
+    "empty": "Немає нових сповіщень"
   },
   "profile": {
     "fallbackName": "Користувач",
     "planBadge": "План {plan}",
     "accountSettings": "Налаштування облікового запису",
+    "accountSub": "Профіль, канали, ключі",
     "changePassword": "Змінити пароль",
     "managePlan": "Керувати тарифом",
-    "signOut": "Вийти"
+    "planSub": "Ліміти та місткість",
+    "signOut": "Вийти",
+    "signOutSub": "Завершити сесію"
+  },
+  "userMenu": {
+    "open": "Відкрити меню користувача {name}",
+    "label": "Меню користувача"
+  },
+  "commands": {
+    "defaultGroup": "Команди",
+    "navigationGroup": "Навігація",
+    "actionsGroup": "Швидкі дії",
+    "items": {
+      "dashboardSub": "Головна панель",
+      "librarySub": "Бібліотека та плейлисти",
+      "streamingSub": "Канали, live та архів",
+      "plansSub": "Плани та ліміти",
+      "scheduleSub": "Заплановані запуски",
+      "newStream": "Нова трансляція",
+      "newStreamSub": "Відкрити запуск стріму",
+      "upload": "Завантажити файл",
+      "uploadSub": "Перейти до бібліотеки"
+    }
+  },
+  "commandPalette": {
+    "label": "Палітра команд",
+    "placeholder": "Перейдіть до… наприклад «Файли» або «Трансляції»",
+    "emptyTitle": "Нічого не знайдено",
+    "emptySub": "Спробуйте інший запит."
   },
   "mobile": {
     "toggle": "Відкрити меню"

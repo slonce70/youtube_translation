@@ -1458,8 +1458,17 @@ class FFmpegStreamManager:
                 info["next_restart_at"] = _utcnow() + timedelta(seconds=backoff)
                 if backoff:
                     await asyncio.sleep(backoff)
+            except asyncio.CancelledError:
+                # Shutdown interrupting the restart backoff — propagate cleanly.
+                raise
             except Exception:
-                pass
+                # Backoff is a best-effort delay; settings lookups or clock math
+                # must never block the restart path. Log and continue.
+                logger.debug(
+                    "ffmpeg restart backoff computation failed for stream %s",
+                    stream_id,
+                    exc_info=True,
+                )
             finally:
                 info["next_restart_at"] = None
 
