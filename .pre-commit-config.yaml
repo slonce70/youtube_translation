@@ -13,18 +13,18 @@ repos:
       - id: detect-private-key
       - id: mixed-line-ending
 
-  # Python: Black formatter
+  # Python: Black formatter (pinned to match backend/requirements.txt)
   - repo: https://github.com/psf/black
-    rev: 23.12.1
+    rev: 26.3.1
     hooks:
       - id: black
         language_version: python3.11
         files: ^backend/
         args: ['--line-length=100']
 
-  # Python: Ruff linter (faster alternative to flake8)
+  # Python: Ruff linter (pinned to match backend/requirements.txt)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.9
+    rev: v0.6.3
     hooks:
       - id: ruff
         files: ^backend/
@@ -38,9 +38,9 @@ repos:
         files: ^backend/
         args: ['--profile', 'black']
 
-  # Python: MyPy type checking
+  # Python: MyPy type checking (pinned to match backend/requirements.txt)
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
+    rev: v1.11.2
     hooks:
       - id: mypy
         files: ^backend/app/

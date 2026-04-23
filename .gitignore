@@ -96,3 +96,12 @@ FIXES_*.md
 .playwright-cli/
 .worktrees/
 /output/
+
+# Historical prototypes (keep on disk for reference, do not track)
+prototype-v2.html
+
+# Root-level package tooling was removed (docs generators now live per-workspace);
+# guard against accidentally re-adding them.
+/package.json
+/package-lock.json
+/node_modules/

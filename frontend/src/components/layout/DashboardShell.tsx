@@ -1,8 +1,19 @@
 'use client'
 
+import {
+  CalendarDays,
+  CreditCard,
+  FolderOpen,
+  Gauge,
+  Radio,
+  SatelliteDish,
+  UploadCloud,
+  type LucideIcon,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { usePathname } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { api } from '@/lib/api'
 import type { Stream } from '@/lib/types'
 import { useDashboardContext } from '@/app/dashboard/dashboard-context'
@@ -21,6 +32,7 @@ interface DashboardShellProps {
 export function DashboardShell({ userName, userEmail, onSignOut, children }: DashboardShellProps) {
   const { user } = useDashboardContext()
   const pathname = usePathname()
+  const nav = useTranslations('nav')
   const currentPath = pathname ?? ''
   const [collapsed, setCollapsed] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -55,14 +67,23 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
 
   const commandItems = useMemo(
     () => [
-      { id: 'dashboard', icon: '🏠', label: 'Дашборд', sub: 'Головна панель', href: '/dashboard' },
-      { id: 'library', icon: '📁', label: 'Файли', sub: 'Бібліотека та плейлисти', href: '/dashboard/library' },
-      { id: 'streaming', icon: '📡', label: 'Трансляції', sub: 'Канали, live та архів', href: '/dashboard/streaming' },
-      { id: 'plans', icon: '💳', label: 'Тарифи', sub: 'Плани та ліміти', href: '/dashboard/plans' },
-      { id: 'new-stream', icon: '🎙️', label: 'Нова трансляція', sub: 'Відкрити запуск стріму', href: '/dashboard/streaming?new=1' },
-      { id: 'upload', icon: '⬆️', label: 'Завантажити файл', sub: 'Перейти до бібліотеки', href: '/dashboard/library?tab=assets' },
-    ],
-    [],
+      { id: 'dashboard', icon: Gauge, label: nav('sidebar.items.dashboard.label'), sub: nav('commands.items.dashboardSub'), href: '/dashboard', group: nav('commands.navigationGroup'), shortcut: 'G D' },
+      { id: 'library', icon: FolderOpen, label: nav('sidebar.items.library.label'), sub: nav('commands.items.librarySub'), href: '/dashboard/library', group: nav('commands.navigationGroup'), shortcut: 'G F' },
+      { id: 'streaming', icon: SatelliteDish, label: nav('sidebar.items.streaming.label'), sub: nav('commands.items.streamingSub'), href: '/dashboard/streaming', group: nav('commands.navigationGroup'), shortcut: 'G S' },
+      { id: 'plans', icon: CreditCard, label: nav('sidebar.items.plans.label'), sub: nav('commands.items.plansSub'), href: '/dashboard/plans', group: nav('commands.navigationGroup'), shortcut: 'G P' },
+      { id: 'schedule', icon: CalendarDays, label: nav('sidebar.items.schedule.label'), sub: nav('commands.items.scheduleSub'), href: '/dashboard/schedule', group: nav('commands.navigationGroup'), shortcut: 'G C' },
+      { id: 'new-stream', icon: Radio, label: nav('commands.items.newStream'), sub: nav('commands.items.newStreamSub'), href: '/dashboard/streaming?new=1', group: nav('commands.actionsGroup'), shortcut: 'N' },
+      { id: 'upload', icon: UploadCloud, label: nav('commands.items.upload'), sub: nav('commands.items.uploadSub'), href: '/dashboard/library?tab=assets', group: nav('commands.actionsGroup'), shortcut: 'U' },
+    ] satisfies Array<{
+      id: string
+      icon: LucideIcon
+      label: string
+      sub: string
+      href: string
+      group: string
+      shortcut: string
+    }>,
+    [nav],
   )
 
   return (

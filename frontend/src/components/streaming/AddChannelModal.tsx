@@ -34,11 +34,13 @@ export function AddChannelModal({
   isSaving,
   t,
 }: AddChannelModalProps) {
+  const title = editingChannelId ? t('channels.form.editTitle') : t('channels.add')
+
   return (
-    <Modal open={open} onClose={onCancel} className="w-full max-w-[520px]">
+    <Modal open={open} onClose={onCancel} ariaLabel={title} className="w-full max-w-[520px]">
       <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
       <div className="card-title" style={{ fontSize: 17, marginBottom: 8 }}>
-        {editingChannelId ? t('channels.form.editTitle') : t('channels.add')}
+        {title}
       </div>
       <div className="card-description" style={{ marginBottom: 16 }}>
         {t('provider.modalDescription')}
@@ -91,23 +93,23 @@ export function AddChannelModal({
 
         <div>
           <label className="page-sub" style={{ display: 'block', marginBottom: 6 }}>
-            Stream Key {editingChannelId ? t('channels.form.keepExisting') : ''}
+            {t('channels.form.keyLabel')} {editingChannelId ? t('channels.form.keepExisting') : ''}
           </label>
           <Input
             type="password"
             required={!editingChannelId}
             value={channelForm.stream_key}
             onChange={(event) => onChange({ ...channelForm, stream_key: event.target.value })}
-            placeholder="Вставте ключ з YouTube Studio"
+            placeholder={t('channels.form.keyPlaceholder')}
           />
           <div style={{ marginTop: 8, fontSize: 12 }}>
             <a
               href="https://studio.youtube.com/"
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               style={{ color: 'var(--indigo-lt)' }}
             >
-              Де знайти stream key у YouTube Studio? →
+              {t('channels.form.help.title')} →
             </a>
           </div>
         </div>
@@ -136,7 +138,7 @@ export function AddChannelModal({
               size="sm"
               className="flex-1 min-w-[180px] justify-between"
               disabled
-              title="Поза scope цього релізу"
+              title={t('provider.twitchDisabledTitle')}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: '#9146ff' }}>🎮</span>

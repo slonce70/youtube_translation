@@ -121,11 +121,20 @@ export function QualityGateModal({
   const audioChannelsDisplay = audioChannels ?? 2
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="quality-gate-title"
+      aria-describedby="quality-gate-description"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4"
+    >
       <Card className="w-full max-w-2xl animate-scale-in">
         <CardHeader>
-          <CardTitle>{t('streams.quality.title')}</CardTitle>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <CardTitle id="quality-gate-title">{t('streams.quality.title')}</CardTitle>
+          <p
+            id="quality-gate-description"
+            className="text-sm text-slate-500 dark:text-slate-400"
+          >
             {t('streams.quality.description', {
               name: streamName || t('streams.untitled'),
             })}

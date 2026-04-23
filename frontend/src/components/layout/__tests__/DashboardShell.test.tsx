@@ -20,6 +20,10 @@ jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname(),
 }))
 
+jest.mock('next-intl', () => ({
+  useTranslations: () => (key: string) => key,
+}))
+
 jest.mock('../Topbar', () => ({
   Topbar: ({
     liveCount,
