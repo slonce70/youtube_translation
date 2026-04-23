@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     stream_dir: str = "/app/streams"
     max_upload_size: int = 10737418240  # 10GB
 
+    # Schema patch runner (keep True only where deploy has no migrate step)
+    run_schema_patches_on_boot: bool = True
+
     # FFmpeg
     ffmpeg_bin: str = "/usr/bin/ffmpeg"
     ffprobe_bin: str = "/usr/bin/ffprobe"
