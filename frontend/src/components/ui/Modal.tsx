@@ -4,6 +4,21 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true',
+  )
+}
+
 interface ModalProps {
   open: boolean
   onClose: () => void
@@ -20,7 +35,38 @@ export function Modal({ open, onClose, ariaLabel, ariaLabelledBy, className, chi
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        onClose()
+        return
+      }
+
+      if (event.key !== 'Tab' || !dialogRef.current) return
+
+      const focusableElements = getFocusableElements(dialogRef.current)
+      if (focusableElements.length === 0) {
+        event.preventDefault()
+        dialogRef.current.focus({ preventScroll: true })
+        return
+      }
+
+      const firstElement = focusableElements[0]
+      const lastElement = focusableElements[focusableElements.length - 1]
+      const activeElement = document.activeElement
+
+      if (!dialogRef.current.contains(activeElement)) {
+        event.preventDefault()
+        const targetElement = event.shiftKey ? lastElement : firstElement
+        targetElement.focus({ preventScroll: true })
+        return
+      }
+
+      if (event.shiftKey && (activeElement === firstElement || activeElement === dialogRef.current)) {
+        event.preventDefault()
+        lastElement.focus({ preventScroll: true })
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault()
+        firstElement.focus({ preventScroll: true })
+      }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
