@@ -221,7 +221,9 @@ export function HomePageClient() {
 
   const titleParts = useMemo(() => {
     const parts = heroT('title').trim().split(/\s+/)
-    const accentStart = Math.max(parts.length - 2, 0)
+    // Accent the last word only — keeps the lead line unbroken across locales
+    // and prevents an orphan word on its own line.
+    const accentStart = Math.max(parts.length - 1, 0)
     return {
       lead: parts.slice(0, accentStart).join(' '),
       accent: parts.slice(accentStart).join(' '),
@@ -342,11 +344,6 @@ export function HomePageClient() {
               >
                 <div className="stream-v3-stage-glow" />
                 <div className="stream-v3-stage-grid" />
-                <div className="stream-v3-stage-rings">
-                  <span />
-                  <span />
-                  <span />
-                </div>
 
                 <div className="stream-v3-stage-main">
                   <div className="stream-v3-stage-topbar">
@@ -390,12 +387,6 @@ export function HomePageClient() {
                 <article key={metric.label} className="stream-v3-metric-card">
                   <div className="stream-v3-stage-label">{metric.label}</div>
                   <div className="stream-v3-display stream-v3-metric-card__value">{metric.value}</div>
-                  <div className="stream-v3-metric-card__track" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                  </div>
                   <p className="stream-v3-metric-card__meta">{metric.description}</p>
                 </article>
               ))}
