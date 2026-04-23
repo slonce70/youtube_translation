@@ -328,6 +328,20 @@ class Settings(BaseSettings):
             raise ValueError("UPLOAD_TOKEN_SECRET must be configured")
         return value
 
+    @field_validator("metrics_access_token")
+    @classmethod
+    def validate_metrics_access_token(
+        cls, value: Optional[str], info: ValidationInfo
+    ) -> Optional[str]:
+        environment = (info.data or {}).get("environment", "development")
+        if environment == "development":
+            return value
+        if not value or value == "change_this_metrics_token":
+            raise ValueError(
+                "METRICS_ACCESS_TOKEN must be set to a non-default value in non-dev environments"
+            )
+        return value
+
     @field_validator("stream_runtime_mode")
     @classmethod
     def validate_stream_runtime_mode(cls, value: str) -> str:
