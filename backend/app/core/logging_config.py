@@ -16,6 +16,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 from pythonjsonlogger import jsonlogger
 
+from app.core.request_context_vars import (
+    correlation_id_var,
+    request_id_var,
+    user_id_var,
+)
+
 UUID_RE = re.compile(
     r"\b[0-9a-fA-F]{8}-"
     r"[0-9a-fA-F]{4}-"
@@ -36,6 +42,31 @@ def mask_identifier(value: str) -> str:
 
 def mask_uuids(text: str) -> str:
     return UUID_RE.sub(lambda match: mask_identifier(match.group(0)), text)
+
+
+class RequestContextFilter(logging.Filter):
+    """Inject request-scoped context vars into every LogRecord.
+
+    Runs *before* CustomJsonFormatter so the downstream add_fields() hooks
+    can read the attributes off the record. Values already set on the record
+    by explicit `extra=` take precedence over the ambient context var — this
+    lets middlewares override per-call values when they must.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        request_id = request_id_var.get()
+        if request_id and not getattr(record, "request_id", None):
+            record.request_id = request_id
+
+        user_id = user_id_var.get()
+        if user_id and not getattr(record, "user_id", None):
+            record.user_id = user_id
+
+        correlation_id = correlation_id_var.get()
+        if correlation_id and not getattr(record, "correlation_id", None):
+            record.correlation_id = correlation_id
+
+        return True
 
 
 class SensitiveDataFilter(logging.Filter):
@@ -161,6 +192,8 @@ def setup_logging(level: str = "INFO", json_output: bool = True):
 
     console_handler.setFormatter(formatter)
 
+    # Inject request-scoped context vars before masking + JSON formatting.
+    console_handler.addFilter(RequestContextFilter())
     # Add sensitive data filter
     console_handler.addFilter(SensitiveDataFilter())
 

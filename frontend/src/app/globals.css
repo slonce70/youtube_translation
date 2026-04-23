@@ -1870,6 +1870,14 @@
     transform: translateX(2px);
   }
 
+  .dashboard-v2 .nav-item:focus-visible,
+  .dashboard-v2 .collapse-btn:focus-visible {
+    outline: 2px solid var(--indigo-lt);
+    outline-offset: -2px;
+    background: rgba(99,102,241,.14);
+    color: var(--txt);
+  }
+
   .dashboard-v2 .nav-item.active {
     background:
       linear-gradient(90deg, rgba(109, 93, 252, .25), rgba(56, 189, 248, .08));
@@ -2035,6 +2043,13 @@
   .dashboard-v2 .btn-green { background: var(--green); color: #fff; }
   .dashboard-v2 .btn-green:hover { background: #16a34a; }
   .dashboard-v2 .btn-icon { width: 34px; height: 34px; padding: 0; justify-content: center; }
+  /* Keyboard focus ring — distinct from hover so sighted keyboard users
+     can always tell where focus lives. Uses :focus-visible so mouse users
+     don't get a lingering ring after click. */
+  .dashboard-v2 .btn:focus-visible {
+    outline: 2px solid var(--indigo-lt);
+    outline-offset: 2px;
+  }
 
   .dashboard-v2 .card {
     background: var(--bg-2);
@@ -2065,7 +2080,11 @@
   }
   .dashboard-v2 .input:focus,
   .dashboard-v2 textarea.input:focus,
-  .dashboard-v2 select.input:focus { border-color: var(--indigo); outline: none; }
+  .dashboard-v2 select.input:focus {
+    border-color: var(--indigo);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(109, 93, 252, .18);
+  }
   .dashboard-v2 .input::placeholder { color: var(--txt-3); }
 
   .dashboard-v2 .stats-row {

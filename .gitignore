@@ -96,6 +96,8 @@ FIXES_*.md
 .playwright-cli/
 .worktrees/
 /output/
+# Claude Preview / Claude Code local dev-server configs
+.claude/launch.json
 
 # Historical prototypes (keep on disk for reference, do not track)
 prototype-v2.html
