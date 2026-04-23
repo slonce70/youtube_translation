@@ -39,8 +39,15 @@ export function Topbar({
     const onMouseDown = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
     }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
     document.addEventListener('mousedown', onMouseDown)
-    return () => document.removeEventListener('mousedown', onMouseDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
   }, [menuOpen])
 
   const liveLabel = useMemo(() => {
@@ -62,7 +69,7 @@ export function Topbar({
         aria-label="Відкрити пошук команд"
       >
         <Search className="topbar-search-icon" aria-hidden="true" />
-        <input readOnly value="" placeholder="Пошук або ⌘K…" />
+        <span className="topbar-search-input" aria-hidden="true">Пошук або ⌘K…</span>
         <span className="search-kbd">⌘K</span>
       </button>
 
@@ -95,6 +102,7 @@ export function Topbar({
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
+            aria-label={`Відкрити меню користувача ${displayName}`}
           >
             <div className="avatar">{initial}</div>
             <span className="user-name">{displayName}</span>
@@ -102,7 +110,17 @@ export function Topbar({
           </button>
 
           {menuOpen ? (
-            <div className="topbar-menu" role="menu">
+            <div
+              className="topbar-menu"
+              role="menu"
+              aria-label="Меню користувача"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation()
+                  setMenuOpen(false)
+                }
+              }}
+            >
               <div className="topbar-menu-head">
                 <div className="topbar-menu-avatar">{initial}</div>
                 <div className="topbar-menu-identity">
