@@ -66,6 +66,7 @@ jobs:
 
       - name: Prepare test environment
         run: |
+          mkdir -p /tmp/ci-streams /tmp/ci-uploads
           cat <<'ENV' > .env.ci
           ENVIRONMENT=development
           SUPABASE_URL=https://example.supabase.co
@@ -78,6 +79,8 @@ jobs:
           TUSD_HMAC_SECRET=test_tusd_secret
           UPLOAD_TOKEN_SECRET=test_upload_secret
           METRICS_ACCESS_TOKEN=test_metrics_token
+          STREAM_DIR=/tmp/ci-streams
+          UPLOAD_DIR=/tmp/ci-uploads
           ENV
 
       - name: Run unit tests with coverage gate

@@ -179,7 +179,10 @@ def test_supervisor_runtime_mode_is_rejected() -> None:
         )
 
 
-def test_metrics_access_token_must_be_configured_in_production() -> None:
+def test_metrics_access_token_must_be_configured_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("METRICS_ACCESS_TOKEN", raising=False)
     kwargs = _base_settings_kwargs()
     kwargs.pop("metrics_access_token")
     with pytest.raises(ValidationError, match="METRICS_ACCESS_TOKEN"):
@@ -192,7 +195,10 @@ def test_metrics_access_token_must_be_configured_in_production() -> None:
         )
 
 
-def test_metrics_access_token_rejects_placeholder_in_production() -> None:
+def test_metrics_access_token_rejects_placeholder_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("METRICS_ACCESS_TOKEN", raising=False)
     kwargs = _base_settings_kwargs()
     kwargs["metrics_access_token"] = "change_this_metrics_token"
     with pytest.raises(ValidationError, match="METRICS_ACCESS_TOKEN"):
@@ -205,7 +211,10 @@ def test_metrics_access_token_rejects_placeholder_in_production() -> None:
         )
 
 
-def test_metrics_access_token_is_optional_in_development() -> None:
+def test_metrics_access_token_is_optional_in_development(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("METRICS_ACCESS_TOKEN", raising=False)
     kwargs = _base_settings_kwargs()
     kwargs.pop("metrics_access_token")
     settings = Settings(
