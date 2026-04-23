@@ -67,6 +67,7 @@ jobs:
       - name: Prepare test environment
         run: |
           cat <<'ENV' > .env.ci
+          ENVIRONMENT=development
           SUPABASE_URL=https://example.supabase.co
           SUPABASE_KEY=dummy-key
           SUPABASE_JWT_SECRET=dummy-jwt-secret
@@ -76,6 +77,7 @@ jobs:
           DOWNLOAD_TOKEN_SECRET=test_download_secret
           TUSD_HMAC_SECRET=test_tusd_secret
           UPLOAD_TOKEN_SECRET=test_upload_secret
+          METRICS_ACCESS_TOKEN=test_metrics_token
           ENV
 
       - name: Run unit tests with coverage gate
