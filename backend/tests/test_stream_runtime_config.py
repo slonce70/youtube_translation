@@ -14,6 +14,7 @@ def _base_settings_kwargs() -> dict:
         "encryption_salt": "b" * 32,
         "upload_token_secret": "c" * 32,
         "download_token_secret": "d" * 32,
+        "metrics_access_token": "m" * 32,
         "enable_dev_auth": False,
     }
 
@@ -176,6 +177,44 @@ def test_supervisor_runtime_mode_is_rejected() -> None:
             stream_runtime_mode="supervisor",
             **_base_settings_kwargs(),
         )
+
+
+def test_metrics_access_token_must_be_configured_in_production() -> None:
+    kwargs = _base_settings_kwargs()
+    kwargs.pop("metrics_access_token")
+    with pytest.raises(ValidationError, match="METRICS_ACCESS_TOKEN"):
+        Settings(
+            _env_file=None,
+            environment="production",
+            stream_runtime_mode="systemd",
+            allow_unsafe_manager_runtime=True,
+            **kwargs,
+        )
+
+
+def test_metrics_access_token_rejects_placeholder_in_production() -> None:
+    kwargs = _base_settings_kwargs()
+    kwargs["metrics_access_token"] = "change_this_metrics_token"
+    with pytest.raises(ValidationError, match="METRICS_ACCESS_TOKEN"):
+        Settings(
+            _env_file=None,
+            environment="production",
+            stream_runtime_mode="systemd",
+            allow_unsafe_manager_runtime=True,
+            **kwargs,
+        )
+
+
+def test_metrics_access_token_is_optional_in_development() -> None:
+    kwargs = _base_settings_kwargs()
+    kwargs.pop("metrics_access_token")
+    settings = Settings(
+        _env_file=None,
+        environment="development",
+        stream_runtime_mode="systemd",
+        **kwargs,
+    )
+    assert settings.metrics_access_token is None
 
 
 def test_legacy_supervisor_env_keys_do_not_break_systemd_runtime(
