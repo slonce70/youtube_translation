@@ -1,4 +1,9 @@
 # Copy to /etc/systemd/system/ffmpeg@.service and adjust paths/users.
+#
+# Hardening reference: see docs/operations/systemd_hardening.md for the
+# rationale behind each directive and guidance on loosening individual
+# knobs if an installation needs e.g. hardware-accelerated ffmpeg or a
+# non-default stream directory layout.
 
 [Unit]
 Description=YouTube translation stream %i
@@ -20,7 +25,9 @@ Restart=always
 RestartSec=5s
 # CLI exit code 10 means "terminal state refusal" and must not trigger an endless restart loop.
 RestartPreventExitStatus=10
-# Resource accounting / isolation. Tune from measured workload profiles before production-wide rollout.
+
+# --- Resource accounting / isolation ---------------------------------------
+# Tune from measured workload profiles before production-wide rollout.
 CPUAccounting=yes
 MemoryAccounting=yes
 TasksAccounting=yes
@@ -29,12 +36,62 @@ MemoryMax=2G
 TasksMax=128
 OOMPolicy=stop
 Slice=streaming.slice
-NoNewPrivileges=true
-PrivateTmp=true
-StandardOutput=journal
-StandardError=journal
+
+# --- Identity and privilege ------------------------------------------------
 User=streambot
 Group=streambot
+NoNewPrivileges=true
+# No special capabilities required. FFmpeg binds to arbitrary RTMPS hosts but
+# does not need CAP_NET_BIND_SERVICE or any other elevated capability.
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Default file mode mask: owner-only read/write for files the process creates.
+UMask=0077
+
+# --- Filesystem isolation --------------------------------------------------
+# /usr, /boot, /efi are read-only; /etc becomes read-only too with "strict".
+ProtectSystem=strict
+# Home directories are hidden entirely.
+ProtectHome=yes
+# Private /tmp so other services cannot scrape working files.
+PrivateTmp=true
+# Writable directories must be enumerated after ProtectSystem=strict. Adjust
+# STREAM_DIR / UPLOAD_DIR in .env if you relocate these paths.
+ReadWritePaths=/opt/youtube_translation/backend/streams /opt/youtube_translation/backend/uploads /opt/youtube_translation/backend/logs
+
+# --- Kernel-level hardening ------------------------------------------------
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+ProcSubset=pid
+
+# --- Namespace and device hardening ---------------------------------------
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+DevicePolicy=closed
+# Allow /dev/null, /dev/zero, /dev/random, /dev/urandom, /dev/tty by default.
+# Extend with DeviceAllow=/dev/dri/renderD128 rw  if hardware acceleration is used.
+KeyringMode=private
+
+# --- Network surface ------------------------------------------------------
+# FFmpeg needs UNIX sockets (logging/pipes), IPv4, and IPv6 for RTMPS.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressAllow=any
+
+# --- System call filtering ------------------------------------------------
+SystemCallArchitectures=native
+# @system-service is the broad "normal daemon" profile; we deny a handful of
+# sensitive groups that ffmpeg never needs. Remove @privileged carefully if
+# you switch to HW acceleration paths that require ioctl on DRM devices.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @raw-io @cpu-emulation @debug @module @swap @obsolete @reboot
+
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
