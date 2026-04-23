@@ -4,7 +4,7 @@
 
 The final MVP for this repository is intentionally narrow:
 
-- single-node topology with `frontend`, `backend`, `postgres`, `redis`, `tusd`, and `runner`
+- single-node topology with `frontend`, `backend`, `postgres`, `redis`, and `tusd`
 - one authenticated user flow
 - one upload flow through tusd
 - one compatible playlist

@@ -19,7 +19,7 @@
 ### Канонічний локальний шлях: hybrid boot
 
 Поточний рекомендований baseline для розробки:
-- базові сервіси піднімаються через Docker Compose: `postgres`, `redis`, `tusd`, `runner`
+- базові сервіси піднімаються через Docker Compose: `postgres`, `redis`, `tusd`
 - FastAPI та Next.js запускаються локально через `start-backend.sh` і `start-frontend.sh`
 - для ручного локального dashboard smoke зручно використовувати **DEV auth**, але managed Playwright smoke-gate піднімає власний Next server у real-auth redirect режимі
 
@@ -285,7 +285,7 @@ CLI-скрипт `python -m app.cli.run_stream <stream_id>` може підні�
 3. Поставте privilege hook для `streambot` через `docs/systemd/polkit/youtube-ffmpeg.rules.example` або `SYSTEMD_INSTALL_POLKIT=1 ./scripts/install_systemd_runtime.sh`.
 4. Провіжиньте host-native venv через `./scripts/provision_host_native_backend_venv.sh`.
 5. Увімкніть `STREAM_RUNTIME_MODE=systemd` у `backend/.env`, а `DATABASE_URL` / `REDIS_URL` спрямуйте на `127.0.0.1`.
-6. Підніміть Docker infra без containerized backend/runner.
+6. Підніміть Docker infra без containerized backend.
 7. Встановіть або оновіть unit-файли через `scripts/install_systemd_runtime.sh`, потім проганяйте `scripts/check_host_runtime_readiness.sh` і добивайтеся `host_service_user_systemctl=allowed`.
 8. Піднімайте host-native backend через `systemctl enable --now youtube-backend`, repo-native helper `scripts/install_systemd_runtime.sh` з `SYSTEMD_ENABLE_BACKEND=1`, або через контрольований cutover helper `scripts/cutover_host_runtime.sh`.
 9. Піднімайте конкретні стріми через `systemctl enable --now ffmpeg@<stream_uuid>`, через installer helper з `SYSTEMD_ENABLE_STREAM_UNIT=<stream_uuid>`, або через cutover helper з `HOST_STREAM_UNIT_NAME=<stream_uuid>` — CLI сам збере плейлисти, запустить FFmpeg і оновить статус у БД.

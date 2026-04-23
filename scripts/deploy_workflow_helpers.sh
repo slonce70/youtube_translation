@@ -107,13 +107,12 @@ compute_deploy_impact() {
     if [[ "$host_runtime_managed" == 'true' ]]; then
       services=(postgres redis tusd frontend mediamtx)
     else
-      services=(postgres redis backend tusd frontend runner mediamtx)
+      services=(postgres redis backend tusd frontend mediamtx)
     fi
     sync_host_caddy=1
   else
     if [[ "$backend_needs_deploy" == 'true' && "$host_runtime_managed" != 'true' ]]; then
       add_service backend
-      add_service runner
     fi
     if [[ "$tusd_needs_deploy" == 'true' ]]; then
       add_service tusd

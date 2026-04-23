@@ -28,7 +28,7 @@ guard_containerized_systemd_runtime() {
   fi
 
   if [[ " ${selected_services} " == *" backend "* || " ${selected_services} " == *" runner "* ]]; then
-    echo "Refusing deploy: docker-compose backend/runner services are selected while a host-level systemd control plane is configured or active." >&2
+    echo "Refusing deploy: docker-compose backend service is selected while a host-level systemd control plane is configured or active." >&2
     echo "Containerized staging/production backend + systemd runtime is blocked by default because the host-level systemctl control plane is not a supported topology yet." >&2
     echo "Use a host-native backend control plane first, or explicitly set ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME=true after reviewing the risk." >&2
     return 1

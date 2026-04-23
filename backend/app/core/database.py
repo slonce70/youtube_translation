@@ -130,15 +130,13 @@ async def _missing_columns(conn, table: str, columns: list[str]) -> list[str]:
         return []
 
     placeholders = ", ".join(f":col_{idx}" for idx in range(len(columns)))
-    query = text(
-        f"""
+    query = text(f"""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = :table_name
           AND column_name IN ({placeholders})
-        """
-    )
+        """)
 
     params = {"table_name": table}
     for idx, column in enumerate(columns):
@@ -153,9 +151,7 @@ async def _apply_schema_changes(conn):
     """Apply idempotent schema updates for new columns."""
     # Ensure local auth schema exists for tests/local development
     await conn.execute(text("CREATE SCHEMA IF NOT EXISTS auth"))
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS auth.users (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 email TEXT NOT NULL UNIQUE,
@@ -164,9 +160,7 @@ async def _apply_schema_changes(conn):
                 created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
             )
-            """
-        )
-    )
+            """))
 
     # Storage accounting is maintained by explicit apply_storage_delta() calls
     # in asset service mutations. Remove the legacy trigger path so init_db
@@ -176,34 +170,24 @@ async def _apply_schema_changes(conn):
     )
     await conn.execute(text("DROP FUNCTION IF EXISTS update_user_storage_usage()"))
 
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             ALTER TABLE subscription_tier_limits
             ADD COLUMN IF NOT EXISTS max_resolution_height INTEGER,
             ADD COLUMN IF NOT EXISTS max_fps INTEGER,
             ADD COLUMN IF NOT EXISTS max_video_bitrate_mbps FLOAT,
             ADD COLUMN IF NOT EXISTS min_video_bitrate_mbps FLOAT,
             ADD COLUMN IF NOT EXISTS enforce_stream_quality BOOLEAN DEFAULT TRUE
-            """
-        )
-    )
+            """))
 
     # Ensure defaults for existing rows
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             UPDATE subscription_tier_limits
             SET
                 enforce_stream_quality = COALESCE(enforce_stream_quality, TRUE)
-            """
-        )
-    )
+            """))
 
     # Free tier defaults aligned with YouTube FullHD recommendations
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             UPDATE subscription_tier_limits
             SET
                 max_resolution_height = COALESCE(max_resolution_height, 1080),
@@ -211,35 +195,25 @@ async def _apply_schema_changes(conn):
                 min_video_bitrate_mbps = COALESCE(min_video_bitrate_mbps, 3),
                 max_video_bitrate_mbps = COALESCE(max_video_bitrate_mbps, 10)
             WHERE tier = 'free'
-            """
-        )
-    )
+            """))
 
     # Higher tiers keep wide limits unless explicitly set later
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             UPDATE subscription_tier_limits
             SET enforce_stream_quality = TRUE
             WHERE enforce_stream_quality IS NULL
-            """
-        )
-    )
+            """))
 
     # 4K tiers should not cap bitrate below YouTube's own 4K60 guidance.
     # Otherwise valid UHD files get blocked during stream launch.
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             UPDATE subscription_tier_limits
             SET
                 max_resolution_height = COALESCE(max_resolution_height, 2160),
                 max_fps = COALESCE(max_fps, 60),
                 max_video_bitrate_mbps = GREATEST(COALESCE(max_video_bitrate_mbps, 51), 51)
             WHERE tier IN ('uhd_start', 'uhd_flow', 'uhd_boost')
-            """
-        )
-    )
+            """))
 
     # Add missing columns to streams table only if needed
     streams_columns = [
@@ -256,9 +230,7 @@ async def _apply_schema_changes(conn):
         "runtime_last_heartbeat_at",
     ]
     if await _missing_columns(conn, "streams", streams_columns):
-        await conn.execute(
-            text(
-                """
+        await conn.execute(text("""
                 ALTER TABLE streams
                 ADD COLUMN IF NOT EXISTS video_collection_id UUID REFERENCES media_collections(id) ON DELETE SET NULL,
                 ADD COLUMN IF NOT EXISTS audio_collection_id UUID REFERENCES media_collections(id) ON DELETE SET NULL,
@@ -271,18 +243,14 @@ async def _apply_schema_changes(conn):
                 ADD COLUMN IF NOT EXISTS schedule_window_end_time TIME,
                 ADD COLUMN IF NOT EXISTS schedule_stop_after_seconds INTEGER,
                 ADD COLUMN IF NOT EXISTS runtime_last_heartbeat_at TIMESTAMPTZ
-                """
-            )
-        )
+                """))
 
     await conn.execute(text("DROP INDEX IF EXISTS idx_streams_runtime_owner_id"))
     await conn.execute(
         text("DROP INDEX IF EXISTS idx_streams_runtime_lease_expires_at")
     )
     await conn.execute(text("DROP INDEX IF EXISTS idx_streams_runtime_next_restart_at"))
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             ALTER TABLE streams
             DROP COLUMN IF EXISTS runtime_owner_id,
             DROP COLUMN IF EXISTS runtime_lease_expires_at,
@@ -290,14 +258,10 @@ async def _apply_schema_changes(conn):
             DROP COLUMN IF EXISTS runtime_next_restart_at,
             DROP COLUMN IF EXISTS runtime_last_restart_at,
             DROP COLUMN IF EXISTS runtime_last_failure_at
-            """
-        )
-    )
+            """))
 
     # Add check constraint for mix_mode if not exists
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             DO $$
             BEGIN
                 IF NOT EXISTS (
@@ -307,13 +271,9 @@ async def _apply_schema_changes(conn):
                     CHECK (mix_mode IN ('video_only', 'audio_only', 'mixed'));
                 END IF;
             END $$;
-            """
-        )
-    )
+            """))
 
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             DO $$
             BEGIN
                 IF NOT EXISTS (
@@ -323,9 +283,7 @@ async def _apply_schema_changes(conn):
                     CHECK (schedule_repeat IN ('none', 'daily', 'weekly'));
                 END IF;
             END $$;
-            """
-        )
-    )
+            """))
 
     # Add missing statistics columns to destinations table
     destination_columns = [
@@ -337,9 +295,7 @@ async def _apply_schema_changes(conn):
         "provider_channel_id",
     ]
     if await _missing_columns(conn, "destinations", destination_columns):
-        await conn.execute(
-            text(
-                """
+        await conn.execute(text("""
                 ALTER TABLE destinations
                 ADD COLUMN IF NOT EXISTS total_streams INTEGER DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS total_stream_hours FLOAT DEFAULT 0,
@@ -347,13 +303,9 @@ async def _apply_schema_changes(conn):
                 ADD COLUMN IF NOT EXISTS provider_kind TEXT,
                 ADD COLUMN IF NOT EXISTS provider_connection_id UUID,
                 ADD COLUMN IF NOT EXISTS provider_channel_id TEXT
-                """
-            )
-        )
+                """))
 
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS youtube_connections (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 user_id UUID NOT NULL REFERENCES user_profiles(user_id) ON DELETE CASCADE,
@@ -368,37 +320,21 @@ async def _apply_schema_changes(conn):
                 last_sync_at TIMESTAMPTZ,
                 last_sync_error TEXT
             )
-            """
-        )
-    )
-    await conn.execute(
-        text(
-            """
+            """))
+    await conn.execute(text("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_youtube_connections_user_channel
             ON youtube_connections(user_id, youtube_channel_id)
-            """
-        )
-    )
-    await conn.execute(
-        text(
-            """
+            """))
+    await conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_destinations_provider_connection_id
             ON destinations(provider_connection_id)
-            """
-        )
-    )
-    await conn.execute(
-        text(
-            """
+            """))
+    await conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_destinations_provider_channel_id
             ON destinations(provider_channel_id)
-            """
-        )
-    )
+            """))
 
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             DO $$
             BEGIN
                 IF NOT EXISTS (
@@ -414,13 +350,9 @@ async def _apply_schema_changes(conn):
                         ON DELETE SET NULL;
                 END IF;
             END $$;
-            """
-        )
-    )
+            """))
 
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             DO $$
             BEGIN
                 IF NOT EXISTS (
@@ -432,22 +364,14 @@ async def _apply_schema_changes(conn):
                         CHECK (provider_kind IS NULL OR provider_kind IN ('youtube'));
                 END IF;
             END $$;
-            """
-        )
-    )
+            """))
 
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_destinations_last_used ON destinations(last_used_at)
-            """
-        )
-    )
+            """))
 
     # Ensure a generic updated_at trigger function exists (used by optional DB triggers).
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             CREATE OR REPLACE FUNCTION update_updated_at_column()
             RETURNS TRIGGER AS $$
             BEGIN
@@ -455,14 +379,10 @@ async def _apply_schema_changes(conn):
                 RETURN NEW;
             END;
             $$ LANGUAGE plpgsql;
-            """
-        )
-    )
+            """))
 
     # Ensure collection_items.updated_at exists for older local DBs (pre-2026-01-09).
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             DO $$
             BEGIN
                 IF EXISTS (
@@ -486,22 +406,16 @@ async def _apply_schema_changes(conn):
                     END IF;
                 END IF;
             END $$;
-            """
-        )
-    )
+            """))
 
     # Add missing statistics columns to playlists table
     playlist_columns = ["total_duration_seconds", "total_assets"]
     if await _missing_columns(conn, "playlists", playlist_columns):
-        await conn.execute(
-            text(
-                """
+        await conn.execute(text("""
                 ALTER TABLE playlists
                 ADD COLUMN IF NOT EXISTS total_duration_seconds FLOAT DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS total_assets INTEGER DEFAULT 0
-                """
-            )
-        )
+                """))
 
     # Add missing columns to assets table
     asset_columns = [
@@ -522,9 +436,7 @@ async def _apply_schema_changes(conn):
         "optimization_updated_at",
     ]
     if await _missing_columns(conn, "assets", asset_columns):
-        await conn.execute(
-            text(
-                """
+        await conn.execute(text("""
                 ALTER TABLE assets
                 ADD COLUMN IF NOT EXISTS storage_backend TEXT NOT NULL DEFAULT 'filesystem',
                 ADD COLUMN IF NOT EXISTS storage_key TEXT,
@@ -541,9 +453,7 @@ async def _apply_schema_changes(conn):
                 ADD COLUMN IF NOT EXISTS optimized_storage_path TEXT,
                 ADD COLUMN IF NOT EXISTS optimization_error TEXT,
                 ADD COLUMN IF NOT EXISTS optimization_updated_at TIMESTAMPTZ
-                """
-            )
-        )
+                """))
 
     await conn.execute(
         text(
@@ -568,9 +478,7 @@ async def _apply_schema_changes(conn):
     )
 
     # Add missing columns to subscription_tier_limits table
-    await conn.execute(
-        text(
-            """
+    await conn.execute(text("""
             ALTER TABLE subscription_tier_limits
             ADD COLUMN IF NOT EXISTS daily_streaming_limit_hours INTEGER,
             ADD COLUMN IF NOT EXISTS calendar_enabled BOOLEAN DEFAULT FALSE,
@@ -579,9 +487,7 @@ async def _apply_schema_changes(conn):
             ADD COLUMN IF NOT EXISTS priority_support_level TEXT,
             ADD COLUMN IF NOT EXISTS dedicated_manager BOOLEAN DEFAULT FALSE,
             ADD COLUMN IF NOT EXISTS allowed_video_codecs TEXT[]
-            """
-        )
-    )
+            """))
 
     # Note: media_folders root constraint removed - managed by application logic
 

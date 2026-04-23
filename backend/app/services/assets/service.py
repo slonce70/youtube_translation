@@ -88,8 +88,7 @@ class AssetService:
                 )
                 return []
 
-            recursive = text(
-                """
+            recursive = text("""
                 WITH RECURSIVE folder_tree AS (
                     SELECT id FROM media_folders WHERE id = :folder_id
                     UNION ALL
@@ -99,8 +98,7 @@ class AssetService:
                     WHERE mf.user_id = :user_id
                 )
                 SELECT asset_id FROM asset_folder_links WHERE folder_id IN (SELECT id FROM folder_tree)
-                """
-            )
+                """)
             result = await self.db.execute(
                 recursive,
                 {"folder_id": str(resolved_folder_id), "user_id": str(self.user_id)},

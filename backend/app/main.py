@@ -55,7 +55,6 @@ from app.core.logging_config import setup_logging, get_logger
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.services.streams.scheduler import scheduled_stream_launcher
 
-
 _background_tasks = set()
 
 

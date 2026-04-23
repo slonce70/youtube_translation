@@ -14,7 +14,7 @@ systemd_runtime_installer="$repo_root/scripts/install_systemd_runtime.sh"
 host_native_venv_provisioner="$repo_root/scripts/provision_host_native_backend_venv.sh"
 host_runtime_cutover_script="$repo_root/scripts/cutover_host_runtime.sh"
 host_runtime_rollback_script="$repo_root/scripts/rollback_host_runtime.sh"
-all_services=(postgres redis backend tusd frontend runner mediamtx)
+all_services=(postgres redis backend tusd frontend mediamtx)
 services=()
 tmp_dir="$(mktemp -d)"
 registry_host="${REGISTRY_HOST:-ghcr.io}"
@@ -182,7 +182,7 @@ parse_selected_services() {
   requested="${requested//,/ }"
   for item in $requested; do
     case "$item" in
-      postgres|redis|backend|tusd|frontend|runner|mediamtx)
+      postgres|redis|backend|tusd|frontend|mediamtx)
         if [[ " $seen " != *" $item "* ]]; then
           normalized+=("$item")
           seen+=" $item"
