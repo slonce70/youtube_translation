@@ -78,9 +78,21 @@ jobs:
           UPLOAD_TOKEN_SECRET=test_upload_secret
           ENV
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage gate
         env:
           ENV_FILE: .env.ci
         run: |
           export $(grep -v '^#' "$ENV_FILE" | xargs)
-          FFMPEG_BIN=tests/bin/ffmpeg pytest -v
+          FFMPEG_BIN=tests/bin/ffmpeg pytest -v \
+            --cov=app \
+            --cov-report=term-missing:skip-covered \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=68
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          retention-days: 14
