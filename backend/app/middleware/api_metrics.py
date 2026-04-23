@@ -10,6 +10,7 @@ from starlette.responses import Response
 
 from app.core.logging_config import get_logger
 from app.core.metrics import track_api_error, track_api_request
+from app.core.request_context_vars import request_id_var
 
 
 class APIMetricsMiddleware(BaseHTTPMiddleware):
@@ -29,6 +30,7 @@ class APIMetricsMiddleware(BaseHTTPMiddleware):
             uuid4()
         )
         request.state.request_id = request_id
+        request_id_token = request_id_var.set(request_id)
 
         try:
             response = await call_next(request)
@@ -79,6 +81,8 @@ class APIMetricsMiddleware(BaseHTTPMiddleware):
                 },
             )
             raise
+        finally:
+            request_id_var.reset(request_id_token)
 
 
 def _is_stream_control_request(path: str, method: str) -> bool:
