@@ -26,7 +26,9 @@ interface CommandPaletteProps {
 export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [query, setQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(0)
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return items
@@ -50,11 +52,21 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   useEffect(() => {
     if (!open) {
       setQuery('')
+      setActiveIndex(0)
       return
     }
     const timer = window.setTimeout(() => inputRef.current?.focus(), 30)
     return () => window.clearTimeout(timer)
   }, [open])
+
+  useEffect(() => {
+    setActiveIndex(0)
+  }, [query])
+
+  useEffect(() => {
+    const activeButton = itemRefs.current[activeIndex]
+    activeButton?.scrollIntoView?.({ block: 'nearest' })
+  }, [activeIndex])
 
   const runItem = (item: CommandItem) => {
     onClose()
@@ -66,7 +78,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} className="cmd-palette-modal">
+    <Modal open={open} onClose={onClose} ariaLabel="Палітра команд" className="cmd-palette-modal">
       <div className="cmd-palette-head">
         <span className="cmd-palette-icon">⌘</span>
         <input
@@ -74,10 +86,22 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && filtered[0]) {
-              runItem(filtered[0])
+            if (event.key === 'ArrowDown') {
+              event.preventDefault()
+              if (filtered.length > 0) {
+                setActiveIndex((current) => Math.min(current + 1, filtered.length - 1))
+              }
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault()
+              setActiveIndex((current) => Math.max(current - 1, 0))
+            } else if (event.key === 'Enter' && filtered[activeIndex]) {
+              runItem(filtered[activeIndex])
+            } else if (event.key === 'Escape') {
+              event.stopPropagation()
+              onClose()
             }
           }}
+          aria-activedescendant={filtered[activeIndex] ? `cmd-item-${filtered[activeIndex].id}` : undefined}
           placeholder="Перейдіть до… наприклад «Файли» або «Трансляції»"
           className="cmd-palette-input"
         />
@@ -89,8 +113,21 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
             <div className="cmd-group-label">{group.group}</div>
             {group.items.map((item) => {
               const Icon = item.icon
+              const itemIndex = filtered.findIndex((filteredItem) => filteredItem.id === item.id)
+              const isActive = itemIndex === activeIndex
               return (
-                <button key={item.id} type="button" className="cmd-item" onClick={() => runItem(item)}>
+                <button
+                  key={item.id}
+                  id={`cmd-item-${item.id}`}
+                  ref={(node) => {
+                    itemRefs.current[itemIndex] = node
+                  }}
+                  type="button"
+                  className={`cmd-item${isActive ? ' is-active' : ''}`}
+                  aria-current={isActive ? 'true' : undefined}
+                  onMouseEnter={() => setActiveIndex(itemIndex)}
+                  onClick={() => runItem(item)}
+                >
                   <span className="cmd-item-icon" aria-hidden="true">
                     <Icon className="h-4 w-4" />
                   </span>

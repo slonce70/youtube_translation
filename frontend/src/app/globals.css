@@ -1603,7 +1603,7 @@
     color: var(--txt-3);
   }
 
-  .dashboard-v2 .topbar-search input,
+  .dashboard-v2 .topbar-search-input,
   .dashboard-v2 .cmd-palette-input {
     flex: 1;
     font-size: 13px;
@@ -1611,11 +1611,18 @@
     background: transparent;
     border: none;
     outline: none;
+    text-align: left;
   }
 
-  .dashboard-v2 .topbar-search input::placeholder,
   .dashboard-v2 .cmd-palette-input::placeholder {
     color: var(--txt-3);
+  }
+
+  .dashboard-v2 .topbar-search-input {
+    color: var(--txt-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .dashboard-v2 .search-kbd {
@@ -2368,6 +2375,12 @@
   .cmd-item:hover {
     background: rgba(99,102,241,.12);
     border-color: rgba(154,164,255,.18);
+    transform: translateX(2px);
+  }
+  .cmd-item.is-active {
+    background: linear-gradient(90deg, rgba(99,102,241,.2), rgba(56,189,248,.08));
+    border-color: rgba(154,164,255,.28);
+    box-shadow: inset 3px 0 0 var(--indigo-lt);
     transform: translateX(2px);
   }
   .cmd-item-icon {
