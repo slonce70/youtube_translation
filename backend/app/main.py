@@ -172,7 +172,13 @@ async def run_startup_tasks():
 
     # Check database connection
     await check_db_connection()
-    await apply_schema_patches()
+    if settings.run_schema_patches_on_boot:
+        await apply_schema_patches()
+    else:
+        logger.info(
+            "Skipping apply_schema_patches on boot (RUN_SCHEMA_PATCHES_ON_BOOT=false); "
+            "expect an out-of-band migration step."
+        )
 
     # Reconcile stream statuses after backend restart
     async with async_session_maker() as db:
@@ -272,6 +278,6 @@ if __name__ == "__main__":
         **build_uvicorn_run_kwargs(
             host=settings.api_host,
             port=settings.api_port,
-            reload=True,
+            reload=settings.environment.lower() == "development",
         ),
     )
