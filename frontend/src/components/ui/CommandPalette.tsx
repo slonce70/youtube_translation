@@ -2,14 +2,17 @@
 /* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ComponentType } from 'react'
 import { useRouter } from 'next/navigation'
 import { Modal } from './Modal'
 
 type CommandItem = {
   id: string
-  icon: string
+  icon: ComponentType<{ className?: string }>
   label: string
   sub: string
+  group?: string
+  shortcut?: string
   href?: string
   action?: () => void
 }
@@ -28,9 +31,21 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
     const q = query.trim().toLowerCase()
     if (!q) return items
     return items.filter((item) =>
-      `${item.label} ${item.sub}`.toLowerCase().includes(q)
+      `${item.label} ${item.sub} ${item.group ?? ''}`.toLowerCase().includes(q)
     )
   }, [items, query])
+  const grouped = useMemo(() => {
+    return filtered.reduce<Array<{ group: string; items: CommandItem[] }>>((acc, item) => {
+      const group = item.group ?? 'Команди'
+      const existing = acc.find((entry) => entry.group === group)
+      if (existing) {
+        existing.items.push(item)
+      } else {
+        acc.push({ group, items: [item] })
+      }
+      return acc
+    }, [])
+  }, [filtered])
 
   useEffect(() => {
     if (!open) {
@@ -53,7 +68,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   return (
     <Modal open={open} onClose={onClose} className="cmd-palette-modal">
       <div className="cmd-palette-head">
-        <span className="cmd-palette-icon">🔍</span>
+        <span className="cmd-palette-icon">⌘</span>
         <input
           ref={inputRef}
           value={query}
@@ -69,18 +84,29 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
         <kbd className="search-kbd">Esc</kbd>
       </div>
       <div className="cmd-palette-list">
-        {filtered.map((item) => (
-          <button key={item.id} type="button" className="cmd-item" onClick={() => runItem(item)}>
-            <span className="cmd-item-icon">{item.icon}</span>
-            <span>
-              <span className="cmd-item-label">{item.label}</span>
-              <span className="cmd-item-sub">{item.sub}</span>
-            </span>
-          </button>
+        {grouped.map((group) => (
+          <section key={group.group} className="cmd-group" aria-label={group.group}>
+            <div className="cmd-group-label">{group.group}</div>
+            {group.items.map((item) => {
+              const Icon = item.icon
+              return (
+                <button key={item.id} type="button" className="cmd-item" onClick={() => runItem(item)}>
+                  <span className="cmd-item-icon" aria-hidden="true">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="cmd-item-copy">
+                    <span className="cmd-item-label">{item.label}</span>
+                    <span className="cmd-item-sub">{item.sub}</span>
+                  </span>
+                  {item.shortcut ? <kbd className="cmd-item-shortcut">{item.shortcut}</kbd> : null}
+                </button>
+              )
+            })}
+          </section>
         ))}
         {filtered.length === 0 ? (
-          <div className="empty-state" style={{ padding: '32px 16px' }}>
-            <div className="empty-icon">🔎</div>
+          <div className="cmd-empty-state">
+            <div className="empty-icon">⌁</div>
             <div className="empty-title">Нічого не знайдено</div>
             <div className="empty-sub">Спробуйте інший запит.</div>
           </div>

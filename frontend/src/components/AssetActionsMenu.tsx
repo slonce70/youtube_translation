@@ -239,7 +239,7 @@ export function AssetActionsMenu({
             role="menu"
             ref={panelRef}
             className={cn(
-              'fixed z-40 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900',
+              'asset-actions-menu fixed z-40 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950',
               menuPosition.direction === 'down' ? '' : ''
             )}
             style={{
@@ -249,7 +249,11 @@ export function AssetActionsMenu({
               pointerEvents: menuPosition.ready ? 'auto' : 'none',
             }}
           >
-            <div className="py-1">
+            <div className="asset-actions-head">
+              <span>{tLibraryMenu('srLabel')}</span>
+              <small>{actions.length}</small>
+            </div>
+            <div className="asset-actions-list">
               {actions.map((action) => (
                 <button
                   key={action.label}
@@ -258,15 +262,14 @@ export function AssetActionsMenu({
                   disabled={action.disabled}
                   onClick={() => handleSelect(action)}
                   className={cn(
-                    'flex w-full items-center gap-2 px-3 py-2 text-sm text-left transition-colors',
-                    'hover:bg-slate-100 dark:hover:bg-slate-800',
+                    'asset-actions-item flex w-full items-center gap-3 text-sm text-left transition-colors',
                     action.tone === 'danger'
-                      ? 'text-error-600 dark:text-error-400'
+                      ? 'asset-actions-item-danger text-error-600 dark:text-error-400'
                       : 'text-slate-600 dark:text-slate-300',
                     action.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                   )}
                 >
-                  {action.icon}
+                  <span className="asset-actions-icon" aria-hidden="true">{action.icon}</span>
                   <span>{action.label}</span>
                 </button>
               ))}

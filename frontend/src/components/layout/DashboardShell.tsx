@@ -1,5 +1,15 @@
 'use client'
 
+import {
+  CalendarDays,
+  CreditCard,
+  FolderOpen,
+  Gauge,
+  Radio,
+  SatelliteDish,
+  UploadCloud,
+  type LucideIcon,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { usePathname } from 'next/navigation'
@@ -55,13 +65,22 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
 
   const commandItems = useMemo(
     () => [
-      { id: 'dashboard', icon: '🏠', label: 'Дашборд', sub: 'Головна панель', href: '/dashboard' },
-      { id: 'library', icon: '📁', label: 'Файли', sub: 'Бібліотека та плейлисти', href: '/dashboard/library' },
-      { id: 'streaming', icon: '📡', label: 'Трансляції', sub: 'Канали, live та архів', href: '/dashboard/streaming' },
-      { id: 'plans', icon: '💳', label: 'Тарифи', sub: 'Плани та ліміти', href: '/dashboard/plans' },
-      { id: 'new-stream', icon: '🎙️', label: 'Нова трансляція', sub: 'Відкрити запуск стріму', href: '/dashboard/streaming?new=1' },
-      { id: 'upload', icon: '⬆️', label: 'Завантажити файл', sub: 'Перейти до бібліотеки', href: '/dashboard/library?tab=assets' },
-    ],
+      { id: 'dashboard', icon: Gauge, label: 'Дашборд', sub: 'Головна панель', href: '/dashboard', group: 'Навігація', shortcut: 'G D' },
+      { id: 'library', icon: FolderOpen, label: 'Файли', sub: 'Бібліотека та плейлисти', href: '/dashboard/library', group: 'Навігація', shortcut: 'G F' },
+      { id: 'streaming', icon: SatelliteDish, label: 'Трансляції', sub: 'Канали, live та архів', href: '/dashboard/streaming', group: 'Навігація', shortcut: 'G S' },
+      { id: 'plans', icon: CreditCard, label: 'Тарифи', sub: 'Плани та ліміти', href: '/dashboard/plans', group: 'Навігація', shortcut: 'G P' },
+      { id: 'schedule', icon: CalendarDays, label: 'Розклад', sub: 'Заплановані запуски', href: '/dashboard/schedule', group: 'Навігація', shortcut: 'G C' },
+      { id: 'new-stream', icon: Radio, label: 'Нова трансляція', sub: 'Відкрити запуск стріму', href: '/dashboard/streaming?new=1', group: 'Швидкі дії', shortcut: 'N' },
+      { id: 'upload', icon: UploadCloud, label: 'Завантажити файл', sub: 'Перейти до бібліотеки', href: '/dashboard/library?tab=assets', group: 'Швидкі дії', shortcut: 'U' },
+    ] satisfies Array<{
+      id: string
+      icon: LucideIcon
+      label: string
+      sub: string
+      href: string
+      group: string
+      shortcut: string
+    }>,
     [],
   )
 
