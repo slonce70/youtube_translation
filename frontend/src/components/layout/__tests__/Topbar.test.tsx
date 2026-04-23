@@ -40,6 +40,7 @@ describe('Topbar', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Відкрити пошук команд' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Сповіщення' })).toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 

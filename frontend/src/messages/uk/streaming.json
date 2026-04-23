@@ -445,7 +445,7 @@
     "checklist": {
       "title": "Чекліст першого ефіру",
       "items": {
-        "destination": "Додайте канал (RTMPS URL + stream key).",
+        "destination": "Додайте канал (RTMPS URL + ключ трансляції).",
         "assets": "Завантажте відео/аудіо у «Файли».",
         "schedule": "Налаштуйте старт і тривалість стріму.",
         "test": "Запустіть тестовий стрім і перевірте лог."
@@ -472,7 +472,7 @@
         "destinations": {
           "title": "3. Канали",
           "items": [
-            "Додайте RTMPS URL та stream key для YouTube.",
+            "Додайте RTMPS URL та ключ трансляції для YouTube.",
             "Переконайтесь, що канал увімкнено."
           ]
         },
@@ -494,15 +494,15 @@
     },
     "provider": {
       "liveLabel": "YouTube live",
-      "channelsDescription": "Ваші RTMPS-канали з optional YouTube provider link",
-      "channelsEmpty": "Додайте RTMPS-канал і за потреби прив’яжіть YouTube OAuth connection для реального provider status.",
-      "viewersLabel": "YouTube viewers",
+      "channelsDescription": "Ваші RTMPS-канали з необов’язковою прив’язкою до YouTube",
+      "channelsEmpty": "Додайте RTMPS-канал і за потреби прив’яжіть YouTube OAuth-підключення для реального статусу провайдера.",
+      "viewersLabel": "Глядачі YouTube",
       "viewers": "{count} глядачів",
-      "runtimeMismatchTitle": "Runtime / YouTube mismatch",
-      "runtimeMismatchBody": "Runtime: {runtime} · Provider: {provider}",
+      "runtimeMismatchTitle": "Розбіжність runtime і YouTube",
+      "runtimeMismatchBody": "Runtime: {runtime} · Провайдер: {provider}",
       "runtime": {
-        "running": "running",
-        "stopped": "stopped"
+        "running": "працює",
+        "stopped": "зупинено"
       },
       "status": {
         "live": "YouTube live",
@@ -510,10 +510,10 @@
         "stale": "YouTube stale",
         "unknown": "YouTube unknown"
       },
-      "modalDescription": "Вставте RTMPS URL і stream key. Якщо YouTube вже підключено через OAuth, прив’яжіть connection для реального provider status.",
-      "linkLabel": "YouTube provider link",
-      "linkNone": "Без provider link",
-      "linkHint": "Потрібно для чесного YouTube live, offline і viewers у dashboard та topbar.",
+      "modalDescription": "Вставте RTMPS URL і ключ трансляції. Якщо YouTube вже підключено через OAuth, прив’яжіть підключення для реального статусу провайдера.",
+      "linkLabel": "Прив’язка до YouTube",
+      "linkNone": "Без прив’язки до YouTube",
+      "linkHint": "Потрібно для чесного статусу YouTube live/offline і кількості глядачів у дашборді та верхній панелі.",
       "oauthTitle": "АБО — швидке підключення через OAuth",
       "youtubeCta": "Підключити YouTube OAuth",
       "youtubeBadge": "Live",
@@ -527,17 +527,17 @@
   },
   "provider": {
     "liveLabel": "YouTube live",
-    "channelsDescription": "Ваші RTMPS-канали з optional YouTube provider link",
-    "channelsEmpty": "Додайте RTMPS-канал і за потреби прив’яжіть YouTube OAuth connection для реального provider status.",
-    "viewersLabel": "YouTube viewers",
+      "channelsDescription": "Ваші RTMPS-канали з необов’язковою прив’язкою до YouTube",
+      "channelsEmpty": "Додайте RTMPS-канал і за потреби прив’яжіть YouTube OAuth-підключення для реального статусу провайдера.",
+      "viewersLabel": "Глядачі YouTube",
     "viewers": "{count} глядачів",
     "healthIssues": "{count} проблем ingest",
     "healthDegraded": "Проблеми ingest",
-    "runtimeMismatchTitle": "Runtime / YouTube mismatch",
-    "runtimeMismatchBody": "Runtime: {runtime} · Provider: {provider}",
+    "runtimeMismatchTitle": "Розбіжність runtime і YouTube",
+    "runtimeMismatchBody": "Runtime: {runtime} · Провайдер: {provider}",
     "runtime": {
-      "running": "running",
-      "stopped": "stopped"
+      "running": "працює",
+      "stopped": "зупинено"
     },
     "status": {
         "live": "YouTube live",
@@ -545,10 +545,10 @@
       "stale": "YouTube stale",
       "unknown": "YouTube unknown"
     },
-    "modalDescription": "Вставте RTMPS URL і stream key. Якщо YouTube вже підключено через OAuth, прив’яжіть connection для реального provider status.",
-    "linkLabel": "YouTube provider link",
-    "linkNone": "Без provider link",
-    "linkHint": "Потрібно для чесного YouTube live, offline і viewers у dashboard та topbar.",
+    "modalDescription": "Вставте RTMPS URL і ключ трансляції. Якщо YouTube вже підключено через OAuth, прив’яжіть підключення для реального статусу провайдера.",
+    "linkLabel": "Прив’язка до YouTube",
+    "linkNone": "Без прив’язки до YouTube",
+    "linkHint": "Потрібно для чесного статусу YouTube live/offline і кількості глядачів у дашборді та верхній панелі.",
     "oauthTitle": "АБО — швидке підключення через OAuth",
     "youtubeCta": "Підключити YouTube OAuth",
     "youtubeBadge": "Live",

@@ -48,4 +48,22 @@ describe('Localization smoke tests', () => {
 
     expect(screen.getByText('Custom text')).toBeInTheDocument()
   })
+
+  it('keeps Ukrainian provider copy localized on dashboard surfaces', () => {
+    expect(ukMessages.streaming.page.provider.channelsDescription).toBe(
+      'Ваші RTMPS-канали з необов’язковою прив’язкою до YouTube'
+    )
+    expect(ukMessages.streaming.provider.modalDescription).toContain('ключ трансляції')
+    expect(ukMessages.profile.provider.title).toBe('📺 Підключення YouTube')
+    expect(ukMessages.profile.provider.emptyHint).toContain('верхня панель')
+  })
+
+  it('keeps Russian provider copy localized on dashboard surfaces', () => {
+    expect(ruMessages.streaming.page.provider.channelsDescription).toBe(
+      'Ваши RTMPS-каналы с необязательной привязкой к YouTube'
+    )
+    expect(ruMessages.streaming.provider.modalDescription).toContain('ключ трансляции')
+    expect(ruMessages.profile.provider.title).toBe('📺 Подключения YouTube')
+    expect(ruMessages.profile.provider.emptyHint).toContain('верхняя строка')
+  })
 })
