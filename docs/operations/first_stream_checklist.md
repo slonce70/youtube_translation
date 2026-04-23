@@ -25,7 +25,6 @@
 - `postgres`
 - `redis`
 - `tusd`
-- `runner`
 - локальний media disk
 
 Не розділяйте backend і media host до переходу на object storage. Зараз upload finalization, ffprobe validation, thumbnail generation і stream prep все ще спираються на локальний `storage_path`.
@@ -34,7 +33,7 @@
 - Для локального rehearsal рекомендовано `ENABLE_DEV_AUTH=true` і `NEXT_PUBLIC_DEV_BYPASS_AUTH=1`.
 - Якщо перевіряєте продуктовий auth path, використовуйте валідні Supabase credentials замість DEV auth.
 - Переконайтесь, що `.env` містить коректні значення (без прод‑ключів у репозиторії).
-- Підніміть базові сервіси через `docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner`.
+- Підніміть базові сервіси через `docker compose -f docker/docker-compose.yml up -d postgres redis tusd`.
 - Запустіть `./start-backend.sh` і `./start-frontend.sh`.
 - Перевірте доступність **FFmpeg** та **tusd**.
 

@@ -175,7 +175,7 @@ export function QualityGateModal({
               </p>
               <p className="text-sm text-primary-700 dark:text-primary-300 mt-1">
                 {t('streams.quality.recommended.description', {
-                  resolution,
+                  resolution: resolution ?? t('streams.quality.limits.unlimited'),
                   fps: fpsDisplay,
                   videoCodec,
                   audioCodec,

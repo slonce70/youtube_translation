@@ -160,7 +160,7 @@ sudo cp docs/systemd/ffmpeg@.service.example /etc/systemd/system/ffmpeg@.service
 
 3. Якщо backend працює host-native на Linux/VPS, цього достатньо. Якщо backend працює всередині контейнера, не вмикайте цей режим у `staging`/`production` без свідомого override і окремо перевіреного control-plane рішення.
 
-4. Підніміть Docker infra, але без containerized backend/runner:
+4. Підніміть Docker infra, але без containerized backend:
 ```bash
 docker compose -f docker/docker-compose.yml up -d postgres redis tusd frontend mediamtx
 ```
@@ -282,7 +282,7 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 ## Зауваження
 
 - Для локальної розробки prefer `manager`, а не `systemd`
-- Якщо вам потрібен лише local smoke path, використовуйте DEV auth і hybrid boot з `docker compose -f docker/docker-compose.yml up -d postgres redis tusd runner`
+- Якщо вам потрібен лише local smoke path, використовуйте DEV auth і hybrid boot з `docker compose -f docker/docker-compose.yml up -d postgres redis tusd`
 - Containerized backend + `systemd` runtime не вважається підтриманим production control path за замовчуванням
 - Якщо ви переходите на host-native backend control plane, не запускайте одночасно Docker `backend`/`runner` як production executors для тих самих live streams
 - Якщо використовуєте `scripts/install_systemd_runtime.sh`, пам'ятайте: без `SYSTEMD_ENABLE_BACKEND=1` / `SYSTEMD_ENABLE_STREAM_UNIT=...` helper лише ставить unit-файли й робить `daemon-reload`, але не активує сервіси

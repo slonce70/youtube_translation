@@ -5,7 +5,7 @@ cat <<'EOF'
 Final MVP contract
 
 Supported MVP scope:
-- single-node runtime: frontend, backend, postgres, redis, tusd, runner
+- single-node runtime: frontend, backend, postgres, redis, tusd
 - single-destination streaming to one enabled YouTube RTMPS destination
 - one real auth sanity check without DEV bypass before launch
 - one first-stream rehearsal with stable running status and clean stop

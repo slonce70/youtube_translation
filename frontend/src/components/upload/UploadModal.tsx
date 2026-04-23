@@ -950,7 +950,7 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
                         <span>
                           {t('recommendations.summary', {
                             label: item.analysis.recommendationLabel,
-                            details: item.analysis.recommendationDetails,
+                            details: item.analysis.recommendationDetails ?? '',
                           })}
                         </span>
                       </div>
