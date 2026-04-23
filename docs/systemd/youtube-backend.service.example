@@ -1,4 +1,6 @@
 # Copy to /etc/systemd/system/youtube-backend.service and adjust paths/users.
+#
+# Hardening reference: see docs/operations/systemd_hardening.md.
 
 [Unit]
 Description=YouTube translation backend API
@@ -16,18 +18,66 @@ Environment=PYTHONPATH=/opt/youtube_translation/backend
 ExecStart=/bin/bash -lc 'exec /opt/youtube_translation/backend/.venv/bin/uvicorn app.main:app --host "${HOST_BACKEND_BIND_HOST:-0.0.0.0}" --port "${HOST_BACKEND_PORT:-8000}"'
 Restart=always
 RestartSec=5s
+
+# --- Resource accounting / isolation ---------------------------------------
 # Keep the control plane on a predictable resource budget and with reduced ambient privileges.
 CPUAccounting=yes
 MemoryAccounting=yes
 TasksAccounting=yes
 MemoryMax=1G
 TasksMax=512
-NoNewPrivileges=true
-PrivateTmp=true
-StandardOutput=journal
-StandardError=journal
+
+# --- Identity and privilege ------------------------------------------------
 User=streambot
 Group=streambot
+NoNewPrivileges=true
+# The API talks to Postgres over TCP and to stdout/journald only; no kernel
+# caps are required.
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+# --- Filesystem isolation --------------------------------------------------
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=true
+# The backend needs to read/write the uploads + streams + logs trees and its
+# own venv (pip cache, __pycache__). Extend this list if STREAM_DIR /
+# UPLOAD_DIR are relocated.
+ReadWritePaths=/opt/youtube_translation/backend/streams /opt/youtube_translation/backend/uploads /opt/youtube_translation/backend/logs /opt/youtube_translation/backend/.venv
+
+# --- Kernel-level hardening ------------------------------------------------
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+ProcSubset=pid
+
+# --- Namespace and device hardening ---------------------------------------
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# Disallow arbitrary W+X pages. Re-enable if a dependency needs JIT (observed
+# with some CFFI extensions; the default backend stack does not).
+MemoryDenyWriteExecute=yes
+DevicePolicy=closed
+KeyringMode=private
+
+# --- Network surface ------------------------------------------------------
+# AF_UNIX for docker sockets used via SDK, AF_INET/INET6 for Postgres,
+# Supabase, YouTube OAuth, etc.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressAllow=any
+
+# --- System call filtering ------------------------------------------------
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @raw-io @cpu-emulation @debug @module @swap @obsolete @reboot
+
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
