@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { Modal } from './Modal'
 
 type CommandItem = {
@@ -25,6 +26,8 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   const router = useRouter()
+  const t = useTranslations('nav.commandPalette')
+  const nav = useTranslations('nav.commands')
   const inputRef = useRef<HTMLInputElement | null>(null)
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [query, setQuery] = useState('')
@@ -38,7 +41,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   }, [items, query])
   const grouped = useMemo(() => {
     return filtered.reduce<Array<{ group: string; items: CommandItem[] }>>((acc, item) => {
-      const group = item.group ?? 'Команди'
+      const group = item.group ?? nav('defaultGroup')
       const existing = acc.find((entry) => entry.group === group)
       if (existing) {
         existing.items.push(item)
@@ -47,7 +50,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
       }
       return acc
     }, [])
-  }, [filtered])
+  }, [filtered, nav])
 
   useEffect(() => {
     if (!open) {
@@ -78,7 +81,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} ariaLabel="Палітра команд" className="cmd-palette-modal">
+    <Modal open={open} onClose={onClose} ariaLabel={t('label')} className="cmd-palette-modal">
       <div className="cmd-palette-head">
         <span className="cmd-palette-icon">⌘</span>
         <input
@@ -102,7 +105,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
             }
           }}
           aria-activedescendant={filtered[activeIndex] ? `cmd-item-${filtered[activeIndex].id}` : undefined}
-          placeholder="Перейдіть до… наприклад «Файли» або «Трансляції»"
+          placeholder={t('placeholder')}
           className="cmd-palette-input"
         />
         <kbd className="search-kbd">Esc</kbd>
@@ -144,8 +147,8 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
         {filtered.length === 0 ? (
           <div className="cmd-empty-state">
             <div className="empty-icon">⌁</div>
-            <div className="empty-title">Нічого не знайдено</div>
-            <div className="empty-sub">Спробуйте інший запит.</div>
+            <div className="empty-title">{t('emptyTitle')}</div>
+            <div className="empty-sub">{t('emptySub')}</div>
           </div>
         ) : null}
       </div>

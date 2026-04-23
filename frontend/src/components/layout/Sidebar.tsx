@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import type { ComponentType } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -37,21 +38,21 @@ interface SidebarProps {
 type NavItem = {
   href: string
   icon: ComponentType<{ className?: string }>
-  label: string
-  sub: string
+  key: 'dashboard' | 'streaming' | 'library' | 'schedule' | 'plans' | 'profile'
 }
 
 const items: NavItem[] = [
-  { href: '/dashboard', icon: Gauge, label: 'Дашборд', sub: 'Огляд системи' },
-  { href: '/dashboard/streaming', icon: SatelliteDish, label: 'Трансляції', sub: 'Live та канали' },
-  { href: '/dashboard/library', icon: FolderOpen, label: 'Файли', sub: 'Медіа й плейлисти' },
-  { href: '/dashboard/schedule', icon: CalendarDays, label: 'Розклад', sub: 'Запуски ефірів' },
-  { href: '/dashboard/plans', icon: CreditCard, label: 'Тарифи', sub: 'Ліміти та апгрейд' },
-  { href: '/dashboard/profile', icon: Settings, label: 'Налаштування', sub: 'Акаунт і канали' },
+  { href: '/dashboard', icon: Gauge, key: 'dashboard' },
+  { href: '/dashboard/streaming', icon: SatelliteDish, key: 'streaming' },
+  { href: '/dashboard/library', icon: FolderOpen, key: 'library' },
+  { href: '/dashboard/schedule', icon: CalendarDays, key: 'schedule' },
+  { href: '/dashboard/plans', icon: CreditCard, key: 'plans' },
+  { href: '/dashboard/profile', icon: Settings, key: 'profile' },
 ] as const
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname()
+  const nav = useTranslations('nav')
 
   return (
     <nav className="sidebar">
@@ -59,38 +60,39 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <Link
           href="/dashboard/streaming?new=1"
           className={cn('nav-go-live', collapsed && 'is-collapsed')}
-          aria-label="Почати трансляцію"
-          title={collapsed ? 'Почати трансляцію' : undefined}
+          aria-label={nav('sidebar.goLive')}
+          title={collapsed ? nav('sidebar.goLive') : undefined}
         >
           <span className="nav-icon" aria-hidden="true">
             <Radio className="h-5 w-5" />
           </span>
           <span className="nav-txt">
-            <span className="nav-main">Почати трансляцію</span>
-            <span className="nav-sub">Швидкий запуск live</span>
+            <span className="nav-main">{nav('sidebar.goLive')}</span>
+            <span className="nav-sub">{nav('sidebar.goLiveSub')}</span>
           </span>
         </Link>
 
-        <div className="nav-label">Головне</div>
+        <div className="nav-label">{nav('sidebar.main')}</div>
         {items.map((item) => {
           const active = pathname === item.href
           const Icon = item.icon
+          const label = nav(`sidebar.items.${item.key}.label`)
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn('nav-item', active && 'active')}
-              aria-label={item.label}
+              aria-label={label}
               aria-current={active ? 'page' : undefined}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? label : undefined}
             >
               <span className="nav-active-rail" aria-hidden="true" />
               <span className="nav-icon" aria-hidden="true">
                 <Icon className="h-[18px] w-[18px]" />
               </span>
               <span className="nav-txt">
-                <span className="nav-main">{item.label}</span>
-                <span className="nav-sub">{item.sub}</span>
+                <span className="nav-main">{label}</span>
+                <span className="nav-sub">{nav(`sidebar.items.${item.key}.sub`)}</span>
               </span>
             </Link>
           )
@@ -101,22 +103,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <div className="sidebar-status" aria-hidden={collapsed}>
           <span className="sidebar-status-dot" />
           <span>
-            <strong>Studio online</strong>
-            <small>Готово до ефіру</small>
+            <strong>{nav('sidebar.statusOnline')}</strong>
+            <small>{nav('sidebar.statusReady')}</small>
           </span>
         </div>
         <button
           type="button"
           className="collapse-btn"
           onClick={onToggle}
-          aria-label={collapsed ? 'Розгорнути навігацію' : 'Згорнути навігацію'}
-          title={collapsed ? 'Розгорнути' : undefined}
+          aria-label={collapsed ? nav('sidebar.expandLabel') : nav('sidebar.collapseLabel')}
+          title={collapsed ? nav('sidebar.expandTitle') : undefined}
         >
           <span className="nav-icon" aria-hidden="true">
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </span>
           <span className="nav-txt">
-            <span className="nav-main">Згорнути</span>
+            <span className="nav-main">{nav('sidebar.collapse')}</span>
           </span>
         </button>
       </div>

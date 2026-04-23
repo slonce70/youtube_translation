@@ -9,13 +9,22 @@ jest.mock('next/navigation', () => ({
 }))
 
 jest.mock('next-intl', () => ({
-  useTranslations: () => (key: string) => {
+  useTranslations: () => (key: string, values?: Record<string, string>) => {
     const messages: Record<string, string> = {
       'brand.name': 'Studio',
+      'search.openCommand': 'Відкрити пошук команд',
+      'search.placeholder': 'Пошук або ⌘K…',
+      'notifications.label': 'Сповіщення',
+      'notifications.empty': 'Немає нових сповіщень',
       'profile.fallbackName': 'Користувач',
       'profile.accountSettings': 'Налаштування облікового запису',
+      'profile.accountSub': 'Профіль, канали, ключі',
       'profile.managePlan': 'Керувати тарифом',
+      'profile.planSub': 'Ліміти та місткість',
       'profile.signOut': 'Вийти',
+      'profile.signOutSub': 'Завершити сесію',
+      'userMenu.open': `Відкрити меню користувача ${values?.name ?? ''}`,
+      'userMenu.label': 'Меню користувача',
     }
     return messages[key] ?? key
   },

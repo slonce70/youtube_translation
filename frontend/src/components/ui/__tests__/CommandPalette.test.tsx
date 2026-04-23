@@ -10,6 +10,19 @@ jest.mock('next/navigation', () => ({
   }),
 }))
 
+jest.mock('next-intl', () => ({
+  useTranslations: (namespace: string) => (key: string) => {
+    const messages: Record<string, string> = {
+      'nav.commandPalette.label': 'Палітра команд',
+      'nav.commandPalette.placeholder': 'Перейдіть до… наприклад «Файли» або «Трансляції»',
+      'nav.commandPalette.emptyTitle': 'Нічого не знайдено',
+      'nav.commandPalette.emptySub': 'Спробуйте інший запит.',
+      'nav.commands.defaultGroup': 'Команди',
+    }
+    return messages[`${namespace}.${key}`] ?? key
+  },
+}))
+
 function TestIcon({ className }: { className?: string }) {
   return <svg className={className} aria-hidden="true" />
 }
