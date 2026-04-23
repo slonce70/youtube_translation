@@ -89,7 +89,7 @@ export function Topbar({
           type="button"
           className="icon-btn"
           onClick={() => toast.info('Немає нових сповіщень')}
-          aria-label="Notifications"
+          aria-label="Сповіщення"
         >
           <Bell className="h-4 w-4" aria-hidden="true" />
           <span className="notif-badge" />
