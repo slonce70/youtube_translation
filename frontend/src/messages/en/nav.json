@@ -6,15 +6,73 @@
     "dashboard": "Dashboard",
     "library": "Files",
     "streaming": "Streaming",
-    "plans": "Plans"
+    "plans": "Plans",
+    "schedule": "Schedule",
+    "profile": "Settings"
+  },
+  "sidebar": {
+    "goLive": "Start stream",
+    "goLiveSub": "Quick live launch",
+    "main": "Main",
+    "statusOnline": "Studio online",
+    "statusReady": "Ready to go live",
+    "collapse": "Collapse",
+    "collapseLabel": "Collapse navigation",
+    "expandLabel": "Expand navigation",
+    "expandTitle": "Expand",
+    "items": {
+      "dashboard": { "label": "Dashboard", "sub": "System overview" },
+      "streaming": { "label": "Streaming", "sub": "Live and channels" },
+      "library": { "label": "Files", "sub": "Media and playlists" },
+      "schedule": { "label": "Schedule", "sub": "Stream launches" },
+      "plans": { "label": "Plans", "sub": "Limits and upgrades" },
+      "profile": { "label": "Settings", "sub": "Account and channels" }
+    }
+  },
+  "search": {
+    "openCommand": "Open command search",
+    "placeholder": "Search or ⌘K…"
+  },
+  "notifications": {
+    "label": "Notifications",
+    "empty": "No new notifications"
   },
   "profile": {
     "fallbackName": "User",
     "planBadge": "{plan} plan",
     "accountSettings": "Account settings",
+    "accountSub": "Profile, channels, keys",
     "changePassword": "Change password",
     "managePlan": "Manage plan",
-    "signOut": "Sign out"
+    "planSub": "Limits and capacity",
+    "signOut": "Sign out",
+    "signOutSub": "End session"
+  },
+  "userMenu": {
+    "open": "Open user menu for {name}",
+    "label": "User menu"
+  },
+  "commands": {
+    "defaultGroup": "Commands",
+    "navigationGroup": "Navigation",
+    "actionsGroup": "Quick actions",
+    "items": {
+      "dashboardSub": "Home panel",
+      "librarySub": "Library and playlists",
+      "streamingSub": "Channels, live and archive",
+      "plansSub": "Plans and limits",
+      "scheduleSub": "Scheduled launches",
+      "newStream": "New stream",
+      "newStreamSub": "Open stream launch",
+      "upload": "Upload file",
+      "uploadSub": "Go to library"
+    }
+  },
+  "commandPalette": {
+    "label": "Command palette",
+    "placeholder": "Go to… for example “Files” or “Streaming”",
+    "emptyTitle": "No results",
+    "emptySub": "Try another query."
   },
   "mobile": {
     "toggle": "Toggle navigation"

@@ -66,10 +66,10 @@ export function Topbar({
         type="button"
         className="topbar-search"
         onClick={onOpenPalette}
-        aria-label="Відкрити пошук команд"
+        aria-label={nav('search.openCommand')}
       >
         <Search className="topbar-search-icon" aria-hidden="true" />
-        <span className="topbar-search-input" aria-hidden="true">Пошук або ⌘K…</span>
+        <span className="topbar-search-input" aria-hidden="true">{nav('search.placeholder')}</span>
         <span className="search-kbd">⌘K</span>
       </button>
 
@@ -88,8 +88,8 @@ export function Topbar({
         <button
           type="button"
           className="icon-btn"
-          onClick={() => toast.info('Немає нових сповіщень')}
-          aria-label="Сповіщення"
+          onClick={() => toast.info(nav('notifications.empty'))}
+          aria-label={nav('notifications.label')}
         >
           <Bell className="h-4 w-4" aria-hidden="true" />
           <span className="notif-badge" />
@@ -102,7 +102,7 @@ export function Topbar({
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            aria-label={`Відкрити меню користувача ${displayName}`}
+            aria-label={nav('userMenu.open', { name: displayName })}
           >
             <div className="avatar">{initial}</div>
             <span className="user-name">{displayName}</span>
@@ -113,7 +113,7 @@ export function Topbar({
             <div
               className="topbar-menu"
               role="menu"
-              aria-label="Меню користувача"
+              aria-label={nav('userMenu.label')}
               onKeyDown={(event) => {
                 if (event.key === 'Escape') {
                   event.stopPropagation()
@@ -136,14 +136,14 @@ export function Topbar({
                 <span className="topbar-menu-icon" aria-hidden="true"><Settings className="h-4 w-4" /></span>
                 <span>
                   <span className="topbar-menu-label">{nav('profile.accountSettings')}</span>
-                  <span className="topbar-menu-sub">Профіль, канали, ключі</span>
+                  <span className="topbar-menu-sub">{nav('profile.accountSub')}</span>
                 </span>
               </Link>
               <Link href="/dashboard/plans" className="topbar-menu-item" onClick={() => setMenuOpen(false)} role="menuitem">
                 <span className="topbar-menu-icon" aria-hidden="true"><CreditCard className="h-4 w-4" /></span>
                 <span>
                   <span className="topbar-menu-label">{nav('profile.managePlan')}</span>
-                  <span className="topbar-menu-sub">Ліміти та місткість</span>
+                  <span className="topbar-menu-sub">{nav('profile.planSub')}</span>
                 </span>
               </Link>
               <button
@@ -158,7 +158,7 @@ export function Topbar({
                 <span className="topbar-menu-icon" aria-hidden="true"><LogOut className="h-4 w-4" /></span>
                 <span>
                   <span className="topbar-menu-label">{nav('profile.signOut')}</span>
-                  <span className="topbar-menu-sub">Завершити сесію</span>
+                  <span className="topbar-menu-sub">{nav('profile.signOutSub')}</span>
                 </span>
               </button>
             </div>

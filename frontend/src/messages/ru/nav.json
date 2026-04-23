@@ -6,15 +6,73 @@
     "dashboard": "Панель",
     "library": "Файлы",
     "streaming": "Трансляции",
-    "plans": "Тарифы"
+    "plans": "Тарифы",
+    "schedule": "Расписание",
+    "profile": "Настройки"
+  },
+  "sidebar": {
+    "goLive": "Начать трансляцию",
+    "goLiveSub": "Быстрый запуск live",
+    "main": "Главное",
+    "statusOnline": "Studio online",
+    "statusReady": "Готово к эфиру",
+    "collapse": "Свернуть",
+    "collapseLabel": "Свернуть навигацию",
+    "expandLabel": "Развернуть навигацию",
+    "expandTitle": "Развернуть",
+    "items": {
+      "dashboard": { "label": "Дашборд", "sub": "Обзор системы" },
+      "streaming": { "label": "Трансляции", "sub": "Live и каналы" },
+      "library": { "label": "Файлы", "sub": "Медиа и плейлисты" },
+      "schedule": { "label": "Расписание", "sub": "Запуски эфиров" },
+      "plans": { "label": "Тарифы", "sub": "Лимиты и апгрейд" },
+      "profile": { "label": "Настройки", "sub": "Аккаунт и каналы" }
+    }
+  },
+  "search": {
+    "openCommand": "Открыть поиск команд",
+    "placeholder": "Поиск или ⌘K…"
+  },
+  "notifications": {
+    "label": "Уведомления",
+    "empty": "Новых уведомлений нет"
   },
   "profile": {
     "fallbackName": "Пользователь",
     "planBadge": "Тариф {plan}",
     "accountSettings": "Настройки аккаунта",
+    "accountSub": "Профиль, каналы, ключи",
     "changePassword": "Сменить пароль",
     "managePlan": "Управлять тарифом",
-    "signOut": "Выйти"
+    "planSub": "Лимиты и вместимость",
+    "signOut": "Выйти",
+    "signOutSub": "Завершить сессию"
+  },
+  "userMenu": {
+    "open": "Открыть меню пользователя {name}",
+    "label": "Меню пользователя"
+  },
+  "commands": {
+    "defaultGroup": "Команды",
+    "navigationGroup": "Навигация",
+    "actionsGroup": "Быстрые действия",
+    "items": {
+      "dashboardSub": "Главная панель",
+      "librarySub": "Библиотека и плейлисты",
+      "streamingSub": "Каналы, live и архив",
+      "plansSub": "Планы и лимиты",
+      "scheduleSub": "Запланированные запуски",
+      "newStream": "Новая трансляция",
+      "newStreamSub": "Открыть запуск стрима",
+      "upload": "Загрузить файл",
+      "uploadSub": "Перейти в библиотеку"
+    }
+  },
+  "commandPalette": {
+    "label": "Палитра команд",
+    "placeholder": "Перейдите к… например «Файлы» или «Трансляции»",
+    "emptyTitle": "Ничего не найдено",
+    "emptySub": "Попробуйте другой запрос."
   },
   "mobile": {
     "toggle": "Открыть меню"
