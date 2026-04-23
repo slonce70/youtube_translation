@@ -104,7 +104,7 @@ export function AddChannelModal({
             <a
               href="https://studio.youtube.com/"
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               style={{ color: 'var(--indigo-lt)' }}
             >
               Де знайти stream key у YouTube Studio? →
