@@ -37,6 +37,13 @@ _CHECK_TIMEOUT_SECONDS = 0.5
 
 
 async def _check_database() -> Dict[str, Any]:
+    """Run ``SELECT 1`` against the application DB pool with a short timeout.
+
+    The public response intentionally omits the exception detail (str(exc))
+    so that callers cannot harvest the DB DSN, hostname, or username from a
+    transient outage. Full error context is emitted to the structured log
+    instead.
+    """
     started = time.perf_counter()
     try:
         async with asyncio.timeout(_CHECK_TIMEOUT_SECONDS):
@@ -46,24 +53,29 @@ async def _check_database() -> Dict[str, Any]:
             "ok": True,
             "latency_ms": round((time.perf_counter() - started) * 1000, 2),
         }
-    except (asyncio.TimeoutError, Exception) as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "readyz: database check failed: %s: %s",
+            type(exc).__name__,
+            str(exc)[:500],
+        )
         return {
             "ok": False,
             "error": type(exc).__name__,
-            "detail": str(exc)[:200],
             "latency_ms": round((time.perf_counter() - started) * 1000, 2),
         }
 
 
 async def _check_redis() -> Dict[str, Any]:
     if not settings.redis_url:
-        return {"ok": True, "skipped": True, "reason": "redis_url not configured"}
+        return {"ok": True, "skipped": True}
 
     started = time.perf_counter()
     try:
         import redis.asyncio as redis  # type: ignore
     except ImportError:
-        return {"ok": False, "error": "redis library not installed"}
+        logger.warning("readyz: redis library not installed")
+        return {"ok": False, "error": "ImportError"}
 
     client = None
     try:
@@ -80,11 +92,15 @@ async def _check_redis() -> Dict[str, Any]:
             "ok": bool(pong),
             "latency_ms": round((time.perf_counter() - started) * 1000, 2),
         }
-    except (asyncio.TimeoutError, Exception) as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "readyz: redis check failed: %s: %s",
+            type(exc).__name__,
+            str(exc)[:500],
+        )
         return {
             "ok": False,
             "error": type(exc).__name__,
-            "detail": str(exc)[:200],
             "latency_ms": round((time.perf_counter() - started) * 1000, 2),
         }
     finally:
@@ -95,13 +111,29 @@ async def _check_redis() -> Dict[str, Any]:
                 pass
 
 
-def _check_upload_dir() -> Dict[str, Any]:
+def _check_upload_dir_sync() -> Dict[str, Any]:
     upload_dir = settings.upload_dir
     if not os.path.isdir(upload_dir):
-        return {"ok": False, "error": "missing", "path": upload_dir}
+        logger.warning("readyz: upload_dir missing: %s", upload_dir)
+        return {"ok": False, "error": "missing"}
     if not os.access(upload_dir, os.W_OK):
-        return {"ok": False, "error": "not_writable", "path": upload_dir}
-    return {"ok": True, "path": upload_dir}
+        logger.warning("readyz: upload_dir not writable: %s", upload_dir)
+        return {"ok": False, "error": "not_writable"}
+    return {"ok": True}
+
+
+async def _check_upload_dir() -> Dict[str, Any]:
+    """Run blocking filesystem checks in a thread to keep the loop responsive.
+
+    A stalled bind-mount (NFS/EFS) could otherwise hang the readiness probe
+    indefinitely, blocking every other coroutine on the loop.
+    """
+    try:
+        async with asyncio.timeout(_CHECK_TIMEOUT_SECONDS):
+            return await asyncio.to_thread(_check_upload_dir_sync)
+    except asyncio.TimeoutError:
+        logger.warning("readyz: upload_dir check timed out")
+        return {"ok": False, "error": "TimeoutError"}
 
 
 @router.get("/healthz", include_in_schema=False)
@@ -119,10 +151,12 @@ async def health_alias() -> Dict[str, str]:
 @router.get("/readyz", include_in_schema=False)
 async def readyz() -> ORJSONResponse:
     """Readiness probe — verifies that external dependencies are reachable."""
-    db_check, redis_check = await asyncio.gather(
-        _check_database(), _check_redis(), return_exceptions=False
+    db_check, redis_check, upload_check = await asyncio.gather(
+        _check_database(),
+        _check_redis(),
+        _check_upload_dir(),
+        return_exceptions=False,
     )
-    upload_check = _check_upload_dir()
 
     checks: Dict[str, Any] = {
         "db": db_check,

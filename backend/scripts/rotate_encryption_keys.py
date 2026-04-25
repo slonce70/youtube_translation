@@ -70,18 +70,14 @@ async def _rotate_table(
 
     Returns ``(scanned, rewritten, errors)``.
     """
-    select_sql = text(
-        f"SELECT {pk}, {column} FROM {table} WHERE {column} IS NOT NULL"
-    )
+    select_sql = text(f"SELECT {pk}, {column} FROM {table} WHERE {column} IS NOT NULL")
     rows = (await conn.execute(select_sql)).fetchall()
 
     scanned = 0
     rewritten = 0
     errors = 0
 
-    update_sql = text(
-        f"UPDATE {table} SET {column} = :new_value WHERE {pk} = :pk"
-    )
+    update_sql = text(f"UPDATE {table} SET {column} = :new_value WHERE {pk} = :pk")
 
     for row in rows:
         scanned += 1
@@ -130,6 +126,14 @@ async def _rotate_table(
 
 
 async def rotate_all(dry_run: bool) -> int:
+    """Walk the encrypted columns and rewrap each ciphertext.
+
+    Each table is rotated in its own transaction so a partial failure on one
+    table does not roll back work already committed for earlier tables. In
+    ``--dry-run`` mode the transaction is explicitly rolled back at the end of
+    each table; in normal mode it is committed only if no errors occurred for
+    that table.
+    """
     database_url = settings.database_url.replace(
         "postgresql://", "postgresql+asyncpg://"
     )
@@ -140,27 +144,43 @@ async def rotate_all(dry_run: bool) -> int:
     total_errors = 0
 
     try:
-        async with engine.begin() as conn:
-            for table, pk, column in TARGETS:
-                logger.info("Rotating %s.%s ...", table, column)
-                scanned, rewritten, errors = await _rotate_table(
-                    conn, table, pk, column, dry_run=dry_run
-                )
-                total_scanned += scanned
-                total_rewritten += rewritten
-                total_errors += errors
-                logger.info(
-                    "  %s.%s: scanned=%d rewritten=%d errors=%d",
-                    table,
-                    column,
-                    scanned,
-                    rewritten,
-                    errors,
-                )
+        for table, pk, column in TARGETS:
+            logger.info("Rotating %s.%s ...", table, column)
+            async with engine.connect() as conn:
+                trans = await conn.begin()
+                try:
+                    scanned, rewritten, errors = await _rotate_table(
+                        conn, table, pk, column, dry_run=dry_run
+                    )
+                except Exception:  # noqa: BLE001
+                    await trans.rollback()
+                    raise
 
-            if dry_run:
-                logger.info("DRY-RUN: rolling back the transaction")
-                await conn.rollback()
+                if dry_run:
+                    logger.info("  DRY-RUN: rolling back %s.%s", table, column)
+                    await trans.rollback()
+                elif errors:
+                    logger.error(
+                        "  rolling back %s.%s due to %d error(s)",
+                        table,
+                        column,
+                        errors,
+                    )
+                    await trans.rollback()
+                else:
+                    await trans.commit()
+
+            total_scanned += scanned
+            total_rewritten += rewritten
+            total_errors += errors
+            logger.info(
+                "  %s.%s: scanned=%d rewritten=%d errors=%d",
+                table,
+                column,
+                scanned,
+                rewritten,
+                errors,
+            )
     finally:
         await engine.dispose()
 

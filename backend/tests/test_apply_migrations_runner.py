@@ -21,7 +21,9 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from apply_migrations import (
+    _DUPLICATE_OBJECT_SQLSTATES,
     _has_autocommit_marker,
+    _is_duplicate_object_error,
     _split_statements,
 )
 
@@ -137,6 +139,51 @@ class TestMigration018File:
         assert "BEGIN;" not in upper, "BEGIN; not allowed in autocommit migration"
         assert "COMMIT;" not in upper, "COMMIT; not allowed in autocommit migration"
         assert "DO $$" not in upper, "DO $$ blocks not allowed (transactional)"
+
+
+class TestDuplicateObjectErrorMatching:
+    """``_is_duplicate_object_error`` must accept *only* known SQLSTATEs.
+
+    Previously the runner matched the substring ``"already exists"`` in the
+    error message, which silently swallowed any unrelated error whose
+    message mentioned an object that exists. This locks in the SQLSTATE-
+    based contract so that regression cannot return.
+    """
+
+    @pytest.fixture
+    def fake_dbapi_error(self):
+        def _build(pgcode: str | None) -> Exception:
+            inner = type("Inner", (), {"pgcode": pgcode, "sqlstate": pgcode})()
+            outer = Exception("simulated DB error")
+            outer.orig = inner  # type: ignore[attr-defined]
+            return outer
+
+        return _build
+
+    def test_accepts_duplicate_table(self, fake_dbapi_error) -> None:
+        assert _is_duplicate_object_error(fake_dbapi_error("42P07")) is True
+
+    def test_accepts_duplicate_column(self, fake_dbapi_error) -> None:
+        assert _is_duplicate_object_error(fake_dbapi_error("42701")) is True
+
+    def test_accepts_all_documented_states(self, fake_dbapi_error) -> None:
+        for code in _DUPLICATE_OBJECT_SQLSTATES:
+            assert _is_duplicate_object_error(fake_dbapi_error(code)) is True
+
+    def test_rejects_unrelated_sqlstate_with_already_exists_in_message(
+        self, fake_dbapi_error
+    ) -> None:
+        # Class 23 = integrity_violation. Even if the message says "already
+        # exists", a constraint violation MUST NOT be swallowed.
+        outer = fake_dbapi_error("23505")
+        outer.args = ("duplicate key value violates unique constraint: row already exists",)
+        assert _is_duplicate_object_error(outer) is False
+
+    def test_rejects_missing_pgcode(self, fake_dbapi_error) -> None:
+        assert _is_duplicate_object_error(fake_dbapi_error(None)) is False
+
+    def test_rejects_plain_exception_without_orig(self) -> None:
+        assert _is_duplicate_object_error(RuntimeError("relation already exists")) is False
 
 
 class TestMigration018Rollback:
