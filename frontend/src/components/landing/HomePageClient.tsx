@@ -7,7 +7,8 @@
 // library (e.g. `motion/react` server build). Tracked separately so this
 // sprint stays scoped to non-visual changes.
 
-import { useCallback, useMemo, useRef, type PointerEvent } from 'react'
+import { useCallback, useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { LucideIcon } from 'lucide-react'
@@ -30,6 +31,8 @@ import { Button } from '../ui/Button'
 import { LandingNavBar } from './LandingNavBar'
 import { Footer } from './Footer'
 import { ImmersiveBackground } from './ImmersiveBackground'
+
+const Hero3DGlobe = dynamic(() => import('./Hero3DGlobe').then((m) => m.Hero3DGlobe), { ssr: false })
 
 type FeatureCard = {
   key: string
@@ -63,8 +66,6 @@ export function HomePageClient() {
   const pricingT = useTranslations('landing.pricing')
   const benefitsT = useTranslations('landing.benefits')
   const ctaT = useTranslations('landing.cta')
-
-  const heroStageRef = useRef<HTMLDivElement | null>(null)
 
   const handleStartStreaming = useCallback(() => {
     router.push('/login')
@@ -209,23 +210,6 @@ export function HomePageClient() {
     [benefitsT]
   )
 
-  const stageCopy = useMemo(
-    () => ({
-      badge: heroT('scene.badge'),
-      routingLabel: heroT('scene.routingLabel'),
-      routingValue: heroT('scene.routingValue'),
-      statusLive: heroT('scene.statusLive'),
-      mainDestinationLabel: heroT('scene.mainDestinationLabel'),
-      mainDestinationValue: heroT('scene.mainDestinationValue'),
-      statusHealthy: heroT('scene.statusHealthy'),
-      fallbackLabel: heroT('scene.fallbackLabel'),
-      fallbackValue: heroT('scene.fallbackValue'),
-      restartLabel: heroT('scene.restartLabel'),
-      restartValue: heroT('scene.restartValue'),
-    }),
-    [heroT]
-  )
-
   const titleParts = useMemo(() => {
     const parts = heroT('title').trim().split(/\s+/)
     // Accent the last word only — keeps the lead line unbroken across locales
@@ -251,32 +235,6 @@ export function HomePageClient() {
     ],
     [ctaT]
   )
-
-  const handleHeroPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    const element = heroStageRef.current
-    if (!element || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      return
-    }
-
-    const rect = element.getBoundingClientRect()
-    const x = (event.clientX - rect.left) / rect.width - 0.5
-    const y = (event.clientY - rect.top) / rect.height - 0.5
-    element.style.setProperty('--stream-v3-stage-rotate-x', `${y * -7}deg`)
-    element.style.setProperty('--stream-v3-stage-rotate-y', `${x * 10}deg`)
-    element.style.setProperty('--stream-v3-stage-shift-x', `${x * 14}px`)
-    element.style.setProperty('--stream-v3-stage-shift-y', `${y * 12}px`)
-  }, [])
-
-  const resetHeroPointer = useCallback(() => {
-    const element = heroStageRef.current
-    if (!element) {
-      return
-    }
-    element.style.setProperty('--stream-v3-stage-rotate-x', '0deg')
-    element.style.setProperty('--stream-v3-stage-rotate-y', '0deg')
-    element.style.setProperty('--stream-v3-stage-shift-x', '0px')
-    element.style.setProperty('--stream-v3-stage-shift-y', '0px')
-  }, [])
 
   return (
     <div className="stream-v3-shell min-h-screen">
@@ -343,48 +301,21 @@ export function HomePageClient() {
                 </div>
               </div>
 
-              <div
-                ref={heroStageRef}
-                className="stream-v3-stage"
-                onPointerMove={handleHeroPointerMove}
-                onPointerLeave={resetHeroPointer}
-              >
+              <div className="stream-v3-stage stream-v3-stage--globe">
                 <div className="stream-v3-stage-glow" />
-                <div className="stream-v3-stage-grid" />
-
-                <div className="stream-v3-stage-main">
-                  <div className="stream-v3-stage-topbar">
-                    <div className="stream-v3-stage-badge">{stageCopy.badge}</div>
-                    <div className="stream-v3-stage-status">{stageCopy.statusLive}</div>
-                  </div>
-
-                  <div className="stream-v3-stage-header">
-                    <div>
-                      <div className="stream-v3-stage-label">{stageCopy.routingLabel}</div>
-                      <div className="stream-v3-stage-value">{stageCopy.routingValue}</div>
-                    </div>
-
-                    <div className="stream-v3-stage-panel stream-v3-stage-health">
+                <div className="stream-v3-globe-frame">
+                  <Hero3DGlobe />
+                  <div className="stream-v3-globe-overlay">
+                    <span className="stream-v3-stage-status">
+                      <span className="stream-v3-globe-pulse" aria-hidden="true" />
+                      {heroT('scene.statusLive')}
+                    </span>
+                    <div className="stream-v3-globe-meta">
                       <div className="stream-v3-stage-label">{heroT('panel.healthLabel')}</div>
-                      <div className="stream-v3-stage-health__value">99.98%</div>
-                      <p className="stream-v3-stage-health__text">{heroT('panel.healthDescription')}</p>
+                      <div className="stream-v3-globe-meta__value">99.98%</div>
+                      <p className="stream-v3-globe-meta__text">{heroT('panel.healthDescription')}</p>
                     </div>
                   </div>
-
-                  <div className="stream-v3-stage-panel stream-v3-stage-visual">
-                    <div className="stream-v3-bars" aria-hidden="true">
-                      {Array.from({ length: 16 }, (_, index) => (
-                        <span
-                          key={index}
-                          style={{
-                            animationDelay: `${index * 0.12}s`,
-                            height: `${34 + (index % 5) * 10}%`,
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
                 </div>
               </div>
             </div>
