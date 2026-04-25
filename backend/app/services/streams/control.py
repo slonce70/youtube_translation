@@ -38,6 +38,17 @@ from app.streaming.ffmpeg_manager import ffmpeg_manager as default_ffmpeg_manage
 from app.streaming.hot_swap import hot_swap_manager
 
 from .audit import attach_runtime_incident_summaries, persist_stream_audit_event
+from .control_helpers import (
+    build_status_payload,
+    build_stop_activity_payload,
+    build_stop_audit_metadata,
+    clear_schedule as _helper_clear_schedule,
+    clear_start_schedule as _helper_clear_start_schedule,
+    clear_stop_schedule as _helper_clear_stop_schedule,
+    finalize_stopped as _helper_finalize_stopped,
+    mark_restart_success as _helper_mark_restart_success,
+    stream_may_still_be_live as _helper_stream_may_still_be_live,
+)
 from .helpers import (
     collect_live_output_compatibility_violations,
     extract_stream_assets,
@@ -49,8 +60,6 @@ from .helpers import (
 from .status_helpers import (
     aware_datetime,
     filter_important_ffmpeg_logs,
-    provider_summary_for_stream,
-    runtime_restart_payload,
     uptime_seconds as compute_uptime_seconds,
 )
 from .audit import record_stream_audit_event
@@ -721,75 +730,20 @@ class StreamControlService:
         usage: Optional[Dict[str, Any]] = None,
         manager_info: Optional[Dict[str, Any]] = None,
     ) -> StreamStatus:
-        uptime = (
-            uptime_seconds
-            if uptime_seconds is not None
-            else (compute_uptime_seconds(stream) if is_running else 0)
-        )
+        """Project (stream, runtime info) into a StreamStatus DTO.
 
-        base_total = max(float(stream.total_duration_seconds or 0.0), 0.0)
-        started_at = aware_datetime(stream.started_at) if is_running else None
-        live_duration = None
-        if started_at:
-            live_duration = max(0, int((_utcnow() - started_at).total_seconds()))
-
-        total_duration = (
-            int(base_total + (live_duration or 0))
-            if live_duration is not None
-            else int(base_total)
-        )
-        if not is_running:
-            total_duration = int(base_total)
-
-        daily_limit_seconds: Optional[int] = None
-        remaining_daily_seconds: Optional[int] = None
-        quota_limit_reached: Optional[bool] = None
-        if usage:
-            limit_seconds = usage.get("limit_seconds")
-            if limit_seconds is not None:
-                daily_limit_seconds = max(int(limit_seconds), 0)
-                remaining_val = usage.get("remaining_seconds")
-                if remaining_val is not None:
-                    remaining_daily_seconds = max(int(remaining_val), 0)
-                if "limit_reached" in usage:
-                    quota_limit_reached = bool(usage["limit_reached"])
-                elif remaining_daily_seconds is not None:
-                    quota_limit_reached = remaining_daily_seconds <= 0
-
-        status_value = status_override or stream.status
-        error_value = stream.error_message if error_message is None else error_message
-        provider_summary = provider_summary_for_stream(stream)
-        runtime_incident_summary = getattr(stream, "_runtime_incident_summary", None)
-
-        return StreamStatus(
-            id=stream.id,
-            status=status_value,
-            uptime_seconds=uptime,
-            is_running=is_running,
-            error_message=error_value,
-            live_duration_seconds=live_duration,
-            total_duration_seconds=total_duration,
-            daily_limit_seconds=daily_limit_seconds,
-            remaining_daily_seconds=remaining_daily_seconds,
-            quota_limit_reached=quota_limit_reached,
-            provider_status=provider_summary["provider_status"],
-            provider_viewers=provider_summary["provider_viewers"],
-            provider_last_checked_at=provider_summary["provider_last_checked_at"],
-            provider_video_id=provider_summary["provider_video_id"],
-            provider_stream_status=provider_summary["provider_stream_status"],
-            provider_health_status=provider_summary["provider_health_status"],
-            provider_health_issues=provider_summary["provider_health_issues"],
-            provider_mismatch=(
-                provider_summary["provider_status"] != "unknown"
-                and (is_running != (provider_summary["provider_status"] == "live"))
-            ),
-            runtime_restart=runtime_restart_payload(
-                stream,
-                status_value=status_value,
-                manager_info=manager_info,
-                settings_provider=self.settings,
-            ),
-            runtime_incident_summary=runtime_incident_summary or {},
+        Sprint 8.2 thin façade — body lives in
+        ``control_helpers.build_status_payload``. Behavior unchanged.
+        """
+        return build_status_payload(
+            stream,
+            is_running,
+            uptime_seconds,
+            settings_provider=self.settings,
+            status_override=status_override,
+            error_message=error_message,
+            usage=usage,
+            manager_info=manager_info,
         )
 
     async def _get_usage_snapshot(
@@ -840,6 +794,7 @@ class StreamControlService:
 
     @staticmethod
     def _build_stop_audit_metadata(
+        self,
         stream: Stream,
         *,
         source: str,
@@ -847,18 +802,14 @@ class StreamControlService:
         reason: str | None,
         metadata: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
-            "category": "stream_stop",
-            "source": source,
-            "stream_status": stream.status,
-        }
-        if actor_user_id is not None:
-            payload["actor_user_id"] = str(actor_user_id)
-        if reason:
-            payload["reason"] = reason
-        if metadata:
-            payload.update(metadata)
-        return payload
+        """Sprint 8.2 thin façade — see control_helpers.build_stop_audit_metadata."""
+        return build_stop_audit_metadata(
+            stream,
+            source=source,
+            actor_user_id=actor_user_id,
+            reason=reason,
+            metadata=metadata,
+        )
 
     async def _record_stop_audit(
         self,
@@ -890,33 +841,8 @@ class StreamControlService:
     def _build_stop_activity_payload(
         self, stream: Stream, *, metadata: Dict[str, Any]
     ) -> Dict[str, Any] | None:
-        actor_user_id = metadata.get("actor_user_id")
-        if not actor_user_id:
-            return None
-
-        details: Dict[str, Any] = {
-            "stream_id": str(stream.id),
-            "stream_name": stream.name,
-            "source": metadata.get("source"),
-            "reason": metadata.get("reason"),
-            "request_id": metadata.get("request_id"),
-            "session_id": metadata.get("session_id"),
-            "jwt_jti": metadata.get("jwt_jti"),
-            "route_path": metadata.get("route_path"),
-            "origin": metadata.get("origin"),
-            "referer": metadata.get("referer"),
-            "sec_fetch_site": metadata.get("sec_fetch_site"),
-        }
-
-        return {
-            "user_id": str(actor_user_id),
-            "activity_type": "stream_stop_requested",
-            "ip_address": metadata.get("client_ip"),
-            "user_agent": metadata.get("user_agent"),
-            "details": {
-                key: value for key, value in details.items() if value is not None
-            },
-        }
+        """Sprint 8.2 thin façade — see control_helpers.build_stop_activity_payload."""
+        return build_stop_activity_payload(stream, metadata=metadata)
 
     async def _persist_stop_request_attribution(
         self,
@@ -972,9 +898,8 @@ class StreamControlService:
 
     @staticmethod
     def _finalize_stopped(stream: Stream) -> None:
-        stream.status = "stopped"
-        stream.pid = None
-        stream.stopped_at = _utcnow()
+        """Sprint 8.2 thin façade — see control_helpers.finalize_stopped."""
+        _helper_finalize_stopped(stream)
 
     async def _get_stream_basic(self, stream_id: UUID) -> Stream:
         query = select(Stream).where(
@@ -1019,39 +944,28 @@ class StreamControlService:
             )
 
     def _stream_may_still_be_live(self, stream: Stream) -> bool:
-        heartbeat_payload = read_runtime_heartbeat(stream.id)
-        if heartbeat_payload is not None:
-            return True
-
-        started_at = aware_datetime(stream.started_at)
-        stopped_at = aware_datetime(stream.stopped_at)
-        started_without_newer_stop = started_at is not None and (
-            stopped_at is None or started_at > stopped_at
-        )
-
-        return bool(started_without_newer_stop or stream.pid is not None)
+        """Sprint 8.2 thin façade — see control_helpers.stream_may_still_be_live."""
+        return _helper_stream_may_still_be_live(stream)
 
     @staticmethod
     def _clear_start_schedule(stream: Stream) -> None:
-        stream.scheduled_start_enabled = False
-        stream.scheduled_start_time = None
-        stream.scheduled_start_attempted_at = None
+        """Sprint 8.2 thin façade — see control_helpers.clear_start_schedule."""
+        _helper_clear_start_schedule(stream)
 
     @staticmethod
     def _clear_stop_schedule(stream: Stream) -> None:
-        stream.scheduled_stop_time = None
-        stream.scheduled_stop_attempted_at = None
+        """Sprint 8.2 thin façade — see control_helpers.clear_stop_schedule."""
+        _helper_clear_stop_schedule(stream)
 
     @staticmethod
     def _clear_schedule(stream: Stream) -> None:
-        StreamControlService._clear_start_schedule(stream)
-        StreamControlService._clear_stop_schedule(stream)
+        """Sprint 8.2 thin façade — see control_helpers.clear_schedule."""
+        _helper_clear_schedule(stream)
 
     @staticmethod
     def _mark_restart_success(stream: Stream, *, orchestrated: bool) -> None:
-        stream.status = "starting"
-        stream.stopped_at = None
-        stream.error_message = None
+        """Sprint 8.2 thin façade — see control_helpers.mark_restart_success."""
+        _helper_mark_restart_success(stream, orchestrated=orchestrated)
 
 
 __all__ = ["StreamControlService"]
