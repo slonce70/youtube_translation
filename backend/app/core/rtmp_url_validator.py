@@ -143,12 +143,28 @@ def _resolve(hostname: str) -> tuple[str, ...]:
     return tuple(addresses)
 
 
+# RFC 6598 — Carrier-Grade NAT range. Python's ``is_private`` does *not*
+# include this range, but it routinely overlays VPC peerings and corporate
+# NATs, so an attacker resolving ``attacker.tld`` to ``100.64.x.y`` would
+# otherwise reach whatever the host's routing table sends there.
+_CGNAT_IPV4 = ipaddress.IPv4Network("100.64.0.0/10")
+# RFC 6890 — IETF protocol assignments range; a similar gap in is_private.
+_PROTOCOL_ASSIGN_IPV4 = ipaddress.IPv4Network("192.0.0.0/24")
+
+
 def _is_disallowed_address(addr: ipaddress._BaseAddress) -> Optional[str]:
     """Return a reason string if ``addr`` is in a disallowed range, else None.
 
-    The ipaddress stdlib already exposes the canonical predicates we need.
-    The link-local check covers RFC 3927 (IPv4 169.254/16) and RFC 4291 IPv6
-    (fe80::/10). ``is_private`` covers RFC 1918 / RFC 4193 (IPv6 ULA).
+    Authoritative check: ``addr.is_global``. Available since Python 3.4 and
+    True iff the address is in a globally-routable, non-reserved range. This
+    covers (correctly!) RFC1918, loopback, link-local (RFC3927 + IPv6 fe80::/10),
+    IPv6 ULA (RFC4193), multicast, reserved, unspecified, CGNAT (RFC 6598),
+    IETF protocol assignments (RFC 6890), benchmarking, documentation, and
+    every other "do not route" range the IANA has ever defined — without us
+    having to enumerate them.
+
+    We still emit a human-readable *reason* for the API error and the log
+    line, so callers (and test cases) can distinguish the failure mode.
     """
     if addr.is_unspecified:
         return "unspecified"
@@ -162,6 +178,23 @@ def _is_disallowed_address(addr: ipaddress._BaseAddress) -> Optional[str]:
         return "reserved"
     if addr.is_private:
         return "private"
+
+    # Belt-and-braces explicit checks for ranges Python's predicates miss
+    # on older interpreters (CGNAT and IETF protocol assignments are only
+    # marked as non-global on Python ≥ 3.12 / 3.11 respectively in older
+    # builds).
+    if isinstance(addr, ipaddress.IPv4Address):
+        if addr in _CGNAT_IPV4:
+            return "cgnat"
+        if addr in _PROTOCOL_ASSIGN_IPV4:
+            return "ietf_protocol_assignments"
+
+    # Final catch-all: anything that is_global rejects but the more specific
+    # predicates above did not flag (e.g. future IANA reservations) is also
+    # disallowed.
+    if not addr.is_global:
+        return "non_global"
+
     return None
 
 

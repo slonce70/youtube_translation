@@ -1406,18 +1406,33 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
 
     elif migration_num == "037":
         # Migration 037 re-adds runtime_restart_attempts (NOT NULL DEFAULT 0)
-        # and runtime_last_failure_at on the streams table.
+        # and runtime_last_failure_at on the streams table. We assert both
+        # columns exist AND that runtime_restart_attempts retains its
+        # NOT NULL + DEFAULT 0 contract — the failure-handler now treats
+        # this column as authoritative, and a future migration that drops
+        # the constraint would silently regress restart-loop bounding.
         query = text("""
-            SELECT COUNT(*) = 2
+            SELECT COUNT(*) = 1
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'streams'
-              AND column_name IN (
-                  'runtime_restart_attempts',
-                  'runtime_last_failure_at'
-              )
+              AND column_name = 'runtime_restart_attempts'
+              AND is_nullable = 'NO'
+              AND column_default IS NOT NULL
+              AND column_default LIKE '0%'
         """)
-        return bool((await conn.execute(query)).scalar())
+        attempts_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT COUNT(*) = 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name = 'runtime_last_failure_at'
+        """)
+        failure_at_ok = bool((await conn.execute(query)).scalar())
+
+        return attempts_ok and failure_at_ok
 
     return False
 
