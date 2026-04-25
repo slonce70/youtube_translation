@@ -540,68 +540,115 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     return status
 
 
-async def apply_migration(conn: AsyncConnection, migration_file: str):
-    """Apply a single migration file"""
+_AUTOCOMMIT_MARKER = "-- @autocommit"
+
+
+def _has_autocommit_marker(sql_content: str) -> bool:
+    """Detect the ``-- @autocommit`` directive in the first ~10 non-empty lines.
+
+    Migrations marked autocommit are run outside the wrapping transaction so
+    that statements like ``CREATE INDEX CONCURRENTLY`` (which postgres rejects
+    inside a transaction block) can execute. Each statement runs in its own
+    implicit transaction, so all statements must be idempotent on partial
+    failure.
+    """
+    seen = 0
+    for line in sql_content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.lower().startswith(_AUTOCOMMIT_MARKER):
+            return True
+        seen += 1
+        if seen >= 10:
+            break
+    return False
+
+
+def _split_statements(sql_content: str) -> list[str]:
+    """Split SQL content into executable statements.
+
+    Handles ``$$``-delimited functions and ``;`` terminators. Empty lines and
+    comment-only lines (including the ``-- @autocommit`` directive) are
+    discarded. Returns a list of statement strings.
+    """
+    statements: list[str] = []
+    current_statement: list[str] = []
+    in_function = False
+
+    for line in sql_content.split('\n'):
+        stripped = line.strip()
+
+        if not stripped or stripped.startswith('--'):
+            continue
+
+        if '$$' in line:
+            in_function = not in_function
+
+        current_statement.append(line)
+
+        if not in_function and stripped.endswith(';'):
+            stmt = '\n'.join(current_statement)
+            if stmt.strip():
+                statements.append(stmt)
+            current_statement = []
+
+    if current_statement:
+        stmt = '\n'.join(current_statement)
+        if stmt.strip():
+            statements.append(stmt)
+
+    return statements
+
+
+async def _execute_statements(conn: AsyncConnection, statements: list[str]) -> None:
+    """Execute SQL statements on ``conn`` with `IF NOT EXISTS` tolerance."""
+    for i, statement in enumerate(statements, 1):
+        if not statement.strip():
+            continue
+        try:
+            await conn.execute(text(statement))
+            print(f"  ✓ Executed statement {i}/{len(statements)}")
+        except Exception as stmt_error:  # noqa: BLE001
+            print(f"  ❌ Error in statement {i}/{len(statements)}:")
+            print(f"     {str(stmt_error)}")
+            if "already exists" not in str(stmt_error).lower():
+                raise
+
+
+async def apply_migration(engine, conn: AsyncConnection, migration_file: str):
+    """Apply a single migration file.
+
+    Migrations with the ``-- @autocommit`` marker run on a separate
+    AUTOCOMMIT-mode connection (required for CONCURRENTLY operations); all
+    others run on the supplied ``conn`` so they participate in the surrounding
+    transaction.
+    """
     print(f"\n📝 Applying {migration_file}...")
-    
-    # Read migration file
+
     migration_path = Path(__file__).parent / migration_file
     if not migration_path.exists():
         print(f"⚠️  Migration file not found: {migration_file} — skipping")
         return True
-    
+
     with open(migration_path, 'r') as f:
         sql_content = f.read()
-    
+
+    autocommit = _has_autocommit_marker(sql_content)
+    statements = _split_statements(sql_content)
+
     try:
-        # Split SQL by statements (handle functions with $$)
-        statements = []
-        current_statement = []
-        in_function = False
-        
-        for line in sql_content.split('\n'):
-            stripped = line.strip()
-            
-            # Skip empty lines and comments
-            if not stripped or stripped.startswith('--'):
-                continue
-            
-            # Check if entering/leaving function definition
-            if '$$' in line:
-                in_function = not in_function
-            
-            current_statement.append(line)
-            
-            # Statement ends with ; (but not inside function)
-            if not in_function and stripped.endswith(';'):
-                stmt = '\n'.join(current_statement)
-                if stmt.strip():
-                    statements.append(stmt)
-                current_statement = []
-        
-        # Add last statement if exists
-        if current_statement:
-            stmt = '\n'.join(current_statement)
-            if stmt.strip():
-                statements.append(stmt)
-        
-        # Execute each statement
-        for i, statement in enumerate(statements, 1):
-            if statement.strip():
-                try:
-                    await conn.execute(text(statement))
-                    print(f"  ✓ Executed statement {i}/{len(statements)}")
-                except Exception as stmt_error:
-                    print(f"  ❌ Error in statement {i}/{len(statements)}:")
-                    print(f"     {str(stmt_error)}")
-                    # Continue with other statements for CREATE IF NOT EXISTS
-                    if "already exists" not in str(stmt_error).lower():
-                        raise
-        
-        # Don't commit here - commit will be done in main after all migrations
+        if autocommit:
+            print(f"  ⚙️  autocommit mode — running outside wrapping transaction")
+            async with engine.connect() as ac_conn:
+                ac_conn = await ac_conn.execution_options(isolation_level="AUTOCOMMIT")
+                await _execute_statements(ac_conn, statements)
+        else:
+            await _execute_statements(conn, statements)
+
         print(f"✅ Successfully applied {migration_file}")
         return True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Error applying {migration_file}:")
         print(f"   {str(e)}")
         return False
@@ -1338,7 +1385,7 @@ async def main():
         # Fresh local databases need the bootstrap schema before status detection.
         if not await check_table_exists(conn, 'user_profiles'):
             print("\n🧱 Bootstrapping local initial schema...")
-            success = await apply_migration(conn, 'migrations/000_local_initial_schema.sql')
+            success = await apply_migration(engine, conn, 'migrations/000_local_initial_schema.sql')
             if not success:
                 print("\n❌ Local bootstrap failed! Rolling back...")
                 await conn.rollback()
@@ -1389,7 +1436,7 @@ async def main():
                 print(f"\n⏭️  Skipping {migration_file} (already applied)")
                 continue
             
-            success = await apply_migration(conn, migration_file)
+            success = await apply_migration(engine, conn, migration_file)
             if not success:
                 print("\n❌ Migration failed! Rolling back...")
                 await conn.rollback()
