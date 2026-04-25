@@ -64,6 +64,9 @@ jobs:
       - name: Run ruff
         run: python -m ruff check app/
 
+      - name: Run mypy
+        run: python -m mypy --config-file mypy.ini app/
+
       - name: Prepare test environment
         run: |
           mkdir -p /tmp/ci-streams /tmp/ci-uploads

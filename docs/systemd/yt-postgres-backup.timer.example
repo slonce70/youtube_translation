@@ -1,0 +1,25 @@
+# /etc/systemd/system/yt-postgres-backup.timer
+#
+# Activate with:
+#   systemctl daemon-reload
+#   systemctl enable --now yt-postgres-backup.timer
+# Inspect schedule:
+#   systemctl list-timers yt-postgres-backup.timer
+# Run on demand (e.g. before maintenance):
+#   systemctl start yt-postgres-backup.service
+
+[Unit]
+Description=YouTube Streaming — daily Postgres backup
+Requires=yt-postgres-backup.service
+
+[Timer]
+# 03:17 UTC daily — outside the typical streaming-event window and
+# offset 17 minutes so the load doesn't pile on the top-of-hour cron rush.
+OnCalendar=*-*-* 03:17:00 UTC
+# If the system was off at the trigger time, run on next boot.
+Persistent=true
+# Add a small jitter so multiple hosts in a fleet don't hit S3 simultaneously.
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target
