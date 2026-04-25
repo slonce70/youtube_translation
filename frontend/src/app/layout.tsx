@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { IBM_Plex_Serif, Inter, Manrope } from 'next/font/google'
+import { IBM_Plex_Serif, Inter, Manrope, Instrument_Serif, JetBrains_Mono } from 'next/font/google'
 import { setRequestLocale, getLocale } from 'next-intl/server'
 import './globals.css'
 import '@uppy/core/css/style.css'
@@ -22,6 +22,18 @@ const ibmPlexSerif = IBM_Plex_Serif({
 const manrope = Manrope({
   subsets: ['latin', 'cyrillic'],
   variable: '--font-tech',
+})
+// Loopcast landing typography (Sprint 9): editorial serif + technical mono
+const instrumentSerif = Instrument_Serif({
+  subsets: ['latin', 'latin-ext'],
+  weight: '400',
+  style: ['normal', 'italic'],
+  variable: '--font-serif',
+})
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin', 'latin-ext', 'cyrillic'],
+  weight: ['400', '500'],
+  variable: '--font-mono',
 })
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -59,7 +71,7 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.className} ${ibmPlexSerif.variable} ${manrope.variable}`} suppressHydrationWarning>
+      <body className={`${inter.className} ${ibmPlexSerif.variable} ${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
         <Providers locale={locale} messages={messages}>
           {children}
           <Toaster />
