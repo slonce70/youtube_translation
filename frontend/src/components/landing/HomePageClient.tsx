@@ -1,4 +1,11 @@
 'use client'
+// TODO(sprint-3.5): RSC conversion of landing sections deferred. The current
+// FeaturesGrid / BenefitsSection / HowItWorks / StatsSection / CTASection /
+// PricingCards components all import `framer-motion` and are therefore
+// client-only. Converting to RSC requires either dropping framer-motion in
+// favor of CSS-keyframe animations or switching to a server-friendly motion
+// library (e.g. `motion/react` server build). Tracked separately so this
+// sprint stays scoped to non-visual changes.
 
 import { useCallback, useMemo, useRef, type PointerEvent } from 'react'
 import { useRouter } from 'next/navigation'

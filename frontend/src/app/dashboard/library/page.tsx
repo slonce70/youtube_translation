@@ -1,4 +1,12 @@
 'use client'
+// TODO(sprint-3.5): full string-by-string i18n migration of this large page
+// is tracked as a follow-up. Sprint 3.1 lifted disables on smaller files
+// (Sidebar, Topbar, CommandPalette, AddChannelModal, BroadcasterLevel,
+// schedule, plans, profile, AssetCard). The four largest dashboard pages
+// retain their disables until a dedicated translation pass with
+// designer/translator review can land. The eslint-disable below is
+// INTENTIONAL and AUDITED — see docs/audit/2026-04-25_deep_multi_agent_audit.md
+// (finding H8) for the inventory.
 /* eslint-disable i18next/no-literal-string */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react'
@@ -772,6 +780,12 @@ export default function LibraryPage() {
                             tLibrary('assets.recommendations', params),
                           selection: { checkboxLabel: tLibrary('assets.selection.checkboxLabel') },
                           previewAlt: (params: { filename: string }) => tLibrary('assets.previewAlt', params),
+                          iconActions: {
+                            download: tLibrary('assets.iconActions.download'),
+                            validate: tLibrary('assets.iconActions.validate'),
+                            move: tLibrary('assets.iconActions.move'),
+                            delete: tLibrary('assets.iconActions.delete'),
+                          },
                         }}
                       />
                     ))}

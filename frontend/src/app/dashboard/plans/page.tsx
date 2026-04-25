@@ -1,5 +1,4 @@
 'use client'
-/* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useMemo, useState } from 'react'
 import { useMessages, useTranslations } from 'next-intl'
@@ -107,15 +106,15 @@ export default function PlansPage() {
           <div className="page-sub">{tPlans('header.description')}</div>
         </div>
         <div className="page-actions">
-          <Badge variant="indigo"><Sparkles className="h-3.5 w-3.5" /> Hybrid release</Badge>
+          <Badge variant="indigo"><Sparkles className="h-3.5 w-3.5" /> {tPlans('header.releaseBadge')}</Badge>
         </div>
       </div>
 
       <div className="toolbar-panel">
         <div className="toolbar-row" style={{ justifyContent: 'space-between' }}>
           <div className="summary-list">
-            <div style={{ fontWeight: 700 }}>Якість трансляції</div>
-            <div className="page-sub">Сторінка тарифів реалізована як hybrid: prototype shell + поточна pricing логіка.</div>
+            <div style={{ fontWeight: 700 }}>{tPlans('toolbar.title')}</div>
+            <div className="page-sub">{tPlans('toolbar.description')}</div>
           </div>
           <div style={{ display: 'inline-flex', gap: 6, background: 'var(--bg-3)', padding: 4, borderRadius: 8 }}>
             {(['fhd', 'uhd'] as const).map((tier) => (
@@ -149,19 +148,19 @@ export default function PlansPage() {
             >
               <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {isCurrent ? <Badge variant="live">Поточний</Badge> : null}
+                  {isCurrent ? <Badge variant="live">{tPlans('toolbar.currentPlanBadge')}</Badge> : null}
                   {message.badge ? <Badge variant={cfg.badgeVariant}>{message.badge}</Badge> : null}
                 </div>
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 700 }}>{message.name ?? planId}</div>
-                  <div style={{ fontSize: 30, fontWeight: 700, marginTop: 10 }}>{message.price ?? '—'}</div>
+                  <div style={{ fontSize: 30, fontWeight: 700, marginTop: 10 }}>{message.price ?? tPlans('toolbar.fallbackPrice')}</div>
                   <div className="page-sub">{message.period ?? ''}</div>
                 </div>
                 <div className="page-sub">{message.summary ?? ''}</div>
                 <div className="summary-list" style={{ gap: 6 }}>
                   {(message.highlights ?? []).map((highlight) => (
                     <div key={highlight} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                      <span style={{ color: 'var(--green)' }}>✓</span>
+                      <span style={{ color: 'var(--green)' }} aria-hidden="true">{'✓'}</span>
                       <span>{highlight}</span>
                     </div>
                   ))}
@@ -202,7 +201,7 @@ export default function PlansPage() {
               {Object.entries(comparison.rows ?? {}).map(([rowId, row]) => (
                 <tr key={rowId}>
                   <td>{row.label}</td>
-                  {activePlanOrder.map((planId) => <td key={`${rowId}-${planId}`}>{row.values?.[planId] ?? '—'}</td>)}
+                  {activePlanOrder.map((planId) => <td key={`${rowId}-${planId}`}>{row.values?.[planId] ?? tPlans('toolbar.fallbackPrice')}</td>)}
                 </tr>
               ))}
               {Object.entries(comparison.booleanRows ?? {}).map(([rowId, row]) => (

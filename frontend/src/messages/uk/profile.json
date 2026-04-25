@@ -10,7 +10,17 @@
     "displayNamePlaceholder": "Як вас бачать колеги",
     "emailLabel": "Електронна пошта",
     "save": "Зберегти зміни",
-    "saving": "Збереження"
+    "saving": "Збереження",
+    "userFallback": "Користувач",
+    "changePhoto": "Змінити фото",
+    "languageLabel": "Мова інтерфейсу",
+    "timezoneLabel": "Часовий пояс",
+    "languageOptions": ["🇺🇦 Українська", "🇬🇧 English", "🇷🇺 Русский"],
+    "timezoneOptions": ["UTC+3 (Київ)", "UTC+0 (Лондон)", "UTC-5 (Нью-Йорк)"],
+    "timezoneKyiv": "UTC+3 (Київ)",
+    "timezoneLondon": "UTC+0 (Лондон)",
+    "timezoneNewYork": "UTC-5 (Нью-Йорк)",
+    "preferencesNote": "Налаштування мови та часового поясу будуть винесені в окрему backend-integrated фазу. Зараз зберігається ім’я профілю."
   },
   "passwordForm": {
     "title": "Оновлення пароля",

@@ -1,11 +1,11 @@
 'use client'
-/* eslint-disable i18next/no-literal-string */
 
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, format } from 'date-fns'
 import { uk } from 'date-fns/locale'
+import { useTranslations } from 'next-intl'
 import { api } from '@/lib/api'
 import type { Stream } from '@/lib/types'
 import { LoadingState } from '@/components/LoadingState'
@@ -14,11 +14,12 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { useDashboardContext } from '../dashboard-context'
 
-const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд']
+const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
 
 export default function SchedulePage() {
   const router = useRouter()
   const { user } = useDashboardContext()
+  const t = useTranslations('schedule')
   const monthDate = new Date()
   const monthStart = startOfMonth(monthDate)
   const monthEnd = endOfMonth(monthDate)
@@ -47,29 +48,37 @@ export default function SchedulePage() {
   const upcoming = scheduledStreams.slice(0, 5)
 
   if (!user) return <LoadingState />
-  if (isLoading) return <LoadingState text="Завантажуємо розклад…" />
+  if (isLoading) return <LoadingState text={t('loading')} />
 
   return (
     <div className="page-shell">
       <div className="page-header">
         <div>
-          <div className="page-title">Розклад</div>
-          <div className="page-sub">Плануйте трансляції наперед</div>
+          <div className="page-title">{t('title')}</div>
+          <div className="page-sub">{t('subtitle')}</div>
         </div>
         <div className="page-actions">
-          <Button onClick={() => router.push('/dashboard/streaming?new=1')}>+ Запланувати стрім</Button>
+          <Button onClick={() => router.push('/dashboard/streaming?new=1')}>{t('createStream')}</Button>
         </div>
       </div>
 
       <div className="dashboard-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px' }}>
         <Card>
           <CardHeader>
-            <CardTitle>📅 {format(monthDate, 'LLLL yyyy', { locale: uk })}</CardTitle>
+            <CardTitle>
+              <span aria-hidden="true">{'📅 '}</span>
+              {format(monthDate, 'LLLL yyyy', { locale: uk })}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12 }}>
-              {WEEKDAYS.map((day) => (
-                <div key={day} style={{ color: 'var(--txt-3)', fontSize: 12, fontWeight: 600, textAlign: 'center' }}>{day}</div>
+              {WEEKDAY_KEYS.map((dayKey) => (
+                <div
+                  key={dayKey}
+                  style={{ color: 'var(--txt-3)', fontSize: 12, fontWeight: 600, textAlign: 'center' }}
+                >
+                  {t(`weekdays.${dayKey}`)}
+                </div>
               ))}
               {days.map((day, index) => {
                 if (!day) return <div key={`empty-${index}`} style={{ minHeight: 72 }} />
@@ -94,10 +103,15 @@ export default function SchedulePage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {dayStreams.slice(0, 2).map((stream) => (
                         <div key={stream.id} style={{ fontSize: 11, color: 'var(--txt-2)' }}>
-                          • {stream.name || 'Без назви'}
+                          <span aria-hidden="true">{'• '}</span>
+                          {stream.name || t('untitled')}
                         </div>
                       ))}
-                      {dayStreams.length > 2 ? <div style={{ fontSize: 11, color: 'var(--indigo-lt)' }}>+{dayStreams.length - 2} ще</div> : null}
+                      {dayStreams.length > 2 ? (
+                        <div style={{ fontSize: 11, color: 'var(--indigo-lt)' }}>
+                          {t('moreEvents', { count: dayStreams.length - 2 })}
+                        </div>
+                      ) : null}
                     </div>
                   </button>
                 )
@@ -108,13 +122,13 @@ export default function SchedulePage() {
 
         <div className="dashboard-side">
           <Card className="card-sm">
-            <CardTitle>Найближчі події</CardTitle>
+            <CardTitle>{t('upcomingTitle')}</CardTitle>
             <CardContent className="summary-list" style={{ marginTop: 12 }}>
               {upcoming.length ? upcoming.map((stream) => (
                 <div key={stream.id} className="stream-row" style={{ alignItems: 'flex-start' }}>
-                  <div className="stream-thumb">🗓️</div>
+                  <div className="stream-thumb" aria-hidden="true">{'🗓️'}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{stream.name || 'Без назви'}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{stream.name || t('untitled')}</div>
                     <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>{format(new Date(stream.scheduled_start_time!), 'd LLL, HH:mm', { locale: uk })}</div>
                     <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                       {(stream.destinations ?? []).slice(0, 2).map((destination) => (
@@ -125,12 +139,12 @@ export default function SchedulePage() {
                 </div>
               )) : (
                 <div className="empty-state" style={{ padding: '24px 12px' }}>
-                  <div className="empty-icon">🗓️</div>
-                  <div className="empty-title">Немає запланованих подій</div>
-                  <div className="empty-sub">Створіть стрім і задайте час запуску.</div>
+                  <div className="empty-icon" aria-hidden="true">{'🗓️'}</div>
+                  <div className="empty-title">{t('emptyTitle')}</div>
+                  <div className="empty-sub">{t('emptySub')}</div>
                 </div>
               )}
-              <Button fullWidth onClick={() => router.push('/dashboard/streaming?new=1')}>+ Додати подію</Button>
+              <Button fullWidth onClick={() => router.push('/dashboard/streaming?new=1')}>{t('addEvent')}</Button>
             </CardContent>
           </Card>
         </div>

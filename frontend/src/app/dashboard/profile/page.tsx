@@ -1,9 +1,8 @@
 'use client'
-/* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useTranslations } from 'next-intl'
+import { useMessages, useTranslations } from 'next-intl'
 import { translateSupabaseError } from '@/i18n/errorMessages'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -21,8 +20,12 @@ import {
   hasProviderHealthAttention,
 } from '@/lib/provider-status'
 
-const LANGUAGE_OPTIONS = ['🇺🇦 Українська', '🇬🇧 English', '🇷🇺 Русский']
-const TIMEZONE_OPTIONS = ['UTC+3 (Київ)', 'UTC+0 (Лондон)', 'UTC-5 (Нью-Йорк)']
+// Sentinel error messages used internally by the password-update flow to
+// distinguish UX-friendly mismatches from generic supabase errors. They are
+// matched by reference, not displayed to the user — the real toast text
+// always comes from the i18n layer (toasts.missingEmail / toasts.currentIncorrect).
+const ERR_MISSING_EMAIL = 'Missing email on account'
+const ERR_CURRENT_PASSWORD_INCORRECT = 'Current password is incorrect'
 
 export default function ProfilePage() {
   const devBypass = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
@@ -31,10 +34,20 @@ export default function ProfilePage() {
   const t = useTranslations('profile')
   const toasts = useTranslations('profile.toasts')
   const supabaseErrors = useTranslations('errors.supabase')
+  const profileMessages = useMessages() as {
+    profile?: {
+      profileForm?: {
+        languageOptions?: string[]
+        timezoneOptions?: string[]
+      }
+    }
+  }
+  const languageOptions = profileMessages.profile?.profileForm?.languageOptions ?? []
+  const timezoneOptions = profileMessages.profile?.profileForm?.timezoneOptions ?? []
   const [displayName, setDisplayName] = useState('')
   const [profileLoading, setProfileLoading] = useState(false)
-  const [languageLabel, setLanguageLabel] = useState(LANGUAGE_OPTIONS[0])
-  const [timezoneLabel, setTimezoneLabel] = useState(TIMEZONE_OPTIONS[0])
+  const [languageLabel, setLanguageLabel] = useState(languageOptions[0] ?? '')
+  const [timezoneLabel, setTimezoneLabel] = useState(timezoneOptions[0] ?? '')
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -68,10 +81,12 @@ export default function ProfilePage() {
     if (typeof Intl === 'undefined') return
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Kyiv'
-      if (tz.includes('Kyiv') || tz.includes('Kiev')) setTimezoneLabel('UTC+3 (Київ)')
-      else if (tz.includes('London')) setTimezoneLabel('UTC+0 (Лондон)')
-      else if (tz.includes('New_York')) setTimezoneLabel('UTC-5 (Нью-Йорк)')
+      if (tz.includes('Kyiv') || tz.includes('Kiev')) setTimezoneLabel(t('profileForm.timezoneKyiv'))
+      else if (tz.includes('London')) setTimezoneLabel(t('profileForm.timezoneLondon'))
+      else if (tz.includes('New_York')) setTimezoneLabel(t('profileForm.timezoneNewYork'))
     } catch {}
+    // Run once on mount; the locale-resolved labels are stable for the session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -92,7 +107,10 @@ export default function ProfilePage() {
     window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`)
   }, [queryClient, t, user?.id])
 
-  const initials = useMemo(() => (displayName || user?.email || 'U').charAt(0).toUpperCase(), [displayName, user?.email])
+  const initials = useMemo(
+    () => (displayName || user?.email || t('profileForm.userFallback')).charAt(0).toUpperCase(),
+    [displayName, user?.email, t],
+  )
   const formatProviderStatus = (status?: string | null) => t(`provider.status.${getProviderStatusKey(status)}`)
   const formatConnectionSummary = (connection: {
     provider_status?: string | null
@@ -150,7 +168,7 @@ export default function ProfilePage() {
       const translated = translateSupabaseError(error, supabaseErrors)
       if (translated) {
         toast.error(translated)
-      } else if (message === 'Missing email on account') {
+      } else if (message === ERR_MISSING_EMAIL) {
         toast.error(toasts('missingEmail'))
       } else {
         toast.error(message ?? toasts('profileUpdateError'))
@@ -180,10 +198,10 @@ export default function ProfilePage() {
     try {
       const email = user.email
       if (!email) {
-        throw new Error('Missing email on account')
+        throw new Error(ERR_MISSING_EMAIL)
       }
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: currentPassword })
-      if (signInError) throw new Error('Current password is incorrect')
+      if (signInError) throw new Error(ERR_CURRENT_PASSWORD_INCORRECT)
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
 
@@ -195,8 +213,8 @@ export default function ProfilePage() {
       const message = error instanceof Error ? error.message : null
       const translated = translateSupabaseError(error, supabaseErrors)
       if (translated) toast.error(translated)
-      else if (message === 'Missing email on account') toast.error(toasts('missingEmail'))
-      else if (message === 'Current password is incorrect') toast.error(toasts('currentIncorrect'))
+      else if (message === ERR_MISSING_EMAIL) toast.error(toasts('missingEmail'))
+      else if (message === ERR_CURRENT_PASSWORD_INCORRECT) toast.error(toasts('currentIncorrect'))
       else toast.error(message ?? toasts('passwordUpdateError'))
     } finally {
       setPasswordLoading(false)
@@ -218,10 +236,10 @@ export default function ProfilePage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
               <div className="avatar" style={{ width: 56, height: 56, fontSize: 22 }}>{initials}</div>
               <div>
-                <div style={{ fontWeight: 600 }}>{displayName || user?.email || 'Користувач'}</div>
+                <div style={{ fontWeight: 600 }}>{displayName || user?.email || t('profileForm.userFallback')}</div>
                 <div style={{ color: 'var(--txt-2)', fontSize: 13 }}>{user?.email ?? ''}</div>
               </div>
-              <Button variant="outline" size="sm" className="ml-auto" disabled>Змінити фото</Button>
+              <Button variant="outline" size="sm" className="ml-auto" disabled>{t('profileForm.changePhoto')}</Button>
             </div>
 
             <form onSubmit={handleProfileSubmit} style={{ display: 'grid', gap: 16 }}>
@@ -244,20 +262,20 @@ export default function ProfilePage() {
                   <Input id="email" value={user?.email ?? ''} disabled readOnly />
                 </div>
                 <div>
-                  <label htmlFor="languageLabel" className="page-sub" style={{ display: 'block', marginBottom: 6 }}>Мова інтерфейсу</label>
+                  <label htmlFor="languageLabel" className="page-sub" style={{ display: 'block', marginBottom: 6 }}>{t('profileForm.languageLabel')}</label>
                   <select id="languageLabel" className="input" value={languageLabel} onChange={(event) => setLanguageLabel(event.target.value)} disabled>
-                    {LANGUAGE_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+                    {languageOptions.map((option) => <option key={option}>{option}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="timezoneLabel" className="page-sub" style={{ display: 'block', marginBottom: 6 }}>Часовий пояс</label>
+                  <label htmlFor="timezoneLabel" className="page-sub" style={{ display: 'block', marginBottom: 6 }}>{t('profileForm.timezoneLabel')}</label>
                   <select id="timezoneLabel" className="input" value={timezoneLabel} onChange={(event) => setTimezoneLabel(event.target.value)} disabled>
-                    {TIMEZONE_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+                    {timezoneOptions.map((option) => <option key={option}>{option}</option>)}
                   </select>
                 </div>
               </div>
               <div style={{ color: 'var(--txt-3)', fontSize: 12 }}>
-                Налаштування мови та часового поясу будуть винесені в окрему backend-integrated фазу. Зараз зберігається ім’я профілю.
+                {t('profileForm.preferencesNote')}
               </div>
               <div className="page-actions" style={{ marginLeft: 0 }}>
                 <Button type="submit" isLoading={profileLoading}>{t('profileForm.save')}</Button>
@@ -279,7 +297,7 @@ export default function ProfilePage() {
               <div className="summary-list">
                 {youtubeConnections?.map((connection) => (
                   <div key={connection.id} className="stream-row" style={{ alignItems: 'flex-start' }}>
-                    <div className="stream-thumb">▶</div>
+                    <div className="stream-thumb" aria-hidden="true">{'▶'}</div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600 }}>{connection.youtube_channel_title || connection.youtube_channel_id}</div>
                       <div style={{ fontSize: 13, color: 'var(--txt-2)' }}>{formatConnectionSummary(connection)}</div>
@@ -311,7 +329,7 @@ export default function ProfilePage() {
               </div>
             ) : (
               <div className="stream-row" style={{ opacity: 0.85, alignItems: 'flex-start' }}>
-                <div className="stream-thumb">📡</div>
+                <div className="stream-thumb" aria-hidden="true">{'📡'}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600 }}>{t('provider.emptyTitle')}</div>
                   <div style={{ fontSize: 13, color: 'var(--txt-2)' }}>{t('provider.emptyDescription')}</div>

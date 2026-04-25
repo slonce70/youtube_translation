@@ -10,7 +10,17 @@
     "displayNamePlaceholder": "How teammates see you",
     "emailLabel": "Email",
     "save": "Save changes",
-    "saving": "Saving"
+    "saving": "Saving",
+    "userFallback": "User",
+    "changePhoto": "Change photo",
+    "languageLabel": "Interface language",
+    "timezoneLabel": "Timezone",
+    "languageOptions": ["🇺🇦 Ukrainian", "🇬🇧 English", "🇷🇺 Russian"],
+    "timezoneOptions": ["UTC+3 (Kyiv)", "UTC+0 (London)", "UTC-5 (New York)"],
+    "timezoneKyiv": "UTC+3 (Kyiv)",
+    "timezoneLondon": "UTC+0 (London)",
+    "timezoneNewYork": "UTC-5 (New York)",
+    "preferencesNote": "Language and timezone preferences will move to the backend-integrated phase. For now only the display name is persisted."
   },
   "passwordForm": {
     "title": "Update password",

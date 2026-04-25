@@ -1,4 +1,8 @@
 'use client'
+// TODO(sprint-3.5): full i18n migration of streaming page deferred. This is
+// the largest dashboard surface (1000+ LOC) — covered by a dedicated
+// translation pass. Disable is INTENTIONAL — see
+// docs/audit/2026-04-25_deep_multi_agent_audit.md (H8).
 /* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -19,15 +23,32 @@ import type {
   SubscriptionTierKey,
   Stream,
 } from '@/lib/types'
+import dynamic from 'next/dynamic'
 import { useDashboardContext } from '../dashboard-context'
-import { StreamBuilderModal } from './components/StreamBuilderModal'
-import { LiveEditorModal } from './components/LiveEditorModal'
-import { QualityGateModal } from './components/QualityGateModal'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamingPageData } from './hooks/useStreamingPageData'
 import { useStreamMutations, type DestinationFormState } from './hooks/useStreamMutations'
-import { AddChannelModal } from '@/components/streaming/AddChannelModal'
+
+// Heavy modals are gated by boolean state and never appear on first paint.
+// Lazy-load them so the streaming page's first-load JS shrinks by the
+// modal payload and the libraries they pull in (form + chart helpers).
+const StreamBuilderModal = dynamic(
+  () => import('./components/StreamBuilderModal').then((mod) => mod.StreamBuilderModal),
+  { ssr: false },
+)
+const LiveEditorModal = dynamic(
+  () => import('./components/LiveEditorModal').then((mod) => mod.LiveEditorModal),
+  { ssr: false },
+)
+const QualityGateModal = dynamic(
+  () => import('./components/QualityGateModal').then((mod) => mod.QualityGateModal),
+  { ssr: false },
+)
+const AddChannelModal = dynamic(
+  () => import('@/components/streaming/AddChannelModal').then((mod) => mod.AddChannelModal),
+  { ssr: false },
+)
 import {
   buildStreamIncidentNotice,
   deriveStreamState,
