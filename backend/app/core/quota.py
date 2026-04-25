@@ -10,7 +10,7 @@ from typing import Optional, Callable, List, Dict, Any, Tuple, TypedDict, cast
 from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 import logging
 from urllib.parse import urlparse
 from datetime import datetime, timezone, timedelta
@@ -24,7 +24,52 @@ from app.models.database import (
     Stream,
     SystemAlert,
 )
+from app.core.rtmp_url_validator import (
+    InvalidDestinationURL,
+    validate_destination_url,
+)
 from app.streaming.validator import VideoValidator
+
+# Postgres advisory-lock namespaces. The two-arg ``pg_advisory_xact_lock(int4, int4)``
+# form takes a (namespace, key) pair and is auto-released at transaction end.
+# We hash the user_id with ``hashtext`` (postgres built-in, returns int4) so
+# every distinct user gets a distinct lock without UUID-byte truncation
+# collisions that the original ``user_id.bytes[:8]`` scheme allowed.
+QUOTA_LOCK_NAMESPACE_START_STREAM = 0x59545253  # 'YTRS' — ascii literal
+QUOTA_LOCK_NAMESPACE_DESTINATIONS = 0x59544445  # 'YTDE'
+QUOTA_LOCK_NAMESPACE_ASSETS = 0x59544153  # 'YTAS'
+QUOTA_LOCK_NAMESPACE_STORAGE = 0x59545353  # 'YTSS'
+
+# All four namespaces share the same hash function so the same user_id maps
+# to the same key within each namespace; this keeps reads predictable in
+# pg_locks while guaranteeing no cross-namespace contention.
+
+
+async def acquire_user_quota_lock(
+    db: AsyncSession,
+    user_id: UUID,
+    namespace: int,
+) -> None:
+    """Acquire a tx-scoped advisory lock for ``(namespace, user_id)``.
+
+    The lock is released automatically when the surrounding transaction
+    commits or rolls back. Callers must therefore execute the entire
+    ``check + write`` sequence within a single transaction for the TOCTOU
+    guarantee to hold.
+
+    Uses ``hashtext`` (deterministic FNV-style 32-bit hash) to derive the
+    second key from the user UUID. Collisions are still theoretically
+    possible (32-bit space), but acceptable: a collision merely serializes
+    two unrelated users on the same lock for the duration of one quota
+    check, which is correct and benign — never a *correctness* issue.
+    """
+    await db.execute(
+        text(
+            "SELECT pg_advisory_xact_lock(:ns, hashtext(:user_id))",
+        ),
+        {"ns": namespace, "user_id": str(user_id)},
+    )
+
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +219,13 @@ class QuotaEnforcer:
         """
         Check if user can start another concurrent stream.
 
+        Holds a tx-scoped advisory lock on the user's start-stream namespace
+        for the duration of the check, so two concurrent ``POST /api/streams/{id}/start``
+        requests from the same user serialize and the count→insert race
+        cannot pass two requests through a quota of one. The lock is also
+        held by ``services/streams/control.py::_acquire_user_start_lock``
+        on the same namespace, so the check and the insert share the lock.
+
         Returns:
             bool: True if allowed
 
@@ -184,6 +236,10 @@ class QuotaEnforcer:
         await self._load_limits()
         limits = self._require_limits()
         profile = self._require_profile()
+
+        await acquire_user_quota_lock(
+            self.db, self.user_id, QUOTA_LOCK_NAMESPACE_START_STREAM
+        )
 
         # Get current active streams count
         result = await self.db.execute(
@@ -340,6 +396,10 @@ class QuotaEnforcer:
         """
         Check if user can create another asset.
 
+        Acquires an advisory lock on the assets namespace so that concurrent
+        upload-finalize requests from the same user serialize through the
+        quota check, preventing the count→insert race.
+
         Returns:
             bool: True if allowed
 
@@ -350,6 +410,10 @@ class QuotaEnforcer:
         await self._load_limits()
         limits = self._require_limits()
         profile = self._require_profile()
+
+        await acquire_user_quota_lock(
+            self.db, self.user_id, QUOTA_LOCK_NAMESPACE_ASSETS
+        )
 
         result = await self.db.execute(
             select(func.count(Asset.id)).where(Asset.user_id == self.user_id)
@@ -375,7 +439,20 @@ class QuotaEnforcer:
         return True
 
     async def ensure_destination_allowed(self, rtmps_url: str) -> None:
-        """Ensure destination URL is permitted for the user's subscription tier."""
+        """Ensure destination URL is permitted for the user's subscription tier.
+
+        Validation pipeline (defence in depth):
+
+        1. Tier-level YouTube-only enforcement runs *before* DNS so users on
+           the free tier cannot waste a DNS lookup on an attacker-controlled
+           hostname.
+        2. ``validate_destination_url`` rejects non-rtmp(s) schemes, hostnames
+           with tee meta-characters, denied/disallowed ports, and any
+           hostname that resolves to a private/loopback/link-local/reserved
+           address (SSRF / cloud-metadata mitigation).
+        3. The DNS-rebinding residual is mitigated by re-validating at
+           ``start_stream`` time — see ``services/streams/control.py``.
+        """
 
         await self.check_suspended()
         await self._load_limits()
@@ -383,26 +460,10 @@ class QuotaEnforcer:
         profile = self._require_profile()
 
         parsed = urlparse(rtmps_url or "")
+        hostname = (parsed.hostname or "").lower()
 
-        if parsed.scheme not in {"rtmps", "rtmp"}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "error": "invalid_destination",
-                    "message": "Destination URL must use rtmps scheme",
-                },
-            )
-
-        hostname = parsed.hostname or ""
-        if not hostname:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "error": "invalid_destination",
-                    "message": "Destination URL must include a hostname",
-                },
-            )
-
+        # Tier gate first — cheaper than a DNS round-trip and keeps an
+        # attacker's free-tier custom-host attempts off the resolver.
         if not limits.custom_rtmps_enabled:
             if not hostname.endswith("rtmp.youtube.com"):
                 raise HTTPException(
@@ -413,6 +474,20 @@ class QuotaEnforcer:
                         "tier": profile.subscription_tier,
                     },
                 )
+
+        try:
+            validate_destination_url(rtmps_url)
+        except InvalidDestinationURL as exc:
+            logger.warning(
+                "rejected destination URL for user=%s code=%s: %s",
+                self.user_id,
+                exc.code,
+                exc.message,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": exc.code, "message": exc.message},
+            ) from exc
 
     async def evaluate_stream_quality(
         self,
@@ -1026,6 +1101,10 @@ class QuotaEnforcer:
         """
         Check if user can create another destination.
 
+        Acquires an advisory lock on the destinations namespace so concurrent
+        ``POST /api/destinations`` requests from the same user serialize
+        through the quota gate.
+
         Returns:
             bool: True if allowed
 
@@ -1036,6 +1115,10 @@ class QuotaEnforcer:
         await self._load_limits()
         limits = self._require_limits()
         profile = self._require_profile()
+
+        await acquire_user_quota_lock(
+            self.db, self.user_id, QUOTA_LOCK_NAMESPACE_DESTINATIONS
+        )
 
         result = await self.db.execute(
             select(func.count(Destination.id)).where(
