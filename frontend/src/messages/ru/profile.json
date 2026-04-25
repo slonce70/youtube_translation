@@ -10,7 +10,17 @@
     "displayNamePlaceholder": "Как вас видят коллеги",
     "emailLabel": "Электронная почта",
     "save": "Сохранить изменения",
-    "saving": "Сохранение"
+    "saving": "Сохранение",
+    "userFallback": "Пользователь",
+    "changePhoto": "Сменить фото",
+    "languageLabel": "Язык интерфейса",
+    "timezoneLabel": "Часовой пояс",
+    "languageOptions": ["🇺🇦 Українська", "🇬🇧 English", "🇷🇺 Русский"],
+    "timezoneOptions": ["UTC+3 (Киев)", "UTC+0 (Лондон)", "UTC-5 (Нью-Йорк)"],
+    "timezoneKyiv": "UTC+3 (Киев)",
+    "timezoneLondon": "UTC+0 (Лондон)",
+    "timezoneNewYork": "UTC-5 (Нью-Йорк)",
+    "preferencesNote": "Настройки языка и часового пояса будут вынесены в отдельную backend-integrated фазу. Сейчас сохраняется только имя профиля."
   },
   "passwordForm": {
     "title": "Обновление пароля",

@@ -1,0 +1,20 @@
+{
+  "broadcaster": {
+    "title": "Broadcaster Career",
+    "level": "Level {level}",
+    "hoursStreamed": "{hours} hrs streamed",
+    "nextLevelAt": "Next: {hours} hrs",
+    "maxLevelReached": "Max Level Reached!",
+    "experienceLabel": "Experience",
+    "experienceValue": "{xp} XP",
+    "libraryLabel": "Library",
+    "clipsCount": "{count} Clips",
+    "levels": {
+      "novice": "On Air Novice",
+      "rising": "Rising Streamer",
+      "pro": "Broadcast Pro",
+      "master": "Channel Master",
+      "legend": "Legend"
+    }
+  }
+}

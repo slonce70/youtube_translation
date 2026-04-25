@@ -60,14 +60,22 @@ describe('DashboardPage', () => {
     const quotaWithTypedTier = { ...quotaData, tier } as typeof quotaData & { tier: SubscriptionTierKey }
 
     const contextValue = {
-      user: { id: 'user-1' },
+      user: {
+        id: 'user-1',
+        aud: 'authenticated',
+        role: 'authenticated',
+        email: 'test@example.com',
+        app_metadata: {},
+        user_metadata: {},
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
       signOut: jest.fn(),
       refreshUser: jest.fn(),
       quota: quotaWithTypedTier,
       quotaLoading: false,
       currentTier: tier,
       planDetail,
-    }
+    } as unknown as Parameters<typeof DashboardContext.Provider>[0]['value']
 
     return render(
       <QueryClientProvider client={queryClient}>

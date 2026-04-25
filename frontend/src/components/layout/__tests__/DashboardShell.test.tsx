@@ -67,14 +67,22 @@ function renderShell({
     <QueryClientProvider client={queryClient}>
       <DashboardContext.Provider
         value={{
-          user: { id: 'user-1' },
+          user: {
+            id: 'user-1',
+            aud: 'authenticated',
+            role: 'authenticated',
+            email: 'test@example.com',
+            app_metadata: {},
+            user_metadata: {},
+            created_at: '2026-01-01T00:00:00.000Z',
+          },
           signOut: jest.fn(async () => {}),
           refreshUser: jest.fn(async () => {}),
           quota: undefined,
           quotaLoading: false,
           currentTier: tier,
           planDetail: PLAN_DETAILS[tier],
-        }}
+        } as unknown as Parameters<typeof DashboardContext.Provider>[0]['value']}
       >
         <DashboardShell userName="Trend" userEmail="trend@example.com" onSignOut={jest.fn()}>
           <div>child content</div>

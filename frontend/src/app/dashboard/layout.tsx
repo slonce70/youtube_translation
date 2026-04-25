@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
+import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import { supabase, waitForAuth } from '@/lib/supabase'
 import { LoadingState } from '@/components/LoadingState'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -22,18 +22,27 @@ const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
 const DEV_USER_EMAIL = process.env.NEXT_PUBLIC_DEV_USER_EMAIL ?? 'dev@example.com'
 const DEV_USER_ID = process.env.NEXT_PUBLIC_DEV_USER_ID ?? 'dev-user-id'
 
-function buildDevBypassUser() {
+// Dev-bypass user shape: a minimal subset of the Supabase User contract
+// (id + email + user_metadata) that matches what the dashboard reads. The
+// rest of the fields are filled with sensible empties so the value is
+// type-compatible with `User` for the dashboard's read-only consumers.
+function buildDevBypassUser(): User {
+  const now = new Date().toISOString()
   return {
     id: DEV_USER_ID,
+    aud: 'authenticated',
+    role: 'authenticated',
     email: DEV_USER_EMAIL,
+    app_metadata: {},
     user_metadata: { display_name: readDevBypassDisplayName() },
-  }
+    created_at: now,
+  } as User
 }
 
 export default function DashboardLayout({ children }: Props) {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [authReady, setAuthReady] = useState(false)
 

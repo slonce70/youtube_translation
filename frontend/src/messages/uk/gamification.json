@@ -1,0 +1,20 @@
+{
+  "broadcaster": {
+    "title": "Кар'єра ведучого",
+    "level": "Рівень {level}",
+    "hoursStreamed": "{hours} год трансляцій",
+    "nextLevelAt": "Далі: {hours} год",
+    "maxLevelReached": "Максимальний рівень!",
+    "experienceLabel": "Досвід",
+    "experienceValue": "{xp} XP",
+    "libraryLabel": "Бібліотека",
+    "clipsCount": "{count} кліпів",
+    "levels": {
+      "novice": "Новачок ефіру",
+      "rising": "Молодий стрімер",
+      "pro": "Профі трансляцій",
+      "master": "Майстер каналу",
+      "legend": "Легенда"
+    }
+  }
+}
