@@ -137,13 +137,23 @@ sprint-6-merged       — polish (3 runbooks, hot-swap + rotation E2E tests, das
 
 ---
 
-## What's deferred + tracked (post-Sprint 6)
+## What's deferred + tracked (post-Sprint 7)
 
-1. **Full i18n migration of 3 remaining large pages** (library, streaming, StreamBuilderModal). Tracked via `check-i18n-disables.js` baseline (3/3 grandfathered after Sprint 6.6 lifted dashboard root).
-2. **Landing RSC conversion** (Sprint 3.8). Requires switching off framer-motion or to a server-friendly motion library.
-3. **God-module splits** (Sprint 5.1–5.3). `ffmpeg_manager.py` (1858 LOC), `quota.py` (1258 LOC after additions), `services/streams/control.py` (1047 LOC) still > 800 LOC. Helpers extracted but not split into separate modules — deferred to avoid merge-hell with Sprint 2 security fixes still landing.
+1. **~~Full i18n migration of 3 remaining large pages~~** — **CLOSED in Sprint 7.** All three (StreamBuilderModal in 7.1, streaming/page.tsx in 7.2, library/page.tsx in 7.3) fully migrated to keyed translations. `check-i18n-disables.js` baseline is now empty (0/0 grandfathered) — any new disable directive fails CI.
+2. **Landing RSC conversion** (Sprint 3.8 / Sprint 9). 9 landing components import `framer-motion` (HeroSection, FeaturesGrid, BenefitsSection, HowItWorks, CTASection, PricingCards, ComparisonTable, LandingNavBar). Requires either (a) replacing motion with CSS keyframes per-section, or (b) switching to `motion/react` server build. Both options need designer/UX sign-off on visual parity. Deferred to a dedicated UI sprint with design review.
+3. **God-module splits** (Sprint 5.1–5.3 / Sprint 8). `ffmpeg_manager.py` (2163 LOC), `core/quota.py` (1305 LOC), `services/streams/control.py` (1057 LOC) remain > 800 LOC. Per the original plan: "Run only after Sprints 1–4 stable ≥ 1 week" — the stability gate has not yet elapsed since Sprint 4 merged. Premature split would risk merge-hell with security-touching modules and SQLAlchemy mapper-registration ordering. Re-evaluate after 1 week of production stability.
 4. **24-hour staging soak** with active RTMPS stream. Operator-driven; Sprint 2 plan called for it pre-merge to prod.
-5. **Push to `origin/main`**. All 25 commits + 7 tags are local. Operator authorizes when ready (`git push origin main && git push origin --tags`).
+5. **Push to `origin/main`**. All 28 commits + 8 tags are local. Operator authorizes when ready (`git push origin main && git push origin --tags`).
+
+### Sprint 7 summary (i18n closure)
+
+| File | LOC | Disable lifted | Keys added |
+|---|---|---|---|
+| StreamBuilderModal.tsx | 552 | Sprint 7.1 | streaming.builder.* (~50) |
+| streaming/page.tsx | 1052 | Sprint 7.2 | streaming.page.{newStream, channelsTitle, destination*, tabs, statusLabels, incidentLabel, scheduled, archive, runtimeContext, incidentDigest} |
+| library/page.tsx | 1229 | Sprint 7.3 | library.page.{header.usedFromLimit, density, uploadAria/Button, dropZone, filtersExtra, sortShort, dropEmpty, uploadStatus} |
+
+Sprint 7 gates: lint (max-warnings 0) ✓, type-check ✓, i18n:check (uk/en/ru parity, 0/0 baseline) ✓, jest 174/174 ✓.
 
 ---
 
