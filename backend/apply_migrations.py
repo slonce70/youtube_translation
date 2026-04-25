@@ -1443,13 +1443,28 @@ async def main():
     print("🚀 YouTube Streaming Platform - Database Migration")
     print("=" * 60)
 
-    # Create async engine with asyncpg
+    # Create async engine with asyncpg.
+    #
+    # Important: we drive the migration runner in AUTOCOMMIT mode rather
+    # than ``engine.begin()``'s wrapping transaction. PR #50 first tried the
+    # natural ``async with engine.begin()`` idiom, but on prod (SQLAlchemy
+    # 2.0.35 + asyncpg 0.29.0 + Postgres 17) the DDL applied to the
+    # in-transaction ``conn`` was *visible inside the connection* (so
+    # ``verify_migration`` returned True) but *not persisted* after exit —
+    # subsequent backend boots crashed with ``UndefinedColumnError`` and
+    # the next deploy showed migration 037 as Pending again. The exact
+    # mechanism (asyncpg/DDL/savepoint interaction) has not been root-caused;
+    # AUTOCOMMIT side-steps the entire question by issuing each statement
+    # as its own COMMIT-ed unit, which is also how the ``-- @autocommit``
+    # migrations already run today. Migrations are written with
+    # ``IF NOT EXISTS`` guards so per-statement autocommit is safe.
     database_url = settings.database_url.replace(
         "postgresql://", "postgresql+asyncpg://"
     )
     engine = create_async_engine(database_url, echo=False, future=True)
 
-    async with engine.begin() as conn:
+    async with engine.connect() as conn:
+        conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
         # Fresh local databases need the bootstrap schema before status detection.
         if not await check_table_exists(conn, "user_profiles"):
             print("\n🧱 Bootstrapping local initial schema...")
@@ -1457,8 +1472,11 @@ async def main():
                 engine, conn, "migrations/000_local_initial_schema.sql"
             )
             if not success:
-                print("\n❌ Local bootstrap failed! Rolling back...")
-                await conn.rollback()
+                print("\n❌ Local bootstrap failed.")
+                # AUTOCOMMIT mode — there is no wrapping transaction to
+                # roll back. Each statement that succeeded is already
+                # persisted; halting here just stops further migrations
+                # from running.
                 return
 
         # Check current migration status
@@ -1522,8 +1540,10 @@ async def main():
 
             success = await apply_migration(engine, conn, migration_file)
             if not success:
-                print("\n❌ Migration failed! Rolling back...")
-                await conn.rollback()
+                # AUTOCOMMIT mode — every successful prior statement is
+                # already persisted; halt further migrations rather than
+                # attempt a rollback that doesn't exist semantically.
+                print(f"\n❌ Migration {migration_file} failed; halting.")
                 return
 
             # Verify migration
@@ -1533,17 +1553,8 @@ async def main():
             else:
                 print("⚠️  Verification failed - please check manually")
 
-        # NOTE: do NOT call ``await conn.commit()`` here. ``engine.begin()``
-        # already wraps the block in a managed transaction and auto-commits
-        # on clean exit. Calling ``conn.commit()`` deactivates the
-        # transaction; SQLAlchemy's RootTransaction.__exit__ then sees
-        # ``is_active == False`` and follows the rollback branch — which on
-        # asyncpg with PostgreSQL silently *unwinds* the previously
-        # committed DDL on some driver versions, manifesting as
-        # "Successfully applied" + "Verification passed" + the column is
-        # absent on every subsequent connection. Leaving the implicit
-        # commit-on-exit avoids the toggle.
-        print("\n💾 Migrations staged in transaction; committing on context exit…")
+        # AUTOCOMMIT mode: each statement is already committed.
+        print("\n💾 All migrations applied (AUTOCOMMIT mode — already persisted).")
 
         print("\n" + "=" * 60)
         print("✅ All migrations applied successfully!")

@@ -44,7 +44,7 @@ def test_harden_invokes_setsid_and_prctl_on_linux() -> None:
     fake_libc = MagicMock()
     fake_libc.prctl.return_value = 0  # success
 
-    with patch("app.streaming.ffmpeg_manager._load_libc", return_value=fake_libc), patch(
+    with patch("app.streaming.ffmpeg_helpers._load_libc", return_value=fake_libc), patch(
         "os.setsid"
     ) as fake_setsid:
         _harden_ffmpeg_child()
@@ -64,14 +64,14 @@ def test_harden_invokes_setsid_and_prctl_on_linux() -> None:
 def test_harden_swallows_setsid_failure() -> None:
     """OSError from setsid (e.g. already a session leader) must not propagate."""
     with patch("os.setsid", side_effect=OSError("already a session leader")), patch(
-        "app.streaming.ffmpeg_manager._load_libc", return_value=None
+        "app.streaming.ffmpeg_helpers._load_libc", return_value=None
     ):
         _harden_ffmpeg_child()  # Must not raise.
 
 
 def test_harden_swallows_libc_unavailable() -> None:
     """When libc cannot be loaded (e.g. macOS), the function must still return cleanly."""
-    with patch("app.streaming.ffmpeg_manager._load_libc", return_value=None), patch(
+    with patch("app.streaming.ffmpeg_helpers._load_libc", return_value=None), patch(
         "os.setsid"
     ):
         _harden_ffmpeg_child()  # Must not raise.
@@ -83,7 +83,7 @@ def test_harden_continues_when_prctl_returns_error() -> None:
     fake_libc = MagicMock()
     fake_libc.prctl.return_value = -1  # failure
 
-    with patch("app.streaming.ffmpeg_manager._load_libc", return_value=fake_libc), patch(
+    with patch("app.streaming.ffmpeg_helpers._load_libc", return_value=fake_libc), patch(
         "os.setsid"
     ), patch("os.write") as fake_write:
         _harden_ffmpeg_child()
