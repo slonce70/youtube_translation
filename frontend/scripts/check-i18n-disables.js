@@ -22,13 +22,10 @@ const PATTERN = /eslint-disable[^\n]*i18next\/no-literal-string/
 // Baseline: list of files where the disable is intentional + audited.
 // Anything beyond this set causes a non-zero exit.
 //
-// Sprint 6.6 lifted dashboard/page.tsx (full translation pass).
-// Three remaining files tracked for a future translator-led migration.
-const ALLOWED_FILES = new Set([
-  'app/dashboard/library/page.tsx',
-  'app/dashboard/streaming/components/StreamBuilderModal.tsx',
-  'app/dashboard/streaming/page.tsx',
-])
+// Sprint 6.6 lifted dashboard/page.tsx; Sprint 7.1 lifted StreamBuilderModal.tsx;
+// Sprint 7.2 lifted streaming/page.tsx; Sprint 7.3 lifted library/page.tsx.
+// All dashboard pages are now fully i18n'd. Baseline is empty — no exceptions allowed.
+const ALLOWED_FILES = new Set()
 
 function* walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

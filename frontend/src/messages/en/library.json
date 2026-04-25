@@ -53,7 +53,44 @@
     "loading": "Loading files...",
     "header": {
       "title": "Files",
-      "description": "Manage your media files and playlists"
+      "description": "Manage your media files and playlists",
+      "usedFromLimit": "{used} used of {limit} GB"
+    },
+    "density": {
+      "grid": "Grid",
+      "list": "List"
+    },
+    "uploadAria": "Upload files",
+    "uploadButton": "⬆ Upload",
+    "dropZone": {
+      "title": "Drop the file here",
+      "description": "We'll add it to uploads and prepare it for streaming."
+    },
+    "filtersExtra": {
+      "all": "All",
+      "video": "🎬 Video",
+      "audio": "🎵 Audio",
+      "archives": "📦 Archives"
+    },
+    "notImplemented": {
+      "archives": "Archives"
+    },
+    "sortShort": {
+      "newest": "Date ↓",
+      "oldest": "Date ↑",
+      "nameAsc": "Name A-Z",
+      "sizeDesc": "Size ↓"
+    },
+    "dropEmpty": {
+      "title": "Upload file",
+      "description": "or drag here"
+    },
+    "uploadStatus": {
+      "title": "Uploads",
+      "preparing": "Preparing files for processing…",
+      "processing": "Processing",
+      "complete": "Complete",
+      "error": "Error"
     },
     "tabs": {
       "assets": "Files ({count})",
