@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 
 # ---- Stage 1: builder ----
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -20,7 +20,7 @@ COPY requirements.txt .
 RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
 # ---- Stage 2: runtime ----
-FROM python:3.11-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
