@@ -53,7 +53,44 @@
     "loading": "Завантаження файлів...",
     "header": {
       "title": "Файли",
-      "description": "Керуйте медіафайлами та плейлистами"
+      "description": "Керуйте медіафайлами та плейлистами",
+      "usedFromLimit": "{used} використано з {limit} ГБ"
+    },
+    "density": {
+      "grid": "Сітка",
+      "list": "Список"
+    },
+    "uploadAria": "Завантажити файли",
+    "uploadButton": "⬆ Завантажити",
+    "dropZone": {
+      "title": "Перетягніть файл сюди",
+      "description": "Ми додамо його у завантаження та обробимо для стріму."
+    },
+    "filtersExtra": {
+      "all": "Всі",
+      "video": "🎬 Відео",
+      "audio": "🎵 Аудіо",
+      "archives": "📦 Архіви"
+    },
+    "notImplemented": {
+      "archives": "Архіви"
+    },
+    "sortShort": {
+      "newest": "Дата ↓",
+      "oldest": "Дата ↑",
+      "nameAsc": "Назва А-Я",
+      "sizeDesc": "Розмір ↓"
+    },
+    "dropEmpty": {
+      "title": "Завантажити файл",
+      "description": "або перетягніть сюди"
+    },
+    "uploadStatus": {
+      "title": "Завантаження",
+      "preparing": "Готуємо файли до обробки…",
+      "processing": "Обробляється",
+      "complete": "Завершено",
+      "error": "Помилка"
     },
     "tabs": {
       "assets": "Файли ({count})",
