@@ -1,546 +1,660 @@
 'use client'
-// TODO(sprint-3.5): RSC conversion of landing sections deferred. The current
-// FeaturesGrid / BenefitsSection / HowItWorks / StatsSection / CTASection /
-// PricingCards components all import `framer-motion` and are therefore
-// client-only. Converting to RSC requires either dropping framer-motion in
-// favor of CSS-keyframe animations or switching to a server-friendly motion
-// library (e.g. `motion/react` server build). Tracked separately so this
-// sprint stays scoped to non-visual changes.
+// Loopcast landing (Sprint 9 redesign).
+// Full re-skin per Anthropic Design handoff bundle (2026-04-25).
+// Brand: dark editorial · OLED-black bg · oklch(0.72 0.18 295) accent · Instrument Serif + Geist + JetBrains Mono.
 
-import { useCallback, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { useTranslations } from 'next-intl'
-import type { LucideIcon } from 'lucide-react'
-import {
-  ArrowRight,
-  AudioLines,
-  CheckCircle2,
-  CloudUpload,
-  Gauge,
-  Layers3,
-  PlayCircle,
-  Radio,
-  RefreshCcw,
-  ShieldCheck,
-  Sparkles,
-  Workflow,
-} from 'lucide-react'
-import { PLAN_DETAILS, PLAN_KEYS, type PlanKey } from '@/lib/plans'
-import { Button } from '../ui/Button'
-import { LandingNavBar } from './LandingNavBar'
-import { Footer } from './Footer'
-import { ImmersiveBackground } from './ImmersiveBackground'
+import { useTranslations, useMessages } from 'next-intl'
+import { LoopcastDemo } from './LoopcastDemo'
+import './loopcast.css'
+
+// next-intl `t.raw()` is unavailable when messages are precompiled (e.g. in
+// jsdom test runs); use `useMessages()` for raw arrays/objects instead.
+type LoopcastMessages = {
+  landing: {
+    loopcast: {
+      ticker: { items: string[] }
+      proof: { days: string[] }
+      testimonials: { items: Array<{ quote: string; name: string; role: string; avatar: string }> }
+      faq: { items: Array<{ q: string; a: string }> }
+      pricing: {
+        tiers: Array<{
+          name: string
+          price: string
+          sub: string
+          tag: string | null
+          list: string[]
+          cta: string
+          featured: boolean
+        }>
+      }
+    }
+  }
+}
 
 const Hero3DGlobe = dynamic(() => import('./Hero3DGlobe').then((m) => m.Hero3DGlobe), { ssr: false })
 
-type FeatureCard = {
-  key: string
-  icon: LucideIcon
-  accent: string
-  title: string
-  description: string
-}
-
-type StepCard = {
-  key: string
-  icon: LucideIcon
-  title: string
-  description: string
-}
-
-type BenefitCard = {
-  key: string
-  icon: LucideIcon
-  title: string
-  description: string
-}
-
 export function HomePageClient() {
   const router = useRouter()
-  const heroT = useTranslations('landing.hero')
-  const navT = useTranslations('landing.nav')
-  const featuresT = useTranslations('landing.features')
-  const howT = useTranslations('landing.howItWorks')
-  const statsT = useTranslations('landing.stats')
-  const pricingT = useTranslations('landing.pricing')
-  const benefitsT = useTranslations('landing.benefits')
-  const ctaT = useTranslations('landing.cta')
 
-  const handleStartStreaming = useCallback(() => {
-    router.push('/login')
-  }, [router])
-
-  const metrics = useMemo(() => {
-    const storageMax = Math.max(...PLAN_KEYS.map((key) => PLAN_DETAILS[key].storageGb))
-    const streamsMax = Math.max(...PLAN_KEYS.map((key) => PLAN_DETAILS[key].streams))
-    const destinationsMax = Math.max(...PLAN_KEYS.map((key) => PLAN_DETAILS[key].destinations))
-
-    return [
-      {
-        label: statsT('storageMax.label'),
-        value: `${storageMax} GB`,
-        description: statsT('storageMax.description', { value: storageMax }),
-      },
-      {
-        label: statsT('streamsMax.label'),
-        value: `${streamsMax}x 24/7`,
-        description: statsT('streamsMax.description'),
-      },
-      {
-        label: statsT('destinationsMax.label'),
-        value: `${destinationsMax}`,
-        description: statsT('destinationsMax.description'),
-      },
-      {
-        label: statsT('resolutionMax.label'),
-        value: '4K60',
-        description: statsT('resolutionMax.description', { value: '2160p' }),
-      },
-    ]
-  }, [statsT])
-
-  const featureCards = useMemo<FeatureCard[]>(
-    () => [
-      {
-        key: 'streaming',
-        icon: Radio,
-        accent: 'from-[#ff4a62]/30 to-[#ff9e7a]/10',
-        title: featuresT('items.streaming.title'),
-        description: featuresT('items.streaming.description'),
-      },
-      {
-        key: 'multiChannel',
-        icon: Layers3,
-        accent: 'from-[#66e6ff]/28 to-[#7b8cff]/12',
-        title: featuresT('items.multiChannel.title'),
-        description: featuresT('items.multiChannel.description'),
-      },
-      {
-        key: 'quality',
-        icon: ShieldCheck,
-        accent: 'from-[#8fb3ff]/24 to-[#66e6ff]/10',
-        title: featuresT('items.quality.title'),
-        description: featuresT('items.quality.description'),
-      },
-      {
-        key: 'schedule',
-        icon: Workflow,
-        accent: 'from-[#73f1c5]/24 to-[#66e6ff]/12',
-        title: featuresT('items.schedule.title'),
-        description: featuresT('items.schedule.description'),
-      },
-      {
-        key: 'uploads',
-        icon: CloudUpload,
-        accent: 'from-[#ffd06e]/26 to-[#ff4a62]/8',
-        title: featuresT('items.uploads.title'),
-        description: featuresT('items.uploads.description'),
-      },
-      {
-        key: 'quota',
-        icon: Gauge,
-        accent: 'from-[#a18fff]/22 to-[#66e6ff]/10',
-        title: featuresT('items.quota.title'),
-        description: featuresT('items.quota.description'),
-      },
-    ],
-    [featuresT]
-  )
-
-  const steps = useMemo<StepCard[]>(
-    () => [
-      {
-        key: 'upload',
-        icon: CloudUpload,
-        title: howT('steps.upload.title'),
-        description: howT('steps.upload.description'),
-      },
-      {
-        key: 'playlist',
-        icon: PlayCircle,
-        title: howT('steps.playlist.title'),
-        description: howT('steps.playlist.description'),
-      },
-      {
-        key: 'stream',
-        icon: Radio,
-        title: howT('steps.stream.title'),
-        description: howT('steps.stream.description'),
-      },
-      {
-        key: 'monitor',
-        icon: RefreshCcw,
-        title: howT('steps.monitor.title'),
-        description: howT('steps.monitor.description'),
-      },
-    ],
-    [howT]
-  )
-
-  const highlightedPlans = useMemo<PlanKey[]>(() => ['free', 'fhd_flow', 'uhd_boost'], [])
-
-  const benefitCards = useMemo<BenefitCard[]>(
-    () => [
-      {
-        key: 'quality',
-        icon: CheckCircle2,
-        title: benefitsT('items.quality.title'),
-        description: benefitsT('items.quality.description'),
-      },
-      {
-        key: 'secure',
-        icon: ShieldCheck,
-        title: benefitsT('items.secure.title'),
-        description: benefitsT('items.secure.description'),
-      },
-      {
-        key: 'simple',
-        icon: Workflow,
-        title: benefitsT('items.simple.title'),
-        description: benefitsT('items.simple.description'),
-      },
-      {
-        key: 'support',
-        icon: AudioLines,
-        title: benefitsT('items.support.title'),
-        description: benefitsT('items.support.description'),
-      },
-    ],
-    [benefitsT]
-  )
-
-  const titleParts = useMemo(() => {
-    const parts = heroT('title').trim().split(/\s+/)
-    // Accent the last word only — keeps the lead line unbroken across locales
-    // and prevents an orphan word on its own line.
-    const accentStart = Math.max(parts.length - 1, 0)
-    return {
-      lead: parts.slice(0, accentStart).join(' '),
-      accent: parts.slice(accentStart).join(' '),
+  // Cursor spotlight + magnetic hover for cards/buttons
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const elements = document.querySelectorAll<HTMLElement>('.loopcast-root .lpc-step, .loopcast-root .lpc-feat')
+      elements.forEach((el) => {
+        const r = el.getBoundingClientRect()
+        const mx = ((e.clientX - r.left) / r.width) * 100
+        const my = ((e.clientY - r.top) / r.height) * 100
+        el.style.setProperty('--mx', `${mx}%`)
+        el.style.setProperty('--my', `${my}%`)
+      })
     }
-  }, [heroT])
+    window.addEventListener('mousemove', onMove)
+    return () => window.removeEventListener('mousemove', onMove)
+  }, [])
 
-  const heroTrustPoints = useMemo(() => {
-    return heroT('trustIndicator')
-      .split(/\s+[•·]\s+/)
-      .filter(Boolean)
-  }, [heroT])
+  // Scroll reveal
+  useEffect(() => {
+    const els = document.querySelectorAll('.loopcast-root .lpc-reveal')
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) e.target.classList.add('lpc-in')
+        })
+      },
+      { threshold: 0.1 }
+    )
+    els.forEach((el) => io.observe(el))
+    return () => io.disconnect()
+  }, [])
 
-  const ctaTrustIndicators = useMemo(
-    () => [
-      ctaT('trustIndicators.noCard'),
-      ctaT('trustIndicators.freeStorage'),
-      ctaT('trustIndicators.cancelAnytime'),
-    ],
-    [ctaT]
-  )
+  const goLogin = () => router.push('/login')
 
   return (
-    <div className="stream-v3-shell min-h-screen">
-      <ImmersiveBackground />
-      <LandingNavBar onStartStreaming={handleStartStreaming} />
-
-      <main className="relative z-10">
-        <section className="px-4 pb-8 pt-3 sm:px-6 sm:pt-4 lg:px-8 lg:pt-5">
-          <div className="stream-v3-container">
-            <div className="stream-v3-hero-grid">
-              <div className="max-w-2xl xl:max-w-[42rem]">
-                <div className="stream-v3-kicker">
-                  <Sparkles className="h-4 w-4 text-[#ffd06e]" />
-                  <span>{heroT('badge')}</span>
-                </div>
-
-                <div className="mt-7 space-y-5 xl:space-y-6">
-                  <h1 className="stream-v3-display stream-v3-hero-title text-[clamp(3rem,6.4vw,5.15rem)] leading-[0.92] text-white">
-                    <span>{titleParts.lead} </span>
-                    <span className="stream-v3-title-accent stream-v3-gradient-text">{titleParts.accent}</span>
-                  </h1>
-
-                  <p className="stream-v3-hero-subtitle max-w-[36rem] text-[clamp(1.03rem,1.65vw,1.24rem)] leading-[1.62] text-slate-300 sm:leading-[1.72]">
-                    {heroT('subtitle')}
-                  </p>
-                </div>
-
-                <div className="stream-v3-hero-actions">
-                  <div className="flex flex-col gap-4 sm:flex-row">
-                    <Button
-                      size="lg"
-                      className="stream-v3-primary-btn rounded-2xl px-7 py-4 text-base"
-                      onClick={() => {
-                        void handleStartStreaming()
-                      }}
-                    >
-                      {heroT('primaryCTA')}
-                      <ArrowRight className="ml-2 h-5 w-5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="lg"
-                      className="stream-v3-secondary-btn rounded-2xl px-7 py-4 text-base text-white hover:text-white"
-                      onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
-                    >
-                      {heroT('secondaryCTA')}
-                    </Button>
-                  </div>
-
-                  <div className="stream-v3-pill-row text-sm text-slate-300">
-                    <span className="stream-v3-pill">
-                      <CheckCircle2 className="h-4 w-4 text-[#73f1c5]" />
-                      {heroTrustPoints[0] ?? heroT('trustIndicator')}
-                    </span>
-                    <span className="stream-v3-pill">
-                      <Layers3 className="h-4 w-4 text-[#66e6ff]" />
-                      {heroTrustPoints[1] ?? statsT('streamsMax.label')}
-                    </span>
-                    <span className="stream-v3-pill">
-                      <ShieldCheck className="h-4 w-4 text-[#ffd06e]" />
-                      {statsT('resolutionMax.label')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="stream-v3-stage stream-v3-stage--globe">
-                <div className="stream-v3-stage-glow" />
-                <div className="stream-v3-globe-frame">
-                  <Hero3DGlobe />
-                  <div className="stream-v3-globe-overlay">
-                    <span className="stream-v3-stage-status">
-                      <span className="stream-v3-globe-pulse" aria-hidden="true" />
-                      {heroT('scene.statusLive')}
-                    </span>
-                    <div className="stream-v3-globe-meta">
-                      <div className="stream-v3-stage-label">{heroT('panel.healthLabel')}</div>
-                      <div className="stream-v3-globe-meta__value">99.98%</div>
-                      <p className="stream-v3-globe-meta__text">{heroT('panel.healthDescription')}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-20 grid gap-4 md:grid-cols-2 xl:mt-16 xl:grid-cols-4">
-              {metrics.map((metric) => (
-                <article key={metric.label} className="stream-v3-metric-card">
-                  <div className="stream-v3-stage-label">{metric.label}</div>
-                  <div className="stream-v3-display stream-v3-metric-card__value">{metric.value}</div>
-                  <p className="stream-v3-metric-card__meta">{metric.description}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="features" className="px-4 py-10 sm:px-6 lg:px-8">
-          <div className="stream-v3-container stream-v3-section">
-            <div className="max-w-3xl">
-              <div className="stream-v3-kicker">{navT('features')}</div>
-              <h2 className="stream-v3-display mt-5 text-4xl text-white md:text-5xl">
-                <span className="stream-v3-gradient-text">{featuresT('title')}</span>
-              </h2>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">{featuresT('intro')}</p>
-            </div>
-
-            <div className="mt-10 grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-              {featureCards.map((feature) => {
-                const Icon = feature.icon
-                return (
-                  <article key={feature.key} className="stream-v3-feature-card">
-                    <div className={`stream-v3-feature-card__glow bg-gradient-to-br ${feature.accent}`} />
-                    <div className="stream-v3-feature-card__icon">
-                      <Icon className="h-5 w-5 text-white" />
-                    </div>
-                    <h3 className="mt-6 text-xl font-semibold text-white">{feature.title}</h3>
-                    <p className="mt-4 text-sm leading-7 text-slate-300">{feature.description}</p>
-                  </article>
-                )
-              })}
-            </div>
-          </div>
-        </section>
-
-        <section id="how-it-works" className="px-4 py-10 sm:px-6 lg:px-8">
-          <div className="stream-v3-container stream-v3-section stream-v3-section--accent">
-            <div className="max-w-3xl">
-              <div className="stream-v3-kicker">{howT('eyebrow')}</div>
-              <h2 className="stream-v3-display mt-5 text-4xl text-white md:text-5xl">{howT('title')}</h2>
-            </div>
-
-            <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-              {steps.map((step, index) => {
-                const Icon = step.icon
-                return (
-                  <article key={step.key} className="stream-v3-step-card">
-                    <div className="flex items-center justify-between">
-                      <span className="stream-v3-step-index">{String(index + 1).padStart(2, '0')}</span>
-                      <span className="stream-v3-step-icon">
-                        <Icon className="h-5 w-5 text-white" />
-                      </span>
-                    </div>
-                    <h3 className="mt-8 text-xl font-semibold text-white">{step.title}</h3>
-                    <p className="mt-4 text-sm leading-7 text-slate-300">{step.description}</p>
-                  </article>
-                )
-              })}
-            </div>
-          </div>
-        </section>
-
-        <section id="pricing" className="px-4 py-10 sm:px-6 lg:px-8">
-          <div className="stream-v3-container stream-v3-section">
-            <div className="max-w-3xl">
-              <div className="stream-v3-kicker">{pricingT('eyebrow')}</div>
-              <h2 className="stream-v3-display mt-5 text-4xl text-white md:text-5xl">
-                <span className="stream-v3-gradient-text">{pricingT('title')}</span>
-              </h2>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">{pricingT('subtitle')}</p>
-            </div>
-
-            <div className="mt-10 grid gap-5 xl:grid-cols-3">
-              {highlightedPlans.map((planKey) => {
-                const detail = PLAN_DETAILS[planKey]
-                const badge =
-                  planKey === 'free'
-                    ? pricingT('freeCard.badge')
-                    : planKey === 'fhd_flow'
-                      ? pricingT('planLabels.fhd_flow.badge')
-                      : planKey === 'uhd_boost'
-                        ? pricingT('planLabels.uhd_boost.badge')
-                        : pricingT('eyebrow')
-                const isPopular = planKey === 'fhd_flow'
-
-                return (
-                  <article
-                    key={planKey}
-                    className={isPopular ? 'stream-v3-pricing-card stream-v3-pricing-card--featured' : 'stream-v3-pricing-card'}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="stream-v3-stage-label">
-                          {badge}
-                        </div>
-                        <h3 className="mt-3 text-2xl font-semibold text-white">
-                          {pricingT(`planLabels.${planKey}.name`)}
-                        </h3>
-                        <p className="mt-3 text-sm leading-6 text-slate-300">
-                          {planKey === 'free'
-                            ? pricingT('freeCard.subtitle')
-                            : pricingT(`planLabels.${planKey}.tagline`)}
-                        </p>
-                      </div>
-                      {isPopular ? <span className="stream-v3-pricing-badge">{pricingT('popularBadge')}</span> : null}
-                    </div>
-
-                    <div className="mt-8 flex items-end gap-2">
-                      <span className="stream-v3-display text-5xl text-white">${detail.priceUsd}</span>
-                      <span className="pb-2 text-sm text-slate-400">
-                        {detail.priceUsd === 0 ? pricingT('freeForever') : pricingT('billingPeriod')}
-                      </span>
-                    </div>
-
-                    <div className="mt-8 space-y-3 text-sm text-slate-200">
-                      <div className="stream-v3-feature-line">{pricingT('featureLabels.storage', { value: detail.storageGb })}</div>
-                      <div className="stream-v3-feature-line">{pricingT('featureLabels.streams', { value: detail.streams })}</div>
-                      <div className="stream-v3-feature-line">
-                        {pricingT('featureLabels.destinations', { value: detail.destinations })}
-                      </div>
-                      <div className="stream-v3-feature-line">
-                        {pricingT('featureLabels.resolution', {
-                          resolution: detail.maxResolution,
-                          fps: detail.maxFps,
-                        })}
-                      </div>
-                      <div className="stream-v3-feature-line">
-                        {detail.dailyLimitHours === null
-                          ? pricingT('featureLabels.noDailyLimit')
-                          : pricingT('featureLabels.dailyLimit', { hours: detail.dailyLimitHours })}
-                      </div>
-                    </div>
-
-                    <Button
-                      size="lg"
-                      className={isPopular ? 'stream-v3-primary-btn mt-8 w-full rounded-2xl py-3.5' : 'stream-v3-secondary-btn mt-8 w-full rounded-2xl py-3.5 text-white hover:text-white'}
-                      onClick={() => {
-                        void handleStartStreaming()
-                      }}
-                    >
-                      {planKey === 'free' ? pricingT('freeCard.button') : pricingT('ctaLabel')}
-                    </Button>
-                  </article>
-                )
-              })}
-            </div>
-          </div>
-        </section>
-
-        <section id="benefits" className="px-4 py-10 sm:px-6 lg:px-8">
-          <div className="stream-v3-container stream-v3-section">
-            <div className="max-w-3xl">
-              <div className="stream-v3-kicker">{benefitsT('eyebrow')}</div>
-              <h2 className="stream-v3-display mt-5 text-4xl text-white md:text-5xl">{benefitsT('title')}</h2>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">{benefitsT('intro')}</p>
-            </div>
-
-            <div className="mt-10 grid gap-5 lg:grid-cols-2 xl:grid-cols-4">
-              {benefitCards.map((benefit) => {
-                const Icon = benefit.icon
-                return (
-                  <article key={benefit.key} className="stream-v3-benefit-card">
-                    <span className="stream-v3-benefit-icon">
-                      <Icon className="h-5 w-5 text-white" />
-                    </span>
-                    <h3 className="mt-6 text-xl font-semibold text-white">{benefit.title}</h3>
-                    <p className="mt-4 text-sm leading-7 text-slate-300">{benefit.description}</p>
-                  </article>
-                )
-              })}
-            </div>
-          </div>
-        </section>
-
-        <section className="px-4 pb-10 pt-12 sm:px-6 lg:px-8">
-          <div className="stream-v3-container stream-v3-cta">
-            <div className="max-w-3xl">
-              <div className="stream-v3-kicker">{ctaT('eyebrow')}</div>
-              <h2 className="stream-v3-display mt-6 text-4xl text-white md:text-6xl">{ctaT('title')}</h2>
-              <p className="mt-5 text-lg leading-8 text-slate-300">{ctaT('subtitle')}</p>
-            </div>
-
-            <div className="mt-8 flex flex-col gap-4 sm:flex-row">
-              <Button
-                size="lg"
-                className="stream-v3-primary-btn rounded-2xl px-7 py-4 text-base"
-                onClick={() => {
-                  void handleStartStreaming()
-                }}
-              >
-                {ctaT('button')}
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="lg"
-                className="stream-v3-secondary-btn rounded-2xl px-7 py-4 text-base text-white hover:text-white"
-                onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                {navT('pricing')}
-              </Button>
-            </div>
-
-            <div className="stream-v3-pill-row mt-6 text-sm text-slate-300">
-              {ctaTrustIndicators.map((item) => (
-                <span key={item} className="stream-v3-pill">
-                  <CheckCircle2 className="h-4 w-4 text-[#73f1c5]" />
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <Footer onStartStreaming={handleStartStreaming} />
+    <div className="loopcast-root">
+      <div className="lpc-app">
+        <Nav onSignIn={goLogin} onCta={goLogin} />
+        <Hero onCtaMain={goLogin} />
+        <UptimeTicker />
+        <NoAccessBanner />
+        <div className="lpc-divider lpc-reveal" />
+        <HowItWorks />
+        <DemoSection />
+        <div className="lpc-divider lpc-reveal" />
+        <Features />
+        <Proof />
+        <Testimonials />
+        <FAQ />
+        <Pricing onCta={goLogin} />
+        <Closer onCtaMain={goLogin} />
+        <Footer />
+      </div>
     </div>
+  )
+}
+
+function Nav({ onSignIn, onCta }: { onSignIn: () => void; onCta: () => void }) {
+  const t = useTranslations('landing.loopcast.nav')
+  const links = [
+    { id: 'sec-features', label: t('features') },
+    { id: 'sec-how', label: t('howItWorks') },
+    { id: 'sec-demo', label: t('demo') },
+    { id: 'sec-pricing', label: t('pricing') },
+    { id: 'sec-faq', label: t('faq') },
+  ]
+  return (
+    <nav className="lpc-nav">
+      <div className="lpc-nav-inner">
+        <a href="#" className="lpc-logo">
+          <svg className="lpc-logo-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <circle cx="16" cy="16" r="12" stroke="currentColor" strokeWidth="2" />
+            <circle cx="16" cy="16" r="5" fill="var(--lpc-accent)" />
+            <circle cx="26" cy="6" r="3" fill="var(--lpc-accent)" />
+          </svg>
+          {'Loopcast'}
+        </a>
+        <div className="lpc-nav-links">
+          {links.map((l) => (
+            <a key={l.id} href={`#${l.id}`}>
+              {l.label}
+            </a>
+          ))}
+        </div>
+        <div className="lpc-nav-actions">
+          <button
+            type="button"
+            onClick={onSignIn}
+            className="lpc-btn lpc-btn-ghost"
+            style={{ padding: '10px 16px', fontSize: 13 }}
+          >
+            {t('signin')}
+          </button>
+          <button
+            type="button"
+            onClick={onCta}
+            className="lpc-btn lpc-btn-primary"
+            style={{ padding: '10px 18px', fontSize: 13 }}
+          >
+            {t('ctaMain')} {'→'}
+          </button>
+        </div>
+      </div>
+    </nav>
+  )
+}
+
+function Hero({ onCtaMain }: { onCtaMain: () => void }) {
+  const t = useTranslations('landing.loopcast.hero')
+  return (
+    <section className="lpc-hero">
+      <div className="lpc-hero-canvas">
+        <Hero3DGlobe />
+      </div>
+      <div className="lpc-hero-vignette" />
+      <div className="lpc-hero-content lpc-wrap">
+        <div className="lpc-hero-pill">
+          <span className="lpc-hero-pill-tag">{t('pillTag')}</span>
+          {t('pillText')}
+        </div>
+        <h1>
+          {t('titleA')}
+          <em>{t('titleEm')}</em>
+          {t('titleB')}
+          <br />
+          {t('titleC')} <em>{t('titleAnd')}</em> {t('titleD')}
+        </h1>
+        <p className="lpc-hero-sub">{t('subtitle')}</p>
+        <div className="lpc-hero-cta">
+          <button type="button" onClick={onCtaMain} className="lpc-btn lpc-btn-primary">
+            {t('ctaMain')} {'→'}
+          </button>
+          <a href="#sec-demo" className="lpc-btn lpc-btn-ghost">
+            {'▷ '}
+            {t('ctaDemo')}
+          </a>
+        </div>
+        <div className="lpc-hero-meta">
+          <span>
+            <span className="lpc-hero-meta-dot" />
+            {t('metaLive')}
+          </span>
+          <span>{t('metaNoObs')}</span>
+          <span>{t('metaUptime')}</span>
+          <span>{t('metaAutoRecovery')}</span>
+          <span>{t('metaStartTime')}</span>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function UptimeTicker() {
+  const m = useMessages() as unknown as LoopcastMessages
+  const items = m.landing.loopcast.ticker.items
+  const all = [...items, ...items]
+  return (
+    <div className="lpc-ticker">
+      <div className="lpc-ticker-track">
+        {all.map((it, i) => (
+          <span key={i}>
+            <span className="lpc-dot" />
+            {it}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function NoAccessBanner() {
+  const t = useTranslations('landing.loopcast.noAccess')
+  return (
+    <div className="lpc-wrap">
+      <div className="lpc-banner-card">
+        <div>
+          <span className="lpc-eyebrow">{t('eyebrow')}</span>
+          <h3>{t('title')}</h3>
+          <p>{t('body')}</p>
+        </div>
+        <div className="lpc-banner-shield" aria-hidden="true">
+          <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
+            <path d="M12 2 L20 5 V12 C20 17 16 21 12 22 C8 21 4 17 4 12 V5 Z" />
+            <path d="M9 12 L11 14 L15 10" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HowItWorks() {
+  const t = useTranslations('landing.loopcast.howItWorks')
+  const steps = [
+    { n: '01', title: t('step1.title'), description: t('step1.description') },
+    { n: '02', title: t('step2.title'), description: t('step2.description') },
+    { n: '03', title: t('step3.title'), description: t('step3.description') },
+    { n: '04', title: t('step4.title'), description: t('step4.description') },
+  ]
+  return (
+    <section className="lpc-section lpc-wrap" id="sec-how">
+      <div className="lpc-section-head">
+        <span className="lpc-eyebrow">{t('eyebrow')}</span>
+        <h2>
+          {t('titleA')}
+          <em>{t('titleEm')}</em>
+        </h2>
+        <p>{t('subtitle')}</p>
+      </div>
+      <div className="lpc-steps">
+        {steps.map((s, idx) => (
+          <div className="lpc-step lpc-reveal" key={s.n} style={{ transitionDelay: `${idx * 80}ms` }}>
+            <div className="lpc-step-num">
+              {s.n} {'—'}
+            </div>
+            <h4>{s.title}</h4>
+            <p>{s.description}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function DemoSection() {
+  const t = useTranslations('landing.loopcast.demo')
+  return (
+    <section className="lpc-section lpc-wrap" id="sec-demo">
+      <div className="lpc-section-head">
+        <span className="lpc-eyebrow">{t('eyebrow')}</span>
+        <h2>
+          {t('titleA')}
+          <em>{t('titleEm')}</em>
+          {t('titleB')}
+        </h2>
+        <p>{t('subtitle')}</p>
+      </div>
+      <LoopcastDemo />
+    </section>
+  )
+}
+
+function Features() {
+  const t = useTranslations('landing.loopcast.features')
+  return (
+    <section className="lpc-section lpc-wrap" id="sec-features">
+      <div className="lpc-section-head">
+        <span className="lpc-eyebrow">{t('eyebrow')}</span>
+        <h2>
+          {t('titleA')}
+          <em>{t('titleEm')}</em>
+        </h2>
+        <p>{t('subtitle')}</p>
+      </div>
+      <div className="lpc-features">
+        <div className="lpc-feat lpc-feat-1">
+          <span className="lpc-eyebrow">{t('f1.eyebrow')}</span>
+          <h3>
+            {t('f1.titleA')}
+            <em style={{ color: 'var(--lpc-accent)', fontStyle: 'italic' }}>{t('f1.titleEm')}</em>
+          </h3>
+          <p>{t('f1.body')}</p>
+          <div className="lpc-feat-art">
+            <FlowDiagram />
+          </div>
+        </div>
+        <div className="lpc-feat lpc-feat-2">
+          <span className="lpc-eyebrow">{t('f2.eyebrow')}</span>
+          <h3>{t('f2.title')}</h3>
+          <p>{t('f2.body')}</p>
+        </div>
+        <div className="lpc-feat lpc-feat-3">
+          <span className="lpc-eyebrow">{t('f3.eyebrow')}</span>
+          <h3>{t('f3.title')}</h3>
+          <p>{t('f3.body')}</p>
+        </div>
+        <div className="lpc-feat lpc-feat-4">
+          <span className="lpc-eyebrow">{t('f4.eyebrow')}</span>
+          <h3>{t('f4.title')}</h3>
+          <p>{t('f4.body')}</p>
+        </div>
+        <div className="lpc-feat lpc-feat-5">
+          <span className="lpc-eyebrow">{t('f5.eyebrow')}</span>
+          <h3>{t('f5.title')}</h3>
+          <p>{t('f5.body')}</p>
+        </div>
+        <div className="lpc-feat lpc-feat-6">
+          <span className="lpc-eyebrow">{t('f6.eyebrow')}</span>
+          <h3>{t('f6.title')}</h3>
+          <p>{t('f6.body')}</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function FlowDiagram() {
+  const t = useTranslations('landing.loopcast.features.f1')
+  return (
+    <svg width="100%" height="100%" viewBox="0 0 600 280" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <defs>
+        <linearGradient id="lpc-flow" x1="0" x2="1">
+          <stop stopColor="var(--lpc-accent)" />
+          <stop offset="1" stopColor="var(--lpc-teal)" />
+        </linearGradient>
+      </defs>
+      <rect x="40" y="100" width="120" height="80" rx="8" fill="rgba(255,255,255,0.04)" stroke="var(--lpc-line-2)" />
+      <text x="100" y="135" textAnchor="middle" fontFamily="var(--lpc-mono)" fontSize="11" fill="var(--lpc-fg-dim)">
+        {t('diagSource')}
+      </text>
+      <text x="100" y="155" textAnchor="middle" fontFamily="var(--lpc-mono)" fontSize="10" fill="var(--lpc-fg)">
+        {t('diagSourceFile')}
+      </text>
+
+      <rect x="220" y="80" width="160" height="120" rx="8" fill="var(--lpc-accent-soft)" stroke="var(--lpc-accent)" />
+      <text x="300" y="115" textAnchor="middle" fontFamily="var(--lpc-mono)" fontSize="10" fill="var(--lpc-accent)">
+        {t('diagCenter')}
+      </text>
+      <text x="300" y="142" textAnchor="middle" fontFamily="var(--lpc-serif)" fontSize="20" fill="var(--lpc-fg)" fontStyle="italic">
+        {t('diagCenterBig')}
+      </text>
+      <text x="300" y="165" textAnchor="middle" fontFamily="var(--lpc-mono)" fontSize="9" fill="var(--lpc-fg-mute)">
+        {t('diagCenterSub')}
+      </text>
+      <text x="300" y="185" textAnchor="middle" fontFamily="var(--lpc-mono)" fontSize="10" fill="var(--lpc-good)">
+        {t('diagCenterLive')}
+      </text>
+
+      <rect x="440" y="100" width="120" height="80" rx="8" fill="rgba(255,255,255,0.04)" stroke="var(--lpc-line-2)" />
+      <text x="500" y="135" textAnchor="middle" fontFamily="var(--lpc-mono)" fontSize="11" fill="var(--lpc-fg-dim)">
+        {t('diagDest')}
+      </text>
+      <text x="500" y="155" textAnchor="middle" fontFamily="var(--lpc-mono)" fontSize="10" fill="var(--lpc-fg)">
+        {t('diagDestSub')}
+      </text>
+
+      <line x1="160" y1="140" x2="220" y2="140" stroke="url(#lpc-flow)" strokeWidth="2" />
+      <line x1="380" y1="140" x2="440" y2="140" stroke="url(#lpc-flow)" strokeWidth="2" />
+
+      {[0, 1, 2].map((i) => (
+        <circle key={i} r="4" fill="var(--lpc-accent)">
+          <animate attributeName="cx" values="160;220" dur="1.6s" begin={`${i * 0.5}s`} repeatCount="indefinite" />
+          <animate attributeName="cy" values="140;140" dur="1.6s" begin={`${i * 0.5}s`} repeatCount="indefinite" />
+        </circle>
+      ))}
+      {[0, 1, 2].map((i) => (
+        <circle key={`b${i}`} r="4" fill="var(--lpc-teal)">
+          <animate attributeName="cx" values="380;440" dur="1.6s" begin={`${i * 0.5}s`} repeatCount="indefinite" />
+          <animate attributeName="cy" values="140;140" dur="1.6s" begin={`${i * 0.5}s`} repeatCount="indefinite" />
+        </circle>
+      ))}
+    </svg>
+  )
+}
+
+function Proof() {
+  const t = useTranslations('landing.loopcast.proof')
+  const m = useMessages() as unknown as LoopcastMessages
+  const days = m.landing.loopcast.proof.days
+  const cellState = (day: number, slot: number) => {
+    const s = ((day + 1) * 31 + (slot + 1) * 17) % 100
+    if (s > 96) return 'bad'
+    if (s > 88) return 'warn'
+    return ''
+  }
+  const dayPct = (i: number) => (99.7 + ((i * 13) % 30) / 100).toFixed(2)
+  return (
+    <section className="lpc-section lpc-wrap">
+      <div className="lpc-section-head">
+        <span className="lpc-eyebrow">{t('eyebrow')}</span>
+        <h2>
+          {t('titleA')}
+          <em>{t('titleEm')}</em>
+        </h2>
+      </div>
+      <div className="lpc-proof">
+        <div className="lpc-proof-card">
+          <span className="lpc-eyebrow">{t('uptimeLabel')}</span>
+          <h3 className="lpc-proof-big">
+            {t('uptimeBig')}
+            <em>{t('uptimeBigEm')}</em>
+            <span style={{ fontSize: '0.5em' }}>{t('uptimeBigSuffix')}</span>
+          </h3>
+          <p className="lpc-proof-sub">{t('uptimeSub')}</p>
+        </div>
+        <div className="lpc-proof-card">
+          <span className="lpc-eyebrow">{t('graphLabel')}</span>
+          <div className="lpc-uptime-graph">
+            {days.map((d, i) => (
+              <div className="lpc-uptime-row" key={d}>
+                <span className="lpc-label">{d}</span>
+                <div className="lpc-uptime-bars">
+                  {Array.from({ length: 48 }).map((_, j) => (
+                    <i key={j} className={cellState(i, j)} />
+                  ))}
+                </div>
+                <span className="lpc-uptime-pct">{dayPct(i)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+type TestimonialItem = { quote: string; name: string; role: string; avatar: string }
+
+function Testimonials() {
+  const t = useTranslations('landing.loopcast.testimonials')
+  const m = useMessages() as unknown as LoopcastMessages
+  const items = m.landing.loopcast.testimonials.items as TestimonialItem[]
+  return (
+    <section className="lpc-section lpc-wrap">
+      <div className="lpc-section-head">
+        <span className="lpc-eyebrow">{t('eyebrow')}</span>
+        <h2>
+          {t('titleA')}
+          <em>{t('titleEm')}</em>
+          {t('titleB')}
+        </h2>
+      </div>
+      <div className="lpc-testis">
+        {items.map((it, i) => (
+          <div key={i} className="lpc-testi lpc-reveal" style={{ transitionDelay: `${i * 80}ms` }}>
+            <div className="lpc-testi-quote">{it.quote}</div>
+            <div className="lpc-testi-author">
+              <div className="lpc-testi-avatar" aria-hidden="true">
+                {it.avatar}
+              </div>
+              <div>
+                <div className="lpc-testi-author-name">{it.name}</div>
+                <div className="lpc-testi-author-role">{it.role}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+type FaqItem = { q: string; a: string }
+
+function FAQ() {
+  const t = useTranslations('landing.loopcast.faq')
+  const m = useMessages() as unknown as LoopcastMessages
+  const items = m.landing.loopcast.faq.items as FaqItem[]
+  const [open, setOpen] = useState(0)
+  return (
+    <section className="lpc-section lpc-wrap" id="sec-faq">
+      <div className="lpc-section-head">
+        <span className="lpc-eyebrow">{t('eyebrow')}</span>
+        <h2>
+          {t('titleA')}
+          <em>{t('titleEm')}</em>
+          {t('titleB')}
+        </h2>
+      </div>
+      <div className="lpc-faq">
+        {items.map((q, i) => (
+          <div
+            key={i}
+            className={`lpc-faq-item ${open === i ? 'open' : ''}`}
+            onClick={() => setOpen(open === i ? -1 : i)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setOpen(open === i ? -1 : i)
+              }
+            }}
+          >
+            <div className="lpc-faq-q">
+              <span>{q.q}</span>
+              <span className="lpc-faq-toggle" aria-hidden="true">
+                {'+'}
+              </span>
+            </div>
+            <div className="lpc-faq-a">{q.a}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+type PricingTier = {
+  name: string
+  price: string
+  sub: string
+  tag: string | null
+  list: string[]
+  cta: string
+  featured: boolean
+}
+
+function Pricing({ onCta }: { onCta: () => void }) {
+  const t = useTranslations('landing.loopcast.pricing')
+  const m = useMessages() as unknown as LoopcastMessages
+  const tiers = m.landing.loopcast.pricing.tiers as PricingTier[]
+  return (
+    <section className="lpc-section lpc-wrap" id="sec-pricing">
+      <div className="lpc-section-head">
+        <span className="lpc-eyebrow">{t('eyebrow')}</span>
+        <h2>
+          {t('titleA')}
+          <em>{t('titleEm')}</em>
+        </h2>
+        <p>{t('subtitle')}</p>
+      </div>
+      <div className="lpc-price">
+        {tiers.map((tier, idx) => (
+          <div
+            key={tier.name}
+            className={`lpc-price-card lpc-reveal ${tier.featured ? 'featured' : ''}`}
+            style={{ transitionDelay: `${idx * 80}ms` }}
+          >
+            {tier.tag ? <div className="lpc-badge">{tier.tag}</div> : null}
+            <div className="lpc-price-name">{tier.name}</div>
+            <div className="lpc-price-amt">
+              <sup>{'$'}</sup>
+              {tier.price}
+              <sub>{tier.sub}</sub>
+            </div>
+            <ul className="lpc-price-list">
+              {tier.list.map((l, i) => (
+                <li key={i}>{l}</li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={onCta}
+              className={`lpc-btn ${tier.featured ? 'lpc-btn-primary' : 'lpc-btn-ghost'}`}
+              style={{ justifyContent: 'center' }}
+            >
+              {tier.cta} {'→'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function Closer({ onCtaMain }: { onCtaMain: () => void }) {
+  const t = useTranslations('landing.loopcast.closer')
+  return (
+    <section className="lpc-closer">
+      <div className="lpc-closer-bg" />
+      <div className="lpc-closer-inner lpc-wrap">
+        <h2>
+          {t('titleA')}
+          <em>{t('titleEm')}</em>
+          <br />
+          {t('titleB')}
+        </h2>
+        <p>{t('subtitle')}</p>
+        <div className="lpc-hero-cta">
+          <button type="button" onClick={onCtaMain} className="lpc-btn lpc-btn-primary">
+            {t('ctaMain')} {'→'}
+          </button>
+          <a href="#sec-demo" className="lpc-btn lpc-btn-ghost">
+            {'▷ '}
+            {t('ctaDemo')}
+          </a>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function Footer() {
+  const t = useTranslations('landing.loopcast.footer')
+  const link = (key: string) => t(`links.${key}`)
+  return (
+    <footer>
+      <div className="lpc-wrap">
+        <div className="lpc-foot">
+          <div>
+            <div className="lpc-logo" style={{ marginBottom: 16 }}>
+              <svg className="lpc-logo-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <circle cx="16" cy="16" r="12" stroke="currentColor" strokeWidth="2" />
+                <circle cx="16" cy="16" r="5" fill="var(--lpc-accent)" />
+              </svg>
+              {'Loopcast'}
+            </div>
+            <p className="lpc-foot-meta">{t('tagline')}</p>
+          </div>
+          <div>
+            <h6>{t('product')}</h6>
+            <a href="#sec-features">{link('features')}</a>
+            <a href="#sec-pricing">{link('pricing')}</a>
+            <a href="#sec-demo">{link('demo')}</a>
+            <a href="#">{link('api')}</a>
+          </div>
+          <div>
+            <h6>{t('resources')}</h6>
+            <a href="#">{link('docs')}</a>
+            <a href="#">{link('streamKeyGuide')}</a>
+            <a href="#">{link('status')}</a>
+            <a href="#">{link('changelog')}</a>
+          </div>
+          <div>
+            <h6>{t('company')}</h6>
+            <a href="#">{link('about')}</a>
+            <a href="#">{link('contact')}</a>
+            <a href="#">{link('privacy')}</a>
+            <a href="#">{link('terms')}</a>
+          </div>
+        </div>
+        <div className="lpc-foot-bottom">
+          <span>{t('copyright')}</span>
+          <span>{t('version')}</span>
+        </div>
+      </div>
+    </footer>
   )
 }

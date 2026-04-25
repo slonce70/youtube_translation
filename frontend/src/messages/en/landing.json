@@ -296,5 +296,341 @@
       "compliance": "Compliance"
     },
     "copyright": "© 2026 YouTube Streaming. All rights reserved."
+  },
+  "loopcast": {
+    "nav": {
+      "features": "Features",
+      "howItWorks": "How it works",
+      "demo": "Demo",
+      "pricing": "Pricing",
+      "faq": "FAQ",
+      "signin": "Sign in",
+      "ctaMain": "Start free"
+    },
+    "hero": {
+      "pillTag": "NEW",
+      "pillText": "YouTube 24/7 — no OBS, no PC running",
+      "titleA": "A YouTube ",
+      "titleEm": "stream",
+      "titleB": " that",
+      "titleC": "never starts",
+      "titleAnd": "and",
+      "titleD": "never stops",
+      "subtitle": "Loopcast loops your videos and audio nonstop — 24 hours a day, 7 days a week. No OBS, no machine running, no access to your channel.",
+      "ctaMain": "Start free",
+      "ctaDemo": "Watch demo",
+      "metaLive": "412 channels live right now",
+      "metaNoObs": "no OBS",
+      "metaUptime": "99.97% uptime",
+      "metaAutoRecovery": "auto-recovery",
+      "metaStartTime": "live in 8 seconds"
+    },
+    "ticker": {
+      "items": [
+        "lo-fi study radio · 184 days streaming",
+        "jazz café 24/7 · 412 days streaming",
+        "rainy night ambient · 91 days streaming",
+        "space synthwave loop · 268 days streaming",
+        "morning piano · 56 days streaming",
+        "deep focus radio · 731 days streaming",
+        "kyiv chill · 38 days streaming"
+      ]
+    },
+    "noAccess": {
+      "eyebrow": "most asked question",
+      "title": "\"Do you need access to my YouTube channel?\"",
+      "body": "No. We only need the RTMPS URL and stream key from YouTube Studio. Logins, passwords, channel access — they stay with you. Stream keys are encrypted with Fernet+PBKDF2."
+    },
+    "howItWorks": {
+      "eyebrow": "how it works",
+      "titleA": "Four steps ",
+      "titleEm": "to live",
+      "subtitle": "No OBS, no PC running, no dropped frames when your internet hiccups.",
+      "step1": {
+        "title": "Upload",
+        "description": "Drag videos and audio into your library. Resumable upload — even 100 GB files keep going on flaky connections."
+      },
+      "step2": {
+        "title": "Compose",
+        "description": "Build a playlist or a collection. Video and audio tracks separate. Loop is one click."
+      },
+      "step3": {
+        "title": "Drop the key",
+        "description": "Paste the RTMPS URL and stream key from YouTube Studio. Once — and forever encrypted."
+      },
+      "step4": {
+        "title": "Launch",
+        "description": "Live in 8 seconds. Auto-reconnect, hot-swap the playlist mid-stream, 24/7 monitoring."
+      }
+    },
+    "demo": {
+      "eyebrow": "live prototype · drag, click, toggle",
+      "titleA": "It's a ",
+      "titleEm": "real",
+      "titleB": " dashboard",
+      "subtitle": "Drag tracks in the playlist, watch the preview change, check the channel stats. Everything works right here.",
+      "tabs": {
+        "stream": "Stream",
+        "library": "Library",
+        "schedule": "Schedule",
+        "settings": "Settings"
+      },
+      "playlist": "Playlist",
+      "playlistMeta": "{count} tracks · loop ∞",
+      "preview": "Preview",
+      "broadcasting": "● broadcasting",
+      "nowLabel": "NOW LIVE",
+      "stats": {
+        "bitrate": "Bitrate",
+        "youtube": "YouTube",
+        "viewers": "Viewers",
+        "live": "● live"
+      },
+      "channel": "YouTube channel",
+      "destName": "Lo-fi Beats Radio",
+      "destKey": "🔒 stream key: ••••–8x9k–LZ4f–p2qm",
+      "channelStats": {
+        "subscribers": "Subscribers",
+        "views24h": "Views / 24h",
+        "incomeMonth": "Revenue / mo (est.)"
+      },
+      "monetizeLabel": "Earnings on autopilot",
+      "monetizeText": "The stream runs 24/7. Views accumulate. YouTube monetization — yours.",
+      "tracks": [
+        {
+          "title": "Midnight Drive · Synthwave",
+          "dur": "4:32",
+          "tag": "video"
+        },
+        {
+          "title": "Coffee Break · Lo-fi",
+          "dur": "3:18",
+          "tag": "audio"
+        },
+        {
+          "title": "Tokyo Rain · Ambient",
+          "dur": "5:04",
+          "tag": "video"
+        },
+        {
+          "title": "Forest Spirits · Lo-fi",
+          "dur": "3:55",
+          "tag": "video"
+        },
+        {
+          "title": "Sunset Boulevard · Synthwave",
+          "dur": "4:11",
+          "tag": "video"
+        }
+      ]
+    },
+    "features": {
+      "eyebrow": "capabilities",
+      "titleA": "Built to ",
+      "titleEm": "stay up",
+      "subtitle": "You hit start — that's it. No codec settings, no machine slowdowns. Our server holds the stream 24/7.",
+      "f1": {
+        "eyebrow": "rock-solid stability",
+        "titleA": "A stream that ",
+        "titleEm": "doesn't fall",
+        "body": "Your video reaches YouTube bit-for-bit, exactly as you uploaded it. No artifacts, no quality loss. And if anything drops — auto-reconnect picks it up in seconds.",
+        "diagSource": "YOUR VIDEO",
+        "diagSourceFile": "video.mp4",
+        "diagCenter": "LOOPCAST",
+        "diagCenterBig": "24/7",
+        "diagCenterSub": "our server holds the stream",
+        "diagCenterLive": "● live",
+        "diagDest": "YOUTUBE",
+        "diagDestSub": "your channel"
+      },
+      "f2": {
+        "eyebrow": "monetization",
+        "title": "Earn while you sleep",
+        "body": "Music channels, lo-fi radio, retro video, lecture loops — your videos run 24/7 and rack up views while you're busy with something else."
+      },
+      "f3": {
+        "eyebrow": "key safety",
+        "title": "A stream key nobody sees",
+        "body": "Fernet + PBKDF2-HMAC-SHA256, masked in the UI, excluded from logs and metrics."
+      },
+      "f4": {
+        "eyebrow": "library",
+        "title": "Folders, collections, tags",
+        "body": "Separate playlists for video and audio. Crossfade. Hot-swap live."
+      },
+      "f5": {
+        "eyebrow": "tusd",
+        "title": "Resumable upload",
+        "body": "Closed the tab at 80%? It picks up from the same byte. Files up to 100 GB."
+      },
+      "f6": {
+        "eyebrow": "self-healing",
+        "title": "Auto-reconnect",
+        "body": "YouTube closed the session? Internet hiccupped? New connection in 4 seconds."
+      }
+    },
+    "proof": {
+      "eyebrow": "real numbers · last 90 days",
+      "titleA": "We hold the stream — ",
+      "titleEm": "and prove it",
+      "uptimeLabel": "aggregate uptime",
+      "uptimeBig": "99.",
+      "uptimeBigEm": "97",
+      "uptimeBigSuffix": "%",
+      "uptimeSub": "412 channels. 11 million broadcast hours. Just 23 minutes of downtime per quarter.",
+      "graphLabel": "last 7 days · per minute",
+      "days": [
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+        "Sun"
+      ]
+    },
+    "testimonials": {
+      "eyebrow": "feedback · beta users",
+      "titleA": "What people who ",
+      "titleEm": "already",
+      "titleB": " stream say",
+      "items": [
+        {
+          "quote": "\"Switched from Gyre. We save $40/mo and it hasn't blinked in 4 months straight.\"",
+          "name": "Oleksa R.",
+          "role": "Lo-fi channel · 240k subs",
+          "avatar": "O"
+        },
+        {
+          "quote": "\"Uploaded 30 hours of audio yesterday, today it's already running. No OBS gymnastics.\"",
+          "name": "Diana M.",
+          "role": "jazz radio · 1.1M hours",
+          "avatar": "D"
+        },
+        {
+          "quote": "\"Encrypted stream key — that closed compliance for us.\"",
+          "name": "Yarema V.",
+          "role": "CTO · learning platform",
+          "avatar": "Y"
+        }
+      ]
+    },
+    "faq": {
+      "eyebrow": "FAQ",
+      "titleA": "Questions ",
+      "titleEm": "everyone",
+      "titleB": " asks",
+      "items": [
+        {
+          "q": "Do I have to give you access to my YouTube channel?",
+          "a": "No. All we need is the RTMPS URL and stream key from YouTube Studio. Channel access, passwords, OAuth — none of that gets touched."
+        },
+        {
+          "q": "What if my internet drops?",
+          "a": "The stream runs on our server — your internet doesn't matter. If the link between us and YouTube drops, auto-reconnect kicks in within 4 seconds."
+        },
+        {
+          "q": "Do I need a powerful computer?",
+          "a": "No, none at all. The stream runs on our server. You can close the browser, shut your laptop — the broadcast keeps going."
+        },
+        {
+          "q": "Can I change the playlist during a live stream?",
+          "a": "Yes. Hot-swap: add or remove tracks, new ones pick up after the current track without breaking the broadcast."
+        },
+        {
+          "q": "How many concurrent streams?",
+          "a": "Solo — 1, Studio — 5, Network — 25. Custom plans for larger volumes."
+        },
+        {
+          "q": "Where does my stream key end up?",
+          "a": "Encrypted with Fernet using a key derived through PBKDF2-HMAC-SHA256, stored only in encrypted form. Never written to logs or metrics."
+        }
+      ]
+    },
+    "pricing": {
+      "eyebrow": "pricing · no hidden caps",
+      "titleA": "A price ",
+      "titleEm": "you can see",
+      "subtitle": "Pay for what you use. Cancel in one click. First 14 days of Studio — free.",
+      "tiers": [
+        {
+          "name": "Solo",
+          "price": "0",
+          "sub": "/mo",
+          "tag": null,
+          "list": [
+            "1 YouTube channel",
+            "20 GB library",
+            "720p · 4500 kb/s",
+            "Basic scheduler",
+            "Discord community"
+          ],
+          "cta": "Start",
+          "featured": false
+        },
+        {
+          "name": "Studio",
+          "price": "14",
+          "sub": "/mo",
+          "tag": "most popular",
+          "list": [
+            "5 YouTube channels",
+            "500 GB library",
+            "1080p · 8000 kb/s",
+            "Live playlist hot-swap",
+            "Advanced scheduler + repeat",
+            "24/7 email support"
+          ],
+          "cta": "Try 14 days",
+          "featured": true
+        },
+        {
+          "name": "Network",
+          "price": "49",
+          "sub": "/mo",
+          "tag": null,
+          "list": [
+            "25 YouTube channels",
+            "5 TB library",
+            "1080p60 · up to 12 Mbps",
+            "Sub-accounts for agencies",
+            "API + webhooks",
+            "Dedicated manager"
+          ],
+          "cta": "Contact us",
+          "featured": false
+        }
+      ]
+    },
+    "closer": {
+      "titleA": "Launch your ",
+      "titleEm": "24/7",
+      "titleB": "stream today",
+      "subtitle": "14 days free. No credit card. Don't like it — pay nothing.",
+      "ctaMain": "Start free",
+      "ctaDemo": "Watch demo"
+    },
+    "footer": {
+      "tagline": "24/7 YouTube streaming service. Built in Kyiv. Powered by FFmpeg, FastAPI, and caffeine.",
+      "product": "Product",
+      "resources": "Resources",
+      "company": "Company",
+      "links": {
+        "features": "Features",
+        "pricing": "Pricing",
+        "demo": "Demo",
+        "api": "API · soon",
+        "docs": "Documentation",
+        "streamKeyGuide": "How to get your stream key",
+        "status": "Status page",
+        "changelog": "Changelog",
+        "about": "About",
+        "contact": "Contact",
+        "privacy": "Privacy",
+        "terms": "Terms"
+      },
+      "copyright": "© 2026 Loopcast Studio. Made in Kyiv.",
+      "version": "v0.4.2 · status: ● operational"
+    }
   }
 }

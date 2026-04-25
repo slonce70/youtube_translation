@@ -24,30 +24,13 @@ jest.mock('../Hero3DGlobe', () => ({
   Hero3DGlobe: () => <div data-testid="hero-3d-globe" />,
 }))
 
-describe('HomePageClient landing', () => {
+describe('HomePageClient — Loopcast landing', () => {
   beforeAll(() => {
-    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
-      configurable: true,
-      value: () => ({
-        clearRect: jest.fn(),
-        beginPath: jest.fn(),
-        arc: jest.fn(),
-        fill: jest.fn(),
-        stroke: jest.fn(),
-        fillRect: jest.fn(),
-        moveTo: jest.fn(),
-        lineTo: jest.fn(),
-        createRadialGradient: () => ({ addColorStop: jest.fn() }),
-        createLinearGradient: () => ({ addColorStop: jest.fn() }),
-        setTransform: jest.fn(),
-      }),
-    })
-
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       writable: true,
       value: jest.fn().mockImplementation((query: string) => ({
-        matches: query.includes('prefers-reduced-motion') ? false : false,
+        matches: false,
         media: query,
         onchange: null,
         addListener: jest.fn(),
@@ -57,16 +40,24 @@ describe('HomePageClient landing', () => {
         dispatchEvent: jest.fn(),
       })),
     })
+    // Stub IntersectionObserver for scroll-reveal effect.
+    class MockIO {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    // @ts-expect-error: jsdom does not provide IntersectionObserver
+    window.IntersectionObserver = MockIO
   })
 
   beforeEach(() => {
     pushMock.mockReset()
   })
 
-  it('renders the immersive hero and routes CTA clicks to login', () => {
-    const heroTitle = enMessages.landing.hero.title
-    const healthDescription = enMessages.landing.hero.panel.healthDescription
-    const primaryCta = enMessages.landing.hero.primaryCTA
+  it('renders the Loopcast hero copy and routes the primary CTA to /login', () => {
+    const subtitle = enMessages.landing.loopcast.hero.subtitle
+    const ctaMain = enMessages.landing.loopcast.hero.ctaMain
+    const noAccessTitle = enMessages.landing.loopcast.noAccess.title
 
     render(
       <NextIntlClientProvider locale="en" messages={enMessages as unknown as AbstractIntlMessages}>
@@ -74,11 +65,15 @@ describe('HomePageClient landing', () => {
       </NextIntlClientProvider>
     )
 
-    expect(screen.getByRole('heading', { name: heroTitle })).toBeInTheDocument()
-    expect(screen.getByText(healthDescription)).toBeInTheDocument()
+    // Hero subtitle is rendered exactly once.
+    expect(screen.getByText(subtitle)).toBeInTheDocument()
+    // "No channel access" trust banner survives the redesign.
+    expect(screen.getByText(noAccessTitle)).toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('button', { name: primaryCta })[0])
-
+    // Primary CTA appears in nav, hero, and closer — at least one must route to /login.
+    const ctaButtons = screen.getAllByRole('button', { name: new RegExp(ctaMain) })
+    expect(ctaButtons.length).toBeGreaterThan(0)
+    fireEvent.click(ctaButtons[0])
     expect(pushMock).toHaveBeenCalledWith('/login')
   })
 })
