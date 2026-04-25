@@ -1533,9 +1533,17 @@ async def main():
             else:
                 print("⚠️  Verification failed - please check manually")
 
-        # Commit all migrations
-        print("\n💾 Committing migrations...")
-        await conn.commit()
+        # NOTE: do NOT call ``await conn.commit()`` here. ``engine.begin()``
+        # already wraps the block in a managed transaction and auto-commits
+        # on clean exit. Calling ``conn.commit()`` deactivates the
+        # transaction; SQLAlchemy's RootTransaction.__exit__ then sees
+        # ``is_active == False`` and follows the rollback branch — which on
+        # asyncpg with PostgreSQL silently *unwinds* the previously
+        # committed DDL on some driver versions, manifesting as
+        # "Successfully applied" + "Verification passed" + the column is
+        # absent on every subsequent connection. Leaving the implicit
+        # commit-on-exit avoids the toggle.
+        print("\n💾 Migrations staged in transaction; committing on context exit…")
 
         print("\n" + "=" * 60)
         print("✅ All migrations applied successfully!")
