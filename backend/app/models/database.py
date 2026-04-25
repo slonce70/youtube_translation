@@ -470,6 +470,13 @@ class Stream(Base):
     scheduled_stop_time = Column(TIMESTAMP(timezone=True))
     scheduled_stop_attempted_at = Column(TIMESTAMP(timezone=True))
     runtime_last_heartbeat_at = Column(TIMESTAMP(timezone=True))
+    # Persistent restart counter — survives backend restarts so a flapping
+    # ffmpeg child cannot bypass ffmpeg_auto_restart_attempts by relying on
+    # in-memory amnesia. Re-added in migration 037 (Sprint 2 — H5).
+    runtime_restart_attempts = Column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    runtime_last_failure_at = Column(TIMESTAMP(timezone=True))
 
     # Track total duration for billing
     total_duration_seconds = Column(Float, default=0)

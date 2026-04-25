@@ -141,13 +141,38 @@ interface RequestOptions extends RequestInit {
 export class ApiError extends Error {
   status: number
   detail: unknown
+  code?: string
 
   constructor(status: number, detail: unknown) {
-    const message = typeof detail === 'string' ? detail : `HTTP ${status}`
+    // Backend errors land as either a plain string or a structured object
+    // ``{error: "<code>", message: "<english>", ...}`` — surface the
+    // structured ``message`` field as ``error.message`` so toasts show
+    // something useful instead of "HTTP 400". The ``code`` is also exposed
+    // separately so callers can map it to a translated string when the
+    // English fallback is undesirable.
+    let message: string
+    let code: string | undefined
+    if (typeof detail === 'string') {
+      message = detail
+    } else if (
+      detail &&
+      typeof detail === 'object' &&
+      'message' in detail &&
+      typeof (detail as { message: unknown }).message === 'string'
+    ) {
+      message = (detail as { message: string }).message
+      const errCode = (detail as { error?: unknown }).error
+      if (typeof errCode === 'string') {
+        code = errCode
+      }
+    } else {
+      message = `HTTP ${status}`
+    }
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.code = code
   }
 }
 
