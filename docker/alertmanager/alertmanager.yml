@@ -1,0 +1,75 @@
+# Alertmanager configuration for YouTube Streaming.
+#
+# Routing model: severity-based.
+#   - severity=page  -> oncall webhook (PagerDuty / OpsGenie / Slack #oncall)
+#   - severity=warning -> Slack #alerts
+#   - severity=info  -> Slack #ops-info
+#
+# Templates kept inline; for larger deployments split into templates/
+# subdirectory.
+
+global:
+  resolve_timeout: 5m
+  # Operators inject SMTP via /etc/alertmanager/secrets.yml; commented
+  # placeholders below — wire to Slack webhook instead by default.
+
+route:
+  group_by: ["alertname", "instance", "stream_id"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: slack-alerts
+  routes:
+    - matchers:
+        - severity = page
+      receiver: pagerduty
+      continue: true
+    - matchers:
+        - severity = warning
+      receiver: slack-alerts
+    - matchers:
+        - severity = info
+      receiver: slack-info
+      group_wait: 5m
+      repeat_interval: 24h
+
+receivers:
+  - name: pagerduty
+    pagerduty_configs:
+      - service_key_file: /etc/alertmanager/pagerduty-service.key
+        severity: '{{ if eq .CommonLabels.severity "page" }}critical{{ else }}warning{{ end }}'
+        details:
+          runbook: "{{ .CommonAnnotations.runbook_url }}"
+          description: "{{ .CommonAnnotations.description }}"
+
+  - name: slack-alerts
+    slack_configs:
+      - api_url_file: /etc/alertmanager/slack-webhook.url
+        channel: "#alerts"
+        send_resolved: true
+        title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}'
+        text: |-
+          *Severity:* {{ .CommonLabels.severity }}
+          *Summary:* {{ .CommonAnnotations.summary }}
+          {{ if .CommonAnnotations.description -}}
+          *Description:* {{ .CommonAnnotations.description }}
+          {{- end }}
+          {{ if .CommonAnnotations.runbook_url -}}
+          *Runbook:* {{ .CommonAnnotations.runbook_url }}
+          {{- end }}
+
+  - name: slack-info
+    slack_configs:
+      - api_url_file: /etc/alertmanager/slack-webhook.url
+        channel: "#ops-info"
+        send_resolved: false
+        title: "[INFO] {{ .CommonLabels.alertname }}"
+        text: "{{ .CommonAnnotations.summary }}"
+
+inhibit_rules:
+  # When the backend is fully down, stream-level alerts are noise.
+  - source_matchers:
+      - alertname = BackendDown
+    target_matchers:
+      - severity =~ "warning|info"
+    equal: ["cluster"]

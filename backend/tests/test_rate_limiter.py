@@ -79,7 +79,9 @@ def test_client_key_uses_forwarded_for_for_trusted_proxy():
         forwarded_for="198.51.100.77, 10.1.2.3",
     )
 
-    assert limiter._get_client_key(request) == "198.51.100.77:/api/auth/login"
+    # Per-user dimension: ":anon:" segment when no authenticated user has been
+    # resolved upstream (this request never went through the auth dependency).
+    assert limiter._get_client_key(request) == "198.51.100.77:anon:/api/auth/login"
 
 
 def test_client_ip_uses_forwarded_for_for_trusted_proxy():
@@ -101,7 +103,7 @@ def test_client_key_ignores_forwarded_for_for_untrusted_proxy():
         forwarded_for="198.51.100.77, 10.1.2.3",
     )
 
-    assert limiter._get_client_key(request) == "203.0.113.9:/api/auth/login"
+    assert limiter._get_client_key(request) == "203.0.113.9:anon:/api/auth/login"
 
 
 def test_client_key_normalizes_dynamic_stream_control_routes():
@@ -110,8 +112,22 @@ def test_client_key_normalizes_dynamic_stream_control_routes():
     first = _make_request("/api/streams/stream-a/start")
     second = _make_request("/api/streams/stream-b/start")
 
-    assert limiter._get_client_key(first) == "198.51.100.10:/api/streams/start"
-    assert limiter._get_client_key(second) == "198.51.100.10:/api/streams/start"
+    assert limiter._get_client_key(first) == "198.51.100.10:anon:/api/streams/start"
+    assert limiter._get_client_key(second) == "198.51.100.10:anon:/api/streams/start"
+
+
+def test_client_key_includes_authenticated_user_id():
+    """When the auth dependency stamped state.authenticated_user_id, the
+    rate-limit key must bind to that user so IP-rotation cannot bypass quota.
+    """
+    limiter = RateLimiter()
+    request = _make_request("/api/auth/refresh")
+    request.state.authenticated_user_id = "11111111-2222-3333-4444-555555555555"
+
+    assert (
+        limiter._get_client_key(request)
+        == "198.51.100.10:11111111-2222-3333-4444-555555555555:/api/auth/refresh"
+    )
 
 
 def test_rate_limit_middleware_returns_429_with_headers():

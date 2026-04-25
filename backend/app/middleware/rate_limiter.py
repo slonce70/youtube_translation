@@ -94,7 +94,7 @@ class RateLimitStatus:
 class RateLimiter:
     """Rate limiter with configurable limits per route pattern"""
 
-    _STREAM_ROUTE_ACTIONS = {"start", "stop", "status"}
+    _STREAM_ROUTE_ACTIONS = {"start", "stop", "status", "logs"}
 
     def __init__(self, trusted_proxies: Iterable[str] | None = None):
         self.clients: Dict[str, RateLimitEntry] = {}
@@ -113,27 +113,49 @@ class RateLimiter:
         self.default_limit = 60
         self.default_window = 60
 
-        # Endpoint-specific limits (requests per window)
+        # Endpoint-specific limits (requests per window).
+        #
+        # Token-mint, OAuth and signed-URL endpoints get tight per-key limits
+        # because each successful call hands out a credential the attacker can
+        # later use offline. Per-user-id keying (see _get_client_key) prevents
+        # the trivial IP-rotation bypass — the limits below now bind to
+        # (ip, user_id, endpoint).
         self.limits = {
-            "/api/auth/login": (5, 60),  # 5 login attempts per minute
-            "/api/auth/logout": (20, 60),  # 20 logout requests per minute
-            "/api/auth/register": (3, 60),  # 3 registration attempts per minute
-            "/api/streams/start": (3, 120),  # 3 stream starts per 2 minutes
-            "/api/streams/stop": (10, 60),  # 10 stream stops per minute
-            "/api/streams/status": (60, 60),  # status polling limit
-            "/api/assets/upload": (30, 60),  # raw upload chunk notifications
-            "/api/assets/upload-complete": (12, 60),  # finalization webhook handler
-            "/api/admin/alerts": (8, 60),  # alert triage calls
-            "/api/admin/users": (12, 60),  # admin user management
-            "/api/admin": (20, 60),  # general admin prefix fallback
+            "/api/auth/login": (5, 60),
+            "/api/auth/logout": (20, 60),
+            "/api/auth/register": (3, 60),
+            "/api/auth/refresh": (10, 60),  # token refresh — limit bot scrapers
+            "/api/streams/start": (3, 120),
+            "/api/streams/stop": (10, 60),
+            "/api/streams/status": (60, 60),
+            "/api/streams/logs": (15, 60),  # log read can be expensive on big files
+            "/api/assets/upload": (30, 60),
+            "/api/assets/upload-complete": (12, 60),
+            "/api/assets/upload-token": (15, 60),  # token-mint
+            "/api/assets/download-link": (15, 60),  # signed-URL mint
+            "/api/youtube/oauth/start": (10, 60),
+            "/api/youtube/oauth/callback": (10, 60),
+            "/api/admin/alerts": (8, 60),
+            "/api/admin/users": (12, 60),
+            "/api/admin": (20, 60),
         }
 
     def _get_client_key(self, request: Request) -> str:
-        """Generate unique key for client (IP + endpoint)"""
+        """Generate unique key for client (IP + user_id + endpoint).
+
+        Including ``user_id`` (when known) defeats the IP-rotation attack
+        where a single authenticated user cycles through a NAT pool to
+        multiply their per-IP quota. The user-id segment is taken from
+        ``request.state.authenticated_user_id`` which is set by the auth
+        dependency *before* the rate-limit check on authenticated routes;
+        on unauthenticated routes we fall back to IP only and the segment
+        becomes the literal "anon".
+        """
         client_ip = self._get_client_ip(request)
         endpoint = self._normalize_endpoint_path(request.url.path)
+        user_segment = getattr(request.state, "authenticated_user_id", None) or "anon"
 
-        return f"{client_ip}:{endpoint}"
+        return f"{client_ip}:{user_segment}:{endpoint}"
 
     def _get_client_ip(self, request: Request) -> str:
         client_ip = request.client.host if request.client else "unknown"

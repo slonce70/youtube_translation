@@ -1,0 +1,39 @@
+# /etc/logrotate.d/youtube-streaming
+#
+# Rotation policy for YouTube Streaming Platform on-disk logs:
+#  - Backend access/error logs (the JSON-structured logger writes here
+#    via the stream_log_dir setting)
+#  - Per-stream FFmpeg logs under /opt/youtube_translation_data/streams/*.log
+#
+# Most log volume goes to journald via stdout from systemd units; only
+# the per-stream debug logs and any file-handler output need this.
+
+/opt/youtube_translation_data/logs/*.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    dateext
+    dateformat -%Y%m%d
+    sharedscripts
+    # Backend uses python's RotatingFileHandler which holds its own handle;
+    # signal the unit to reopen if file output is enabled there.
+    postrotate
+        systemctl reload-or-restart youtube-backend.service > /dev/null 2>&1 || true
+    endscript
+    # Logs may contain redacted JWTs / RTMP URLs — keep restrictive.
+    create 0640 youtube-backend youtube-backend
+}
+
+/opt/youtube_translation_data/streams/*.log {
+    size 100M
+    rotate 5
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    create 0640 youtube-backend youtube-backend
+}

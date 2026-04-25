@@ -1,0 +1,46 @@
+# /etc/systemd/system/yt-uploads-backup.service
+#
+# Daily rsync hard-link snapshot of /opt/youtube_translation_data/uploads.
+# Triggered by yt-uploads-backup.timer.
+
+[Unit]
+Description=YouTube Streaming — uploads snapshot
+Wants=network-online.target
+After=network-online.target
+ConditionFileNotEmpty=/etc/youtube-streaming/uploads-backup.env
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/youtube-streaming/uploads-backup.env
+ExecStart=/opt/youtube_translation/scripts/backup_uploads.sh
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# Reads uploads + writes backup root.
+ReadOnlyPaths=/opt/youtube_translation_data/uploads
+ReadWritePaths=/var/lib/youtube-backups/uploads
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+User=youtube-backup
+Group=youtube-backup
+
+# A full sync of a multi-GB uploads tree may take a while; cap at 6h.
+TimeoutStartSec=6h
+
+[Install]
+WantedBy=multi-user.target
