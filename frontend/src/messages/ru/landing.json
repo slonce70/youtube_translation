@@ -296,5 +296,341 @@
       "compliance": "Соответствие"
     },
     "copyright": "© 2026 YouTube Streaming. Все права защищены."
+  },
+  "loopcast": {
+    "nav": {
+      "features": "Возможности",
+      "howItWorks": "Как работает",
+      "demo": "Демо",
+      "pricing": "Тарифы",
+      "faq": "FAQ",
+      "signin": "Войти",
+      "ctaMain": "Начать бесплатно"
+    },
+    "hero": {
+      "pillTag": "NEW",
+      "pillText": "YouTube 24/7 без OBS и без включённого ПК",
+      "titleA": "Стрим на ",
+      "titleEm": "YouTube",
+      "titleB": ", который",
+      "titleC": "не включается",
+      "titleAnd": "и",
+      "titleD": "не выключается",
+      "subtitle": "Loopcast крутит твои видео и аудио в бесконечном цикле — 24 часа в сутки, 7 дней в неделю. Без OBS, без включённого ПК и без доступа к твоему каналу.",
+      "ctaMain": "Начать бесплатно",
+      "ctaDemo": "Посмотреть демо",
+      "metaLive": "412 каналов сейчас в эфире",
+      "metaNoObs": "без OBS",
+      "metaUptime": "99.97% uptime",
+      "metaAutoRecovery": "auto-recovery",
+      "metaStartTime": "старт за 8 секунд"
+    },
+    "ticker": {
+      "items": [
+        "lo-fi study radio · 184 days streaming",
+        "jazz café 24/7 · 412 days streaming",
+        "rainy night ambient · 91 days streaming",
+        "space synthwave loop · 268 days streaming",
+        "morning piano · 56 days streaming",
+        "deep focus radio · 731 days streaming",
+        "kyiv chill · 38 days streaming"
+      ]
+    },
+    "noAccess": {
+      "eyebrow": "самый частый вопрос",
+      "title": "«Нужно ли давать доступ к моему YouTube-каналу?»",
+      "body": "Нет. Достаточно RTMPS URL и stream key из YouTube Studio. Логины, пароли и доступ к каналу остаются только у тебя. Stream key шифруется Fernet+PBKDF2."
+    },
+    "howItWorks": {
+      "eyebrow": "как это работает",
+      "titleA": "Четыре шага ",
+      "titleEm": "до эфира",
+      "subtitle": "Без OBS, без включённого ПК, без потерянных кадров когда интернет моргнул.",
+      "step1": {
+        "title": "Загрузи",
+        "description": "Перетащи видео и аудио в Библиотеку. Resumable upload — даже на файлы 100 ГБ без обрыва."
+      },
+      "step2": {
+        "title": "Собери",
+        "description": "Создай плейлист или коллекцию. Видео + аудио отдельно. Loop включается в один клик."
+      },
+      "step3": {
+        "title": "Укажи ключ",
+        "description": "Вставь RTMPS URL и stream key из YouTube Studio. Один раз — и навсегда зашифрован."
+      },
+      "step4": {
+        "title": "Запусти",
+        "description": "Старт за 8 секунд. Авто-reconnect, hot-swap плейлиста live, мониторинг 24/7."
+      }
+    },
+    "demo": {
+      "eyebrow": "живой прототип · drag, click, toggle",
+      "titleA": "Это ",
+      "titleEm": "настоящий",
+      "titleB": " кабинет",
+      "subtitle": "Перетащи треки в плейлисте, смотри как меняется preview, проверь статистику канала. Всё работает прямо здесь.",
+      "tabs": {
+        "stream": "Стрим",
+        "library": "Библиотека",
+        "schedule": "Расписание",
+        "settings": "Настройки"
+      },
+      "playlist": "Плейлист",
+      "playlistMeta": "{count} треков · loop ∞",
+      "preview": "Превью",
+      "broadcasting": "● broadcasting",
+      "nowLabel": "СЕЙЧАС В ЭФИРЕ",
+      "stats": {
+        "bitrate": "Bitrate",
+        "youtube": "YouTube",
+        "viewers": "Viewers",
+        "live": "● live"
+      },
+      "channel": "YouTube канал",
+      "destName": "Lo-fi Beats Radio",
+      "destKey": "🔒 stream key: ••••–8x9k–LZ4f–p2qm",
+      "channelStats": {
+        "subscribers": "Подписчики",
+        "views24h": "Просмотры / 24 ч",
+        "incomeMonth": "Доход / мес (est.)"
+      },
+      "monetizeLabel": "Заработок на автопилоте",
+      "monetizeText": "Стрим крутится 24/7. Просмотры идут. Монетизация YouTube — твоя.",
+      "tracks": [
+        {
+          "title": "Midnight Drive · Synthwave",
+          "dur": "4:32",
+          "tag": "video"
+        },
+        {
+          "title": "Coffee Break · Lo-fi",
+          "dur": "3:18",
+          "tag": "audio"
+        },
+        {
+          "title": "Tokyo Rain · Ambient",
+          "dur": "5:04",
+          "tag": "video"
+        },
+        {
+          "title": "Forest Spirits · Lo-fi",
+          "dur": "3:55",
+          "tag": "video"
+        },
+        {
+          "title": "Sunset Boulevard · Synthwave",
+          "dur": "4:11",
+          "tag": "video"
+        }
+      ]
+    },
+    "features": {
+      "eyebrow": "возможности",
+      "titleA": "Построено, чтобы ",
+      "titleEm": "не падать",
+      "subtitle": "Запускаешь стрим — и всё. Никаких настроек кодеков, никаких подвисаний компьютера. Сервер держит эфир 24/7 за тебя.",
+      "f1": {
+        "eyebrow": "железная стабильность",
+        "titleA": "Стрим, который ",
+        "titleEm": "не падает",
+        "body": "Твоё видео доставляется на YouTube бит-в-бит как ты его загрузил. Никаких артефактов, никаких потерь качества. А если что-то отвалится — auto-reconnect подхватит эфир за секунды.",
+        "diagSource": "ТВОЁ ВИДЕО",
+        "diagSourceFile": "video.mp4",
+        "diagCenter": "LOOPCAST",
+        "diagCenterBig": "24/7",
+        "diagCenterSub": "наш сервер держит эфир",
+        "diagCenterLive": "● live",
+        "diagDest": "YOUTUBE",
+        "diagDestSub": "твой канал"
+      },
+      "f2": {
+        "eyebrow": "монетизация",
+        "title": "Зарабатывай пока спишь",
+        "body": "Music-каналы, lo-fi радио, ретро-видео, lecture-loop — твои видео крутятся 24/7 и собирают просмотры, пока ты занят чем-то другим."
+      },
+      "f3": {
+        "eyebrow": "безопасность ключей",
+        "title": "Stream key, который никто не увидит",
+        "body": "Fernet + PBKDF2-HMAC-SHA256, маскировка в UI, исключён из логов и метрик."
+      },
+      "f4": {
+        "eyebrow": "библиотека",
+        "title": "Папки, коллекции, теги",
+        "body": "Отдельные плейлисты для видео и аудио. Crossfade. Hot-swap live."
+      },
+      "f5": {
+        "eyebrow": "tusd",
+        "title": "Resumable upload",
+        "body": "Закрыл вкладку на 80%? Продолжает с того же байта. Файлы до 100 ГБ."
+      },
+      "f6": {
+        "eyebrow": "самовосстановление",
+        "title": "Auto-reconnect",
+        "body": "YouTube закрыл сессию? Интернет моргнул? Новая коннекция за 4 секунды."
+      }
+    },
+    "proof": {
+      "eyebrow": "реальные цифры · последние 90 дней",
+      "titleA": "Держим эфир — ",
+      "titleEm": "и доказываем это",
+      "uptimeLabel": "aggregate uptime",
+      "uptimeBig": "99.",
+      "uptimeBigEm": "97",
+      "uptimeBigSuffix": "%",
+      "uptimeSub": "412 каналов. 11 mln часов эфира. Только 23 минуты недоступности за квартал.",
+      "graphLabel": "последние 7 дней · поминутно",
+      "days": [
+        "Пн",
+        "Вт",
+        "Ср",
+        "Чт",
+        "Пт",
+        "Сб",
+        "Вс"
+      ]
+    },
+    "testimonials": {
+      "eyebrow": "отзывы · бета-пользователи",
+      "titleA": "Что говорят те, кто ",
+      "titleEm": "уже",
+      "titleB": " в эфире",
+      "items": [
+        {
+          "quote": "«Перешли с Gyre. Экономим $40/мес и не моргает уже 4 месяца подряд.»",
+          "name": "Алексей Р.",
+          "role": "Lo-fi канал · 240k подписчиков",
+          "avatar": "А"
+        },
+        {
+          "quote": "«Загрузил 30 часов аудио вчера, сегодня оно уже крутится. Без танцев с OBS.»",
+          "name": "Diana M.",
+          "role": "jazz radio · 1.1M часов",
+          "avatar": "D"
+        },
+        {
+          "quote": "«Stream key зашифрован — это для нас закрыло вопрос комплаенса.»",
+          "name": "Ярема В.",
+          "role": "CTO · образовательная платформа",
+          "avatar": "Я"
+        }
+      ]
+    },
+    "faq": {
+      "eyebrow": "FAQ",
+      "titleA": "Вопросы, которые возникают ",
+      "titleEm": "у всех",
+      "items": [
+        {
+          "q": "Нужно ли давать доступ к моему YouTube-каналу?",
+          "a": "Нет. Всё, что нам нужно — RTMPS URL и stream key из YouTube Studio. Доступ к каналу, пароли, OAuth — ничего из этого не трогаем."
+        },
+        {
+          "q": "Что если у меня оборвётся интернет?",
+          "a": "Стрим крутится на нашем сервере — твой интернет не влияет. Если оборвётся коннекция между нами и YouTube, авто-reconnect за 4 секунды."
+        },
+        {
+          "q": "Нужен ли мне мощный компьютер?",
+          "a": "Нет, вообще никакой. Стрим крутится на нашем сервере. Можешь закрыть браузер, выключить ноутбук — эфир продолжается."
+        },
+        {
+          "q": "Могу ли я менять плейлист во время эфира?",
+          "a": "Да. Hot-swap: добавляешь/убираешь треки, новые подхватываются после текущего без разрыва трансляции."
+        },
+        {
+          "q": "Сколько одновременных стримов?",
+          "a": "На Solo — 1, Studio — 5, Network — 25. Можно выйти на кастом для бóльших объёмов."
+        },
+        {
+          "q": "Куда девается мой stream key?",
+          "a": "Шифруется Fernet с ключом, выведенным через PBKDF2-HMAC-SHA256, и хранится только в зашифрованном виде. Не пишется в логи и метрики."
+        }
+      ],
+      "titleB": ""
+    },
+    "pricing": {
+      "eyebrow": "тарифы · без скрытых лимитов",
+      "titleA": "Цена, которую ",
+      "titleEm": "видно",
+      "subtitle": "Платишь за то что используешь. Отмена в один клик. Первые 14 дней Studio — бесплатно.",
+      "tiers": [
+        {
+          "name": "Solo",
+          "price": "0",
+          "sub": "/мес",
+          "tag": null,
+          "list": [
+            "1 канал YouTube",
+            "20 ГБ библиотеки",
+            "720p · 4500 kb/s",
+            "Базовый scheduler",
+            "Сообщество в Discord"
+          ],
+          "cta": "Начать",
+          "featured": false
+        },
+        {
+          "name": "Studio",
+          "price": "14",
+          "sub": "/мес",
+          "tag": "самое популярное",
+          "list": [
+            "5 каналов YouTube",
+            "500 ГБ библиотеки",
+            "1080p · 8000 kb/s",
+            "Hot-swap плейлиста live",
+            "Расширенный scheduler + repeat",
+            "Email-поддержка 24/7"
+          ],
+          "cta": "Попробовать 14 дней",
+          "featured": true
+        },
+        {
+          "name": "Network",
+          "price": "49",
+          "sub": "/мес",
+          "tag": null,
+          "list": [
+            "25 каналов YouTube",
+            "5 ТБ библиотеки",
+            "1080p60 · до 12 Mbps",
+            "Sub-accounts для агентств",
+            "API + webhooks",
+            "Выделенный менеджер"
+          ],
+          "cta": "Связаться",
+          "featured": false
+        }
+      ]
+    },
+    "closer": {
+      "titleA": "Запусти свой ",
+      "titleEm": "24/7",
+      "titleB": "эфир сегодня",
+      "subtitle": "14 дней бесплатно. Кредитка не нужна. Не понравится — ничего не платишь.",
+      "ctaMain": "Начать бесплатно",
+      "ctaDemo": "Посмотреть демо"
+    },
+    "footer": {
+      "tagline": "24/7 YouTube-стриминг сервис. Разработано в Киеве. Работает на FFmpeg, FastAPI и кофеине.",
+      "product": "Продукт",
+      "resources": "Ресурсы",
+      "company": "Компания",
+      "links": {
+        "features": "Возможности",
+        "pricing": "Тарифы",
+        "demo": "Демо",
+        "api": "API · скоро",
+        "docs": "Документация",
+        "streamKeyGuide": "Как взять stream key",
+        "status": "Status page",
+        "changelog": "Changelog",
+        "about": "О нас",
+        "contact": "Контакты",
+        "privacy": "Privacy",
+        "terms": "Terms"
+      },
+      "copyright": "© 2026 Loopcast Studio. Made in Kyiv.",
+      "version": "v0.4.2 · status: ● operational"
+    }
   }
 }
