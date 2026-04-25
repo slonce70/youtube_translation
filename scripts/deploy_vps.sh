@@ -1003,6 +1003,20 @@ if [[ -f "$env_file_path" ]]; then
       # Echo a sanitized version of the now-current line so the deploy log
       # confirms what landed in the file.
       echo "Sanitized post-heal DATABASE_URL: $(sed -n -E 's/^[[:space:]]*DATABASE_URL=//p' "$env_file_path" | tail -n 1 | sed -E 's#://[^@]*@#://***@#g')"
+      # Dump the resolved systemd unit's Environment + EnvironmentFile so we
+      # can see whether a drop-in is shadowing our healed .env. If
+      # ``systemctl show`` reports a ``DATABASE_URL=`` value that disagrees
+      # with the file we just wrote, we've found the next problem.
+      echo "--- systemctl show youtube-backend (Environment lines) ---"
+      systemctl show youtube-backend -p Environment 2>&1 \
+        | sed -E 's#://[^@]*@#://***@#g' \
+        | sed -E 's/(DATABASE_URL=postgresql:\/\/[^@:]+:)[^@]*@/\1***@/g' \
+        || echo "  (systemctl show failed — non-systemd or insufficient privileges)"
+      echo "--- systemctl cat youtube-backend (drop-ins included) ---"
+      systemctl cat youtube-backend 2>&1 \
+        | grep -E '^(EnvironmentFile|Environment|\[)' \
+        | sed -E 's#://[^@]*@#://***@#g' \
+        || echo "  (systemctl cat failed)"
     else
       echo "WARN: malformed DATABASE_URL detected but no POSTGRES_PASSWORD available to construct a healthy replacement."
     fi
