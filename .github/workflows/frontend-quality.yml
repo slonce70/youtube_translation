@@ -54,3 +54,19 @@ jobs:
 
       - name: Run unit tests
         run: npm test -- --runInBand
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright smoke + dashboard-flows
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.invalid
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
+          NEXT_PUBLIC_API_URL: https://example.invalid
+        run: npx playwright test e2e/smoke.spec.ts e2e/dashboard-flows.spec.ts

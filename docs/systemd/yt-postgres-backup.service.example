@@ -1,0 +1,57 @@
+# /etc/systemd/system/yt-postgres-backup.service
+#
+# Daily Postgres backup with age encryption + off-host upload. Triggered
+# by yt-postgres-backup.timer (3:00 UTC). Run script:
+#   /opt/youtube_translation/scripts/backup_postgres.sh
+#
+# Required env (loaded from EnvironmentFile=):
+#   POSTGRES_BACKUP_DSN=postgres://backup_user:***@127.0.0.1:5432/youtube_streaming
+#   BACKUP_AGE_RECIPIENT=age1q...   # public key (NEVER the identity)
+#   BACKUP_DEST_DIR=/var/lib/youtube-backups/postgres
+# Optional:
+#   BACKUP_S3_BUCKET=youtube-streaming-backups
+#   BACKUP_S3_PREFIX=postgres
+#   BACKUP_RETENTION_DAYS=30
+
+[Unit]
+Description=YouTube Streaming — Postgres backup
+Wants=network-online.target
+After=network-online.target postgresql.service
+ConditionFileNotEmpty=/etc/youtube-streaming/backup.env
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/youtube-streaming/backup.env
+ExecStart=/opt/youtube_translation/scripts/backup_postgres.sh
+
+# Hardening — same posture as the streaming.slice template.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/youtube-backups
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Run as a dedicated unprivileged user; must have read on backup.env.
+User=youtube-backup
+Group=youtube-backup
+
+# Don't restart on failure — the timer will retry on schedule, and a
+# failed backup deserves operator inspection.
+TimeoutStartSec=2h
+
+[Install]
+WantedBy=multi-user.target

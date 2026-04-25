@@ -10,7 +10,7 @@ from uuid import UUID, uuid5, NAMESPACE_DNS
 
 import httpx
 import jwt
-from fastapi import Depends, HTTPException, Header, status
+from fastapi import Depends, HTTPException, Header, Request, status
 from gotrue.errors import AuthRetryableError  # type: ignore[import-untyped]
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -504,9 +504,18 @@ async def _ensure_user_profile(
     return user_id
 
 
-async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
+async def get_current_user_id(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+) -> str:
     """
     Get current user ID from Supabase JWT token.
+
+    Side effect: stores the resolved user-id on ``request.state.authenticated_user_id``
+    so the rate limiter (which keys on ``ip:user_id:endpoint``) can include
+    the user-id dimension and defeat IP-rotation bypasses for authenticated
+    routes. The middleware reads ``request.state.authenticated_user_id`` and
+    falls back to "anon" when unset.
 
     Args:
         authorization: Bearer token from Authorization header
@@ -518,7 +527,13 @@ async def get_current_user_id(authorization: Optional[str] = Header(None)) -> st
         HTTPException: If token is invalid or missing
     """
     user = await get_current_user(authorization)
-    return user["sub"]
+    user_id = user["sub"]
+    try:
+        request.state.authenticated_user_id = str(user_id)
+    except AttributeError:
+        # Some test clients construct Request without a mutable state.
+        pass
+    return user_id
 
 
 async def get_current_user_optional(
