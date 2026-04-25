@@ -61,6 +61,12 @@ const t = {
   recommendations: ({ label, details }: { label: string; details: string }) => `${label} ${details}`,
   selection: { checkboxLabel: 'Select asset' },
   previewAlt: ({ filename }: { filename: string }) => `Preview of ${filename}`,
+  iconActions: {
+    download: 'Download',
+    validate: 'Validate file',
+    move: 'Move to folder',
+    delete: 'Delete asset',
+  },
 }
 
 describe('AssetCard thumbnails', () => {

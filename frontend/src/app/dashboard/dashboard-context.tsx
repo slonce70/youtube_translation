@@ -1,11 +1,12 @@
 'use client'
 
 import { createContext, useContext } from 'react'
+import type { User } from '@supabase/supabase-js'
 import type { QuotaUsageResponse, SubscriptionTierKey } from '@/lib/types'
 import type { PlanDetail } from '@/lib/plans'
 
 type DashboardContextValue = {
-  user: any
+  user: User | null
   signOut: () => Promise<void>
   refreshUser: () => Promise<void>
   quota?: QuotaUsageResponse

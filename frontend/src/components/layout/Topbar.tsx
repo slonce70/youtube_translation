@@ -1,5 +1,4 @@
 'use client'
-/* eslint-disable i18next/no-literal-string */
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -51,14 +50,16 @@ export function Topbar({
   }, [menuOpen])
 
   const liveLabel = useMemo(() => {
-    if (liveCount <= 0) return 'Немає live'
-    return `${liveCount} Live`
-  }, [liveCount])
+    if (liveCount <= 0) return nav('topbar.noLive')
+    return nav('topbar.liveCount', { count: liveCount })
+  }, [liveCount, nav])
 
   return (
     <header className="topbar">
       <div className="topbar-logo">
-        <div className="logo-icon">📡</div>
+        <div className="logo-icon" aria-hidden="true">
+          {'📡'}
+        </div>
         <span className="logo-text">{brandName}</span>
       </div>
 
@@ -70,7 +71,7 @@ export function Topbar({
       >
         <Search className="topbar-search-icon" aria-hidden="true" />
         <span className="topbar-search-input" aria-hidden="true">{nav('search.placeholder')}</span>
-        <span className="search-kbd">⌘K</span>
+        <span className="search-kbd" aria-hidden="true">{'⌘K'}</span>
       </button>
 
       {showLiveBadge ? (
@@ -129,7 +130,7 @@ export function Topbar({
                 </div>
                 <span className="topbar-plan-chip">
                   <Sparkles className="h-3 w-3" aria-hidden="true" />
-                  Free
+                  {nav('topbar.planFree')}
                 </span>
               </div>
               <Link href="/dashboard/profile" className="topbar-menu-item" onClick={() => setMenuOpen(false)} role="menuitem">

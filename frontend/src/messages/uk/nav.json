@@ -2,6 +2,11 @@
   "brand": {
     "name": "YouTube Streaming"
   },
+  "topbar": {
+    "liveCount": "{count} Live",
+    "noLive": "Немає live",
+    "planFree": "Free"
+  },
   "menu": {
     "dashboard": "Панель",
     "library": "Файли",

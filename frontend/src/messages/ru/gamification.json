@@ -1,0 +1,20 @@
+{
+  "broadcaster": {
+    "title": "Карьера ведущего",
+    "level": "Уровень {level}",
+    "hoursStreamed": "{hours} ч трансляций",
+    "nextLevelAt": "Далее: {hours} ч",
+    "maxLevelReached": "Максимальный уровень!",
+    "experienceLabel": "Опыт",
+    "experienceValue": "{xp} XP",
+    "libraryLabel": "Библиотека",
+    "clipsCount": "{count} клипов",
+    "levels": {
+      "novice": "Новичок эфира",
+      "rising": "Молодой стример",
+      "pro": "Профи трансляций",
+      "master": "Мастер канала",
+      "legend": "Легенда"
+    }
+  }
+}
