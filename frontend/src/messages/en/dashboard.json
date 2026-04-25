@@ -1,4 +1,81 @@
 {
+  "home": {
+    "title": "Dashboard",
+    "subtitleGreeting": "Hi, {name} 👋 — today is {date}",
+    "userFallback": "Streamer",
+    "planFallback": "Free",
+    "actions": {
+      "schedule": "🗓️ Schedule",
+      "startStream": "🎙️ Start streaming"
+    },
+    "liveBanner": {
+      "activeStreams": "{count} active streams",
+      "scheduledNote": "· {count} scheduled",
+      "attentionNote": "· {count} need attention",
+      "planNote": "Plan {plan}",
+      "goTo": "Open →"
+    },
+    "stats": {
+      "filesInLibrary": "Files in library",
+      "newRecently": "▲ {count} added recently",
+      "scheduledDelta": "▲ {count} scheduled",
+      "storageUsed": "Storage used",
+      "storagePercentOf": "{percent}% of {limit} GB",
+      "streamingToday": "Streaming today",
+      "totalLifetime": "▲ Total {hours} h"
+    },
+    "liveStreams": {
+      "title": "🔴 Active streams",
+      "live": "Live",
+      "noLive": "No live",
+      "untitled": "Untitled",
+      "healthLabel": "Stream health",
+      "healthGood": "Excellent",
+      "healthAttention": "Needs attention",
+      "stats": "Stats",
+      "stop": "■ Stop",
+      "emptyTitle": "No active live streams",
+      "emptyDescription": "Create a broadcast or schedule one — running streams will appear here only after launch.",
+      "openFiles": "Files",
+      "launch": "Launch",
+      "openSchedule": "Schedule"
+    },
+    "recentAssets": {
+      "title": "📁 Recent files",
+      "viewAll": "All files →",
+      "tableFile": "File",
+      "tableSize": "Size",
+      "tableDuration": "Duration",
+      "tableAction": "Action",
+      "open": "Open",
+      "emptyTitle": "Library is empty",
+      "emptyDescription": "Upload your first file to launch broadcasts directly from your library.",
+      "uploadCta": "⬆ Upload file"
+    },
+    "quickActions": {
+      "title": "⚡ Quick actions",
+      "startStreaming": "🎙️ Start streaming",
+      "uploadFile": "📁 Upload file",
+      "scheduleStream": "🗓️ Schedule stream"
+    },
+    "storage": {
+      "title": "💾 Storage",
+      "ofLimit": "{used} / {limit} GB",
+      "freeSpace": "~ {value} free",
+      "video": "🎬 Video",
+      "audio": "🎵 Audio",
+      "other": "📦 Other",
+      "manage": "Manage files →"
+    },
+    "scheduleSidebar": {
+      "title": "🗓️ Today on schedule",
+      "untitled": "Untitled",
+      "scheduledFallback": "Scheduled",
+      "emptyTitle": "No scheduled events",
+      "emptyDescription": "Create a stream and pick a scheduled start.",
+      "viewFull": "Full schedule →"
+    }
+  },
   "title": {
     "heading": "Dashboard",
     "subheading": "Keep an eye on your limits and jump back into streaming in a click."

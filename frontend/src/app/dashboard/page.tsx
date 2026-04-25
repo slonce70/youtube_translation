@@ -1,9 +1,7 @@
 'use client'
-// TODO(sprint-3.5): full i18n migration of dashboard root page deferred.
-// Sprint 3.1 covered smaller components; this page's translation pass needs
-// designer/translator review for tone consistency. Disable is INTENTIONAL —
-// see docs/audit/2026-04-25_deep_multi_agent_audit.md (H8).
-/* eslint-disable i18next/no-literal-string */
+// Sprint 6.6: full i18n migration completed. All user-visible strings now
+// go through `dashboard.home.*` keys and have en/uk/ru translations. The
+// previous TODO(sprint-3.5) and eslint-disable have been lifted.
 
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -27,6 +25,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const dashboard = useTranslations('dashboard')
+  const home = useTranslations('dashboard.home')
   const nav = useTranslations('nav')
   const streamingToasts = useTranslations('streaming.toasts')
   const { user, quota, quotaLoading, currentTier, planDetail } = useDashboardContext()
@@ -133,70 +132,131 @@ export default function DashboardPage() {
   const liveStreams = presentedStreams.filter(({ derived }) => derived.isRunning).slice(0, 3)
   const scheduledStreams = presentedStreams.filter(({ derived }) => derived.group === 'scheduled').slice(0, 2)
   const pendingStopStreamId = stopStreamMutation.isPending ? stopStreamMutation.variables : null
-  const userLabel = user?.user_metadata?.display_name || user?.email || 'Стример'
-  const subtitle = `Привіт, ${userLabel} 👋 — сьогодні ${new Intl.DateTimeFormat('uk-UA', {
+  const userLabel =
+    user?.user_metadata?.display_name || user?.email || home('userFallback')
+  const todayDate = new Intl.DateTimeFormat(undefined, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(new Date())}`
-  const currentPlanLabel = currentTier ? dashboard('quota.tiers.' + (currentTier as SubscriptionTierKey)) : 'Free'
+  }).format(new Date())
+  const subtitle = home('subtitleGreeting', { name: userLabel, date: todayDate })
+  const currentPlanLabel = currentTier
+    ? dashboard('quota.tiers.' + (currentTier as SubscriptionTierKey))
+    : home('planFallback')
 
   return (
     <div className="page-shell">
       <div className="page-header">
         <div>
-          <div className="page-title">Дашборд</div>
+          <div className="page-title">{home('title')}</div>
           <div className="page-sub">{subtitle}</div>
         </div>
         <div className="page-actions">
-          <Button variant="outline" size="sm" className="hero-action-btn" onClick={() => router.push('/dashboard/schedule')}>
-            🗓️ Запланувати
+          <Button
+            variant="outline"
+            size="sm"
+            className="hero-action-btn"
+            onClick={() => router.push('/dashboard/schedule')}
+          >
+            {home('actions.schedule')}
           </Button>
-          <Button className="hero-action-btn" onClick={() => router.push('/dashboard/streaming?new=1')}>
-            🎙️ Почати трансляцію
+          <Button
+            className="hero-action-btn"
+            onClick={() => router.push('/dashboard/streaming?new=1')}
+          >
+            {home('actions.startStream')}
           </Button>
         </div>
       </div>
 
       <div className="live-banner">
         <LiveDot />
-        <span style={{ fontWeight: 600, color: 'var(--green)' }}>{liveCount} активні трансляції</span>
-        <span style={{ color: 'var(--txt-2)', fontSize: 13 }}>
-          {scheduledCount > 0 ? `· ${scheduledCount} заплановано` : `· ${attentionCount} потребують уваги`} · План {currentPlanLabel}
+        <span style={{ fontWeight: 600, color: 'var(--green)' }}>
+          {home('liveBanner.activeStreams', { count: liveCount })}
         </span>
-        <Button variant="outline" size="sm" className="ml-auto" onClick={() => router.push('/dashboard/streaming')}>
-          Перейти →
+        <span style={{ color: 'var(--txt-2)', fontSize: 13 }}>
+          {scheduledCount > 0
+            ? home('liveBanner.scheduledNote', { count: scheduledCount })
+            : home('liveBanner.attentionNote', { count: attentionCount })}{' '}
+          {home('liveBanner.planNote', { plan: currentPlanLabel })}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={() => router.push('/dashboard/streaming')}
+        >
+          {home('liveBanner.goTo')}
         </Button>
       </div>
 
       <div className="stats-row">
-        <div className="stat-card" style={{ ['--accent' as string]: 'var(--indigo)', ['--icon-bg' as string]: 'rgba(99,102,241,.15)' }}>
-          <div className="stat-icon">📁</div>
+        <div
+          className="stat-card"
+          style={{
+            ['--accent' as string]: 'var(--indigo)',
+            ['--icon-bg' as string]: 'rgba(99,102,241,.15)',
+          }}
+        >
+          <div className="stat-icon" aria-hidden="true">{'📁'}</div>
           <div className="stat-value">{usage.assetsCount}</div>
-          <div className="stat-label">Файлів у бібліотеці</div>
-          <div className="stat-delta delta-up">▲ {recentAssets.length} нових останнім часом</div>
-        </div>
-        <div className="stat-card" style={{ ['--accent' as string]: 'var(--green)', ['--icon-bg' as string]: 'rgba(34,197,94,.12)' }}>
-          <div className="stat-icon">📡</div>
-          <div className="stat-value">{liveCount}</div>
-          <div className="stat-label">{dashboard('stats.activeStreams')}</div>
-          <div className="stat-delta delta-up">▲ {scheduledCount} заплановано</div>
-        </div>
-        <div className="stat-card" style={{ ['--accent' as string]: 'var(--amber)', ['--icon-bg' as string]: 'rgba(245,158,11,.12)' }}>
-          <div className="stat-icon">⚡</div>
-          <div className="stat-value">{formatBytes(usage.storageUsedBytes)}</div>
-          <div className="stat-label">Сховище використано</div>
-          <div style={{ marginTop: 8 }}>
-            <ProgressBar value={storagePercent} tone="amber" />
-            <div className="page-sub" style={{ marginTop: 4 }}>{Math.round(storagePercent)}% з {planDetail.storageGb} ГБ</div>
+          <div className="stat-label">{home('stats.filesInLibrary')}</div>
+          <div className="stat-delta delta-up">
+            {home('stats.newRecently', { count: recentAssets.length })}
           </div>
         </div>
-        <div className="stat-card" style={{ ['--accent' as string]: '#a855f7', ['--icon-bg' as string]: 'rgba(168,85,247,.12)' }}>
-          <div className="stat-icon">⏱️</div>
-          <div className="stat-value">{formatDuration(Math.round((usage.hoursUsed || 0) * 3600))}</div>
-          <div className="stat-label">Час трансляцій сьогодні</div>
-          <div className="stat-delta delta-up">▲ Усього {usage.totalLifetimeHours.toFixed(1)} год</div>
+        <div
+          className="stat-card"
+          style={{
+            ['--accent' as string]: 'var(--green)',
+            ['--icon-bg' as string]: 'rgba(34,197,94,.12)',
+          }}
+        >
+          <div className="stat-icon" aria-hidden="true">{'📡'}</div>
+          <div className="stat-value">{liveCount}</div>
+          <div className="stat-label">{dashboard('stats.activeStreams')}</div>
+          <div className="stat-delta delta-up">
+            {home('stats.scheduledDelta', { count: scheduledCount })}
+          </div>
+        </div>
+        <div
+          className="stat-card"
+          style={{
+            ['--accent' as string]: 'var(--amber)',
+            ['--icon-bg' as string]: 'rgba(245,158,11,.12)',
+          }}
+        >
+          <div className="stat-icon" aria-hidden="true">{'⚡'}</div>
+          <div className="stat-value">{formatBytes(usage.storageUsedBytes)}</div>
+          <div className="stat-label">{home('stats.storageUsed')}</div>
+          <div style={{ marginTop: 8 }}>
+            <ProgressBar value={storagePercent} tone="amber" />
+            <div className="page-sub" style={{ marginTop: 4 }}>
+              {home('stats.storagePercentOf', {
+                percent: Math.round(storagePercent),
+                limit: planDetail.storageGb,
+              })}
+            </div>
+          </div>
+        </div>
+        <div
+          className="stat-card"
+          style={{
+            ['--accent' as string]: '#a855f7',
+            ['--icon-bg' as string]: 'rgba(168,85,247,.12)',
+          }}
+        >
+          <div className="stat-icon" aria-hidden="true">{'⏱️'}</div>
+          <div className="stat-value">
+            {formatDuration(Math.round((usage.hoursUsed || 0) * 3600))}
+          </div>
+          <div className="stat-label">{home('stats.streamingToday')}</div>
+          <div className="stat-delta delta-up">
+            {home('stats.totalLifetime', {
+              hours: usage.totalLifetimeHours.toFixed(1),
+            })}
+          </div>
         </div>
       </div>
 
@@ -204,56 +264,130 @@ export default function DashboardPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card>
             <CardHeader className="mb-4 flex-row items-center justify-between">
-              <CardTitle>🔴 Активні трансляції</CardTitle>
+              <CardTitle>{home('liveStreams.title')}</CardTitle>
               {liveStreams.length > 0 ? (
-                <Badge variant="live"><LiveDot />Live</Badge>
+                <Badge variant="live">
+                  <LiveDot />
+                  {home('liveStreams.live')}
+                </Badge>
               ) : (
-                <Badge variant="idle">Немає live</Badge>
+                <Badge variant="idle">{home('liveStreams.noLive')}</Badge>
               )}
             </CardHeader>
             <CardContent className="summary-list">
-              {liveStreams.length > 0 ? liveStreams.map(({ stream, derived }) => (
-                <div key={stream.id} className="stream-row active" style={{ alignItems: 'stretch' }}>
-                  <div className="stream-thumb">🎬</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || 'Без назви'}</div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                      <Badge variant="live"><LiveDot />{formatDuration(derived.liveDurationSeconds ?? 0)}</Badge>
-                      {(stream.destinations ?? []).slice(0, 2).map((destination) => (
-                        <Badge key={destination.id} variant="indigo">{destination.name}</Badge>
-                      ))}
-                    </div>
-                    <div style={{ marginTop: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        <span style={{ color: 'var(--txt-3)', fontSize: 12 }}>Здоров’я потоку</span>
-                        <span style={{ color: 'var(--green)', fontSize: 12, fontWeight: 600, marginLeft: 'auto' }}>
-                          {derived.requiresAttention ? 'Потрібна увага' : 'Відмінне'}
-                        </span>
+              {liveStreams.length > 0 ? (
+                liveStreams.map(({ stream, derived }) => (
+                  <div
+                    key={stream.id}
+                    className="stream-row active"
+                    style={{ alignItems: 'stretch' }}
+                  >
+                    <div className="stream-thumb" aria-hidden="true">{'🎬'}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                        {stream.name || home('liveStreams.untitled')}
                       </div>
-                      <ProgressBar value={derived.requiresAttention ? 62 : 92} tone={derived.requiresAttention ? 'amber' : 'green'} />
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 8,
+                          marginTop: 4,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <Badge variant="live">
+                          <LiveDot />
+                          {formatDuration(derived.liveDurationSeconds ?? 0)}
+                        </Badge>
+                        {(stream.destinations ?? []).slice(0, 2).map((destination) => (
+                          <Badge key={destination.id} variant="indigo">
+                            {destination.name}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 10 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            marginBottom: 4,
+                          }}
+                        >
+                          <span style={{ color: 'var(--txt-3)', fontSize: 12 }}>
+                            {home('liveStreams.healthLabel')}
+                          </span>
+                          <span
+                            style={{
+                              color: 'var(--green)',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              marginLeft: 'auto',
+                            }}
+                          >
+                            {derived.requiresAttention
+                              ? home('liveStreams.healthAttention')
+                              : home('liveStreams.healthGood')}
+                          </span>
+                        </div>
+                        <ProgressBar
+                          value={derived.requiresAttention ? 62 : 92}
+                          tone={derived.requiresAttention ? 'amber' : 'green'}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => router.push('/dashboard/streaming')}
+                      >
+                        {home('liveStreams.stats')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={pendingStopStreamId === stream.id}
+                        onClick={() => stopStreamMutation.mutate(stream.id)}
+                      >
+                        {home('liveStreams.stop')}
+                      </Button>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/streaming')}>Стат.</Button>
+                ))
+              ) : (
+                <div className="empty-state" style={{ padding: '28px 16px' }}>
+                  <div className="empty-icon" aria-hidden="true">{'📡'}</div>
+                  <div className="empty-title">{home('liveStreams.emptyTitle')}</div>
+                  <div className="empty-sub">{home('liveStreams.emptyDescription')}</div>
+                  <div
+                    className="page-actions"
+                    style={{
+                      marginTop: 14,
+                      marginLeft: 0,
+                      justifyContent: 'center',
+                    }}
+                  >
                     <Button
                       size="sm"
-                      variant="danger"
-                      disabled={pendingStopStreamId === stream.id}
-                      onClick={() => stopStreamMutation.mutate(stream.id)}
+                      variant="outline"
+                      onClick={() => router.push('/dashboard/library?tab=assets')}
                     >
-                      ■ Зупинити
+                      {home('liveStreams.openFiles')}
                     </Button>
-                  </div>
-                </div>
-              )) : (
-                <div className="empty-state" style={{ padding: '28px 16px' }}>
-                  <div className="empty-icon">📡</div>
-                  <div className="empty-title">Активних live-ефірів немає</div>
-                  <div className="empty-sub">Створіть трансляцію або заплануйте ефір — активні стріми з’являться тут тільки після запуску.</div>
-                  <div className="page-actions" style={{ marginTop: 14, marginLeft: 0, justifyContent: 'center' }}>
-                    <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/library?tab=assets')}>Файли</Button>
-                    <Button size="sm" onClick={() => router.push('/dashboard/streaming?new=1')}>Запустити</Button>
-                    <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/schedule')}>Розклад</Button>
+                    <Button
+                      size="sm"
+                      onClick={() => router.push('/dashboard/streaming?new=1')}
+                    >
+                      {home('liveStreams.launch')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => router.push('/dashboard/schedule')}
+                    >
+                      {home('liveStreams.openSchedule')}
+                    </Button>
                   </div>
                 </div>
               )}
@@ -262,38 +396,70 @@ export default function DashboardPage() {
 
           <Card>
             <CardHeader className="mb-4 flex-row items-center justify-between">
-              <CardTitle>📁 Останні файли</CardTitle>
-              <Link href="/dashboard/library" className="btn btn-ghost btn-sm">Всі файли →</Link>
+              <CardTitle>{home('recentAssets.title')}</CardTitle>
+              <Link href="/dashboard/library" className="btn btn-ghost btn-sm">
+                {home('recentAssets.viewAll')}
+              </Link>
             </CardHeader>
             <CardContent className="table-wrap">
               {recentAssets.length > 0 ? (
                 <table className="table">
                   <thead>
-                    <tr><th>Файл</th><th>Розмір</th><th>Тривалість</th><th>Дія</th></tr>
+                    <tr>
+                      <th>{home('recentAssets.tableFile')}</th>
+                      <th>{home('recentAssets.tableSize')}</th>
+                      <th>{home('recentAssets.tableDuration')}</th>
+                      <th>{home('recentAssets.tableAction')}</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {recentAssets.map((asset) => (
                       <tr key={asset.id}>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div className="table-thumb">{asset.asset_type === 'audio' ? '🎵' : '🎬'}</div>
+                            <div className="table-thumb" aria-hidden="true">
+                              {asset.asset_type === 'audio' ? '🎵' : '🎬'}
+                            </div>
                             <span>{asset.filename}</span>
                           </div>
                         </td>
-                        <td style={{ color: 'var(--txt-2)' }}>{formatBytes(asset.size_bytes)}</td>
-                        <td style={{ color: 'var(--txt-2)' }}>{asset.duration_seconds ? formatDuration(asset.duration_seconds) : '—'}</td>
-                        <td><Button size="sm" variant="ghost" onClick={() => router.push('/dashboard/library')}>Відкрити</Button></td>
+                        <td style={{ color: 'var(--txt-2)' }}>
+                          {formatBytes(asset.size_bytes)}
+                        </td>
+                        <td style={{ color: 'var(--txt-2)' }}>
+                          {asset.duration_seconds
+                            ? formatDuration(asset.duration_seconds)
+                            : '—'}
+                        </td>
+                        <td>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => router.push('/dashboard/library')}
+                          >
+                            {home('recentAssets.open')}
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               ) : (
-                <div className="empty-state" style={{ padding: '28px 12px 20px' }}>
-                  <div className="empty-icon">📁</div>
-                  <div className="empty-title">Бібліотека поки порожня</div>
-                  <div className="empty-sub">Завантажте перший файл, щоб швидко запускати трансляції зі стріму.</div>
-                  <Button size="sm" style={{ marginTop: 12 }} onClick={() => router.push('/dashboard/library?tab=assets')}>
-                    ⬆ Завантажити файл
+                <div
+                  className="empty-state"
+                  style={{ padding: '28px 12px 20px' }}
+                >
+                  <div className="empty-icon" aria-hidden="true">{'📁'}</div>
+                  <div className="empty-title">{home('recentAssets.emptyTitle')}</div>
+                  <div className="empty-sub">
+                    {home('recentAssets.emptyDescription')}
+                  </div>
+                  <Button
+                    size="sm"
+                    style={{ marginTop: 12 }}
+                    onClick={() => router.push('/dashboard/library?tab=assets')}
+                  >
+                    {home('recentAssets.uploadCta')}
                   </Button>
                 </div>
               )}
@@ -303,16 +469,37 @@ export default function DashboardPage() {
 
         <div className="dashboard-side">
           <Card className="card-sm">
-            <CardTitle>⚡ Швидкі дії</CardTitle>
-            <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-              <Button fullWidth onClick={() => router.push('/dashboard/streaming?new=1')}>🎙️ Розпочати трансляцію</Button>
-              <Button fullWidth variant="outline" onClick={() => router.push('/dashboard/library?tab=assets')}>📁 Завантажити файл</Button>
-              <Button fullWidth variant="outline" onClick={() => router.push('/dashboard/streaming')}>🗓️ Запланувати стрім</Button>
+            <CardTitle>{home('quickActions.title')}</CardTitle>
+            <CardContent
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                marginTop: 12,
+              }}
+            >
+              <Button fullWidth onClick={() => router.push('/dashboard/streaming?new=1')}>
+                {home('quickActions.startStreaming')}
+              </Button>
+              <Button
+                fullWidth
+                variant="outline"
+                onClick={() => router.push('/dashboard/library?tab=assets')}
+              >
+                {home('quickActions.uploadFile')}
+              </Button>
+              <Button
+                fullWidth
+                variant="outline"
+                onClick={() => router.push('/dashboard/streaming')}
+              >
+                {home('quickActions.scheduleStream')}
+              </Button>
             </CardContent>
           </Card>
 
           <Card className="card-sm">
-            <CardTitle>💾 Сховище</CardTitle>
+            <CardTitle>{home('storage.title')}</CardTitle>
             <CardContent style={{ textAlign: 'center', marginTop: 12 }}>
               <div className="storage-ring">
                 <svg viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)', width: 80, height: 80 }}>
@@ -332,48 +519,80 @@ export default function DashboardPage() {
                   {Math.round(storagePercent)}%
                 </div>
               </div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{formatBytes(usage.storageUsedBytes)} / {planDetail.storageGb} ГБ</div>
-              <div style={{ fontSize: 12, color: 'var(--txt-3)', marginTop: 4 }}>~ {formatBytes(remainingStorage)} вільно</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>
+                {home('storage.ofLimit', {
+                  used: formatBytes(usage.storageUsedBytes),
+                  limit: planDetail.storageGb,
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--txt-3)', marginTop: 4 }}>
+                {home('storage.freeSpace', {
+                  value: formatBytes(remainingStorage),
+                })}
+              </div>
               <div className="storage-breakdown">
                 <div className="storage-breakdown-row">
-                  <span>🎬 Відео</span>
+                  <span>{home('storage.video')}</span>
                   <span>{formatBytes(storageBreakdown.video)}</span>
                 </div>
                 <div className="storage-breakdown-row">
-                  <span>🎵 Аудіо</span>
+                  <span>{home('storage.audio')}</span>
                   <span>{formatBytes(storageBreakdown.audio)}</span>
                 </div>
                 <div className="storage-breakdown-row">
-                  <span>📦 Інше</span>
+                  <span>{home('storage.other')}</span>
                   <span>{formatBytes(storageBreakdown.other)}</span>
                 </div>
               </div>
-              <Button fullWidth variant="ghost" size="sm" style={{ marginTop: 12 }} onClick={() => router.push('/dashboard/library')}>
-                Керувати файлами →
+              <Button
+                fullWidth
+                variant="ghost"
+                size="sm"
+                style={{ marginTop: 12 }}
+                onClick={() => router.push('/dashboard/library')}
+              >
+                {home('storage.manage')}
               </Button>
             </CardContent>
           </Card>
 
           <Card className="card-sm">
-            <CardTitle>🗓️ Сьогодні в розкладі</CardTitle>
+            <CardTitle>{home('scheduleSidebar.title')}</CardTitle>
             <CardContent className="summary-list" style={{ marginTop: 12 }}>
-              {scheduledStreams.length > 0 ? scheduledStreams.map(({ stream }) => (
-                <div key={stream.id} className="stream-row">
-                  <div className="stream-thumb">🗓️</div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{stream.name || 'Без назви'}</div>
-                    <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>{stream.scheduled_start_time ? new Date(stream.scheduled_start_time).toLocaleString() : 'Заплановано'}</div>
+              {scheduledStreams.length > 0 ? (
+                scheduledStreams.map(({ stream }) => (
+                  <div key={stream.id} className="stream-row">
+                    <div className="stream-thumb" aria-hidden="true">{'🗓️'}</div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>
+                        {stream.name || home('scheduleSidebar.untitled')}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
+                        {stream.scheduled_start_time
+                          ? new Date(stream.scheduled_start_time).toLocaleString()
+                          : home('scheduleSidebar.scheduledFallback')}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="empty-state" style={{ padding: '24px 12px' }}>
+                  <div className="empty-icon" aria-hidden="true">{'🗓️'}</div>
+                  <div className="empty-title">
+                    {home('scheduleSidebar.emptyTitle')}
+                  </div>
+                  <div className="empty-sub">
+                    {home('scheduleSidebar.emptyDescription')}
                   </div>
                 </div>
-              )) : (
-                <div className="empty-state" style={{ padding: '24px 12px' }}>
-                  <div className="empty-icon">🗓️</div>
-                  <div className="empty-title">Немає запланованих подій</div>
-                  <div className="empty-sub">Створіть стрім і оберіть запланований старт.</div>
-                </div>
               )}
-              <Button fullWidth variant="ghost" size="sm" onClick={() => router.push('/dashboard/schedule')}>
-                Повний розклад →
+              <Button
+                fullWidth
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push('/dashboard/schedule')}
+              >
+                {home('scheduleSidebar.viewFull')}
               </Button>
             </CardContent>
           </Card>
