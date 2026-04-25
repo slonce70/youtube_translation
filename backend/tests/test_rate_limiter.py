@@ -18,10 +18,13 @@ def _make_request(
     path: str,
     client_host: str = "198.51.100.10",
     forwarded_for: str | None = None,
+    authorization: str | None = None,
 ) -> Request:
     headers = []
     if forwarded_for is not None:
         headers.append((b"x-forwarded-for", forwarded_for.encode()))
+    if authorization is not None:
+        headers.append((b"authorization", authorization.encode()))
 
     scope = {
         "type": "http",
@@ -127,6 +130,58 @@ def test_client_key_includes_authenticated_user_id():
     assert (
         limiter._get_client_key(request)
         == "198.51.100.10:11111111-2222-3333-4444-555555555555:/api/auth/refresh"
+    )
+
+
+def test_client_key_extracts_user_id_from_jwt_when_state_unset():
+    """The middleware runs BEFORE FastAPI dependencies, so request.state
+    has no authenticated_user_id at limit-decision time. The limiter must
+    extract the `sub` claim from the JWT itself (signature-unverified;
+    used only for keying, never for auth decisions).
+    """
+    import jwt as _jwt
+
+    user_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    token = _jwt.encode({"sub": user_id}, "irrelevant-secret", algorithm="HS256")
+
+    limiter = RateLimiter()
+    request = _make_request(
+        "/api/auth/refresh", authorization=f"Bearer {token}"
+    )
+
+    assert (
+        limiter._get_client_key(request)
+        == f"198.51.100.10:{user_id}:/api/auth/refresh"
+    )
+
+
+def test_client_key_falls_back_to_anon_on_malformed_jwt():
+    limiter = RateLimiter()
+    request = _make_request(
+        "/api/auth/refresh", authorization="Bearer not.a.real.token"
+    )
+
+    assert (
+        limiter._get_client_key(request)
+        == "198.51.100.10:anon:/api/auth/refresh"
+    )
+
+
+def test_client_key_state_overrides_jwt_extraction():
+    """If state.authenticated_user_id IS set (verified JWT path), prefer it."""
+    import jwt as _jwt
+
+    fake = _jwt.encode({"sub": "fake-id"}, "irrelevant", algorithm="HS256")
+    real = "real-verified-id"
+
+    limiter = RateLimiter()
+    request = _make_request(
+        "/api/auth/refresh", authorization=f"Bearer {fake}"
+    )
+    request.state.authenticated_user_id = real
+
+    assert limiter._get_client_key(request) == (
+        f"198.51.100.10:{real}:/api/auth/refresh"
     )
 
 
