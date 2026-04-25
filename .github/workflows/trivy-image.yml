@@ -74,6 +74,7 @@ jobs:
           exit-code: "1"
           vuln-type: os,library
           trivyignores: .trivyignore
+          limit-severities-for-sarif: true
 
       - name: Upload Trivy SARIF (backend)
         if: always()
@@ -130,6 +131,7 @@ jobs:
           exit-code: "1"
           vuln-type: os,library
           trivyignores: .trivyignore
+          limit-severities-for-sarif: true
 
       - name: Upload Trivy SARIF (frontend)
         if: always()
