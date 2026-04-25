@@ -53,14 +53,14 @@ wait_for_tusd_backend_http() {
   echo "Waiting for tusd backend upstream reachability..."
   for _ in $(seq 1 15); do
     if "$docker_bin" compose -f "$compose_file" exec -T tusd \
-      sh -lc 'curl -fsS --max-time 5 "$TUSD_BACKEND_URL/health" >/dev/null' >/dev/null 2>&1; then
+      sh -lc 'curl -fsS --max-time 5 "$TUSD_BACKEND_URL/healthz" >/dev/null' >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
   done
 
   "$docker_bin" compose -f "$compose_file" exec -T tusd \
-    sh -lc 'curl -fsS --max-time 5 "$TUSD_BACKEND_URL/health" >/dev/null'
+    sh -lc 'curl -fsS --max-time 5 "$TUSD_BACKEND_URL/healthz" >/dev/null'
 }
 
 ufw_is_active() {

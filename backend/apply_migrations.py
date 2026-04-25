@@ -7,6 +7,7 @@ Run with: python apply_migrations.py
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 from sqlalchemy import text
@@ -17,46 +18,45 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from app.core.config import settings
 
-
 # List of migrations to apply (in order)
 # Note: 001 (Supabase bootstrap) is skipped for local PostgreSQL
 # Note: 002, 006 are RLS/Supabase-specific policies, skipped for local
 # Note: 003 is SKIPPED - already created by 000_local_initial_schema.sql
 MIGRATIONS = [
     # 'migrations/003_user_profiles_and_tiers.sql',  # SKIP: duplicates 000_local_initial_schema.sql
-    'migrations/004_add_user_id_columns.sql',       # LOCAL: Additional indexes only
-    'migrations/005_admin_and_alerts.sql',          # LOCAL: FK to user_profiles
+    "migrations/004_add_user_id_columns.sql",  # LOCAL: Additional indexes only
+    "migrations/005_admin_and_alerts.sql",  # LOCAL: FK to user_profiles
     # 'migrations/006_update_rls_policies.sql',     # SKIP: RLS (Supabase only)
-    'migrations/007_remove_projects.sql',
-    'migrations/008_update_admin_alert_fk.sql',     # Fixes FK to user_profiles
+    "migrations/007_remove_projects.sql",
+    "migrations/008_update_admin_alert_fk.sql",  # Fixes FK to user_profiles
     # 'migrations/009_update_user_fk.sql',          # SKIP: FK already correct from 000
-    'migrations/010_stream_quality_limits.sql',
-    'migrations/011_stream_source_type.sql',
-    'migrations/012_stream_assets.sql',
-    'migrations/013_update_tariffs.sql',
-    'migrations/014_asset_metadata.sql',
-    'migrations/015_media_folders.sql',
-    'migrations/016_media_collections.sql',
-    'migrations/017_streams_collection_link.sql',
-    'migrations/018_performance_indexes.sql',
-    'migrations/019_fix_system_alerts.sql',         # Fixes FK to user_profiles
-    'migrations/020_admin_action_reason_column.sql',
-    'migrations/021_admin_action_request_metadata.sql',
-    'migrations/022_admin_action_type_constraint.sql',
-    'migrations/023_stream_schedule_columns.sql',
-    'migrations/024_stream_schedule_stop_columns.sql',
-    'migrations/025_user_profile_timezone.sql',
-    'migrations/026_collection_items_updated_at.sql',
-    'migrations/027_stream_status_constraint.sql',
-    'migrations/028_stream_scheduler_v1.sql',
-    'migrations/029_asset_optimization_status.sql',
-    'migrations/030_stream_runtime_leases.sql',
-    'migrations/031_stream_runtime_restart_state.sql',
-    'migrations/032_asset_storage_contract.sql',
-    'migrations/033_upload_ingests.sql',
-    'migrations/034_fix_uhd_bitrate_caps.sql',
-    'migrations/035_stream_runtime_refusal_alert_type.sql',
-    'migrations/036_drop_legacy_stream_runtime_state.sql',
+    "migrations/010_stream_quality_limits.sql",
+    "migrations/011_stream_source_type.sql",
+    "migrations/012_stream_assets.sql",
+    "migrations/013_update_tariffs.sql",
+    "migrations/014_asset_metadata.sql",
+    "migrations/015_media_folders.sql",
+    "migrations/016_media_collections.sql",
+    "migrations/017_streams_collection_link.sql",
+    "migrations/018_performance_indexes.sql",
+    "migrations/019_fix_system_alerts.sql",  # Fixes FK to user_profiles
+    "migrations/020_admin_action_reason_column.sql",
+    "migrations/021_admin_action_request_metadata.sql",
+    "migrations/022_admin_action_type_constraint.sql",
+    "migrations/023_stream_schedule_columns.sql",
+    "migrations/024_stream_schedule_stop_columns.sql",
+    "migrations/025_user_profile_timezone.sql",
+    "migrations/026_collection_items_updated_at.sql",
+    "migrations/027_stream_status_constraint.sql",
+    "migrations/028_stream_scheduler_v1.sql",
+    "migrations/029_asset_optimization_status.sql",
+    "migrations/030_stream_runtime_leases.sql",
+    "migrations/031_stream_runtime_restart_state.sql",
+    "migrations/032_asset_storage_contract.sql",
+    "migrations/033_upload_ingests.sql",
+    "migrations/034_fix_uhd_bitrate_caps.sql",
+    "migrations/035_stream_runtime_refusal_alert_type.sql",
+    "migrations/036_drop_legacy_stream_runtime_state.sql",
 ]
 
 
@@ -76,10 +76,10 @@ async def check_table_exists(conn: AsyncConnection, table_name: str) -> bool:
 async def get_migration_status(conn: AsyncConnection) -> dict:
     """Check which migrations have been applied"""
     status = {}
-    
+
     # Check if user_profiles exists (migration 003)
-    status['003'] = await check_table_exists(conn, 'user_profiles')
-    
+    status["003"] = await check_table_exists(conn, "user_profiles")
+
     # Check if assets has user_id column (migration 004)
     query = text("""
         SELECT
@@ -118,30 +118,28 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
             )
     """)
     result = await conn.execute(query)
-    status['004'] = bool(result.scalar())
-    
+    status["004"] = bool(result.scalar())
+
     # Check if admin/system tables exist (migration 005)
-    admin_actions = await check_table_exists(conn, 'admin_actions')
-    system_alerts = await check_table_exists(conn, 'system_alerts')
-    activity_log = await check_table_exists(conn, 'user_activity_log')
+    admin_actions = await check_table_exists(conn, "admin_actions")
+    system_alerts = await check_table_exists(conn, "system_alerts")
+    activity_log = await check_table_exists(conn, "user_activity_log")
     if system_alerts:
-        result = await conn.execute(
-            text(
-                """
+        result = await conn.execute(text("""
                 SELECT COUNT(*)
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = 'system_alerts'
                   AND column_name IN ('stream_id', 'asset_id', 'resolution_notes')
-                """
-            )
-        )
+                """))
         system_alert_columns = int(result.scalar() or 0)
     else:
         system_alert_columns = 0
 
-    status['005'] = bool(admin_actions and system_alerts and activity_log and system_alert_columns == 3)
-    
+    status["005"] = bool(
+        admin_actions and system_alerts and activity_log and system_alert_columns == 3
+    )
+
     # Check if new RLS policies exist (migration 006)
     query = text("""
         SELECT EXISTS (
@@ -152,7 +150,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         )
     """)
     result = await conn.execute(query)
-    status['006'] = result.scalar()
+    status["006"] = result.scalar()
 
     # Check project columns removed (migration 007)
     query = text("""
@@ -164,7 +162,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         )
     """)
     result = await conn.execute(query)
-    status['007'] = result.scalar()
+    status["007"] = result.scalar()
 
     # Check admin tables reference user_profiles (migration 008)
     query = text("""
@@ -182,7 +180,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         AND r.relname = 'user_profiles'
     """)
     result = await conn.execute(query)
-    status['008'] = result.scalar()
+    status["008"] = result.scalar()
 
     # Check core table foreign keys (migration 009)
     query = text("""
@@ -199,7 +197,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         AND r.relname = 'user_profiles'
     """)
     result = await conn.execute(query)
-    status['009'] = result.scalar()
+    status["009"] = result.scalar()
 
     # Check stream quality columns (migration 010)
     query = text("""
@@ -216,7 +214,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           )
     """)
     result = await conn.execute(query)
-    status['010'] = result.scalar()
+    status["010"] = result.scalar()
 
     # Check stream source type support (migration 011)
     query = text("""
@@ -228,7 +226,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         )
     """)
     result = await conn.execute(query)
-    status['011'] = result.scalar()
+    status["011"] = result.scalar()
 
     # Check stream assets mapping (migration 012)
     query = text("""
@@ -239,10 +237,10 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         )
     """)
     result = await conn.execute(query)
-    status['012'] = result.scalar()
+    status["012"] = result.scalar()
 
     # Check subscription tiers populated with pricing (migration 013)
-    tier_limits_exists = await check_table_exists(conn, 'subscription_tier_limits')
+    tier_limits_exists = await check_table_exists(conn, "subscription_tier_limits")
     if tier_limits_exists:
         query = text("""
             SELECT COUNT(*) = 7
@@ -261,11 +259,10 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           AND column_name = 'price_cents'
     """)
     price_column = (await conn.execute(query)).scalar()
-    status['013'] = bool(tiers_seeded and price_column)
+    status["013"] = bool(tiers_seeded and price_column)
 
     # Check asset metadata enhancements (migration 014)
-    query = text(
-        """
+    query = text("""
         SELECT COUNT(*)
         FROM information_schema.columns
         WHERE table_schema = 'public'
@@ -280,18 +277,15 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
               'fps',
               'validation_status'
           )
-        """
-    )
+        """)
     result = await conn.execute(query)
-    status['014'] = int(result.scalar() or 0) == 8
+    status["014"] = int(result.scalar() or 0) == 8
 
     # Check media folders tables (migration 015)
-    folders_exist = await check_table_exists(conn, 'media_folders')
-    links_exist = await check_table_exists(conn, 'asset_folder_links')
+    folders_exist = await check_table_exists(conn, "media_folders")
+    links_exist = await check_table_exists(conn, "asset_folder_links")
     if folders_exist:
-        result = await conn.execute(
-            text(
-                """
+        result = await conn.execute(text("""
                 SELECT EXISTS (
                     SELECT 1
                     FROM information_schema.columns
@@ -299,50 +293,45 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
                       AND table_name = 'media_folders'
                       AND column_name = 'is_root'
                 )
-                """
-            )
-        )
+                """))
         has_is_root = bool(result.scalar())
     else:
         has_is_root = False
-    status['015'] = bool(folders_exist and links_exist and has_is_root)
+    status["015"] = bool(folders_exist and links_exist and has_is_root)
 
     # Check media collections tables (migration 016)
-    collections_exist = await check_table_exists(conn, 'media_collections')
-    items_exist = await check_table_exists(conn, 'collection_items')
+    collections_exist = await check_table_exists(conn, "media_collections")
+    items_exist = await check_table_exists(conn, "collection_items")
     if collections_exist:
-        result = await conn.execute(
-            text(
-                """
+        result = await conn.execute(text("""
                 SELECT COUNT(*)
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = 'media_collections'
                   AND column_name IN ('collection_type', 'origin_playlist_id', 'is_active')
-                """
-            )
-        )
+                """))
         collections_columns = int(result.scalar() or 0)
     else:
         collections_columns = 0
 
     if items_exist:
-        result = await conn.execute(
-            text(
-                """
+        result = await conn.execute(text("""
                 SELECT COUNT(*)
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = 'collection_items'
                   AND column_name IN ('loop_mode', 'updated_at')
-                """
-            )
-        )
+                """))
         items_columns = int(result.scalar() or 0)
     else:
         items_columns = 0
 
-    status['016'] = bool(collections_exist and items_exist and collections_columns == 3 and items_columns == 2)
+    status["016"] = bool(
+        collections_exist
+        and items_exist
+        and collections_columns == 3
+        and items_columns == 2
+    )
 
     # Check streams link columns (migration 017)
     query = text("""
@@ -353,14 +342,18 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           AND column_name IN ('video_collection_id', 'audio_collection_id', 'mix_mode', 'settings_json')
     """)
     result = await conn.execute(query)
-    status['017'] = result.scalar()
+    status["017"] = result.scalar()
 
-    # Check performance indexes (migration 018)
+    # Check performance indexes (migration 018) — must include indisvalid=true
+    # so a partially failed CONCURRENTLY build is treated as "still pending".
     query = text("""
         SELECT COUNT(*) = 14
-        FROM pg_indexes
-        WHERE schemaname = 'public'
-          AND indexname IN (
+        FROM pg_indexes p
+        JOIN pg_class c ON c.relname = p.indexname
+        JOIN pg_index ix ON ix.indexrelid = c.oid
+        WHERE p.schemaname = 'public'
+          AND ix.indisvalid = true
+          AND p.indexname IN (
               'idx_assets_validation_status',
               'idx_streams_status_user',
               'idx_streams_user_started',
@@ -378,7 +371,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           )
     """)
     result = await conn.execute(query)
-    status['018'] = result.scalar()
+    status["018"] = result.scalar()
 
     # Check system alert constraints (migration 019)
     query = text("""
@@ -390,8 +383,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     constraints_ok = (await conn.execute(query)).scalar()
 
-    query = text(
-        """
+    query = text("""
         SELECT EXISTS (
             SELECT 1
             FROM pg_constraint c
@@ -400,8 +392,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
               AND c.conname = 'system_alerts_alert_type_check'
               AND pg_get_constraintdef(c.oid) ILIKE '%collection_depleted%'
         )
-        """
-    )
+        """)
     allows_collection_depleted = bool((await conn.execute(query)).scalar())
     query = text("""
         SELECT COUNT(*) = 2
@@ -412,11 +403,10 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           AND r.relname = 'user_profiles'
     """)
     fks_ok = (await conn.execute(query)).scalar()
-    status['019'] = bool(constraints_ok and allows_collection_depleted and fks_ok)
+    status["019"] = bool(constraints_ok and allows_collection_depleted and fks_ok)
 
     # Check runtime refusal alert type support (migration 035)
-    query = text(
-        """
+    query = text("""
         SELECT EXISTS (
             SELECT 1
             FROM pg_constraint c
@@ -425,9 +415,8 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
               AND c.conname = 'system_alerts_alert_type_check'
               AND pg_get_constraintdef(c.oid) ILIKE '%stream_runtime_refused_terminal_state%'
         )
-        """
-    )
-    status['035'] = bool((await conn.execute(query)).scalar())
+        """)
+    status["035"] = bool((await conn.execute(query)).scalar())
 
     # Check admin actions reason column (migration 020)
     query = text("""
@@ -439,7 +428,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         )
     """)
     result = await conn.execute(query)
-    status['020'] = result.scalar()
+    status["020"] = result.scalar()
 
     # Check admin actions request metadata columns (migration 021)
     query = text("""
@@ -450,7 +439,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           AND column_name IN ('ip_address', 'user_agent')
     """)
     result = await conn.execute(query)
-    status['021'] = result.scalar()
+    status["021"] = result.scalar()
 
     # Check admin actions constraint updated (migration 022)
     query = text("""
@@ -461,11 +450,11 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     result = await conn.execute(query)
     definition = result.scalar()
-    status['022'] = bool(
+    status["022"] = bool(
         definition
-        and 'change_tier' in definition
-        and 'force_stop_stream' in definition
-        and 'resolve_alert' in definition
+        and "change_tier" in definition
+        and "force_stop_stream" in definition
+        and "resolve_alert" in definition
     )
 
     # Check stream schedule columns (migration 023)
@@ -481,7 +470,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           )
     """)
     result = await conn.execute(query)
-    status['023'] = result.scalar()
+    status["023"] = result.scalar()
 
     # Check stream scheduled stop columns (migration 024)
     query = text("""
@@ -495,7 +484,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
           )
     """)
     result = await conn.execute(query)
-    status['024'] = result.scalar()
+    status["024"] = result.scalar()
 
     # Check user profile timezone column (migration 025)
     query = text("""
@@ -507,7 +496,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         )
     """)
     result = await conn.execute(query)
-    status['025'] = result.scalar()
+    status["025"] = result.scalar()
 
     # Check collection_items updated_at column (migration 026)
     query = text("""
@@ -519,7 +508,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         )
     """)
     result = await conn.execute(query)
-    status['026'] = result.scalar()
+    status["026"] = result.scalar()
 
     # Check stream status constraint includes 'scheduled' (migration 027)
     query = text("""
@@ -532,76 +521,178 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
     """)
     result = await conn.execute(query)
     definition = result.scalar()
-    status['027'] = bool(definition and 'scheduled' in definition)
+    status["027"] = bool(definition and "scheduled" in definition)
 
-    for migration_num in ('028', '029', '030', '031', '032', '033', '034', '035', '036'):
+    for migration_num in (
+        "028",
+        "029",
+        "030",
+        "031",
+        "032",
+        "033",
+        "034",
+        "035",
+        "036",
+    ):
         status[migration_num] = await verify_migration(conn, migration_num)
 
     return status
 
 
-async def apply_migration(conn: AsyncConnection, migration_file: str):
-    """Apply a single migration file"""
+_AUTOCOMMIT_MARKER = "-- @autocommit"
+
+
+def _has_autocommit_marker(sql_content: str) -> bool:
+    """Detect the ``-- @autocommit`` directive in the first ~10 non-empty lines.
+
+    Migrations marked autocommit are run outside the wrapping transaction so
+    that statements like ``CREATE INDEX CONCURRENTLY`` (which postgres rejects
+    inside a transaction block) can execute. Each statement runs in its own
+    implicit transaction, so all statements must be idempotent on partial
+    failure.
+    """
+    seen = 0
+    for line in sql_content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.lower().startswith(_AUTOCOMMIT_MARKER):
+            return True
+        seen += 1
+        if seen >= 10:
+            break
+    return False
+
+
+def _split_statements(sql_content: str) -> list[str]:
+    """Split SQL content into executable statements.
+
+    Handles ``$$``-delimited functions and ``;`` terminators. Empty lines and
+    comment-only lines (including the ``-- @autocommit`` directive) are
+    discarded. Returns a list of statement strings.
+    """
+    statements: list[str] = []
+    current_statement: list[str] = []
+    in_function = False
+
+    for line in sql_content.split("\n"):
+        stripped = line.strip()
+
+        if not stripped or stripped.startswith("--"):
+            continue
+
+        if "$$" in line:
+            in_function = not in_function
+
+        current_statement.append(line)
+
+        if not in_function and stripped.endswith(";"):
+            stmt = "\n".join(current_statement)
+            if stmt.strip():
+                statements.append(stmt)
+            current_statement = []
+
+    if current_statement:
+        stmt = "\n".join(current_statement)
+        if stmt.strip():
+            statements.append(stmt)
+
+    return statements
+
+
+# Postgres SQLSTATE codes for "object already exists" — narrow tolerance so we
+# never silently swallow unrelated errors that happen to contain the substring
+# "already exists" in a referenced object name.
+#
+# 42P07 — duplicate_table
+# 42710 — duplicate_object   (constraints, triggers, sequences, …)
+# 42P06 — duplicate_schema
+# 42701 — duplicate_column
+# 42723 — duplicate_function
+# 42P05 — duplicate_prepared_statement
+# 42712 — duplicate_alias
+_DUPLICATE_OBJECT_SQLSTATES = {
+    "42P07",
+    "42710",
+    "42P06",
+    "42701",
+    "42723",
+    "42P05",
+    "42712",
+}
+
+
+def _is_duplicate_object_error(exc: BaseException) -> bool:
+    """Return True iff ``exc`` is a postgres ``*already exists*`` SQLSTATE.
+
+    We extract ``pgcode`` via ``orig`` (asyncpg / psycopg DBAPIError adapters)
+    and fall back to a substring match only as defence-in-depth — but the
+    SQLSTATE check is authoritative.
+    """
+    orig = getattr(exc, "orig", None)
+    code = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+    if code in _DUPLICATE_OBJECT_SQLSTATES:
+        return True
+    return False
+
+
+async def _execute_statements(conn: AsyncConnection, statements: list[str]) -> None:
+    """Execute SQL statements on ``conn`` with strict ``duplicate_*`` tolerance.
+
+    Errors with a ``duplicate_*`` SQLSTATE are logged and skipped (so re-running
+    a migration with ``IF NOT EXISTS`` clauses is safe). Any other error
+    propagates, halting the migration so partial application is impossible.
+    """
+    for i, statement in enumerate(statements, 1):
+        if not statement.strip():
+            continue
+        try:
+            await conn.execute(text(statement))
+            print(f"  ✓ Executed statement {i}/{len(statements)}")
+        except Exception as stmt_error:  # noqa: BLE001
+            if _is_duplicate_object_error(stmt_error):
+                print(
+                    f"  ⏭️  Statement {i}/{len(statements)}: object already exists, skipping"
+                )
+                continue
+            print(f"  ❌ Error in statement {i}/{len(statements)}:")
+            print(f"     {str(stmt_error)}")
+            raise
+
+
+async def apply_migration(engine, conn: AsyncConnection, migration_file: str):
+    """Apply a single migration file.
+
+    Migrations with the ``-- @autocommit`` marker run on a separate
+    AUTOCOMMIT-mode connection (required for CONCURRENTLY operations); all
+    others run on the supplied ``conn`` so they participate in the surrounding
+    transaction.
+    """
     print(f"\n📝 Applying {migration_file}...")
-    
-    # Read migration file
+
     migration_path = Path(__file__).parent / migration_file
     if not migration_path.exists():
         print(f"⚠️  Migration file not found: {migration_file} — skipping")
         return True
-    
-    with open(migration_path, 'r') as f:
+
+    with open(migration_path, "r") as f:
         sql_content = f.read()
-    
+
+    autocommit = _has_autocommit_marker(sql_content)
+    statements = _split_statements(sql_content)
+
     try:
-        # Split SQL by statements (handle functions with $$)
-        statements = []
-        current_statement = []
-        in_function = False
-        
-        for line in sql_content.split('\n'):
-            stripped = line.strip()
-            
-            # Skip empty lines and comments
-            if not stripped or stripped.startswith('--'):
-                continue
-            
-            # Check if entering/leaving function definition
-            if '$$' in line:
-                in_function = not in_function
-            
-            current_statement.append(line)
-            
-            # Statement ends with ; (but not inside function)
-            if not in_function and stripped.endswith(';'):
-                stmt = '\n'.join(current_statement)
-                if stmt.strip():
-                    statements.append(stmt)
-                current_statement = []
-        
-        # Add last statement if exists
-        if current_statement:
-            stmt = '\n'.join(current_statement)
-            if stmt.strip():
-                statements.append(stmt)
-        
-        # Execute each statement
-        for i, statement in enumerate(statements, 1):
-            if statement.strip():
-                try:
-                    await conn.execute(text(statement))
-                    print(f"  ✓ Executed statement {i}/{len(statements)}")
-                except Exception as stmt_error:
-                    print(f"  ❌ Error in statement {i}/{len(statements)}:")
-                    print(f"     {str(stmt_error)}")
-                    # Continue with other statements for CREATE IF NOT EXISTS
-                    if "already exists" not in str(stmt_error).lower():
-                        raise
-        
-        # Don't commit here - commit will be done in main after all migrations
+        if autocommit:
+            print("  ⚙️  autocommit mode — running outside wrapping transaction")
+            async with engine.connect() as ac_conn:
+                ac_conn = await ac_conn.execution_options(isolation_level="AUTOCOMMIT")
+                await _execute_statements(ac_conn, statements)
+        else:
+            await _execute_statements(conn, statements)
+
         print(f"✅ Successfully applied {migration_file}")
         return True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Error applying {migration_file}:")
         print(f"   {str(e)}")
         return False
@@ -609,21 +700,20 @@ async def apply_migration(conn: AsyncConnection, migration_file: str):
 
 async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
     """Verify that a migration was applied successfully"""
-    if migration_num == '003':
+    if migration_num == "003":
         # Check user_profiles and subscription_tier_limits
-        exists = await check_table_exists(conn, 'user_profiles')
+        exists = await check_table_exists(conn, "user_profiles")
         if not exists:
             return False
-        
+
         # Check tier limits populated
         query = text("SELECT COUNT(*) FROM subscription_tier_limits")
         result = await conn.execute(query)
         count = result.scalar()
         return count >= 4
-    
-    elif migration_num == '004':
-        query = text(
-            """
+
+    elif migration_num == "004":
+        query = text("""
             SELECT
                 (
                     (SELECT COUNT(*) FROM information_schema.columns
@@ -658,31 +748,28 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
                        AND column_name IN ('total_duration_seconds', 'total_assets')
                     ) = 2
                 )
-            """
-        )
+            """)
         result = await conn.execute(query)
         return bool(result.scalar())
-    
-    elif migration_num == '005':
+
+    elif migration_num == "005":
         # Check admin tables exist
-        tables = ['admin_actions', 'system_alerts', 'user_activity_log']
+        tables = ["admin_actions", "system_alerts", "user_activity_log"]
         for table in tables:
             if not await check_table_exists(conn, table):
                 return False
 
-        query = text(
-            """
+        query = text("""
             SELECT COUNT(*)
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'system_alerts'
               AND column_name IN ('stream_id', 'asset_id', 'resolution_notes')
-            """
-        )
+            """)
         result = await conn.execute(query)
         return int(result.scalar() or 0) == 3
-    
-    elif migration_num == '006':
+
+    elif migration_num == "006":
         # Check new RLS policies exist
         query = text("""
             SELECT COUNT(*) FROM pg_policies 
@@ -692,7 +779,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar() > 0
 
-    elif migration_num == '007':
+    elif migration_num == "007":
         # Ensure legacy project columns are removed
         query = text("""
             SELECT COUNT(*)
@@ -704,7 +791,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar() == 0
 
-    elif migration_num == '008':
+    elif migration_num == "008":
         # Ensure admin tables reference user_profiles
         query = text("""
             SELECT COUNT(*)
@@ -723,7 +810,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar() == 5
 
-    elif migration_num == '009':
+    elif migration_num == "009":
         # Ensure core tables reference user_profiles
         query = text("""
             SELECT COUNT(*) = 4
@@ -741,7 +828,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '010':
+    elif migration_num == "010":
         # Ensure quality limit columns are present
         query = text("""
             SELECT COUNT(*) = 5
@@ -759,7 +846,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '011':
+    elif migration_num == "011":
         # Ensure streams have source_type column populated
         query = text("""
             SELECT COUNT(*)
@@ -781,7 +868,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar() == 0
 
-    elif migration_num == '012':
+    elif migration_num == "012":
         # Ensure stream_assets table exists with indexes
         query = text("""
             SELECT EXISTS (
@@ -809,7 +896,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar() == 3
 
-    elif migration_num == '013':
+    elif migration_num == "013":
         query = text("""
             SELECT COUNT(*)
             FROM subscription_tier_limits
@@ -831,9 +918,8 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar() == 1
 
-    elif migration_num == '014':
-        query = text(
-            """
+    elif migration_num == "014":
+        query = text("""
             SELECT COUNT(*)
             FROM information_schema.columns
             WHERE table_schema = 'public'
@@ -848,19 +934,17 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
                   'fps',
                   'validation_status'
               )
-            """
-        )
+            """)
         result = await conn.execute(query)
         return int(result.scalar() or 0) == 8
 
-    elif migration_num == '015':
-        folders = await check_table_exists(conn, 'media_folders')
-        links = await check_table_exists(conn, 'asset_folder_links')
+    elif migration_num == "015":
+        folders = await check_table_exists(conn, "media_folders")
+        links = await check_table_exists(conn, "asset_folder_links")
         if not (folders and links):
             return False
 
-        query = text(
-            """
+        query = text("""
             SELECT EXISTS (
                 SELECT 1
                 FROM information_schema.columns
@@ -868,42 +952,37 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
                   AND table_name = 'media_folders'
                   AND column_name = 'is_root'
             )
-            """
-        )
+            """)
         result = await conn.execute(query)
         return bool(result.scalar())
 
-    elif migration_num == '016':
-        collections = await check_table_exists(conn, 'media_collections')
-        items = await check_table_exists(conn, 'collection_items')
+    elif migration_num == "016":
+        collections = await check_table_exists(conn, "media_collections")
+        items = await check_table_exists(conn, "collection_items")
         if not (collections and items):
             return False
 
-        query = text(
-            """
+        query = text("""
             SELECT COUNT(*)
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'media_collections'
               AND column_name IN ('collection_type', 'origin_playlist_id', 'is_active')
-            """
-        )
+            """)
         collections_columns = int((await conn.execute(query)).scalar() or 0)
 
-        query = text(
-            """
+        query = text("""
             SELECT COUNT(*)
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'collection_items'
               AND column_name IN ('loop_mode', 'updated_at')
-            """
-        )
+            """)
         items_columns = int((await conn.execute(query)).scalar() or 0)
 
         return bool(collections_columns == 3 and items_columns == 2)
 
-    elif migration_num == '017':
+    elif migration_num == "017":
         query = text("""
             SELECT COUNT(*) = 4
             FROM information_schema.columns
@@ -914,12 +993,20 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '018':
+    elif migration_num == "018":
+        # Each index must (a) exist and (b) be marked indisvalid=true.
+        # `CREATE INDEX CONCURRENTLY` that aborts mid-build leaves an
+        # `indisvalid=false` row that the planner ignores; treating those
+        # as "applied" silently regresses the perf gains migration 018
+        # is meant to deliver.
         query = text("""
             SELECT COUNT(*) = 14
-            FROM pg_indexes
-            WHERE schemaname = 'public'
-              AND indexname IN (
+            FROM pg_indexes p
+            JOIN pg_class c ON c.relname = p.indexname
+            JOIN pg_index ix ON ix.indexrelid = c.oid
+            WHERE p.schemaname = 'public'
+              AND ix.indisvalid = true
+              AND p.indexname IN (
                   'idx_assets_validation_status',
                   'idx_streams_status_user',
                   'idx_streams_user_started',
@@ -939,7 +1026,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '019':
+    elif migration_num == "019":
         query = text("""
             SELECT COUNT(*) = 2
             FROM information_schema.table_constraints
@@ -949,8 +1036,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         constraints_ok = (await conn.execute(query)).scalar()
 
-        query = text(
-            """
+        query = text("""
             SELECT EXISTS (
                 SELECT 1
                 FROM pg_constraint c
@@ -959,8 +1045,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
                   AND c.conname = 'system_alerts_alert_type_check'
                   AND pg_get_constraintdef(c.oid) ILIKE '%collection_depleted%'
             )
-            """
-        )
+            """)
         allows_collection_depleted = bool((await conn.execute(query)).scalar())
 
         query = text("""
@@ -974,7 +1059,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         fks_ok = (await conn.execute(query)).scalar()
         return bool(constraints_ok and allows_collection_depleted and fks_ok)
 
-    elif migration_num == '020':
+    elif migration_num == "020":
         query = text("""
             SELECT EXISTS (
                 SELECT 1 FROM information_schema.columns
@@ -986,7 +1071,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '021':
+    elif migration_num == "021":
         query = text("""
             SELECT COUNT(*) = 2
             FROM information_schema.columns
@@ -997,7 +1082,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '022':
+    elif migration_num == "022":
         query = text("""
             SELECT pg_get_constraintdef(oid)
             FROM pg_constraint
@@ -1008,12 +1093,12 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         definition = result.scalar()
         return bool(
             definition
-            and 'change_tier' in definition
-            and 'force_stop_stream' in definition
-            and 'resolve_alert' in definition
+            and "change_tier" in definition
+            and "force_stop_stream" in definition
+            and "resolve_alert" in definition
         )
 
-    elif migration_num == '023':
+    elif migration_num == "023":
         query = text("""
             SELECT COUNT(*) = 3
             FROM information_schema.columns
@@ -1028,7 +1113,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '024':
+    elif migration_num == "024":
         query = text("""
             SELECT COUNT(*) = 2
             FROM information_schema.columns
@@ -1042,7 +1127,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '025':
+    elif migration_num == "025":
         query = text("""
             SELECT EXISTS (
                 SELECT 1 FROM information_schema.columns
@@ -1054,7 +1139,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '026':
+    elif migration_num == "026":
         query = text("""
             SELECT EXISTS (
                 SELECT 1 FROM information_schema.columns
@@ -1066,7 +1151,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return result.scalar()
 
-    elif migration_num == '027':
+    elif migration_num == "027":
         query = text("""
             SELECT pg_get_constraintdef(c.oid)
             FROM pg_constraint c
@@ -1077,9 +1162,9 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         result = await conn.execute(query)
         definition = result.scalar()
-        return bool(definition and 'scheduled' in definition)
+        return bool(definition and "scheduled" in definition)
 
-    elif migration_num == '028':
+    elif migration_num == "028":
         query = text("""
             SELECT COUNT(*) = 5
             FROM information_schema.columns
@@ -1105,11 +1190,11 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         return bool(
             columns_ok
             and definition
-            and 'daily' in definition
-            and 'weekly' in definition
+            and "daily" in definition
+            and "weekly" in definition
         )
 
-    elif migration_num == '029':
+    elif migration_num == "029":
         query = text("""
             SELECT COUNT(*) = 5
             FROM information_schema.columns
@@ -1134,7 +1219,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         index_ok = bool((await conn.execute(query)).scalar())
         return bool(columns_ok and index_ok)
 
-    elif migration_num == '030':
+    elif migration_num == "030":
         query = text("""
             SELECT COUNT(*) = 1
             FROM information_schema.columns
@@ -1156,7 +1241,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         indexes_ok = bool((await conn.execute(query)).scalar())
         return bool(columns_ok and indexes_ok)
 
-    elif migration_num == '031':
+    elif migration_num == "031":
         query = text("""
             SELECT COUNT(*) = 0
             FROM information_schema.columns
@@ -1180,7 +1265,7 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         index_ok = bool((await conn.execute(query)).scalar())
         return bool(columns_ok and index_ok)
 
-    elif migration_num == '032':
+    elif migration_num == "032":
         query = text("""
             SELECT COUNT(*) = 2
             FROM information_schema.columns
@@ -1199,8 +1284,8 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         index_ok = bool((await conn.execute(query)).scalar())
         return bool(columns_ok and index_ok)
 
-    elif migration_num == '033':
-        if not await check_table_exists(conn, 'upload_ingests'):
+    elif migration_num == "033":
+        if not await check_table_exists(conn, "upload_ingests"):
             return False
 
         query = text("""
@@ -1249,11 +1334,11 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
             columns_ok
             and indexes_ok
             and definition
-            and 'finalized' in definition
-            and 'failed' in definition
+            and "finalized" in definition
+            and "failed" in definition
         )
 
-    elif migration_num == '034':
+    elif migration_num == "034":
         query = text("""
             SELECT COUNT(*) = 3
             FROM subscription_tier_limits
@@ -1263,9 +1348,8 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         result = await conn.execute(query)
         return bool(result.scalar())
 
-    elif migration_num == '035':
-        query = text(
-            """
+    elif migration_num == "035":
+        query = text("""
             SELECT EXISTS (
                 SELECT 1
                 FROM pg_constraint c
@@ -1274,11 +1358,10 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
                   AND c.conname = 'system_alerts_alert_type_check'
                   AND pg_get_constraintdef(c.oid) ILIKE '%stream_runtime_refused_terminal_state%'
             )
-            """
-        )
+            """)
         return bool((await conn.execute(query)).scalar())
 
-    elif migration_num == '036':
+    elif migration_num == "036":
         query = text("""
             SELECT COUNT(*) = 1
             FROM information_schema.columns
@@ -1325,20 +1408,20 @@ async def main():
     print("=" * 60)
     print("🚀 YouTube Streaming Platform - Database Migration")
     print("=" * 60)
-    
+
     # Create async engine with asyncpg
-    database_url = settings.database_url.replace('postgresql://', 'postgresql+asyncpg://')
-    engine = create_async_engine(
-        database_url,
-        echo=False,
-        future=True
+    database_url = settings.database_url.replace(
+        "postgresql://", "postgresql+asyncpg://"
     )
-    
+    engine = create_async_engine(database_url, echo=False, future=True)
+
     async with engine.begin() as conn:
         # Fresh local databases need the bootstrap schema before status detection.
-        if not await check_table_exists(conn, 'user_profiles'):
+        if not await check_table_exists(conn, "user_profiles"):
             print("\n🧱 Bootstrapping local initial schema...")
-            success = await apply_migration(conn, 'migrations/000_local_initial_schema.sql')
+            success = await apply_migration(
+                engine, conn, "migrations/000_local_initial_schema.sql"
+            )
             if not success:
                 print("\n❌ Local bootstrap failed! Rolling back...")
                 await conn.rollback()
@@ -1347,19 +1430,19 @@ async def main():
         # Check current migration status
         print("\n📊 Checking current migration status...")
         status = await get_migration_status(conn)
-        
+
         print("\nMigration Status:")
         for migration_num, applied in status.items():
             icon = "✅" if applied else "⏳"
             status_text = "Applied" if applied else "Pending"
             print(f"  {icon} Migration {migration_num}: {status_text}")
-        
+
         # Ask for confirmation
         pending = [num for num, applied in status.items() if not applied]
         if not pending:
             print("\n✅ All migrations already applied!")
             return
-        
+
         print(f"\n⚠️  About to apply {len(pending)} pending migration(s):")
         for num in pending:
             try:
@@ -1367,63 +1450,81 @@ async def main():
                 print(f"   - {migration_file}")
             except StopIteration:
                 print(f"   - Migration {num} (SKIPPED: not in active MIGRATIONS list)")
-        
-        response = input("\nProceed with migrations? (yes/no): ")
-        if response.lower() not in ['yes', 'y']:
-            print("❌ Migration cancelled by user")
-            return
-        
+
+        # Container/CI runs entrypoint.sh under a non-interactive shell, where
+        # input() raises EOFError. Auto-confirm when stdin is not a TTY OR when
+        # the operator opts in via MIGRATIONS_AUTO_CONFIRM=1. Interactive humans
+        # still get the prompt.
+        auto_confirm_env = os.getenv("MIGRATIONS_AUTO_CONFIRM", "").strip().lower()
+        auto_confirm = (
+            auto_confirm_env in {"1", "true", "yes", "y"} or not sys.stdin.isatty()
+        )
+
+        if auto_confirm:
+            print(
+                "\n🤖 Auto-confirming pending migrations (non-TTY or MIGRATIONS_AUTO_CONFIRM set)"
+            )
+        else:
+            response = input("\nProceed with migrations? (yes/no): ")
+            if response.lower() not in ["yes", "y"]:
+                print("❌ Migration cancelled by user")
+                return
+
         # Filter pending to only include migrations that are in MIGRATIONS list
         migrations_to_apply = []
         for migration_file in MIGRATIONS:
-            migration_num = Path(migration_file).stem.split('_')[0]
+            migration_num = Path(migration_file).stem.split("_")[0]
             if migration_num in pending:
                 migrations_to_apply.append((migration_file, migration_num))
-        
+
         # Apply pending migrations
         print("\n🔄 Applying migrations...")
         for migration_file in MIGRATIONS:
-            migration_num = Path(migration_file).stem.split('_')[0]
-            
+            migration_num = Path(migration_file).stem.split("_")[0]
+
             if migration_num not in pending:
                 print(f"\n⏭️  Skipping {migration_file} (already applied)")
                 continue
-            
-            success = await apply_migration(conn, migration_file)
+
+            success = await apply_migration(engine, conn, migration_file)
             if not success:
                 print("\n❌ Migration failed! Rolling back...")
                 await conn.rollback()
                 return
-            
+
             # Verify migration
             print(f"🔍 Verifying {migration_file}...")
             if await verify_migration(conn, migration_num):
-                print(f"✅ Verification passed")
+                print("✅ Verification passed")
             else:
-                print(f"⚠️  Verification failed - please check manually")
-        
+                print("⚠️  Verification failed - please check manually")
+
         # Commit all migrations
         print("\n💾 Committing migrations...")
         await conn.commit()
-        
+
         print("\n" + "=" * 60)
         print("✅ All migrations applied successfully!")
         print("=" * 60)
-        
+
         # Print post-migration instructions
         print("\n📋 Post-Migration Checklist:")
         print("1. Verify data:")
         print("   psql <connection> -c 'SELECT * FROM user_profiles LIMIT 5;'")
         print("2. Check storage usage:")
-        print("   psql <connection> -c 'SELECT email, current_storage_bytes FROM user_profiles;'")
+        print(
+            "   psql <connection> -c 'SELECT email, current_storage_bytes FROM user_profiles;'"
+        )
         print("3. Run tests:")
         print("   pytest backend/tests/test_migrations.py -v")
         print("4. Create admin user:")
-        print("   UPDATE user_profiles SET is_admin = TRUE WHERE email = 'your@email.com';")
+        print(
+            "   UPDATE user_profiles SET is_admin = TRUE WHERE email = 'your@email.com';"
+        )
         print("\n🎉 Ready to proceed to Sprint 2!")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
@@ -1431,4 +1532,5 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"\n\n❌ Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()

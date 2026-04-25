@@ -844,7 +844,7 @@ if ! flag_enabled "$skip_docker_deploy" && [[ "${#services[@]}" -gt 0 ]]; then
   docker compose -f "$compose_file" up "${compose_up_args[@]}" "${services[@]}"
 
   if service_selected backend; then
-    wait_for_http "backend health endpoint" "http://127.0.0.1:8000/health" -fsS --max-time 5
+    wait_for_http "backend readiness endpoint" "http://127.0.0.1:8000/readyz" -fsS --max-time 5
   fi
   if service_selected frontend; then
     wait_for_http "frontend health endpoint" "http://127.0.0.1:3000/api/health" -fsS --max-time 5
