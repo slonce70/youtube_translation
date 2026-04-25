@@ -883,6 +883,38 @@ if ! service_selected backend; then
   run_database_migrations
 fi
 
+# ----------------------------------------------------------------------------
+# Belt-and-suspenders: re-issue migration 037's column adds via the *Docker*
+# postgres container directly. The host-native python migrator at
+# ``backend/apply_migrations.py`` reports success on every deploy and a
+# cross-connection probe inside the same Python process confirms the column
+# exists, but the host-native systemd backend then crashes on startup with
+# ``column streams.runtime_restart_attempts does not exist``. Hypothesis: the
+# migrator and the runtime backend resolve ``localhost:5432`` to *different*
+# Postgres processes (host-native vs the Docker-mapped one). Sidestep the
+# divergence by issuing the DDL through ``docker exec`` against the named
+# container the cutover scripts already trust as the production DB
+# (``youtube-streaming-postgres``). Migration 037 is idempotent
+# (``IF NOT EXISTS``), so this is safe to run on every deploy.
+if docker ps --format '{{.Names}}' | grep -qx 'youtube-streaming-postgres'; then
+  echo "Reissuing migration 037 column adds via docker exec on youtube-streaming-postgres"
+  docker exec -i youtube-streaming-postgres \
+    psql -U youtube_user -d youtube_streaming -v ON_ERROR_STOP=1 <<'EOF_037'
+ALTER TABLE streams
+    ADD COLUMN IF NOT EXISTS runtime_restart_attempts INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS runtime_last_failure_at TIMESTAMPTZ;
+COMMENT ON COLUMN streams.runtime_restart_attempts IS
+    'Persistent FFmpeg restart counter. Survives backend restarts so a flapping stream cannot bypass ffmpeg_auto_restart_attempts ceiling by counting on in-memory amnesia.';
+COMMENT ON COLUMN streams.runtime_last_failure_at IS
+    'Wall-clock timestamp of the most recent ffmpeg child non-zero exit; used for restart backoff and observability.';
+EOF_037
+  if [[ $? -ne 0 ]]; then
+    echo "WARN: docker-exec migration 037 fallback failed; backend may crash on startup."
+  fi
+else
+  echo "youtube-streaming-postgres container not running; skipping docker-exec safety net."
+fi
+
 maybe_restart_host_native_backend
 maybe_run_host_runtime_cutover
 
