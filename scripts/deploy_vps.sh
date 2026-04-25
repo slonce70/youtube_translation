@@ -915,6 +915,34 @@ else
   echo "youtube-streaming-postgres container not running; skipping docker-exec safety net."
 fi
 
+# ----------------------------------------------------------------------------
+# Forensic diag: prod is failing with ``column streams.runtime_restart_attempts
+# does not exist`` *after* both the host-native python migrator (against
+# ``localhost:5432``) AND the docker-exec psql safety net (inside the
+# ``youtube-streaming-postgres`` container) confirm the column is present.
+# That means the runtime backend is connecting to a *third* postgres instance
+# that neither path reached. Dump all the relevant facts so we can see the
+# divergence in the next deploy log.
+# ----------------------------------------------------------------------------
+echo "=== Forensic dump: where does runtime backend think postgres lives? ==="
+echo "--- /opt/youtube_translation/backend/.env (DB-related lines, redacted) ---"
+sed -n -E 's/^(DATABASE_URL|POSTGRES_HOST|POSTGRES_PORT|DB_HOST|DB_PORT)=.*$/\1=<set>/p' \
+  "$repo_root/backend/.env" 2>/dev/null || echo "  (.env unreadable)"
+echo "--- listening postgres sockets on host ---"
+ss -ltnp 2>/dev/null | grep -E '54(32|33|34)\b' || echo "  (no postgres listener on 5432-5434)"
+echo "--- docker port mapping for youtube-streaming-postgres ---"
+docker port youtube-streaming-postgres 2>/dev/null || echo "  (container not running)"
+echo "--- streams table columns in docker postgres (truth source A) ---"
+docker exec -i youtube-streaming-postgres psql -U youtube_user -d youtube_streaming -tAc \
+  "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='streams' AND column_name LIKE 'runtime_%' ORDER BY column_name" \
+  2>/dev/null || echo "  (psql failed)"
+echo "--- streams table columns visible from host:5432 (truth source B) ---"
+PGPASSWORD="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$repo_root/backend/.env" 2>/dev/null | head -1)" \
+  psql -h 127.0.0.1 -p 5432 -U youtube_user -d youtube_streaming -tAc \
+  "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='streams' AND column_name LIKE 'runtime_%' ORDER BY column_name" \
+  2>/dev/null || echo "  (host:5432 psql failed)"
+echo "=== /forensic dump ==="
+
 maybe_restart_host_native_backend
 maybe_run_host_runtime_cutover
 
