@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings as default_settings
@@ -267,13 +267,23 @@ class StreamControlService:
             raise
 
     async def _acquire_user_start_lock(self) -> None:
-        lock_key = int.from_bytes(self.user_id.bytes[:8], byteorder="big", signed=False)
-        if lock_key > (2**63 - 1):
-            lock_key -= 2**64
+        """Serialize concurrent stream-start requests for this user.
 
-        await self.db.execute(
-            text("SELECT pg_advisory_xact_lock(:lock_key)"),
-            {"lock_key": lock_key},
+        Uses ``pg_advisory_xact_lock(int4, int4)`` on the same namespace
+        (``QUOTA_LOCK_NAMESPACE_START_STREAM``) that ``QuotaEnforcer.check_concurrent_streams``
+        acquires, so the lock is shared across the check and the insert
+        (both run in this same transaction). The original implementation
+        truncated the user UUID to 8 bytes — this version uses postgres
+        ``hashtext`` to derive the second key from the full user-id string,
+        eliminating the (small but real) collision risk.
+        """
+        from app.core.quota import (
+            QUOTA_LOCK_NAMESPACE_START_STREAM,
+            acquire_user_quota_lock,
+        )
+
+        await acquire_user_quota_lock(
+            self.db, self.user_id, QUOTA_LOCK_NAMESPACE_START_STREAM
         )
 
     async def stop_stream(

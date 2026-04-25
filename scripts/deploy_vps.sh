@@ -832,6 +832,20 @@ maybe_install_systemd_runtime_units
 maybe_run_host_runtime_rollback
 guard_containerized_systemd_runtime "${services[*]}"
 guard_stream_runtime
+# Migrations must run BEFORE the new backend container is brought up. The
+# new ORM may declare columns the old DB schema doesn't have (e.g.
+# Sprint 2 added runtime_restart_attempts in migration 037), and any
+# SELECT * loaded by SQLAlchemy against the old schema would fail with
+# UndefinedColumn. The migration runner uses the host venv python so it
+# is unaffected by the container swap.
+#
+# In the systemd-mode production path, the host backend isn't restarted
+# until maybe_restart_host_native_backend below — that function still
+# runs after migrations as it should.
+if service_selected backend; then
+  run_database_migrations
+fi
+
 if ! flag_enabled "$skip_docker_deploy" && [[ "${#services[@]}" -gt 0 ]]; then
   echo "Deploying services via registry images pinned to ${deploy_ref}: ${services[*]}"
   docker compose -f "$compose_file" pull "${services[@]}"
@@ -862,7 +876,13 @@ if flag_enabled "${DEPLOY_SYNC_HOST_CADDY:-0}"; then
   sync_host_caddy
 fi
 
-run_database_migrations
+# Backend not selected (e.g. frontend-only deploy) — migrations didn't run
+# above; run them now as a safety net so any pending schema changes land
+# even on host-only deploys.
+if ! service_selected backend; then
+  run_database_migrations
+fi
+
 maybe_restart_host_native_backend
 maybe_run_host_runtime_cutover
 

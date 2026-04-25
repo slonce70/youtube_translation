@@ -1,9 +1,13 @@
 import asyncio
+import ctypes
+import ctypes.util
 import inspect
 import logging
+import os
 import re
 import signal
 import shutil
+import sys
 from urllib.parse import urlsplit, urlunsplit
 from collections import deque
 from dataclasses import dataclass, replace
@@ -37,6 +41,92 @@ MAX_KEYFRAME_INTERVAL_SECONDS = 4.0
 
 
 _RTMP_URL_PATTERN = re.compile(r"rtmps?://[^\s'\"|]+", re.IGNORECASE)
+
+
+# prctl(2) — second arg for PR_SET_DUMPABLE; the ``ctypes`` shim below is
+# Linux-only. On macOS/BSD the call silently falls through; container
+# production runs on Linux so this is the load-bearing platform.
+_PR_SET_DUMPABLE = 4
+_PR_SET_PDEATHSIG = 1
+_libc: Optional[ctypes.CDLL] = None
+
+
+def _load_libc() -> Optional[ctypes.CDLL]:
+    """Lazy-load libc. Cached on success, None on platforms without prctl."""
+    global _libc
+    if _libc is not None:
+        return _libc
+    if not sys.platform.startswith("linux"):
+        return None
+    libc_path = ctypes.util.find_library("c")
+    if libc_path is None:
+        return None
+    try:
+        _libc = ctypes.CDLL(libc_path, use_errno=True)
+    except OSError:
+        return None
+    return _libc
+
+
+def _harden_ffmpeg_child() -> None:
+    """preexec_fn — runs in the forked child *before* exec(ffmpeg).
+
+    Three hardening steps, all best-effort (failures are logged via
+    ``os.write(2, ...)`` because the python logger is not safe across
+    fork — but they never abort the child; exec proceeds with reduced
+    hardening rather than refusing to stream).
+
+    1. ``setsid()`` — detaches the child from the parent's process group.
+       Without this, a SIGTERM/SIGINT delivered to the backend (e.g. by
+       systemd or by Ctrl-C) is broadcast to every running ffmpeg child,
+       killing every live stream simultaneously. With ``setsid`` the
+       child has its own session/pgid; the only signals it receives are
+       the ones we deliver ourselves on graceful stop.
+
+       Note on stop semantics: ``stop_stream`` currently sends ``SIGINT``
+       to the leader PID (which equals the new session/pgid leader since
+       only ffmpeg lives in this session) and falls back to SIGKILL on
+       timeout. ffmpeg traps SIGINT for clean shutdown, so this works.
+       We do NOT broadcast via ``killpg`` — there are no fork-children of
+       ffmpeg in our use case, and a future version that spawns helpers
+       can revisit. The sole purpose of ``setsid`` here is to *isolate
+       inbound* signals, not to require pgid-scoped outbound delivery.
+
+    2. ``prctl(PR_SET_DUMPABLE, 0)`` — Linux-only. Marks the process as
+       non-dumpable, which causes ``/proc/<pid>/cmdline`` (and many other
+       /proc/<pid>/* files) to become readable only by the same euid and
+       root. Other tenants on a shared box, ``ps auxww`` collected by
+       ops tooling under a different user, and accidental log scrapes
+       under a non-owner UID no longer surface the RTMP URL with the
+       embedded stream key. Same-euid readers (the backend's own service
+       account) still see the URL — defence is against *cross-tenant*
+       reads, not against on-host ops queries by the running user.
+
+    3. ``prctl(PR_SET_PDEATHSIG, SIGTERM)`` — if the backend's process
+       (the parent) dies, the kernel delivers SIGTERM to this child,
+       preventing orphan ffmpeg processes after a backend crash.
+    """
+    try:
+        os.setsid()
+    except OSError:
+        # Already a session leader, or not supported. Continue.
+        pass
+
+    libc = _load_libc()
+    if libc is None:
+        return
+    try:
+        # int prctl(int option, unsigned long arg2, ...);
+        if libc.prctl(_PR_SET_DUMPABLE, 0, 0, 0, 0) != 0:
+            os.write(2, b"_harden_ffmpeg_child: prctl(PR_SET_DUMPABLE, 0) failed\n")
+        # PR_SET_PDEATHSIG=SIGTERM — if the backend dies, the kernel
+        # delivers SIGTERM to this child. Combined with setsid, this gives
+        # us a clean shutdown story without leaving orphan ffmpegs.
+        if libc.prctl(_PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0) != 0:
+            os.write(2, b"_harden_ffmpeg_child: prctl(PR_SET_PDEATHSIG) failed\n")
+    except (OSError, AttributeError):
+        # libc lookup or prctl call failed — non-fatal.
+        pass
 
 
 def _utcnow() -> datetime:
@@ -333,12 +423,15 @@ class FFmpegStreamManager:
                 [_redact_rtmp_uri(uri) for uri in plan.destination_uris],
             )
 
-            # Start FFmpeg process with pipes (no file handle leak)
+            # Start FFmpeg process with pipes (no file handle leak).
+            # ``preexec_fn=_harden_ffmpeg_child`` runs setsid + prctl
+            # hardening before exec. See _harden_ffmpeg_child docstring
+            # for full rationale and stop-path semantics.
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                preexec_fn=None,  # Don't change process group
+                preexec_fn=_harden_ffmpeg_child,
             )
 
             # Store process and metadata
@@ -359,6 +452,22 @@ class FFmpegStreamManager:
                 combined_metadata.update(metadata)
 
             self.active_streams[stream_id] = process
+            # Restart counter source-of-truth:
+            #  - On a manual start (restart=False) the counter is reset to 0
+            #    in memory and persisted to the DB so a previously-flapping
+            #    stream gets a clean slate.
+            #  - On an auto-restart (restart=True), prefer the in-memory
+            #    counter if present; otherwise fall back to the persisted
+            #    value (cleanup_dead_streams may have pruned the in-memory
+            #    entry between failure and restart).
+            if restart:
+                in_memory = int(existing_info.get("restart_attempts", 0) or 0)
+                persisted = await self._load_persisted_restart_attempts(stream_id)
+                effective_attempts = max(in_memory, persisted)
+            else:
+                effective_attempts = 0
+                await self._reset_persisted_restart_state(stream_id)
+
             self.stream_info[stream_id] = {
                 "started_at": _utcnow(),
                 "pid": process.pid,
@@ -366,9 +475,7 @@ class FFmpegStreamManager:
                 "log_file": str(log_file) if log_file else None,
                 "playlists": replace(normalized_playlists),
                 "destinations": [dict(dest) for dest in destinations],
-                "restart_attempts": (
-                    existing_info.get("restart_attempts", 0) if restart else 0
-                ),
+                "restart_attempts": effective_attempts,
                 "last_restart_at": _utcnow() if restart else None,
                 "last_failure_at": existing_info.get("last_failure_at"),
                 "next_restart_at": None,
@@ -1013,6 +1120,11 @@ class FFmpegStreamManager:
                 else:
                     logger.info(f"Stream {stream_id} exited normally")
 
+                # Clean exit (manual stop or zero return code) — reset the
+                # persistent restart counter so a future start of the same
+                # stream begins from a fresh slate.
+                await self._reset_persisted_restart_state(stream_id)
+
                 await self._finalize_stream_success(
                     stream_id, manual_stop, quota_context
                 )
@@ -1429,9 +1541,23 @@ class FFmpegStreamManager:
                 "\n".join(recent_errors[-5:]),
             )
 
-        attempts = info.get("restart_attempts", 0)
+        # Pull the persistent counter from the DB and take the max of in-memory
+        # and persisted values. This defends against the bug where
+        # cleanup_dead_streams prunes stream_info between failure and restart,
+        # resetting the in-memory counter to 0 and letting a flapping stream
+        # restart forever despite the configured ceiling.
+        in_memory_attempts = int(info.get("restart_attempts", 0) or 0)
+
         max_attempts = max(settings.ffmpeg_auto_restart_attempts, 0)
-        will_restart = max_attempts > 0 and attempts < max_attempts
+        # Speculative read — used only for the will_restart decision and the
+        # warning alert below. The authoritative atomic increment happens
+        # inside _advance_persisted_restart_state under an advisory lock.
+        speculative = max(
+            in_memory_attempts,
+            await self._load_persisted_restart_attempts(stream_id),
+        )
+        info["restart_attempts"] = speculative
+        will_restart = max_attempts > 0 and speculative < max_attempts
 
         if will_restart:
             await self._create_restart_warning_alert(
@@ -1439,12 +1565,40 @@ class FFmpegStreamManager:
                 metadata=metadata,
                 returncode=returncode,
                 recent_errors=recent_errors,
-                restart_attempts=attempts,
+                restart_attempts=speculative,
             )
 
         if will_restart:
-            info["restart_attempts"] = attempts + 1
-            info["last_failure_at"] = _utcnow()
+            failure_at = _utcnow()
+
+            # Atomic load-modify-write under advisory lock. Two concurrent
+            # invocations for the same stream serialize and the counter
+            # cannot double-increment. Different streams do not contend.
+            new_attempts = await self._advance_persisted_restart_state(
+                stream_id,
+                in_memory_attempts=in_memory_attempts,
+                increment=True,
+                failure_at=failure_at,
+            )
+
+            # Re-check the ceiling under the now-locked, authoritative value.
+            # If a sibling failure-handler invocation snuck through and pushed
+            # the counter past max_attempts while we were inside the lock,
+            # we must bail rather than restart over the ceiling.
+            if new_attempts > max_attempts:
+                logger.warning(
+                    "Stream %s restart abandoned: persisted attempts=%d exceeded ceiling=%d",
+                    stream_id,
+                    new_attempts,
+                    max_attempts,
+                )
+                will_restart = False
+
+        if will_restart:
+            attempts = new_attempts - 1  # Pre-increment value for backoff math.
+            info["restart_attempts"] = new_attempts
+            info["last_failure_at"] = failure_at
+
             playlists_snapshot: Optional[PlaylistFileSet] = info.get("playlists")
             destinations = info.get("destinations")
             log_file = info.get("log_file")
@@ -1639,6 +1793,157 @@ class FFmpegStreamManager:
                 "Created warning restart alert for stream %s (attempt %s)",
                 stream_id,
                 restart_attempts,
+            )
+
+    async def _load_persisted_restart_attempts(self, stream_id: str) -> int:
+        """Read-only view of ``runtime_restart_attempts``.
+
+        For the read-only path on manual start (``restart=False``) we do not
+        need the lock; if a fresh start happens to race with a failure of
+        the same stream, the failure path's locked
+        ``_advance_persisted_restart_state`` will overwrite our reset and
+        the user sees the stream re-enter restart loops once — far better
+        than blocking the manual start. For the read-modify-write on
+        failure, ``_advance_persisted_restart_state`` is the locked helper.
+        """
+        try:
+            stream_uuid = UUID(stream_id)
+        except (TypeError, ValueError):
+            return 0
+
+        try:
+            async with get_db_context() as session:
+                stream = await session.get(Stream, stream_uuid)
+                if stream is None:
+                    return 0
+                return int(getattr(stream, "runtime_restart_attempts", 0) or 0)
+        except SQLAlchemyError as exc:
+            logger.warning(
+                "Could not read persisted restart_attempts for stream %s: %s",
+                stream_id,
+                exc,
+            )
+            return 0
+        except Exception:
+            logger.exception(
+                "Unexpected error reading persisted restart_attempts for stream %s",
+                stream_id,
+            )
+            return 0
+
+    async def _advance_persisted_restart_state(
+        self,
+        stream_id: str,
+        *,
+        in_memory_attempts: int,
+        increment: bool,
+        failure_at: Optional[datetime] = None,
+    ) -> int:
+        """Atomic load-modify-write of the persistent restart counter.
+
+        Issues a single transaction with:
+          1. ``pg_advisory_xact_lock(QUOTA_LOCK_NAMESPACE_RESTART_COUNTER, hashtext(stream_id))``
+             so concurrent failure-handler invocations for the same stream
+             serialize. Different streams do NOT contend (different keys).
+          2. A SELECT to read the current persisted value.
+          3. An UPDATE to write ``new_value = max(in_memory_attempts, persisted) + (1 if increment else 0)``
+             and ``runtime_last_failure_at = failure_at`` (when supplied).
+
+        Returns the *new* persisted value of ``runtime_restart_attempts`` so
+        the caller's in-memory state stays consistent with the DB.
+
+        Replaces the previous split ``_load_persisted_restart_attempts`` +
+        ``_persist_restart_state`` pair which (a) opened two transactions
+        per failure (pool starvation under flapping streams) and (b) had
+        an unlocked read-modify-write window where a defensive double
+        invocation could double-increment.
+        """
+        try:
+            stream_uuid = UUID(stream_id)
+        except (TypeError, ValueError):
+            return max(int(in_memory_attempts), 0)
+
+        try:
+            from app.core.quota import (
+                QUOTA_LOCK_NAMESPACE_RESTART_COUNTER,
+                acquire_user_quota_lock,
+            )
+
+            async with get_db_context() as session:
+                # Lock by stream_id, not user_id — concurrent failures of two
+                # *different* streams should not serialize.
+                await acquire_user_quota_lock(
+                    session, stream_uuid, QUOTA_LOCK_NAMESPACE_RESTART_COUNTER
+                )
+
+                stream = await session.get(Stream, stream_uuid)
+                if stream is None:
+                    return max(int(in_memory_attempts), 0)
+
+                persisted = int(getattr(stream, "runtime_restart_attempts", 0) or 0)
+                new_value = max(int(in_memory_attempts), persisted)
+                if increment:
+                    new_value += 1
+
+                stream.runtime_restart_attempts = new_value
+                if failure_at is not None:
+                    stream.runtime_last_failure_at = failure_at
+
+                return new_value
+        except SQLAlchemyError as exc:
+            logger.warning(
+                "Could not advance restart counter for stream %s: %s",
+                stream_id,
+                exc,
+            )
+            # Best-effort fallback: pretend we incremented in-memory so the
+            # caller's ceiling check still trips eventually. Without DB,
+            # the next backend restart will reset to whatever was last
+            # successfully persisted.
+            return max(int(in_memory_attempts), 0) + (1 if increment else 0)
+        except Exception:
+            logger.exception(
+                "Unexpected error advancing restart counter for stream %s",
+                stream_id,
+            )
+            return max(int(in_memory_attempts), 0) + (1 if increment else 0)
+
+    async def _reset_persisted_restart_state(self, stream_id: str) -> None:
+        """Reset the persistent counter to 0 and clear the failure timestamp.
+
+        Used on (a) manual start of a stream and (b) clean exit (manual
+        stop or zero return code from ffmpeg). Holds the same advisory
+        lock as ``_advance_persisted_restart_state`` so a reset cannot
+        race with an in-flight failure-handler invocation.
+        """
+        try:
+            stream_uuid = UUID(stream_id)
+        except (TypeError, ValueError):
+            return
+
+        try:
+            from app.core.quota import (
+                QUOTA_LOCK_NAMESPACE_RESTART_COUNTER,
+                acquire_user_quota_lock,
+            )
+
+            async with get_db_context() as session:
+                await acquire_user_quota_lock(
+                    session, stream_uuid, QUOTA_LOCK_NAMESPACE_RESTART_COUNTER
+                )
+                stream = await session.get(Stream, stream_uuid)
+                if stream is None:
+                    return
+                stream.runtime_restart_attempts = 0
+                stream.runtime_last_failure_at = None
+        except SQLAlchemyError as exc:
+            logger.warning(
+                "Could not reset restart counter for stream %s: %s", stream_id, exc
+            )
+        except Exception:
+            logger.exception(
+                "Unexpected error resetting restart counter for stream %s",
+                stream_id,
             )
 
     async def _mark_stream_failed(

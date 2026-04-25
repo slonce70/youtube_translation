@@ -22,5 +22,16 @@
     "description": "The page you are looking for does not exist or has been moved.",
     "backHome": "Back home",
     "backDashboard": "Back to dashboard"
+  },
+  "destination": {
+    "missing_url": "Destination URL is required.",
+    "invalid_scheme": "Destination must use rtmp:// or rtmps://.",
+    "missing_hostname": "Destination URL must include a hostname.",
+    "invalid_hostname_characters": "Destination hostname contains characters that are not allowed.",
+    "denied_port": "Destination port is not in the allowed range.",
+    "private_address": "Destination resolves to a non-public address. Public RTMP servers only.",
+    "dns_resolution_failed": "Could not resolve destination hostname. Check the URL and DNS.",
+    "custom_rtmps_not_allowed": "Your plan does not allow custom RTMPS destinations.",
+    "fallback": "Destination could not be saved. Please verify the URL."
   }
 }

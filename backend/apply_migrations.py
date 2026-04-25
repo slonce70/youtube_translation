@@ -57,6 +57,7 @@ MIGRATIONS = [
     "migrations/034_fix_uhd_bitrate_caps.sql",
     "migrations/035_stream_runtime_refusal_alert_type.sql",
     "migrations/036_drop_legacy_stream_runtime_state.sql",
+    "migrations/037_stream_runtime_restart_persistence.sql",
 ]
 
 
@@ -533,6 +534,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         "034",
         "035",
         "036",
+        "037",
     ):
         status[migration_num] = await verify_migration(conn, migration_num)
 
@@ -1371,6 +1373,10 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         heartbeat_ok = bool((await conn.execute(query)).scalar())
 
+        # Migration 036 dropped six columns. Migration 037 reintroduces two
+        # of them (runtime_restart_attempts, runtime_last_failure_at) for
+        # the persistent restart-counter contract, so we only assert the
+        # remaining four stay dropped.
         query = text("""
             SELECT COUNT(*) = 0
             FROM information_schema.columns
@@ -1379,10 +1385,8 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
               AND column_name IN (
                   'runtime_owner_id',
                   'runtime_lease_expires_at',
-                  'runtime_restart_attempts',
                   'runtime_next_restart_at',
-                  'runtime_last_restart_at',
-                  'runtime_last_failure_at'
+                  'runtime_last_restart_at'
               )
         """)
         dropped_columns_ok = bool((await conn.execute(query)).scalar())
@@ -1399,6 +1403,36 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         """)
         dropped_indexes_ok = bool((await conn.execute(query)).scalar())
         return bool(heartbeat_ok and dropped_columns_ok and dropped_indexes_ok)
+
+    elif migration_num == "037":
+        # Migration 037 re-adds runtime_restart_attempts (NOT NULL DEFAULT 0)
+        # and runtime_last_failure_at on the streams table. We assert both
+        # columns exist AND that runtime_restart_attempts retains its
+        # NOT NULL + DEFAULT 0 contract — the failure-handler now treats
+        # this column as authoritative, and a future migration that drops
+        # the constraint would silently regress restart-loop bounding.
+        query = text("""
+            SELECT COUNT(*) = 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name = 'runtime_restart_attempts'
+              AND is_nullable = 'NO'
+              AND column_default IS NOT NULL
+              AND column_default LIKE '0%'
+        """)
+        attempts_ok = bool((await conn.execute(query)).scalar())
+
+        query = text("""
+            SELECT COUNT(*) = 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'streams'
+              AND column_name = 'runtime_last_failure_at'
+        """)
+        failure_at_ok = bool((await conn.execute(query)).scalar())
+
+        return attempts_ok and failure_at_ok
 
     return False
 

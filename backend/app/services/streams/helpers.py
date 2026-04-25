@@ -15,6 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings as default_settings
+from app.core.rtmp_url_validator import (
+    InvalidDestinationURL,
+    validate_destination_url,
+)
 from app.core.security import decrypt_stream_key
 from app.models.database import (
     Asset,
@@ -208,6 +212,22 @@ def extract_stream_assets(stream: Stream) -> StreamAssetSelection:
 
 
 def gather_stream_destinations(stream: Stream) -> List[Dict[str, str]]:
+    """Collect enabled destinations for a stream and re-validate them.
+
+    This is the start-of-pipeline DNS-rebinding mitigation promised in
+    ``core/rtmp_url_validator.py``. Each destination URL is re-resolved
+    here, immediately before the ffmpeg argv is built. If the DNS record
+    has flipped to a private/loopback/CGNAT/etc range between create-time
+    (where ``ensure_destination_allowed`` ran) and stream-start, the
+    second resolution catches it and we abort with HTTP 400 rather than
+    letting ffmpeg connect to an attacker-redirected internal target.
+
+    The residual rebinding window is now narrowed to the time between
+    this validation and ffmpeg's own resolution at connect time. Closing
+    that final gap requires pinning ffmpeg to a specific IP, which is
+    not portable across RTMPS drivers and is documented as accepted
+    residual risk in the runbook.
+    """
     destinations: List[Dict[str, str]] = []
     for stream_dest in stream.stream_destinations:
         dest = stream_dest.destination
@@ -223,6 +243,25 @@ def gather_stream_destinations(stream: Stream) -> List[Dict[str, str]]:
                 stream.id,
             )
             continue
+
+        try:
+            validate_destination_url(normalized_url)
+        except InvalidDestinationURL as exc:
+            logger.warning(
+                "Destination %s for stream %s rejected at start: code=%s detail=%s",
+                dest.id,
+                stream.id,
+                exc.code,
+                exc.message,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": exc.code,
+                    "message": exc.message,
+                    "destination_id": str(dest.id),
+                },
+            ) from exc
 
         destinations.append({"url": normalized_url, "key": decrypted_key})
 
