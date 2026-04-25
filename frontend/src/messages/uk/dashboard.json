@@ -1,4 +1,81 @@
 {
+  "home": {
+    "title": "Дашборд",
+    "subtitleGreeting": "Привіт, {name} 👋 — сьогодні {date}",
+    "userFallback": "Стример",
+    "planFallback": "Free",
+    "actions": {
+      "schedule": "🗓️ Запланувати",
+      "startStream": "🎙️ Почати трансляцію"
+    },
+    "liveBanner": {
+      "activeStreams": "{count} активні трансляції",
+      "scheduledNote": "· {count} заплановано",
+      "attentionNote": "· {count} потребують уваги",
+      "planNote": "План {plan}",
+      "goTo": "Перейти →"
+    },
+    "stats": {
+      "filesInLibrary": "Файлів у бібліотеці",
+      "newRecently": "▲ {count} нових останнім часом",
+      "scheduledDelta": "▲ {count} заплановано",
+      "storageUsed": "Сховище використано",
+      "storagePercentOf": "{percent}% з {limit} ГБ",
+      "streamingToday": "Час трансляцій сьогодні",
+      "totalLifetime": "▲ Усього {hours} год"
+    },
+    "liveStreams": {
+      "title": "🔴 Активні трансляції",
+      "live": "Live",
+      "noLive": "Немає live",
+      "untitled": "Без назви",
+      "healthLabel": "Здоров’я потоку",
+      "healthGood": "Відмінне",
+      "healthAttention": "Потрібна увага",
+      "stats": "Стат.",
+      "stop": "■ Зупинити",
+      "emptyTitle": "Активних live-ефірів немає",
+      "emptyDescription": "Створіть трансляцію або заплануйте ефір — активні стріми з’являться тут тільки після запуску.",
+      "openFiles": "Файли",
+      "launch": "Запустити",
+      "openSchedule": "Розклад"
+    },
+    "recentAssets": {
+      "title": "📁 Останні файли",
+      "viewAll": "Всі файли →",
+      "tableFile": "Файл",
+      "tableSize": "Розмір",
+      "tableDuration": "Тривалість",
+      "tableAction": "Дія",
+      "open": "Відкрити",
+      "emptyTitle": "Бібліотека поки порожня",
+      "emptyDescription": "Завантажте перший файл, щоб швидко запускати трансляції зі стріму.",
+      "uploadCta": "⬆ Завантажити файл"
+    },
+    "quickActions": {
+      "title": "⚡ Швидкі дії",
+      "startStreaming": "🎙️ Розпочати трансляцію",
+      "uploadFile": "📁 Завантажити файл",
+      "scheduleStream": "🗓️ Запланувати стрім"
+    },
+    "storage": {
+      "title": "💾 Сховище",
+      "ofLimit": "{used} / {limit} ГБ",
+      "freeSpace": "~ {value} вільно",
+      "video": "🎬 Відео",
+      "audio": "🎵 Аудіо",
+      "other": "📦 Інше",
+      "manage": "Керувати файлами →"
+    },
+    "scheduleSidebar": {
+      "title": "🗓️ Сьогодні в розкладі",
+      "untitled": "Без назви",
+      "scheduledFallback": "Заплановано",
+      "emptyTitle": "Немає запланованих подій",
+      "emptyDescription": "Створіть стрім і оберіть запланований старт.",
+      "viewFull": "Повний розклад →"
+    }
+  },
   "title": {
     "heading": "Панель",
     "subheading": "Стежте за лімітами та повертайтеся до ефірів в один клік."
