@@ -50,7 +50,7 @@ jobs:
           cache-to: type=gha,scope=backend,mode=max
 
       - name: Run Trivy vulnerability scan (HIGH,CRITICAL — fixed-only)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: youtube-translation-backend:trivy-${{ github.sha }}
           format: sarif
@@ -94,7 +94,7 @@ jobs:
             NEXT_PUBLIC_API_URL=https://example.invalid
 
       - name: Run Trivy vulnerability scan (HIGH,CRITICAL — fixed-only)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: youtube-translation-frontend:trivy-${{ github.sha }}
           format: sarif
