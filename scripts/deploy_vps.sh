@@ -957,6 +957,41 @@ PGPASSWORD="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$repo_root/backend/.env" 2>/dev
   2>/dev/null || echo "  (host:5432 psql failed)"
 echo "=== /forensic dump ==="
 
+# ----------------------------------------------------------------------------
+# Self-heal a malformed ``DATABASE_URL`` in ``backend/.env``.
+#
+# Forensic from PRs #54-55 confirmed prod ``backend/.env`` has the literal
+# line ``DATABASE_URL=postgresql://youtube_user:***/youtube_streaming`` —
+# missing the ``@host:port`` component. ``apply_migrations.py`` runs with
+# a shell-injected env var that overrides this, so the migrator sees a
+# valid URL and the migration persists. The systemd backend, however,
+# loads ``.env`` via ``EnvironmentFile=`` which has *no* shell expansion,
+# inherits the broken literal, and asyncpg ends up dialling the wrong
+# postgres (or no host at all) — yielding the persistent
+# ``UndefinedColumnError`` on every restart.
+#
+# Fix: append an authoritative DATABASE_URL line at the end of ``.env``.
+# pydantic-settings + systemd EnvironmentFile both resolve duplicates by
+# "last wins", so the fresh line takes precedence without touching any
+# operator-curated value above. The password is sourced from the same
+# ``POSTGRES_PASSWORD`` line the docker compose file already trusts.
+# ----------------------------------------------------------------------------
+env_file_path="$repo_root/backend/.env"
+if [[ -f "$env_file_path" ]]; then
+  current_db_url="$(sed -n -E 's/^[[:space:]]*DATABASE_URL=//p' "$env_file_path" | tail -n 1)"
+  if [[ -n "$current_db_url" && "$current_db_url" != *"@"* ]]; then
+    pg_password="$(sed -n -E 's/^[[:space:]]*POSTGRES_PASSWORD=//p' "$env_file_path" | tail -n 1)"
+    if [[ -n "$pg_password" ]]; then
+      echo "Detected malformed DATABASE_URL in $env_file_path (no @host); appending corrected line."
+      printf '\n# Auto-repaired by deploy_vps.sh — see commit history.\n' >> "$env_file_path"
+      printf 'DATABASE_URL=postgresql://youtube_user:%s@127.0.0.1:5432/youtube_streaming\n' "$pg_password" >> "$env_file_path"
+      echo "Appended healthy DATABASE_URL (password redacted) — last-wins semantics will apply on next backend boot."
+    else
+      echo "WARN: malformed DATABASE_URL detected but no POSTGRES_PASSWORD available to construct a healthy replacement."
+    fi
+  fi
+fi
+
 maybe_restart_host_native_backend
 maybe_run_host_runtime_cutover
 
