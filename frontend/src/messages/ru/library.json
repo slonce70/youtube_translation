@@ -53,7 +53,44 @@
     "loading": "Загрузка файлов...",
     "header": {
       "title": "Файлы",
-      "description": "Управляйте медиафайлами и плейлистами"
+      "description": "Управляйте медиафайлами и плейлистами",
+      "usedFromLimit": "{used} использовано из {limit} ГБ"
+    },
+    "density": {
+      "grid": "Сетка",
+      "list": "Список"
+    },
+    "uploadAria": "Загрузить файлы",
+    "uploadButton": "⬆ Загрузить",
+    "dropZone": {
+      "title": "Перетащите файл сюда",
+      "description": "Мы добавим его в загрузки и подготовим для стрима."
+    },
+    "filtersExtra": {
+      "all": "Все",
+      "video": "🎬 Видео",
+      "audio": "🎵 Аудио",
+      "archives": "📦 Архивы"
+    },
+    "notImplemented": {
+      "archives": "Архивы"
+    },
+    "sortShort": {
+      "newest": "Дата ↓",
+      "oldest": "Дата ↑",
+      "nameAsc": "Имя А-Я",
+      "sizeDesc": "Размер ↓"
+    },
+    "dropEmpty": {
+      "title": "Загрузить файл",
+      "description": "или перетащите сюда"
+    },
+    "uploadStatus": {
+      "title": "Загрузки",
+      "preparing": "Готовим файлы к обработке…",
+      "processing": "Обрабатывается",
+      "complete": "Завершено",
+      "error": "Ошибка"
     },
     "tabs": {
       "assets": "Файлы ({count})",

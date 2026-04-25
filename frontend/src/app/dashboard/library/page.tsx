@@ -1,13 +1,5 @@
 'use client'
-// TODO(sprint-3.5): full string-by-string i18n migration of this large page
-// is tracked as a follow-up. Sprint 3.1 lifted disables on smaller files
-// (Sidebar, Topbar, CommandPalette, AddChannelModal, BroadcasterLevel,
-// schedule, plans, profile, AssetCard). The four largest dashboard pages
-// retain their disables until a dedicated translation pass with
-// designer/translator review can land. The eslint-disable below is
-// INTENTIONAL and AUDITED — see docs/audit/2026-04-25_deep_multi_agent_audit.md
-// (finding H8) for the inventory.
-/* eslint-disable i18next/no-literal-string */
+// Sprint 7.3: full i18n migration to library.page.* keys lifted the eslint-disable.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react'
 import dynamic from 'next/dynamic'
@@ -535,20 +527,20 @@ export default function LibraryPage() {
       <div className="page-header">
         <div>
           <div className="page-title">{tLibrary('header.title')}</div>
-          <div className="page-sub">{formatBytes(quota?.storage.used_bytes ?? 0)} використано з {quota?.storage.limit_gb ?? 0} ГБ</div>
+          <div className="page-sub">{tLibrary('header.usedFromLimit', { used: formatBytes(quota?.storage.used_bytes ?? 0), limit: quota?.storage.limit_gb ?? 0 })}</div>
         </div>
         <div className="page-actions">
-          <Button variant="outline" size="sm" onClick={() => setAssetDensity(assetDensity === 'compact' ? 'comfortable' : 'compact')}>⊞ {assetDensity === 'compact' ? 'Сітка' : 'Список'}</Button>
-          <Button onClick={openUploadModal} aria-label="Завантажити файли" title="Завантажити файли">⬆ Завантажити</Button>
+          <Button variant="outline" size="sm" onClick={() => setAssetDensity(assetDensity === 'compact' ? 'comfortable' : 'compact')}>{'⊞ '}{assetDensity === 'compact' ? tLibrary('density.grid') : tLibrary('density.list')}</Button>
+          <Button onClick={openUploadModal} aria-label={tLibrary('uploadAria')} title={tLibrary('uploadAria')}>{tLibrary('uploadButton')}</Button>
         </div>
       </div>
 
       {isGlobalDragOver ? (
         <div className="drop-overlay">
           <div className="empty-state" style={{ padding: 0 }}>
-            <div className="empty-icon">⬆️</div>
-            <div className="empty-title">Перетягніть файл сюди</div>
-            <div className="empty-sub">Ми додамо його у завантаження та обробимо для стріму.</div>
+            <div className="empty-icon" aria-hidden="true">{'⬆️'}</div>
+            <div className="empty-title">{tLibrary('dropZone.title')}</div>
+            <div className="empty-sub">{tLibrary('dropZone.description')}</div>
           </div>
         </div>
       ) : null}
@@ -606,10 +598,10 @@ export default function LibraryPage() {
                   ) : null}
                 </div>
                 <div className="toolbar-row library-filter-row">
-                  <button type="button" className={assetFilter === 'all' ? 'filter-pill active' : 'filter-pill'} onClick={() => handleAssetFilterChange('all')}>Всі</button>
-                  <button type="button" className={assetFilter === 'video' ? 'filter-pill active' : 'filter-pill'} onClick={() => handleAssetFilterChange('video')}>🎬 Відео</button>
-                  <button type="button" className={assetFilter === 'audio' ? 'filter-pill active' : 'filter-pill'} onClick={() => handleAssetFilterChange('audio')}>🎵 Аудіо</button>
-                  <button type="button" className={'filter-pill'} onClick={() => handleNotImplemented('Архіви')}>📦 Архіви</button>
+                  <button type="button" className={assetFilter === 'all' ? 'filter-pill active' : 'filter-pill'} onClick={() => handleAssetFilterChange('all')}>{tLibrary('filtersExtra.all')}</button>
+                  <button type="button" className={assetFilter === 'video' ? 'filter-pill active' : 'filter-pill'} onClick={() => handleAssetFilterChange('video')}>{tLibrary('filtersExtra.video')}</button>
+                  <button type="button" className={assetFilter === 'audio' ? 'filter-pill active' : 'filter-pill'} onClick={() => handleAssetFilterChange('audio')}>{tLibrary('filtersExtra.audio')}</button>
+                  <button type="button" className={'filter-pill'} onClick={() => handleNotImplemented(tLibrary('notImplemented.archives'))}>{tLibrary('filtersExtra.archives')}</button>
                 </div>
                 <select
                   value={assetSort}
@@ -618,10 +610,10 @@ export default function LibraryPage() {
                   className="input"
                   style={{ width: 'auto', minWidth: 180 }}
                 >
-                  <option value="newest">Дата ↓</option>
-                  <option value="oldest">Дата ↑</option>
-                  <option value="nameAsc">Назва А-Я</option>
-                  <option value="sizeDesc">Розмір ↓</option>
+                  <option value="newest">{tLibrary('sortShort.newest')}</option>
+                  <option value="oldest">{tLibrary('sortShort.oldest')}</option>
+                  <option value="nameAsc">{tLibrary('sortShort.nameAsc')}</option>
+                  <option value="sizeDesc">{tLibrary('sortShort.sizeDesc')}</option>
                 </select>
               </div>
             </div>
@@ -814,9 +806,9 @@ export default function LibraryPage() {
                 {!currentFolders.length && visibleAssets.length === 0 && (
                   <button type="button" onClick={openUploadModal} className="library-upload-tile" style={{ margin: 0 }}>
                     <div className="empty-state" style={{ padding: 0 }}>
-                      <div className="empty-icon">⬆</div>
-                      <div className="empty-title">Завантажити файл</div>
-                      <div className="empty-sub">або перетягніть сюди</div>
+                      <div className="empty-icon" aria-hidden="true">{'⬆'}</div>
+                      <div className="empty-title">{tLibrary('dropEmpty.title')}</div>
+                      <div className="empty-sub">{tLibrary('dropEmpty.description')}</div>
                     </div>
                   </button>
                 )}
@@ -1056,27 +1048,27 @@ export default function LibraryPage() {
       {uploadStatusEntries.length > 0 || isProcessingUpload ? (
         <div className="floating-panel">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <strong style={{ fontSize: 13 }}>Завантаження</strong>
-            <button type="button" style={{ marginLeft: 'auto', color: 'var(--txt-3)', fontSize: 18 }} onClick={clearUploadStatusOverrides}>×</button>
+            <strong style={{ fontSize: 13 }}>{tLibrary('uploadStatus.title')}</strong>
+            <button type="button" aria-label="close" style={{ marginLeft: 'auto', color: 'var(--txt-3)', fontSize: 18 }} onClick={clearUploadStatusOverrides}>{'×'}</button>
           </div>
           <div className="summary-list">
             {uploadStatusEntries.map(([uploadId, status]) => (
               <div key={uploadId} className="stream-row" style={{ alignItems: 'center' }}>
-                <div className="stream-thumb">⬆️</div>
+                <div className="stream-thumb" aria-hidden="true">{'⬆️'}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{uploadId}</div>
                   <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
                     {status.status === 'processing'
-                      ? 'Обробляється'
+                      ? tLibrary('uploadStatus.processing')
                       : status.status === 'complete'
-                        ? 'Завершено'
-                        : status.error || 'Помилка'}
+                        ? tLibrary('uploadStatus.complete')
+                        : status.error || tLibrary('uploadStatus.error')}
                   </div>
                 </div>
               </div>
             ))}
             {isProcessingUpload && uploadStatusEntries.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>Готуємо файли до обробки…</div>
+              <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>{tLibrary('uploadStatus.preparing')}</div>
             ) : null}
           </div>
         </div>

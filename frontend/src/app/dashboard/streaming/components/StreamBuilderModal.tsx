@@ -1,8 +1,6 @@
 'use client'
-// TODO(sprint-3.5): full i18n migration of stream builder modal deferred.
-// Disable is INTENTIONAL — see
-// docs/audit/2026-04-25_deep_multi_agent_audit.md (H8).
-/* eslint-disable i18next/no-literal-string */
+// Sprint 7.1: full i18n migration to streaming.builder.* keys. The
+// previous TODO(sprint-3.5) and eslint-disable have been lifted.
 
 import { useEffect, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
@@ -61,6 +59,7 @@ export function StreamBuilderModal({
   formatLimitValue,
 }: StreamBuilderModalProps) {
   const actionLabels = useTranslations('common.actions')
+  const builder = useTranslations('streaming.builder')
   const locale = useLocale()
   const [sourceTab, setSourceTab] = useState<'file' | 'playlist'>('file')
 
@@ -143,22 +142,22 @@ export function StreamBuilderModal({
         <Card className="flex-1 overflow-y-auto lg:max-h-[calc(100vh-3rem)]">
           <CardHeader className="flex items-start justify-between space-y-0">
             <div>
-              <CardTitle>📡 Нова трансляція</CardTitle>
+              <CardTitle>{builder('title')}</CardTitle>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Оберіть канал і відео — сервіс запустить трансляцію без перекодування
+                {builder('description')}
               </p>
             </div>
             <Button variant="ghost" onClick={handleClose} aria-label={actionLabels('close')}>
-              ← Назад
+              {builder('back')}
             </Button>
           </CardHeader>
 
           <CardContent className="space-y-5">
             <Card>
               <CardHeader className="flex-row items-center justify-between">
-                <CardTitle>1 · Оберіть канал</CardTitle>
+                <CardTitle>{builder('stepChannel')}</CardTitle>
                 <Button size="sm" variant="ghost" onClick={onOpenChannelForm}>
-                  + Додати канал
+                  {builder('addChannel')}
                 </Button>
               </CardHeader>
               <CardContent className="summary-list">
@@ -172,7 +171,7 @@ export function StreamBuilderModal({
                         className={`channel-row${isSelected ? ' active' : ''}`}
                         onClick={() => handleDestinationToggle(destination.id)}
                       >
-                        <div className="channel-logo">
+                        <div className="channel-logo" aria-hidden="true">
                           {destination.name.toLowerCase().includes('twitch') ? '🎮' : '▶'}
                         </div>
                         <div style={{ flex: 1, textAlign: 'left' }}>
@@ -187,9 +186,9 @@ export function StreamBuilderModal({
                   })
                 ) : (
                   <div className="empty-state" style={{ padding: '24px 12px' }}>
-                    <div className="empty-icon">📡</div>
-                    <div className="empty-title">Ще немає каналів</div>
-                    <div className="empty-sub">Додайте канал перед запуском стріму.</div>
+                    <div className="empty-icon" aria-hidden="true">{'📡'}</div>
+                    <div className="empty-title">{builder('channelsEmptyTitle')}</div>
+                    <div className="empty-sub">{builder('channelsEmptyDescription')}</div>
                   </div>
                 )}
               </CardContent>
@@ -197,7 +196,7 @@ export function StreamBuilderModal({
 
             <Card>
               <CardHeader>
-                <CardTitle>2 · Джерело відео</CardTitle>
+                <CardTitle>{builder('stepVideo')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div style={{ display: 'flex', gap: 4, background: 'var(--bg-3)', borderRadius: 8, padding: 4 }}>
@@ -207,7 +206,7 @@ export function StreamBuilderModal({
                     style={{ flex: 1 }}
                     onClick={() => setSourceTab('file')}
                   >
-                    📁 Файл
+                    {builder('tabFile')}
                   </button>
                   <button
                     type="button"
@@ -215,7 +214,7 @@ export function StreamBuilderModal({
                     style={{ flex: 1 }}
                     onClick={() => setSourceTab('playlist')}
                   >
-                    📋 Плейлист
+                    {builder('tabPlaylist')}
                   </button>
                 </div>
 
@@ -233,26 +232,29 @@ export function StreamBuilderModal({
                               isSelected ? removeAssetFromEditor('video', asset.id) : addAssetToEditor('video', asset.id)
                             }
                           >
-                            <div className="asset-thumb">🎬</div>
+                            <div className="asset-thumb" aria-hidden="true">{'🎬'}</div>
                             <div style={{ flex: 1, textAlign: 'left' }}>
                               <div style={{ fontWeight: 600, fontSize: 13 }}>{asset.filename}</div>
                               <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
-                                {asset.size_bytes ? `${Math.round(asset.size_bytes / 1024 / 1024)} MB` : '—'} ·{' '}
+                                {asset.size_bytes
+                                  ? `${Math.round(asset.size_bytes / 1024 / 1024)} MB`
+                                  : builder('fallbackDuration')}{' '}
+                                ·{' '}
                                 {asset.duration_seconds
                                   ? `${Math.floor(asset.duration_seconds / 60)}:${String(Math.floor(asset.duration_seconds % 60)).padStart(2, '0')}`
-                                  : '—'}{' '}
-                                · Готово до трансляції
+                                  : builder('fallbackDuration')}{' '}
+                                · {builder('ready')}
                               </div>
                             </div>
-                            {isSelected ? <Badge variant="indigo">✓</Badge> : null}
+                            {isSelected ? <Badge variant="indigo">{'✓'}</Badge> : null}
                           </button>
                         )
                       })
                     ) : (
                       <div className="empty-state" style={{ padding: '24px 12px' }}>
-                        <div className="empty-icon">🎬</div>
-                        <div className="empty-title">Немає доступних відео</div>
-                        <div className="empty-sub">Завантажте файли у бібліотеку.</div>
+                        <div className="empty-icon" aria-hidden="true">{'🎬'}</div>
+                        <div className="empty-title">{builder('videosEmptyTitle')}</div>
+                        <div className="empty-sub">{builder('videosEmptyDescription')}</div>
                       </div>
                     )}
                     <button
@@ -261,7 +263,7 @@ export function StreamBuilderModal({
                       style={{ position: 'relative', inset: 'auto', pointerEvents: 'auto', minHeight: 64, margin: 0 }}
                       onClick={() => window.location.assign('/dashboard/library?tab=assets')}
                     >
-                      <div className="empty-sub">+ Завантажити новий файл у бібліотеку</div>
+                      <div className="empty-sub">{builder('uploadNew')}</div>
                     </button>
                   </div>
                 ) : (
@@ -276,20 +278,22 @@ export function StreamBuilderModal({
                             className={`playlist-row${isSelected ? ' active' : ''}`}
                             onClick={() => handleSelectCollection('video', collection.id)}
                           >
-                            <div className="asset-thumb">📋</div>
+                            <div className="asset-thumb" aria-hidden="true">{'📋'}</div>
                             <div style={{ flex: 1, textAlign: 'left' }}>
                               <div style={{ fontWeight: 600, fontSize: 13 }}>{collection.name}</div>
-                              <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>{collection.items.length} елементів</div>
+                              <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
+                                {builder('playlistItems', { count: collection.items.length })}
+                              </div>
                             </div>
-                            {isSelected ? <Badge variant="indigo">Обрано</Badge> : null}
+                            {isSelected ? <Badge variant="indigo">{builder('selected')}</Badge> : null}
                           </button>
                         )
                       })
                     ) : (
                       <div className="empty-state" style={{ padding: '24px 12px' }}>
-                        <div className="empty-icon">📋</div>
-                        <div className="empty-title">Плейлистів ще немає</div>
-                        <div className="empty-sub">Створіть плейлист у розділі Файли для безперервного ефіру.</div>
+                        <div className="empty-icon" aria-hidden="true">{'📋'}</div>
+                        <div className="empty-title">{builder('playlistsEmptyTitle')}</div>
+                        <div className="empty-sub">{builder('playlistsEmptyDescription')}</div>
                       </div>
                     )}
                   </div>
@@ -299,11 +303,13 @@ export function StreamBuilderModal({
 
             <Card>
               <CardHeader>
-                <CardTitle>3 · Налаштування</CardTitle>
+                <CardTitle>{builder('stepSettings')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="page-sub" style={{ display: 'block', marginBottom: 6 }}>Назва трансляції *</label>
+                  <label className="page-sub" style={{ display: 'block', marginBottom: 6 }}>
+                    {builder('nameLabel')}
+                  </label>
                   <Input
                     value={streamForm.name}
                     onChange={(event) => setStreamForm((prev) => ({ ...prev, name: event.target.value }))}
@@ -312,21 +318,23 @@ export function StreamBuilderModal({
                 </div>
 
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Час початку</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+                    {builder('startTime')}
+                  </div>
                   <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
                     <button
                       type="button"
                       className={scheduleState.startMode === 'now' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
                       onClick={() => setScheduleState((prev) => ({ ...prev, startMode: 'now' }))}
                     >
-                      ▶ Зараз
+                      {builder('startNow')}
                     </button>
                     <button
                       type="button"
                       className={scheduleState.startMode === 'schedule' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
                       onClick={() => setScheduleState((prev) => ({ ...prev, startMode: 'schedule' }))}
                     >
-                      🗓️ Запланувати
+                      {builder('startSchedule')}
                     </button>
                   </div>
                   {scheduleState.startMode === 'schedule' ? (
@@ -351,7 +359,7 @@ export function StreamBuilderModal({
                         variant="outline"
                         onClick={() => setScheduleState((prev) => ({ ...prev, ...applyDurationPreset(prev, hours) }))}
                       >
-                        {hours} год
+                        {builder('durationHours', { hours })}
                       </Button>
                     ))}
                   </div>
@@ -363,14 +371,14 @@ export function StreamBuilderModal({
                     className={scheduleState.loopStream ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
                     onClick={() => setScheduleState((prev) => ({ ...prev, loopStream: !prev.loopStream }))}
                   >
-                    🔄 Повторювати файл у циклі
+                    {builder('loopFile')}
                   </button>
                   <button
                     type="button"
                     className={audioEnabled ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
                     onClick={() => handleAudioToggle(!audioEnabled)}
                   >
-                    {audioEnabled ? '🎵 Аудіо увімкнено' : '🎵 Додати аудіо'}
+                    {audioEnabled ? builder('audioOn') : builder('audioAdd')}
                   </button>
                 </div>
 
@@ -387,16 +395,16 @@ export function StreamBuilderModal({
                             isSelected ? removeAssetFromEditor('audio', asset.id) : addAssetToEditor('audio', asset.id)
                           }
                         >
-                          <div className="asset-thumb">🎵</div>
+                          <div className="asset-thumb" aria-hidden="true">{'🎵'}</div>
                           <div style={{ flex: 1, textAlign: 'left' }}>
                             <div style={{ fontWeight: 600, fontSize: 13 }}>{asset.filename}</div>
                             <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
                               {asset.duration_seconds
                                 ? `${Math.floor(asset.duration_seconds / 60)}:${String(Math.floor(asset.duration_seconds % 60)).padStart(2, '0')}`
-                                : '—'}
+                                : builder('fallbackDuration')}
                             </div>
                           </div>
-                          {isSelected ? <Badge variant="indigo">✓</Badge> : null}
+                          {isSelected ? <Badge variant="indigo">{'✓'}</Badge> : null}
                         </button>
                       )
                     })}
@@ -412,29 +420,68 @@ export function StreamBuilderModal({
           style={{ width: '100%', maxWidth: 340 }}
         >
           <Card className="summary-card" style={{ borderColor: 'rgba(99,102,241,.3)' }}>
-            <CardHeader><CardTitle>📋 Підсумок трансляції</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>{builder('summaryTitle')}</CardTitle>
+            </CardHeader>
             <CardContent className="summary-list" style={{ fontSize: 13 }}>
-              <div style={{ display: 'flex', gap: 8 }}><span style={{ width: 80, color: 'var(--txt-3)' }}>Канал</span><span>{selectedDestinations[0]?.name ?? '— не обрано'}</span></div>
-              <div style={{ display: 'flex', gap: 8 }}><span style={{ width: 80, color: 'var(--txt-3)' }}>Файл</span><span>{videoEditor.items[0] ? (assetMap.get(videoEditor.items[0].asset_id)?.filename ?? '—') : '— не обрано'}</span></div>
-              <div style={{ display: 'flex', gap: 8 }}><span style={{ width: 80, color: 'var(--txt-3)' }}>Тривалість</span><span>{videoEditor.items[0] ? 'Залежить від джерела' : '—'}</span></div>
-              <div style={{ display: 'flex', gap: 8 }}><span style={{ width: 80, color: 'var(--txt-3)' }}>Старт</span><span>{scheduleState.startMode === 'now' ? 'Одразу після запуску' : (startAtLabel ?? 'Заплановано')}</span></div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <span style={{ width: 80, color: 'var(--txt-3)' }}>{builder('summaryChannel')}</span>
+                <span>{selectedDestinations[0]?.name ?? builder('summaryNotChosen')}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <span style={{ width: 80, color: 'var(--txt-3)' }}>{builder('summaryFile')}</span>
+                <span>
+                  {videoEditor.items[0]
+                    ? (assetMap.get(videoEditor.items[0].asset_id)?.filename ?? builder('fallbackDuration'))
+                    : builder('summaryNotChosen')}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <span style={{ width: 80, color: 'var(--txt-3)' }}>{builder('summaryDuration')}</span>
+                <span>{videoEditor.items[0] ? builder('summaryDependsOnSource') : builder('fallbackDuration')}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <span style={{ width: 80, color: 'var(--txt-3)' }}>{builder('summaryStart')}</span>
+                <span>
+                  {scheduleState.startMode === 'now'
+                    ? builder('summaryStartImmediate')
+                    : (startAtLabel ?? builder('summaryStartScheduled'))}
+                </span>
+              </div>
             </CardContent>
           </Card>
 
           <Card className="card-sm">
-            <CardTitle>✅ Готовність</CardTitle>
+            <CardTitle>{builder('readyTitle')}</CardTitle>
             <CardContent className="summary-list" style={{ marginTop: 10 }}>
-              <div style={{ color: selectedDestinations.length ? 'var(--green)' : 'var(--red)' }}>{selectedDestinations.length ? '✓' : '✗'} Оберіть канал</div>
-              <div style={{ color: hasVideoSelection ? 'var(--green)' : 'var(--red)' }}>{hasVideoSelection ? '✓' : '✗'} Файл обрано</div>
-              <div style={{ color: streamForm.name.trim() ? 'var(--green)' : 'var(--red)' }}>{streamForm.name.trim() ? '✓' : '✗'} Введіть назву</div>
-              <div style={{ color: 'var(--green)' }}>✓ Ліміт: {runningStreams.length}/{formatLimitValue(concurrentStreamsLimit)} паралельних ефірів</div>
+              <div style={{ color: selectedDestinations.length ? 'var(--green)' : 'var(--red)' }}>
+                {selectedDestinations.length ? '✓' : '✗'} {builder('readyChannel')}
+              </div>
+              <div style={{ color: hasVideoSelection ? 'var(--green)' : 'var(--red)' }}>
+                {hasVideoSelection ? '✓' : '✗'} {builder('readyFile')}
+              </div>
+              <div style={{ color: streamForm.name.trim() ? 'var(--green)' : 'var(--red)' }}>
+                {streamForm.name.trim() ? '✓' : '✗'} {builder('readyName')}
+              </div>
+              <div style={{ color: 'var(--green)' }}>
+                {'✓ '}
+                {builder('readyLimit', {
+                  used: runningStreams.length,
+                  limit: formatLimitValue(concurrentStreamsLimit),
+                })}
+              </div>
             </CardContent>
           </Card>
 
-          <div className="info-box" style={{ background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)', padding: 14 }}>
-            <div style={{ fontSize: 12, color: 'var(--indigo-lt)', fontWeight: 600, marginBottom: 6 }}>ℹ️ Як це працює</div>
+          <div
+            className="info-box"
+            style={{ background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)', padding: 14 }}
+          >
+            <div style={{ fontSize: 12, color: 'var(--indigo-lt)', fontWeight: 600, marginBottom: 6 }}>
+              {builder('howItWorks')}
+            </div>
             <div style={{ fontSize: 12, color: 'var(--txt-2)', lineHeight: 1.6 }}>
-              Сервіс зчитає ваш файл і надішле потік напряму на YouTube/Twitch через RTMPS — без перекодування. Навантаження на ваш ПК: нуль.
+              {builder('howItWorksBody')}
             </div>
           </div>
 
@@ -446,7 +493,7 @@ export function StreamBuilderModal({
             onClick={handleBuilderSubmit}
             isLoading={isBuilderSubmitting || createPending}
           >
-            📡 Запустити ефір
+            {builder('launch')}
           </Button>
         </div>
       </div>
