@@ -1,4 +1,8 @@
 'use client'
+// TODO(sprint-3.5): full i18n migration of dashboard root page deferred.
+// Sprint 3.1 covered smaller components; this page's translation pass needs
+// designer/translator review for tone consistency. Disable is INTENTIONAL —
+// see docs/audit/2026-04-25_deep_multi_agent_audit.md (H8).
 /* eslint-disable i18next/no-literal-string */
 
 import { useMemo } from 'react'
@@ -31,7 +35,19 @@ export default function DashboardPage() {
     queryKey: ['streams', user?.id],
     queryFn: api.streams.list,
     enabled: !!user,
-    refetchInterval: typeof document !== 'undefined' && document.visibilityState === 'visible' ? 5000 : false,
+    // Function form is re-evaluated by React Query between refetches, so the
+    // interval shrinks when a stream is live and stops entirely when the tab
+    // is hidden — saves both API load and laptop battery.
+    refetchInterval: (query) => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'visible') {
+        return false
+      }
+      const current = query.state.data ?? []
+      const hasLive = current.some(
+        (stream) => stream.status === 'running' || stream.status === 'starting',
+      )
+      return hasLive ? 5000 : 30_000
+    },
     refetchOnWindowFocus: true,
   })
 

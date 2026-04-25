@@ -1,0 +1,21 @@
+{
+  "weekdays": {
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat",
+    "sun": "Sun"
+  },
+  "loading": "Loading schedule…",
+  "title": "Schedule",
+  "subtitle": "Plan streams in advance",
+  "createStream": "+ Schedule a stream",
+  "addEvent": "+ Add event",
+  "untitled": "Untitled",
+  "moreEvents": "+{count} more",
+  "upcomingTitle": "Upcoming events",
+  "emptyTitle": "No scheduled events",
+  "emptySub": "Create a stream and set its start time."
+}

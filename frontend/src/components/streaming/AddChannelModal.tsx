@@ -1,5 +1,4 @@
 'use client'
-/* eslint-disable i18next/no-literal-string */
 
 import type { FormEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
@@ -38,7 +37,7 @@ export function AddChannelModal({
 
   return (
     <Modal open={open} onClose={onCancel} ariaLabel={title} className="w-full max-w-[520px]">
-      <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
+      <div style={{ fontSize: 32, marginBottom: 12 }} aria-hidden="true">{'📡'}</div>
       <div className="card-title" style={{ fontSize: 17, marginBottom: 8 }}>
         {title}
       </div>
@@ -109,7 +108,8 @@ export function AddChannelModal({
               rel="noopener noreferrer"
               style={{ color: 'var(--indigo-lt)' }}
             >
-              {t('channels.form.help.title')} →
+              {t('channels.form.help.title')}
+              {' →'}
             </a>
           </div>
         </div>
@@ -127,7 +127,7 @@ export function AddChannelModal({
               onClick={onStartYouTubeConnect}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#ff0000' }}>▶</span>
+                <span style={{ color: '#ff0000' }} aria-hidden="true">{'▶'}</span>
                 <span>{t('provider.youtubeCta')}</span>
               </span>
               <Badge variant="live" style={{ fontSize: 10, padding: '2px 6px' }}>{t('provider.youtubeBadge')}</Badge>
@@ -141,7 +141,7 @@ export function AddChannelModal({
               title={t('provider.twitchDisabledTitle')}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#9146ff' }}>🎮</span>
+                <span style={{ color: '#9146ff' }} aria-hidden="true">{'🎮'}</span>
                 <span>{t('provider.twitchCta')}</span>
               </span>
               <Badge variant="warn" style={{ fontSize: 10, padding: '2px 6px' }}>{t('provider.twitchBadge')}</Badge>

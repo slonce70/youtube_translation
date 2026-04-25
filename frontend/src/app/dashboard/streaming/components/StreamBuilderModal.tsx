@@ -1,4 +1,7 @@
 'use client'
+// TODO(sprint-3.5): full i18n migration of stream builder modal deferred.
+// Disable is INTENTIONAL — see
+// docs/audit/2026-04-25_deep_multi_agent_audit.md (H8).
 /* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useState } from 'react'

@@ -1,5 +1,4 @@
 'use client'
-/* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
@@ -83,7 +82,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   return (
     <Modal open={open} onClose={onClose} ariaLabel={t('label')} className="cmd-palette-modal">
       <div className="cmd-palette-head">
-        <span className="cmd-palette-icon">⌘</span>
+        <span className="cmd-palette-icon" aria-hidden="true">{'⌘'}</span>
         <input
           ref={inputRef}
           value={query}
@@ -108,7 +107,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
           placeholder={t('placeholder')}
           className="cmd-palette-input"
         />
-        <kbd className="search-kbd">Esc</kbd>
+        <kbd className="search-kbd" aria-hidden="true">{'Esc'}</kbd>
       </div>
       <div className="cmd-palette-list">
         {grouped.map((group) => (
@@ -146,7 +145,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
         ))}
         {filtered.length === 0 ? (
           <div className="cmd-empty-state">
-            <div className="empty-icon">⌁</div>
+            <div className="empty-icon" aria-hidden="true">{'⌁'}</div>
             <div className="empty-title">{t('emptyTitle')}</div>
             <div className="empty-sub">{t('emptySub')}</div>
           </div>

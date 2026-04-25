@@ -1,7 +1,7 @@
 'use client'
-/* eslint-disable i18next/no-literal-string */
 
 import { useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import { useLocale } from 'next-intl'
 import {
   AlertCircle,
@@ -73,6 +73,12 @@ interface AssetCardProps {
     recommendations: (params: { label: string; details: string }) => string
     selection: { checkboxLabel: string }
     previewAlt: (params: { filename: string }) => string
+    iconActions: {
+      download: string
+      validate: string
+      move: string
+      delete: string
+    }
   }
 }
 
@@ -176,12 +182,13 @@ export function AssetCard({
               className="absolute left-2 top-2 z-10 h-5 w-5 rounded-full border-slate-300 bg-black/30 text-primary-600"
             />
             {thumbnailSrc ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={thumbnailSrc}
                 alt={t.previewAlt({ filename: asset.filename })}
-                className="h-full w-full object-cover"
-                loading="lazy"
+                fill
+                sizes="(max-width: 768px) 50vw, 320px"
+                unoptimized
+                className="object-cover"
                 onError={() => setThumbnailSrc(null)}
               />
             ) : (
@@ -218,10 +225,25 @@ export function AssetCard({
             ) : null}
 
             <div className="mt-3 flex items-center gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={onDownload}>⬇</Button>
-              <Button type="button" variant="ghost" size="sm" onClick={onCheck}>✓</Button>
-              <Button type="button" variant="ghost" size="sm" onClick={onMove}>📁</Button>
-              <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={onDelete}>🗑</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={onDownload} aria-label={t.iconActions.download}>
+                <span aria-hidden="true">{'⬇'}</span>
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={onCheck} aria-label={t.iconActions.validate}>
+                <span aria-hidden="true">{'✓'}</span>
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={onMove} aria-label={t.iconActions.move}>
+                <span aria-hidden="true">{'📁'}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="ml-auto"
+                onClick={onDelete}
+                aria-label={t.iconActions.delete}
+              >
+                <span aria-hidden="true">{'🗑'}</span>
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -253,12 +275,13 @@ export function AssetCard({
 
           <div className={`relative ${previewSizeClass} flex-shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60`}>
             {thumbnailSrc ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={thumbnailSrc}
                 alt={t.previewAlt({ filename: asset.filename })}
-                className="h-full w-full object-cover"
-                loading="lazy"
+                fill
+                sizes="(max-width: 768px) 25vw, 96px"
+                unoptimized
+                className="object-cover"
                 onError={() => setThumbnailSrc(null)}
               />
             ) : (

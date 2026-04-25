@@ -10,13 +10,21 @@ import enMessages from '@/messages/en'
 describe('PlansPage', () => {
   it('lets paid UHD users browse FHD plans', async () => {
     const contextValue = {
-      user: { id: 'user-1' },
+      user: {
+        id: 'user-1',
+        aud: 'authenticated',
+        role: 'authenticated',
+        email: 'test@example.com',
+        app_metadata: {},
+        user_metadata: {},
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
       signOut: jest.fn().mockResolvedValue(undefined),
       refreshUser: jest.fn().mockResolvedValue(undefined),
       quotaLoading: false,
       currentTier: 'uhd_boost' as const,
       planDetail: PLAN_DETAILS.uhd_boost,
-    }
+    } as unknown as Parameters<typeof DashboardContext.Provider>[0]['value']
 
     render(
       <NextIntlClientProvider locale="en" messages={enMessages as unknown as AbstractIntlMessages}>

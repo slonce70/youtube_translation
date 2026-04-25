@@ -10,6 +10,8 @@ import admin from './admin.json'
 import metadata from './metadata.json'
 import errors from './errors.json'
 import landing from './landing.json'
+import gamification from './gamification.json'
+import schedule from './schedule.json'
 
 const messages = {
   common,
@@ -24,6 +26,8 @@ const messages = {
   admin,
   errors,
   landing,
+  gamification,
+  schedule,
 }
 
 export default messages
