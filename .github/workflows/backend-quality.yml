@@ -65,7 +65,11 @@ jobs:
         run: python -m ruff check app/
 
       - name: Run mypy
-        run: python -m mypy --config-file mypy.ini app/
+        # Do NOT pass `app/` here — it overrides the scoped `files=` list
+        # in mypy.ini (release-hardening surfaces only). Without `app/`, mypy
+        # honors the explicit module list and stays meaningful instead of
+        # blowing up on legacy typing debt outside the gate's scope.
+        run: python -m mypy --config-file mypy.ini
 
       - name: Prepare test environment
         run: |

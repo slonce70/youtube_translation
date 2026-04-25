@@ -118,3 +118,4 @@ prototype-v2.html
 /package.json
 /package-lock.json
 /node_modules/
+.claude/scheduled_tasks.lock
