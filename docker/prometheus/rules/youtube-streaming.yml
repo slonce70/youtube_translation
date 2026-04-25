@@ -1,8 +1,13 @@
 # Alert rules for YouTube Streaming Platform.
 #
-# Naming convention: <Surface><Symptom> — e.g. BackendDown, StreamRestartLoop.
-# Severity tags: page (operator must respond now), warning (worth noting),
-# info (informational, no auto-route to oncall).
+# All metric names referenced below ARE actually exported by the backend's
+# /api/metrics/prometheus endpoint via app.core.metrics.AppMetrics. If you
+# extend this file, verify the metric exists in metrics.py first — Sprint 4
+# review caught a regression where alert rules referenced unimplemented
+# metrics and silently never fired.
+#
+# Naming: <Surface><Symptom> — e.g. BackendDown, StreamErrorSpike.
+# Severity: page = wake oncall, warning = file ticket, info = noise floor.
 
 groups:
   - name: backend
@@ -17,10 +22,11 @@ groups:
           summary: "Backend instance is down"
           description: |
             Prometheus has been unable to scrape /api/metrics/prometheus on
-            {{ $labels.instance }} for 5 minutes. /readyz is also likely failing.
-            Live stream control plane is unavailable; ffmpeg children continue
-            running under their per-stream systemd units (host-native mode).
-          runbook_url: "https://runbook.example/youtube-streaming/backend-down"
+            {{ $labels.instance }} for 5 minutes. /readyz is also likely
+            failing. Live stream control plane is unavailable; ffmpeg
+            children continue running under their per-stream systemd units
+            (host-native production mode). Operator action: check journald
+            for the backend service and `systemctl status youtube-backend`.
 
       - alert: BackendReadinessFlapping
         expr: |
@@ -34,75 +40,77 @@ groups:
         annotations:
           summary: "Backend readiness flapping"
           description: |
-            up{{job="backend"}} dipped below 95% over the last 15m. Likely a
-            DB or Redis dependency flap; inspect /readyz JSON breakdown.
+            up{{job="backend"}} dipped below 95% over 15m. Likely a DB or
+            Redis dependency flap; inspect /readyz JSON breakdown.
 
-      - alert: BackendHighErrorRate
+      - alert: BackendApiErrorSpike
+        # api_errors_total is a counter incremented by AppMetrics; rate over
+        # 5m vs api_requests_total gives an error fraction.
         expr: |
-          sum(rate(http_requests_total{job="backend",status=~"5.."}[5m]))
-            / sum(rate(http_requests_total{job="backend"}[5m])) > 0.02
+          (
+            sum(rate(api_errors_total[5m]))
+              /
+            (sum(rate(api_requests_total[5m])) > 0)
+          ) > 0.02
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Backend 5xx rate above 2% (p10m)"
+          summary: "API error rate above 2% over 10m"
           description: |
-            One in fifty backend responses is a 5xx. Inspect Sentry for the
-            top error class and recent deploys.
+            More than 2% of backend API requests are returning errors.
+            Inspect Sentry for the dominant error class and check the
+            most recent deploy.
 
-  - name: streams
-    interval: 30s
-    rules:
-      - alert: StreamRestartLoop
-        # The backend exposes restart_attempts as a per-stream counter via
-        # /api/metrics/prometheus. A flapping stream that exceeds 3 restarts
-        # in 10 minutes is almost certainly broken (bad source, expired key,
-        # YouTube-side rejection); operator should intervene.
-        expr: |
-          increase(stream_restart_attempts_total[10m]) > 3
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Stream {{ $labels.stream_id }} restart loop"
-          description: |
-            Stream has been restarted {{ $value }} times in the last 10m.
-            ffmpeg_auto_restart_attempts may be saturated. Check stream logs
-            and consider stopping until the source/key is verified.
-
-      - alert: ConcurrentStreamCapApproached
-        expr: |
-          sum by (user_id) (stream_concurrent_count) /
-          on(user_id) group_left() max by (user_id) (subscription_max_concurrent_streams)
-            > 0.9
-        for: 10m
-        labels:
-          severity: info
-        annotations:
-          summary: "User {{ $labels.user_id }} at 90% concurrent-stream cap"
-          description: |
-            User is approaching their plan's concurrent stream limit. Soft
-            warning — used to detect users who'd benefit from a tier upgrade.
-
-  - name: quota
-    interval: 30s
-    rules:
-      - alert: QuotaLockContention
-        # Sprint 2 introduced pg_advisory_xact_lock per quota namespace. If
-        # contention spikes, foreground requests block on the lock.
+      - alert: BackendApiLatencyHigh
+        # api_latency_seconds is a histogram. p95 above 1s sustained means
+        # something is blocking the event loop.
         expr: |
           histogram_quantile(0.95,
-            sum by (le) (rate(pg_advisory_lock_wait_seconds_bucket[5m]))
+            sum by (le) (rate(api_latency_seconds_bucket[5m]))
           ) > 1
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Quota advisory lock p95 wait > 1s"
+          summary: "API p95 latency > 1s for 10m"
           description: |
-            Quota advisory-lock wait p95 exceeds 1s. Most likely culprit:
-            a flapping stream re-acquiring the start-stream lock repeatedly,
-            or a large user attempting many simultaneous uploads.
+            Investigate slow DB queries, blocked event loop (sync I/O on
+            the request path), or upstream Supabase/MediaMTX latency.
+
+  - name: streams
+    interval: 30s
+    rules:
+      - alert: StreamErrorSpike
+        # stream_errors_total is incremented per ffmpeg failure or quality
+        # rejection. A spike means many streams are failing in a short
+        # window — usually a regional YouTube ingest issue or an internal
+        # config bug.
+        expr: increase(stream_errors_total[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5 stream errors in 10m"
+          description: |
+            Inspect /api/admin/alerts for the affected streams. If a single
+            user is responsible, contact them; if many users are affected,
+            check YouTube ingest health and MediaMTX logs.
+
+      - alert: NoActiveStreamsForExtendedPeriod
+        # Useful as an early-warning that the entire platform is silently
+        # broken on the streaming-ingest side. Operator can choose to
+        # disable when long maintenance windows are expected.
+        expr: max_over_time(active_streams[1h]) == 0
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Zero active streams for 1h"
+          description: |
+            Either no users are streaming (off-peak) OR the platform is
+            silently rejecting starts. Cross-check stream_starts_total
+            increase rate.
 
   - name: storage
     interval: 1m
@@ -118,7 +126,7 @@ groups:
           summary: "Less than 15% free on /opt/youtube_translation_data"
           description: |
             Free space below 15%. Investigate uploads/ size, prune old
-            stream logs, or expand the volume. Disk-full will hard-fail
+            stream logs, or expand the volume. Disk-full hard-fails
             stream starts and uploads.
 
       - alert: DiskFreeCritical
@@ -144,4 +152,4 @@ groups:
           summary: "TLS cert {{ $labels.instance }} expires in < 14 days"
           description: |
             Caddy auto-renews via ACME, but a stuck renewal will eventually
-            page on this rule. Check Caddy logs.
+            page on this rule. Check Caddy logs and ACME provider state.

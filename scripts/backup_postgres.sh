@@ -60,7 +60,19 @@ basename="postgres-${ts}.dump"
 encrypted="${BACKUP_DEST_DIR}/${basename}.age"
 tmp_dump="${BACKUP_DEST_DIR}/${basename}.partial"
 
-trap 'rm -f "$tmp_dump"' EXIT
+# Trap on EXIT (any path) — try shred first if available, fall back to
+# rm. Defends against the script crashing between pg_dump and age,
+# leaving plaintext lingering on disk.
+_cleanup_tmp_dump() {
+  if [[ -f "$tmp_dump" ]]; then
+    if command -v shred >/dev/null 2>&1; then
+      shred --remove "$tmp_dump" 2>/dev/null || rm -f "$tmp_dump"
+    else
+      rm -f "$tmp_dump"
+    fi
+  fi
+}
+trap _cleanup_tmp_dump EXIT
 
 log "Starting pg_dump → age pipeline"
 
@@ -80,13 +92,8 @@ if ! age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" \
   die "age encryption failed" 4
 fi
 
-# Defence-in-depth: shred plaintext before unlinking.
-if command -v shred >/dev/null 2>&1; then
-  shred --remove "$tmp_dump"
-else
-  rm -f "$tmp_dump"
-fi
-trap - EXIT
+# Plaintext is shredded by the EXIT trap (_cleanup_tmp_dump) regardless
+# of which path we exit through, so we don't redundantly delete here.
 
 chmod 0600 "$encrypted"
 log "Encrypted backup landed at ${encrypted}"

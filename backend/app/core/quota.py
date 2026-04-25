@@ -302,10 +302,44 @@ class QuotaEnforcer:
         window_end = datetime.now(timezone.utc)
         window_start = window_end - timedelta(hours=24)
 
-        streams = await self._streams_within_window(window_start)
-        total_seconds = self._calculate_streaming_seconds(
-            streams, window_start, window_end
+        # Compute the rolling-24h streaming seconds entirely in SQL using
+        # ``EXTRACT(EPOCH FROM ...)`` over the clipped per-row interval.
+        # Pre-Sprint-5 this loaded every overlapping stream row into Python
+        # and walked the list to sum durations — fine on small tenants but
+        # an O(N) memory + transit cost on heavy users. The new aggregate
+        # returns one row, one number.
+        sql = text("""
+            SELECT COALESCE(
+                SUM(
+                    EXTRACT(
+                        EPOCH FROM (
+                            LEAST(
+                                COALESCE(stopped_at, :window_end),
+                                :window_end
+                            )
+                            - GREATEST(started_at, :window_start)
+                        )
+                    )
+                ),
+                0
+            )
+            FROM streams
+            WHERE user_id = :user_id
+              AND started_at IS NOT NULL
+              AND COALESCE(stopped_at, :window_end) > :window_start
+              AND started_at < :window_end
+            """)
+        row = await self.db.execute(
+            sql,
+            {
+                "user_id": str(self.user_id),
+                "window_start": window_start,
+                "window_end": window_end,
+            },
         )
+        total_seconds = float(row.scalar() or 0.0)
+        if total_seconds < 0:
+            total_seconds = 0.0
 
         limit_seconds = float(limit_hours) * 3600.0
         remaining_seconds = max(limit_seconds - total_seconds, 0.0)

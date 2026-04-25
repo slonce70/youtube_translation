@@ -41,12 +41,20 @@ class PlaylistService:
         self.quota_cls = quota_cls
         self.builder = builder
 
-    async def list_playlists(self) -> List[PlaylistResponse]:
+    # See destinations/service.py for the rationale behind these constants.
+    DEFAULT_LIST_LIMIT = 500
+    MAX_LIST_LIMIT = 2000
+
+    async def list_playlists(
+        self, limit: int = DEFAULT_LIST_LIMIT
+    ) -> List[PlaylistResponse]:
+        bounded = max(1, min(limit, self.MAX_LIST_LIMIT))
         query = (
             select(Playlist)
             .where(Playlist.user_id == self.user_id)
             .options(selectinload(Playlist.items))
-            .order_by(Playlist.created_at)
+            .order_by(Playlist.created_at.desc(), Playlist.id.desc())
+            .limit(bounded)
         )
 
         result = await self.db.execute(query)
@@ -180,9 +188,29 @@ class PlaylistService:
         }
 
     async def _insert_items(self, playlist_id: UUID, items: Iterable) -> None:
-        for item_data in items:
-            asset = await self._get_asset(item_data.asset_id)
-            if not asset:
+        """Bulk-validate every item's asset in a single SELECT instead of N.
+
+        Pre-Sprint-5 this issued one ``SELECT`` per item via ``_get_asset``;
+        a 100-item playlist meant 100 round-trips. Now we collect all
+        ``asset_id``s, run one SELECT bounded by ``user_id``, and validate
+        membership in Python.
+        """
+        items_list = list(items)
+        if not items_list:
+            return
+
+        asset_ids = [item.asset_id for item in items_list]
+
+        result = await self.db.execute(
+            select(Asset.id).where(
+                Asset.user_id == self.user_id,
+                Asset.id.in_(asset_ids),
+            )
+        )
+        owned_ids = {row[0] for row in result.all()}
+
+        for item_data in items_list:
+            if item_data.asset_id not in owned_ids:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Asset {item_data.asset_id} not found",

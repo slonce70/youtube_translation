@@ -39,6 +39,15 @@ function subscribeToTheme(notify: () => void): () => void {
 // matches the inline early-evaluation script's default. The first
 // useEffect-equivalent in the client subscribes and re-reads the real
 // document.documentElement state synchronously.
+//
+// Trade-off: a user whose system / localStorage chose dark theme sees the
+// Moon icon for one render frame after hydration, then snaps to Sun. The
+// rest of the page is already dark (the inline `<head>` script in
+// app/layout.tsx adds the `dark` class before paint), so the visible
+// flash is contained to the 20×20 toggle. Avoiding it entirely requires
+// either a cookie-based theme preference resolved server-side or a
+// dedicated theme provider — out of scope for Sprint 3 and tracked as
+// follow-up.
 function getServerSnapshot(): boolean {
   return false
 }
