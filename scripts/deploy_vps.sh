@@ -925,9 +925,23 @@ fi
 # divergence in the next deploy log.
 # ----------------------------------------------------------------------------
 echo "=== Forensic dump: where does runtime backend think postgres lives? ==="
-echo "--- /opt/youtube_translation/backend/.env (DB-related lines, redacted) ---"
-sed -n -E 's/^(DATABASE_URL|POSTGRES_HOST|POSTGRES_PORT|DB_HOST|DB_PORT)=.*$/\1=<set>/p' \
-  "$repo_root/backend/.env" 2>/dev/null || echo "  (.env unreadable)"
+echo "--- /opt/youtube_translation/backend/.env (DB host:port only, password redacted) ---"
+# Print DATABASE_URL with the password redacted but host/port/db visible —
+# we need to see *where* the runtime backend is dialling.
+awk -F= '
+  /^[[:space:]]*DATABASE_URL=/ {
+    # gsub anything between "://...@" to "://***@" so password is masked
+    sub(/=.*/, "");
+    line = $0;
+    val = substr($0, length(line) + 2);
+    # Re-read full line then redact
+  }
+' "$repo_root/backend/.env" 2>/dev/null
+grep -E '^[[:space:]]*(DATABASE_URL|POSTGRES_HOST|POSTGRES_PORT|DB_HOST|DB_PORT)=' \
+  "$repo_root/backend/.env" 2>/dev/null \
+  | sed -E 's#://[^@]*@#://***@#g' \
+  | sed -E 's/(PASSWORD=).*/\1***/' \
+  || echo "  (.env unreadable)"
 echo "--- listening postgres sockets on host ---"
 ss -ltnp 2>/dev/null | grep -E '54(32|33|34)\b' || echo "  (no postgres listener on 5432-5434)"
 echo "--- docker port mapping for youtube-streaming-postgres ---"
