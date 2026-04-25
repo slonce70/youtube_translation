@@ -7,7 +7,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -300,17 +300,45 @@ class MediaFolderService:
     async def _ensure_not_descendant(
         self, folder_id: UUID, candidate_parent_id: UUID
     ) -> None:
-        ancestor_id = candidate_parent_id
-        while ancestor_id is not None:
-            if ancestor_id == folder_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot move a folder into its descendant",
+        """Reject moves that would create a folder cycle.
+
+        Pre-Sprint-5 this walked ancestors via N round-trips
+        (one SELECT per level). Now a single recursive CTE returns the
+        full ancestor chain in one query — same algorithm, same
+        complexity guarantees, but bounded latency for deep trees.
+
+        The CTE is also tenant-scoped (``user_id = :user_id``) so a
+        malicious folder_id cannot traverse another tenant's hierarchy.
+        """
+        if candidate_parent_id == folder_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot move a folder into its descendant",
+            )
+
+        result = await self.db.execute(
+            text("""
+                WITH RECURSIVE ancestors AS (
+                    SELECT id, parent_id
+                    FROM media_folders
+                    WHERE id = :start_id AND user_id = :user_id
+                    UNION ALL
+                    SELECT mf.id, mf.parent_id
+                    FROM media_folders mf
+                    JOIN ancestors a ON a.parent_id = mf.id
+                    WHERE mf.user_id = :user_id
                 )
-            ancestor = await self._fetch_folder(ancestor_id)
-            if ancestor is None:
-                break
-            ancestor_id = ancestor.parent_id
+                SELECT id FROM ancestors
+                """),
+            {"start_id": str(candidate_parent_id), "user_id": str(self.user_id)},
+        )
+        ancestor_ids = {row[0] for row in result.all()}
+
+        if folder_id in ancestor_ids or str(folder_id) in ancestor_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot move a folder into its descendant",
+            )
 
     async def _assert_asset_owned(self, asset_id: UUID) -> Asset:
         result = await self.db.execute(

@@ -26,6 +26,14 @@ const DEV_USER_ID = process.env.NEXT_PUBLIC_DEV_USER_ID ?? 'dev-user-id'
 // (id + email + user_metadata) that matches what the dashboard reads. The
 // rest of the fields are filled with sensible empties so the value is
 // type-compatible with `User` for the dashboard's read-only consumers.
+//
+// IMPORTANT: this is a DEV-ONLY path gated on NEXT_PUBLIC_DEV_BYPASS_AUTH.
+// Production code must NEVER see this object. Optional User fields not set
+// here (phone, identities, factors, last_sign_in_at, etc.) will be
+// `undefined` — components that read them must defend with `?.` access.
+// If a future component starts depending on, say, `user.identities`, add
+// a sensible default to this builder rather than asserting non-null at the
+// call site.
 function buildDevBypassUser(): User {
   const now = new Date().toISOString()
   return {
