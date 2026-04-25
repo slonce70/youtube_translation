@@ -1,0 +1,14 @@
+# /etc/systemd/system/yt-uploads-backup.timer
+
+[Unit]
+Description=YouTube Streaming — daily uploads snapshot
+Requires=yt-uploads-backup.service
+
+[Timer]
+# 03:43 UTC daily — interleaved 26 minutes after the postgres backup.
+OnCalendar=*-*-* 03:43:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

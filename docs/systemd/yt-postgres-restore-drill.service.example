@@ -1,0 +1,54 @@
+# /etc/systemd/system/yt-postgres-restore-drill.service
+#
+# Monthly drill: take the newest encrypted backup, decrypt it, restore
+# into an ephemeral DB, verify the schema, drop the ephemeral DB. The
+# production cluster is never touched.
+#
+# Required env (in /etc/youtube-streaming/restore-drill.env):
+#   BACKUP_AGE_IDENTITY=/etc/youtube-streaming/backup-key.txt   # 0400 root:root
+#   BACKUP_DEST_DIR=/var/lib/youtube-backups/postgres
+#   DRILL_PG_HOST=127.0.0.1
+#   DRILL_PG_USER=postgres
+#   DRILL_PG_PASSWORD=...
+# Optional:
+#   DRILL_PG_PORT=5432
+#   DRILL_BACKUP_FILE=...   # default: newest .age in BACKUP_DEST_DIR
+
+[Unit]
+Description=YouTube Streaming — Postgres restore drill
+Wants=network-online.target
+After=network-online.target postgresql.service
+ConditionFileNotEmpty=/etc/youtube-streaming/restore-drill.env
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/youtube-streaming/restore-drill.env
+ExecStart=/opt/youtube_translation/scripts/restore_postgres_drill.sh
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/youtube-backups
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+User=youtube-backup
+Group=youtube-backup
+
+TimeoutStartSec=2h
+
+[Install]
+WantedBy=multi-user.target

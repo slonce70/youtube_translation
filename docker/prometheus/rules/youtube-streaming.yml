@@ -1,0 +1,147 @@
+# Alert rules for YouTube Streaming Platform.
+#
+# Naming convention: <Surface><Symptom> — e.g. BackendDown, StreamRestartLoop.
+# Severity tags: page (operator must respond now), warning (worth noting),
+# info (informational, no auto-route to oncall).
+
+groups:
+  - name: backend
+    interval: 30s
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Backend instance is down"
+          description: |
+            Prometheus has been unable to scrape /api/metrics/prometheus on
+            {{ $labels.instance }} for 5 minutes. /readyz is also likely failing.
+            Live stream control plane is unavailable; ffmpeg children continue
+            running under their per-stream systemd units (host-native mode).
+          runbook_url: "https://runbook.example/youtube-streaming/backend-down"
+
+      - alert: BackendReadinessFlapping
+        expr: |
+          (
+            sum_over_time(up{job="backend"}[15m])
+              / count_over_time(up{job="backend"}[15m])
+          ) < 0.95
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backend readiness flapping"
+          description: |
+            up{{job="backend"}} dipped below 95% over the last 15m. Likely a
+            DB or Redis dependency flap; inspect /readyz JSON breakdown.
+
+      - alert: BackendHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="backend",status=~"5.."}[5m]))
+            / sum(rate(http_requests_total{job="backend"}[5m])) > 0.02
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backend 5xx rate above 2% (p10m)"
+          description: |
+            One in fifty backend responses is a 5xx. Inspect Sentry for the
+            top error class and recent deploys.
+
+  - name: streams
+    interval: 30s
+    rules:
+      - alert: StreamRestartLoop
+        # The backend exposes restart_attempts as a per-stream counter via
+        # /api/metrics/prometheus. A flapping stream that exceeds 3 restarts
+        # in 10 minutes is almost certainly broken (bad source, expired key,
+        # YouTube-side rejection); operator should intervene.
+        expr: |
+          increase(stream_restart_attempts_total[10m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stream {{ $labels.stream_id }} restart loop"
+          description: |
+            Stream has been restarted {{ $value }} times in the last 10m.
+            ffmpeg_auto_restart_attempts may be saturated. Check stream logs
+            and consider stopping until the source/key is verified.
+
+      - alert: ConcurrentStreamCapApproached
+        expr: |
+          sum by (user_id) (stream_concurrent_count) /
+          on(user_id) group_left() max by (user_id) (subscription_max_concurrent_streams)
+            > 0.9
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "User {{ $labels.user_id }} at 90% concurrent-stream cap"
+          description: |
+            User is approaching their plan's concurrent stream limit. Soft
+            warning — used to detect users who'd benefit from a tier upgrade.
+
+  - name: quota
+    interval: 30s
+    rules:
+      - alert: QuotaLockContention
+        # Sprint 2 introduced pg_advisory_xact_lock per quota namespace. If
+        # contention spikes, foreground requests block on the lock.
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(pg_advisory_lock_wait_seconds_bucket[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quota advisory lock p95 wait > 1s"
+          description: |
+            Quota advisory-lock wait p95 exceeds 1s. Most likely culprit:
+            a flapping stream re-acquiring the start-stream lock repeatedly,
+            or a large user attempting many simultaneous uploads.
+
+  - name: storage
+    interval: 1m
+    rules:
+      - alert: DiskFreeLow
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/opt/youtube_translation_data"} /
+           node_filesystem_size_bytes{mountpoint="/opt/youtube_translation_data"}) < 0.15
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Less than 15% free on /opt/youtube_translation_data"
+          description: |
+            Free space below 15%. Investigate uploads/ size, prune old
+            stream logs, or expand the volume. Disk-full will hard-fail
+            stream starts and uploads.
+
+      - alert: DiskFreeCritical
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/opt/youtube_translation_data"} /
+           node_filesystem_size_bytes{mountpoint="/opt/youtube_translation_data"}) < 0.05
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Less than 5% free on /opt/youtube_translation_data — IMMINENT FAILURE"
+
+  - name: certificates
+    interval: 1h
+    rules:
+      - alert: CertExpiringSoon
+        expr: |
+          probe_ssl_earliest_cert_expiry - time() < 14 * 24 * 3600
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS cert {{ $labels.instance }} expires in < 14 days"
+          description: |
+            Caddy auto-renews via ACME, but a stuck renewal will eventually
+            page on this rule. Check Caddy logs.

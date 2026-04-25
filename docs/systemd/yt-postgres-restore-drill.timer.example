@@ -1,0 +1,19 @@
+# /etc/systemd/system/yt-postgres-restore-drill.timer
+#
+# Activate with:
+#   systemctl daemon-reload
+#   systemctl enable --now yt-postgres-restore-drill.timer
+
+[Unit]
+Description=YouTube Streaming — monthly Postgres restore drill
+Requires=yt-postgres-restore-drill.service
+
+[Timer]
+# First Sunday of every month, 04:00 UTC. Run AFTER the daily backup
+# timer so the newest backup is fresh.
+OnCalendar=Sun *-*-01..07 04:00:00 UTC
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

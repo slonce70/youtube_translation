@@ -53,6 +53,7 @@ from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.api_metrics import APIMetricsMiddleware
 from app.middleware.websocket_safe_csrf import WebSocketSafeCSRFMiddleware
 from app.core.logging_config import setup_logging, get_logger
+from app.core.tracing import setup_tracing
 from app.streaming.ffmpeg_manager import ffmpeg_manager
 from app.services.streams.scheduler import scheduled_stream_launcher
 
@@ -89,6 +90,11 @@ app = FastAPI(
     default_response_class=ORJSONResponse,
     lifespan=lifespan,
 )
+
+# Optional OpenTelemetry tracing — wired before middleware/routes so spans
+# wrap the full request handling pipeline. No-op when OTEL_ENABLED is unset
+# OR when the opentelemetry-* packages are not installed.
+setup_tracing(app)
 
 # Security headers middleware (first)
 app.add_middleware(SecurityHeadersMiddleware)
