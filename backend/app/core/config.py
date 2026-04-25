@@ -46,6 +46,10 @@ class Settings(BaseSettings):
 
     # Security & Encryption
     encryption_key: str
+    # Previous encryption keys (comma-separated) for transparent rotation via
+    # MultiFernet. Decryption is attempted against primary first, then each
+    # previous key in order. Encryption always uses the primary `encryption_key`.
+    encryption_key_previous: Optional[str] = None
     encryption_salt: str = "default_salt_change_in_production_16bytes"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
