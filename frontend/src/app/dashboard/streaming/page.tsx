@@ -1,9 +1,5 @@
 'use client'
-// TODO(sprint-3.5): full i18n migration of streaming page deferred. This is
-// the largest dashboard surface (1000+ LOC) — covered by a dedicated
-// translation pass. Disable is INTENTIONAL — see
-// docs/audit/2026-04-25_deep_multi_agent_audit.md (H8).
-/* eslint-disable i18next/no-literal-string */
+// Sprint 7.2: full i18n migration to streaming.page.* keys.
 
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -69,6 +65,7 @@ export default function StreamingPage() {
   const activePlanLabel = planNames((currentTier ?? 'free') as SubscriptionTierKey)
   const streamingToasts = useTranslations('streaming.toasts')
   const tStreaming = useTranslations('streaming.page')
+  const streamStatus = useTranslations('streaming.status')
   const { qualityGate, openQualityGate, closeQualityGate, groupedViolations } = useQualityGate()
 
   useEffect(() => {
@@ -425,42 +422,44 @@ export default function StreamingPage() {
         <div className="page-actions">
           <Button onClick={() => setShowCreateStream(true)} className="flex items-center gap-2">
             <Play className="w-4 h-4" />
-            <span>📡 Нова трансляція</span>
+            <span>{tStreaming('newStream')}</span>
           </Button>
         </div>
       </div>
 
       <div className="stat-strip">
         <div className="stat-strip-card">
-          <div style={{ fontSize: 24 }}>🔴</div>
+          <div style={{ fontSize: 24 }} aria-hidden="true">{'🔴'}</div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{runningStreams.length}</div>
-            <div className="page-sub">Активних ефірів</div>
+            <div className="page-sub">{tStreaming('stats.activeStreams')}</div>
           </div>
         </div>
         <div className="stat-strip-card">
-          <div style={{ fontSize: 24 }}>📊</div>
+          <div style={{ fontSize: 24 }} aria-hidden="true">{'📊'}</div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>
               {runningStreams.length}/{formatLimitValue(concurrentStreamsLimit)}
             </div>
-            <div className="page-sub">Паралельний ліміт</div>
+            <div className="page-sub">{tStreaming('stats.parallelLimit')}</div>
           </div>
         </div>
         <div className="stat-strip-card">
-          <div style={{ fontSize: 24 }}>📡</div>
+          <div style={{ fontSize: 24 }} aria-hidden="true">{'📡'}</div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>
               {destinations?.length || 0}/{formatLimitValue(destinationsLimit)}
             </div>
-            <div className="page-sub">Каналів додано</div>
+            <div className="page-sub">{tStreaming('stats.channelsAdded')}</div>
           </div>
         </div>
         <div className="stat-strip-card">
-          <div style={{ fontSize: 24 }}>⚠️</div>
+          <div style={{ fontSize: 24 }} aria-hidden="true">{'⚠️'}</div>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--amber)' }}>{degradedLiveEntries.length}</div>
-            <div className="page-sub">Деградуючих ефірів</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--amber)' }}>
+              {degradedLiveEntries.length}
+            </div>
+            <div className="page-sub">{tStreaming('stats.degraded')}</div>
           </div>
         </div>
       </div>
@@ -468,12 +467,12 @@ export default function StreamingPage() {
       <Card>
         <CardHeader className="mb-4 flex-row items-center justify-between">
           <div>
-            <CardTitle>📡 Канали (RTMPS)</CardTitle>
+            <CardTitle>{tStreaming('channelsTitle')}</CardTitle>
             <div className="page-sub" style={{ marginTop: 4 }}>
               {tStreaming('provider.channelsDescription')}
             </div>
           </div>
-          <Button size="sm" onClick={() => setShowChannelForm(true)}>+ Додати канал</Button>
+          <Button size="sm" onClick={() => setShowChannelForm(true)}>{tStreaming('addChannel')}</Button>
         </CardHeader>
         <CardContent className="channels-list">
           {isLoadingDestinations ? (
@@ -493,7 +492,7 @@ export default function StreamingPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{destination.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>
-                    {destination.rtmps_url} · Ключ: {destination.stream_key_masked}
+                    {destination.rtmps_url} · {tStreaming('destinationKey')}: {destination.stream_key_masked}
                   </div>
                   {formatProviderSummary(destination) ? (
                     <div style={{ fontSize: 12, color: 'var(--txt-2)', marginTop: 4 }}>
@@ -502,7 +501,7 @@ export default function StreamingPage() {
                   ) : null}
                 </div>
                 <Badge variant={destination.enabled ? 'live' : 'idle'}>
-                  {destination.enabled ? 'Активний' : 'Не використовується'}
+                  {destination.enabled ? tStreaming('destinationActive') : tStreaming('destinationDisabled')}
                 </Badge>
                 {shouldShowProviderBadge(destination) ? (
                   <Badge variant={getProviderBadgeVariant(destination.provider_status)}>
@@ -517,7 +516,7 @@ export default function StreamingPage() {
                     handleEditChannel(destination)
                   }}
                 >
-                  Ред.
+                  {tStreaming('destinationEdit')}
                 </Button>
                 <Button
                   size="sm"
@@ -527,25 +526,25 @@ export default function StreamingPage() {
                     handleDeleteChannel(destination.id)
                   }}
                 >
-                  Видалити
+                  {tStreaming('destinationDelete')}
                 </Button>
               </div>
               )
             })
           ) : (
             <div className="empty-state" style={{ padding: '32px 12px' }}>
-              <div className="empty-icon">📡</div>
-              <div className="empty-title">Ще немає каналів</div>
+              <div className="empty-icon" aria-hidden="true">{'📡'}</div>
+              <div className="empty-title">{tStreaming('channelsEmptyTitle')}</div>
               <div className="empty-sub">{tStreaming('provider.channelsEmpty')}</div>
               <Button size="sm" variant="outline" onClick={() => setShowChannelForm(true)} style={{ marginTop: 12 }}>
-                + Додати канал
+                {tStreaming('channels.add')}
               </Button>
             </div>
           )}
         </CardContent>
       </Card>
 
-      <div className="tabs" role="tablist" aria-label="Потоки">
+      <div className="tabs" role="tablist" aria-label={tStreaming('tablistLabel')}>
         <button
           type="button"
           role="tab"
@@ -553,7 +552,7 @@ export default function StreamingPage() {
           className={`tab-btn ${activeStreamTab === 'live' ? 'active' : ''}`}
           onClick={() => setActiveStreamTab('live')}
         >
-          <span className="tab-btn-label">🔴 У ефірі</span>
+          <span className="tab-btn-label">{tStreaming('tabs.live')}</span>
           {liveEntries.length ? <span className="tab-badge">{liveEntries.length}</span> : null}
         </button>
         <button
@@ -563,7 +562,7 @@ export default function StreamingPage() {
           className={`tab-btn ${activeStreamTab === 'scheduled' ? 'active' : ''}`}
           onClick={() => setActiveStreamTab('scheduled')}
         >
-          <span className="tab-btn-label">🗓️ Заплановані</span>
+          <span className="tab-btn-label">{tStreaming('tabs.scheduled')}</span>
           {scheduledEntries.length ? <span className="tab-badge tab-badge-active">{scheduledEntries.length}</span> : null}
         </button>
         <button
@@ -573,7 +572,7 @@ export default function StreamingPage() {
           className={`tab-btn ${activeStreamTab === 'archive' ? 'active' : ''}`}
           onClick={() => setActiveStreamTab('archive')}
         >
-          <span className="tab-btn-label">📋 Архів</span>
+          <span className="tab-btn-label">{tStreaming('tabs.archive')}</span>
           {archiveEntries.length ? <span className="tab-badge tab-badge-muted">{archiveEntries.length}</span> : null}
         </button>
       </div>
@@ -583,7 +582,7 @@ export default function StreamingPage() {
           {liveEntries.length > 0 ? liveEntries.map(({ stream, derived }) => {
             const sourceName = getStreamSourceLabel(stream)
             const sourceTotalSeconds = getStreamSourceTotalSeconds(stream)
-            const destinationLabel = (stream.destinations ?? []).map((d) => d.name).join(', ') || 'Канал не вказано'
+            const destinationLabel = (stream.destinations ?? []).map((d) => d.name).join(', ') || tStreaming('destinationsNone')
             const quotaLabel = derived.quotaReached
               ? '0'
               : formatLimitValue(derived.remainingDailySeconds ?? null)
@@ -592,12 +591,12 @@ export default function StreamingPage() {
             const isTransitioning = isOptimisticallyStarting || isOptimisticallyStopping || derived.isTransitioning
             const incidentNotice = buildStreamIncidentNotice(derived.incidentSummary)
             const statusLabel = isOptimisticallyStopping
-              ? 'Зупиняється'
+              ? tStreaming('statusLabels.stopping')
               : isOptimisticallyStarting || derived.isStarting
-                ? 'Запускається'
+                ? tStreaming('statusLabels.starting')
                 : derived.isDegraded
-                  ? 'ДЕГРАДУЄ'
-                  : 'У ЕФІРІ'
+                  ? tStreaming('statusLabels.degraded')
+                  : tStreaming('statusLabels.live')
             const progressPercent = sourceTotalSeconds && derived.liveDurationSeconds != null
               ? Math.min(100, Math.round((derived.liveDurationSeconds / sourceTotalSeconds) * 100))
               : null
@@ -619,10 +618,28 @@ export default function StreamingPage() {
                     <Badge variant={isTransitioning || derived.isDegraded ? 'warn' : 'live'} style={{ fontSize: 12 }}>
                       {isTransitioning ? null : <span className="live-dot" />}{statusLabel}
                     </Badge>
-                    <span style={{ fontWeight: 700, fontSize: 15 }}>{stream.name || 'Без назви'}</span>
-                    <span className="page-sub ml-auto">{destinationLabel} · {derived.isRunning && stream.started_at ? `Розпочато ${new Date(stream.started_at).toLocaleTimeString()}` : statusLabel}</span>
-                    <Button size="sm" variant="danger" onClick={() => handleStopStream(stream.id)} disabled={isTransitioning}>
-                      {isOptimisticallyStopping ? '⏳ Зупиняється' : isOptimisticallyStarting || derived.isStarting ? '⏳ Запускається' : '■ Зупинити'}
+                    <span style={{ fontWeight: 700, fontSize: 15 }}>
+                      {stream.name || tStreaming('streams.untitled')}
+                    </span>
+                    <span className="page-sub ml-auto">
+                      {destinationLabel} ·{' '}
+                      {derived.isRunning && stream.started_at
+                        ? tStreaming('startedAt', {
+                            time: new Date(stream.started_at).toLocaleTimeString(),
+                          })
+                        : statusLabel}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => handleStopStream(stream.id)}
+                      disabled={isTransitioning}
+                    >
+                      {isOptimisticallyStopping
+                        ? `⏳ ${streamStatus('stopping')}`
+                        : isOptimisticallyStarting || derived.isStarting
+                          ? `⏳ ${streamStatus('starting')}`
+                          : `■ ${tStreaming('streams.buttons.stop')}`}
                     </Button>
                   </div>
 
@@ -651,7 +668,7 @@ export default function StreamingPage() {
                           color: incidentNotice.tone === 'critical' ? '#fecaca' : '#fde68a',
                         }}
                       >
-                        {incidentNotice.tone === 'critical' ? 'Критичний інцидент' : 'Потік деградує'}
+                        {incidentNotice.tone === 'critical' ? tStreaming('incidentLabel.critical') : tStreaming('incidentLabel.degraded')}
                       </div>
                       <div style={{ marginTop: 6, fontWeight: 600 }}>{incidentNotice.title}</div>
                       {incidentNotice.details.length ? (
@@ -664,15 +681,15 @@ export default function StreamingPage() {
 
                   <div className="stream-playback-panel">
                     <div className="flex items-center gap-8 mb-10">
-                      <span style={{ fontSize: 18 }}>🎬</span>
+                      <span style={{ fontSize: 18 }} aria-hidden="true">{'🎬'}</span>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--txt-3)' }}>
-                          Відеоряд (зараз програється)
+                          {tStreaming('playback.currentVideoLabel')}
                         </div>
                         <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{sourceName}</div>
                       </div>
                       <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                        <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>Прогрес файлу</div>
+                        <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>{tStreaming('fileProgress')}</div>
                         <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: progressPercent == null ? 'var(--txt-2)' : 'var(--green)' }}>
                           {progressPercent == null ? '—' : `${progressPercent}%`}
                         </div>
@@ -682,8 +699,14 @@ export default function StreamingPage() {
                       <div className="progress-fill green" style={{ width: `${progressPercent ?? 0}%` }} />
                     </div>
                     <div className="flex items-center gap-8 mt-6">
-                      <span className="page-sub">{progressPercent == null ? 'Прогрес буде доступний після старту' : `${progressPercent}% відтворено`}</span>
-                      <Badge variant="indigo" style={{ fontSize: 10, marginLeft: 'auto' }}>🔄 Цикл увімк.</Badge>
+                      <span className="page-sub">
+                        {progressPercent == null
+                          ? tStreaming('playback.progressPending')
+                          : tStreaming('playback.progressPercent', { percent: progressPercent })}
+                      </span>
+                      <Badge variant="indigo" style={{ fontSize: 10, marginLeft: 'auto' }}>
+                        {tStreaming('playback.loopOn')}
+                      </Badge>
                     </div>
                   </div>
 
@@ -692,28 +715,34 @@ export default function StreamingPage() {
                       <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>
                         {formatDuration(Math.round(derived.totalDurationSeconds ?? 0))}
                       </div>
-                      <div className="page-sub">Загальна тривалість</div>
+                      <div className="page-sub">{tStreaming('totalDuration')}</div>
                     </div>
                     <div className="stream-metric-tile">
                       <div style={{ fontSize: 15, fontWeight: 700 }}>
                         {sourceTotalSeconds ? formatDuration(Math.round(sourceTotalSeconds)) : '—'}
                       </div>
-                      <div className="page-sub">Відеоряд всього</div>
+                      <div className="page-sub">{tStreaming('videoTotal')}</div>
                     </div>
                     <div className="stream-metric-tile">
                       <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--amber)' }}>{quotaLabel}</div>
-                      <div className="page-sub">Залишок ліміту</div>
+                      <div className="page-sub">{tStreaming('limitRemaining')}</div>
                     </div>
                     <div className="stream-metric-tile">
                       <div style={{ fontSize: 15, fontWeight: 700 }}>{planQualityLimits?.max_resolution ?? activePlanLabel}</div>
-                      <div className="page-sub">Якість потоку</div>
+                      <div className="page-sub">{tStreaming('streamQuality')}</div>
                     </div>
                   </div>
 
                   <div className="page-actions" style={{ marginTop: 14, marginLeft: 0 }}>
-                    <Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(stream.provider_video_id ? `https://www.youtube.com/watch?v=${stream.provider_video_id}` : window.location.href)}>🔗 Посилання</Button>
-                    <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
-                    <Button size="sm" variant="outline" className="ml-auto" onClick={() => openLiveEditor(stream)}>Більше дій ▾</Button>
+                    <Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(stream.provider_video_id ? `https://www.youtube.com/watch?v=${stream.provider_video_id}` : window.location.href)}>
+                      {tStreaming('linkButton')}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>
+                      {tStreaming('logButton')}
+                    </Button>
+                    <Button size="sm" variant="outline" className="ml-auto" onClick={() => openLiveEditor(stream)}>
+                      {tStreaming('moreActions')}
+                    </Button>
                   </div>
                 </div>
               </article>
@@ -722,9 +751,9 @@ export default function StreamingPage() {
             <Card>
               <CardContent>
                 <div className="empty-state" style={{ padding: '40px 20px' }}>
-                  <div className="empty-icon">📡</div>
-                  <div className="empty-title">Активних трансляцій немає</div>
-                  <div className="empty-sub">Створіть трансляцію, щоб керувати нею тут.</div>
+                  <div className="empty-icon" aria-hidden="true">{'📡'}</div>
+                  <div className="empty-title">{tStreaming('active.emptyTitle')}</div>
+                  <div className="empty-sub">{tStreaming('active.emptyDescription')}</div>
                 </div>
               </CardContent>
             </Card>
@@ -734,21 +763,21 @@ export default function StreamingPage() {
 
       {activeStreamTab === 'scheduled' ? (
         <Card>
-          <CardHeader><CardTitle>🗓️ Заплановані</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{tStreaming('scheduled.title')}</CardTitle></CardHeader>
           <CardContent className="summary-list">
             {scheduledEntries.length > 0 ? scheduledEntries.map(({ stream }) => (
               <div key={stream.id} className="stream-row">
-                <div className="stream-thumb">🗓️</div>
+                <div className="stream-thumb" aria-hidden="true">{'🗓️'}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || 'Без назви'}</div>
-                  <div className="page-sub">{stream.scheduled_start_time ? new Date(stream.scheduled_start_time).toLocaleString() : 'Заплановано'}</div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || tStreaming('streams.untitled')}</div>
+                  <div className="page-sub">{stream.scheduled_start_time ? new Date(stream.scheduled_start_time).toLocaleString() : tStreaming('scheduled.fallbackLabel')}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   <Button size="sm" onClick={() => handleStartStream(stream)} disabled={pendingStartStreamId === stream.id}>
-                    {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '▶ Запустити'}
+                    {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : tStreaming('scheduled.startStream')}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleOpenStreamEditor(stream)}>✏️ Редагувати</Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
+                  <Button size="sm" variant="outline" onClick={() => handleOpenStreamEditor(stream)}>{tStreaming('scheduled.editStream')}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>{tStreaming('scheduled.logButton')}</Button>
                   <Button
                     size="sm"
                     variant="danger"
@@ -765,11 +794,11 @@ export default function StreamingPage() {
               </div>
             )) : (
               <div className="empty-state" style={{ padding: '36px 20px' }}>
-                <div className="empty-icon">🗓️</div>
-                <div className="empty-title">Немає запланованих трансляцій</div>
-                <div className="empty-sub">Оберіть запланований старт у вікні створення трансляції.</div>
+                <div className="empty-icon" aria-hidden="true">{'🗓️'}</div>
+                <div className="empty-title">{tStreaming('scheduled.emptyTitle')}</div>
+                <div className="empty-sub">{tStreaming('scheduled.emptyDescription')}</div>
                 <Button size="sm" variant="outline" onClick={() => setShowCreateStream(true)} style={{ marginTop: 12 }}>
-                  + Запланувати стрім
+                  {tStreaming('scheduled.scheduleStream')}
                 </Button>
               </div>
             )}
@@ -779,27 +808,33 @@ export default function StreamingPage() {
 
       {activeStreamTab === 'archive' ? (
         <Card>
-          <CardHeader><CardTitle>📋 Архів</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{tStreaming('archive.title')}</CardTitle></CardHeader>
           <CardContent className="table-wrap">
             {archiveEntries.length > 0 ? (
               <table className="table">
                 <thead>
-                  <tr><th>Назва</th><th>Джерело</th><th>Канал</th><th>Дата</th><th>Дії</th></tr>
+                  <tr>
+                    <th>{tStreaming('archive.tableName')}</th>
+                    <th>{tStreaming('archive.tableSource')}</th>
+                    <th>{tStreaming('archive.tableChannel')}</th>
+                    <th>{tStreaming('archive.tableDate')}</th>
+                    <th>{tStreaming('archive.tableActions')}</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {archiveEntries.map(({ stream }) => (
                     <tr key={stream.id}>
-                      <td>{stream.name || 'Без назви'}</td>
+                      <td>{stream.name || tStreaming('streams.untitled')}</td>
                       <td>{getStreamSourceLabel(stream)}</td>
-                      <td>{(stream.destinations ?? []).map((d) => d.name).join(', ') || '—'}</td>
+                      <td>{(stream.destinations ?? []).map((d) => d.name).join(', ') || tStreaming('archive.fallbackChannel')}</td>
                       <td>{new Date(stream.created_at).toLocaleString()}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <Button size="sm" onClick={() => handleStartStream(stream)} disabled={pendingStartStreamId === stream.id}>
-                            {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '▶ Запустити'}
+                            {pendingStartStreamId === stream.id ? <Loader2 className="h-4 w-4 animate-spin" /> : tStreaming('scheduled.startStream')}
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleOpenStreamEditor(stream)}>✏️ Редагувати</Button>
-                          <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>📋 Лог</Button>
+                          <Button size="sm" variant="outline" onClick={() => handleOpenStreamEditor(stream)}>{tStreaming('scheduled.editStream')}</Button>
+                          <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>{tStreaming('scheduled.logButton')}</Button>
                           <Button
                             size="sm"
                             variant="danger"
@@ -820,9 +855,9 @@ export default function StreamingPage() {
               </table>
             ) : (
               <div className="empty-state" style={{ padding: '36px 20px' }}>
-                <div className="empty-icon">📋</div>
-                <div className="empty-title">Архів поки порожній</div>
-                <div className="empty-sub">Після зупинки ефірів тут з’явиться історія трансляцій і доступ до логів.</div>
+                <div className="empty-icon" aria-hidden="true">{'📋'}</div>
+                <div className="empty-title">{tStreaming('archive.emptyTitle')}</div>
+                <div className="empty-sub">{tStreaming('archive.emptyDescription')}</div>
               </div>
             )}
           </CardContent>
@@ -927,7 +962,7 @@ export default function StreamingPage() {
                   }}
                 >
                   <div className="text-xs font-semibold uppercase tracking-[0.12em]">
-                    Поточний runtime-контекст
+                    {tStreaming('runtimeContext')}
                   </div>
                   <div className="mt-2 text-sm font-medium">{runtimeIncidentNotice.title}</div>
                   {runtimeIncidentNotice.details.length ? (
@@ -951,7 +986,7 @@ export default function StreamingPage() {
                   }}
                 >
                   <div className="text-xs font-semibold uppercase tracking-[0.12em]">
-                    Incident digest з логів
+                    {tStreaming('incidentDigest')}
                   </div>
                   <div className="mt-2 text-sm font-medium">{logIncidentNotice.title}</div>
                   {logIncidentNotice.details.length ? (

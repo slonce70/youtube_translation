@@ -139,12 +139,12 @@ describe('StreamBuilderModal', () => {
   it('renders the new single-screen 3-step layout', () => {
     renderModal()
 
-    expect(screen.getByText('📡 Нова трансляція')).toBeInTheDocument()
-    expect(screen.getByText('1 · Оберіть канал')).toBeInTheDocument()
-    expect(screen.getByText('2 · Джерело відео')).toBeInTheDocument()
-    expect(screen.getByText('3 · Налаштування')).toBeInTheDocument()
-    expect(screen.getByText('📋 Підсумок трансляції')).toBeInTheDocument()
-    expect(screen.getByText('✅ Готовність')).toBeInTheDocument()
+    expect(screen.getByText('📡 New stream')).toBeInTheDocument()
+    expect(screen.getByText('1 · Pick channel')).toBeInTheDocument()
+    expect(screen.getByText('2 · Video source')).toBeInTheDocument()
+    expect(screen.getByText('3 · Settings')).toBeInTheDocument()
+    expect(screen.getByText('📋 Stream summary')).toBeInTheDocument()
+    expect(screen.getByText('✅ Readiness')).toBeInTheDocument()
   })
 
   it('shows selected destination and source in the sticky summary', () => {
@@ -152,7 +152,7 @@ describe('StreamBuilderModal', () => {
 
     expect(screen.getAllByText('Main channel').length).toBeGreaterThan(0)
     expect(screen.getAllByText('video.mp4').length).toBeGreaterThan(0)
-    expect(screen.getByText('Одразу після запуску')).toBeInTheDocument()
+    expect(screen.getByText('Right after launch')).toBeInTheDocument()
   })
 
   it('switches between file and playlist source tabs', () => {
@@ -170,7 +170,7 @@ describe('StreamBuilderModal', () => {
       },
     })
 
-    fireEvent.click(screen.getByRole('button', { name: '📋 Плейлист' }))
+    fireEvent.click(screen.getByRole('button', { name: '📋 Playlist' }))
 
     expect(handleSelectCollection).not.toHaveBeenCalled()
   })
@@ -183,16 +183,16 @@ describe('StreamBuilderModal', () => {
       audioEnabled: false,
     })
 
-    expect(screen.getByText('✗ Оберіть канал')).toBeInTheDocument()
-    expect(screen.getByText('✗ Файл обрано')).toBeInTheDocument()
-    expect(screen.getByText('✗ Введіть назву')).toBeInTheDocument()
+    expect(screen.getByText('✗ Pick a channel')).toBeInTheDocument()
+    expect(screen.getByText('✗ File picked')).toBeInTheDocument()
+    expect(screen.getByText('✗ Enter a name')).toBeInTheDocument()
   })
 
   it('calls audio toggle via the new settings section button', () => {
     const handleAudioToggle = jest.fn()
     renderModal({ audioEnabled: false, handleAudioToggle })
 
-    fireEvent.click(screen.getByRole('button', { name: '🎵 Додати аудіо' }))
+    fireEvent.click(screen.getByRole('button', { name: '🎵 Add audio' }))
 
     expect(handleAudioToggle).toHaveBeenCalledWith(true)
   })
