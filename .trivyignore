@@ -2,3 +2,15 @@
 # Format: one CVE per line, optional `# <reason>` comment.
 # Entries here suppress vulnerabilities only for image-scan jobs in
 # .github/workflows/trivy-image.yml. Review monthly.
+
+# CVE-2026-33671 — picomatch ReDoS via crafted extglob patterns.
+# Affected version range Trivy detects: 4.0.3 (declared in transitive
+# package.json constraints like "^4.0.3" inside the Next.js standalone
+# bundle). Runtime npm resolves to 4.0.4 via the explicit override in
+# frontend/package.json (`overrides.picomatch: ^4.0.4`); only the
+# constraint *strings* in nested manifests still read 4.0.3 and Trivy
+# matches those literally. We do not pass user-controlled extglob
+# patterns to picomatch — it is exercised only by the build-time
+# bundler/test glob walkers — so the ReDoS surface is not reachable.
+# Re-evaluate when next-intl + jest publish manifests with ^4.0.4.
+CVE-2026-33671  # picomatch ReDoS — false-positive on constraint string; runtime is 4.0.4 via override
