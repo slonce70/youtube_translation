@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
-    "i18n:check": "node ./scripts/check-i18n.js",
+    "i18n:check": "node ./scripts/check-i18n.js && node ./scripts/check-i18n-disables.js",
     "type-check": "next typegen && tsc --noEmit --incremental false",
     "test": "jest --runInBand",
     "test:e2e": "playwright test"

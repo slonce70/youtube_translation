@@ -26,9 +26,22 @@ class DestinationService:
         self.db = db
         self.user_id = user_id
 
-    async def list_destinations(self) -> List[DestinationResponse]:
+    # Default page size is large enough that no real tenant has hit it, but
+    # bounded so a misconfigured filter or scripted abuser cannot pull back
+    # the entire table in one request. Operators can override per-request
+    # via ``GET ...?limit=...`` (capped at MAX_LIST_LIMIT).
+    DEFAULT_LIST_LIMIT = 500
+    MAX_LIST_LIMIT = 2000
+
+    async def list_destinations(
+        self, limit: int = DEFAULT_LIST_LIMIT
+    ) -> List[DestinationResponse]:
+        bounded = max(1, min(limit, self.MAX_LIST_LIMIT))
         result = await self.db.execute(
-            select(Destination).where(Destination.user_id == self.user_id)
+            select(Destination)
+            .where(Destination.user_id == self.user_id)
+            .order_by(Destination.created_at.desc(), Destination.id.desc())
+            .limit(bounded)
         )
         destinations = result.scalars().all()
         await YoutubeProviderStatusService(self.db).enrich_destinations(destinations)

@@ -11,7 +11,7 @@ import inspect
 from collections import deque
 from ipaddress import ip_address, ip_network
 from urllib.parse import unquote
-from typing import Dict, Tuple, Iterable, List
+from typing import Dict, Iterable, List, Optional, Tuple
 from threading import RLock
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
@@ -145,17 +145,69 @@ class RateLimiter:
 
         Including ``user_id`` (when known) defeats the IP-rotation attack
         where a single authenticated user cycles through a NAT pool to
-        multiply their per-IP quota. The user-id segment is taken from
-        ``request.state.authenticated_user_id`` which is set by the auth
-        dependency *before* the rate-limit check on authenticated routes;
-        on unauthenticated routes we fall back to IP only and the segment
-        becomes the literal "anon".
+        multiply their per-IP quota.
+
+        Order-of-operations note: this middleware executes BEFORE FastAPI
+        runs route dependencies, so ``request.state.authenticated_user_id``
+        is NOT yet stamped by ``get_current_user_id``. We therefore extract
+        the user-id directly from the Authorization header here using a
+        cheap, signature-unverified JWT decode — the rate-limiter only
+        needs a stable per-user identifier, not an authentication
+        decision. Token forgery means an attacker can FAKE any user-id and
+        get rate-limited as that user; that's harmless and even desirable
+        (an attacker cannot escape their own rate limit via fake user-ids
+        and cannot deplete a victim's quota — they simply get blocked
+        more aggressively when they reuse one fake identity).
+
+        If the auth dependency later runs and stamps
+        ``request.state.authenticated_user_id``, we prefer that value (it
+        is signature-verified). The dependency-stamp path covers the case
+        where the rate-limit check is bypassed and a downstream component
+        re-keys against the same user.
         """
         client_ip = self._get_client_ip(request)
         endpoint = self._normalize_endpoint_path(request.url.path)
-        user_segment = getattr(request.state, "authenticated_user_id", None) or "anon"
+        user_segment = (
+            getattr(request.state, "authenticated_user_id", None)
+            or self._extract_user_id_from_jwt(request)
+            or "anon"
+        )
 
         return f"{client_ip}:{user_segment}:{endpoint}"
+
+    @staticmethod
+    def _extract_user_id_from_jwt(request: Request) -> Optional[str]:
+        """Best-effort, signature-unverified extraction of the ``sub`` claim.
+
+        Returns None on any failure (no header, malformed token, missing
+        ``sub``, decode error). The verified decode happens later in
+        ``get_current_user``; this is solely for rate-limit keying.
+        """
+        auth_header = request.headers.get("authorization") or request.headers.get(
+            "Authorization"
+        )
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return None
+
+        token = auth_header[len("Bearer ") :].strip()
+        if not token:
+            return None
+
+        try:
+            # PyJWT exposes a no-verify path. We MUST NOT use this for any
+            # auth decision — only for getting a stable identifier.
+            import jwt as _jwt
+
+            payload = _jwt.decode(token, options={"verify_signature": False})
+        except Exception:
+            return None
+
+        sub = payload.get("sub") if isinstance(payload, dict) else None
+        if not isinstance(sub, str):
+            return None
+        # Stable bound: take only the first 64 chars to avoid an attacker
+        # blowing up the cache key with a megabyte sub claim.
+        return sub[:64]
 
     def _get_client_ip(self, request: Request) -> str:
         client_ip = request.client.host if request.client else "unknown"

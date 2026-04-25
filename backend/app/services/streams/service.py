@@ -71,14 +71,20 @@ class StreamService:
         self.user_id = user_id
         self.settings = settings_provider
 
-    async def list_streams(self) -> List[Stream]:
+    DEFAULT_LIST_LIMIT = 500
+    MAX_LIST_LIMIT = 2000
+
+    async def list_streams(self, limit: int = DEFAULT_LIST_LIMIT) -> List[Stream]:
         # Optimization: Use lighter query options for listing.
         # We only need stream_assets (for ID/position) and not the full nested objects
         # like playlists, collections, or asset details which are not returned in the list view.
+        bounded = max(1, min(limit, self.MAX_LIST_LIMIT))
         query = (
             select(Stream)
             .where(Stream.user_id == self.user_id)
             .options(*_load_stream_list_options())
+            .order_by(Stream.created_at.desc(), Stream.id.desc())
+            .limit(bounded)
         )
         result = await self.db.execute(query)
         streams = result.scalars().all()

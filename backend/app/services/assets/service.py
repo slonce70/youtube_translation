@@ -58,9 +58,16 @@ class AssetService:
         self.db = db
         self.user_id = user_id
 
+    DEFAULT_LIST_LIMIT = 500
+    MAX_LIST_LIMIT = 2000
+
     async def list_assets(
-        self, asset_type: Optional[str], folder_id: Optional[UUID]
+        self,
+        asset_type: Optional[str],
+        folder_id: Optional[UUID],
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> List[AssetResponse]:
+        bounded = max(1, min(limit, self.MAX_LIST_LIMIT))
         query = select(Asset).where(Asset.user_id == self.user_id)
 
         normalized_asset_type = (
@@ -108,7 +115,7 @@ class AssetService:
                 return []
             query = query.where(Asset.id.in_(asset_ids))
 
-        query = query.order_by(Asset.created_at.desc())
+        query = query.order_by(Asset.created_at.desc(), Asset.id.desc()).limit(bounded)
         result = await self.db.execute(query)
         assets = result.scalars().unique().all()
         return await serialize_assets(self.db, self.user_id, assets)
