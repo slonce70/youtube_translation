@@ -8,6 +8,7 @@ Run with: python apply_migrations.py
 
 import asyncio
 import os
+import re
 import sys
 from pathlib import Path
 from sqlalchemy import text
@@ -1461,6 +1462,13 @@ async def main():
     database_url = settings.database_url.replace(
         "postgresql://", "postgresql+asyncpg://"
     )
+    # Diagnostic: print a sanitized version of the DB URL so deploy logs show
+    # exactly which database the migrator connected to. Helps catch the case
+    # where backend (.env) and migrator (also .env, in theory) diverge —
+    # which is the leading hypothesis for "verify passed but column is gone"
+    # symptoms on prod.
+    sanitized_url = re.sub(r"://[^@]*@", "://***@", database_url)
+    print(f"\n🔌 Migrator connecting to: {sanitized_url}")
     engine = create_async_engine(database_url, echo=False, future=True)
 
     async with engine.connect() as conn:
@@ -1555,6 +1563,52 @@ async def main():
 
         # AUTOCOMMIT mode: each statement is already committed.
         print("\n💾 All migrations applied (AUTOCOMMIT mode — already persisted).")
+
+        # ------------------------------------------------------------------
+        # Cross-connection sanity check: open a *brand new* connection (so we
+        # can't be fooled by transaction-local visibility), and assert the
+        # newest migration's effect is observable from it. This catches the
+        # whole class of "verify_migration says OK but the column is gone
+        # after the script exits" bugs that PR #50 + #51 chased.
+        # ------------------------------------------------------------------
+        try:
+            async with engine.connect() as fresh_conn:
+                fresh_conn = await fresh_conn.execution_options(
+                    isolation_level="AUTOCOMMIT"
+                )
+                # Probe migration 037's column from the new connection.
+                probe = await fresh_conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema='public' AND table_name='streams' "
+                        "AND column_name='runtime_restart_attempts'"
+                    )
+                )
+                if probe.scalar() == "runtime_restart_attempts":
+                    print(
+                        "🛡️  Cross-connection probe: streams.runtime_restart_attempts visible — DDL persisted ✓"
+                    )
+                else:
+                    print(
+                        "❌ Cross-connection probe FAILED: streams.runtime_restart_attempts is "
+                        "NOT visible from a new connection even though verify_migration passed."
+                    )
+                    print(
+                        "   This means the migration's DDL is not reaching shared catalog state. "
+                        "Likely causes:"
+                    )
+                    print(
+                        "   • database_url points at a different host than backend's runtime;"
+                    )
+                    print(
+                        "   • a wrapping psql/pgbouncer transaction is rolling the change back;"
+                    )
+                    print(
+                        "   • the asyncpg driver is leaving the statement in an aborted xact."
+                    )
+                    sys.exit(1)
+        except Exception as probe_exc:  # noqa: BLE001
+            print(f"⚠️  Could not run cross-connection probe: {probe_exc}")
 
         print("\n" + "=" * 60)
         print("✅ All migrations applied successfully!")
