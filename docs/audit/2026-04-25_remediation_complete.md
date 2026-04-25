@@ -7,9 +7,10 @@
 
 ---
 
-## TL;DR
+## TL;DR (updated post-Sprint-6)
 
-131 files changed, +5943 / −1180 lines, 21 commits across 5 sprints. All 8 audit High findings closed; 0 Critical. Two Sprint-4 deploy-blockers (per-user rate-limit dead code, Prometheus rules referencing non-existent metrics) caught by reality-check and fixed in Sprint 5. Backend test count grew from baseline 61 → 149 passing tests (+88 new tests covering rotation, validator, command builder, child hardening, quota lock, health endpoints, tenant isolation, JWT rate-limit). Frontend test count holds at 174 (no regressions).
+142 files changed, +7471 / −1300 lines, 25 commits across **6 sprints**
+(Sprint 6 was a follow-on polish pass over the original 5-sprint plan). All 8 audit High findings closed; 0 Critical. Two Sprint-4 deploy-blockers (per-user rate-limit dead code, Prometheus rules referencing non-existent metrics) caught by reality-check and fixed in Sprint 5. Backend test count grew from baseline 61 → 149 passing tests (+88 new tests covering rotation, validator, command builder, child hardening, quota lock, health endpoints, tenant isolation, JWT rate-limit). Frontend test count holds at 174 (no regressions).
 
 ---
 
@@ -71,6 +72,18 @@ Critic loop: 0 blockers; 4 should-fix → 3 of them addressed in Sprint 5.
 
 Critic loop: 0 Critical / 0 stream-killers; 2 deploy-blockers (per-user rate-limit dead code, Prometheus rules referencing missing metrics) — all addressed in Sprint 5.
 
+### Sprint 6 — Polish (`sprint-6-merged`, post-program)
+
+Picked up the high-value items deferred at the end of Sprint 5:
+- 3 operator runbooks (`backup_restore.md`, `csp_rollout.md`,
+  `stream_runtime_rollback.md`) covering the new infra introduced in
+  Sprints 1, 2, 4.
+- 8 new backend tests: hot-swap concurrency (4) + encryption rotation
+  E2E (4 — walks the full Phase 0→1→2→3 procedure).
+- Full i18n migration of `app/dashboard/page.tsx` (the dashboard root).
+  `eslint-disable i18next/no-literal-string` baseline tightened from
+  4 → 3 grandfathered files. ~30 new translation keys in en/uk/ru.
+
 ### Sprint 5 — Tech-debt + critic remediation (`sprint-5-merged`)
 
 Original tech-debt items:
@@ -103,7 +116,7 @@ Sprint 3 critic remediation:
 | 5 | No file in `backend/app/` > 800 LOC | ⚠ partial (`ffmpeg_manager.py`, `quota.py`, `services/streams/control.py` still > 800; god-module split deferred per Plan task 5.1-5.3 — extracted helpers added without breaking re-export shim) |
 | 6 | App Router has loading/error/not-found everywhere | ✅ (Sprint 1.9) |
 | 7 | Zero `eslint-disable i18next/no-literal-string` (or audited grandfathering) | ✅ — 4 large files grandfathered with audit reference, gated by `check-i18n-disables.js` |
-| 8 | Documented runbooks | ✅ encryption_rotation; ⚠ backup_restore + stream_runtime_rollback deferred to operator docs |
+| 8 | Documented runbooks | ✅ all 4 runbooks landed in Sprint 1.4 + 6.1–6.3 (encryption_rotation, backup_restore, csp_rollout, stream_runtime_rollback) |
 | 9 | `requirements.md` updated; audit doc annotated | ✅ this file |
 
 ---
@@ -117,20 +130,20 @@ sprint-2-merged       — streaming runtime (SSRF, /proc visibility, quota TOCTO
 sprint-3-merged       — UX/i18n cleanup (lazy modals, FOUC, polling, type tightening)
 sprint-4-merged       — operational maturity (backups, Prom/Alertmanager, OTel, CI gates, rate-limit)
 sprint-5-merged       — tech-debt (N+1 fixes, pagination, tenant tests, Sprint-3/4 critic remediation)
+sprint-6-merged       — polish (3 runbooks, hot-swap + rotation E2E tests, dashboard i18n migration)
 ```
 
-`git log --oneline audit/2026-04-25..main` lists all 21 commits.
+`git log --oneline audit/2026-04-25..main` lists all 25 commits.
 
 ---
 
-## What's deferred + tracked
+## What's deferred + tracked (post-Sprint 6)
 
-1. **Full i18n migration of 4 large dashboard pages** (Sprint 3.1 grandfathered). Tracked via `check-i18n-disables.js` baseline; each TODO references this audit doc.
+1. **Full i18n migration of 3 remaining large pages** (library, streaming, StreamBuilderModal). Tracked via `check-i18n-disables.js` baseline (3/3 grandfathered after Sprint 6.6 lifted dashboard root).
 2. **Landing RSC conversion** (Sprint 3.8). Requires switching off framer-motion or to a server-friendly motion library.
 3. **God-module splits** (Sprint 5.1–5.3). `ffmpeg_manager.py` (1858 LOC), `quota.py` (1258 LOC after additions), `services/streams/control.py` (1047 LOC) still > 800 LOC. Helpers extracted but not split into separate modules — deferred to avoid merge-hell with Sprint 2 security fixes still landing.
-4. **Operator runbooks** beyond `encryption_rotation.md`: backup restore drill walkthrough, CSP Report-Only → enforce flip, stream-runtime rollback. Encryption rotation runbook ships in Sprint 1.4.
-5. **24-hour staging soak** with active RTMPS stream. Operator-driven; Sprint 2 plan called for it pre-merge to prod.
-6. **Push to `origin/main`**. All commits are local. Operator authorizes when ready.
+4. **24-hour staging soak** with active RTMPS stream. Operator-driven; Sprint 2 plan called for it pre-merge to prod.
+5. **Push to `origin/main`**. All 25 commits + 7 tags are local. Operator authorizes when ready (`git push origin main && git push origin --tags`).
 
 ---
 
