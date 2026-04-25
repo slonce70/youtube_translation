@@ -21,9 +21,11 @@ const PATTERN = /eslint-disable[^\n]*i18next\/no-literal-string/
 
 // Baseline: list of files where the disable is intentional + audited.
 // Anything beyond this set causes a non-zero exit.
+//
+// Sprint 6.6 lifted dashboard/page.tsx (full translation pass).
+// Three remaining files tracked for a future translator-led migration.
 const ALLOWED_FILES = new Set([
   'app/dashboard/library/page.tsx',
-  'app/dashboard/page.tsx',
   'app/dashboard/streaming/components/StreamBuilderModal.tsx',
   'app/dashboard/streaming/page.tsx',
 ])

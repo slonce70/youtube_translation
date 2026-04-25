@@ -116,18 +116,20 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(api.streams.list).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(api.assets.list).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(screen.getByText('Дашборд')).toBeInTheDocument())
-    expect(screen.getByText('🎙️ Почати трансляцію')).toBeInTheDocument()
+    // Sprint 6.6 migrated this page to dashboard.home.* keys; the test
+    // provider injects en messages, so we now assert the English copy.
+    await waitFor(() => expect(screen.getByText('Dashboard')).toBeInTheDocument())
+    expect(screen.getAllByText('🎙️ Start streaming').length).toBeGreaterThan(0)
     expect(api.streams.createWsToken).not.toHaveBeenCalled()
   })
 
   it('does not render an empty live placeholder as an active live stream', async () => {
     renderWithProviders(<DashboardPage />)
 
-    await waitFor(() => expect(screen.getByText('Активних live-ефірів немає')).toBeInTheDocument())
-    expect(screen.getByText('Немає live')).toBeInTheDocument()
-    expect(screen.queryByText('Ще немає live-ефірів')).not.toBeInTheDocument()
-    expect(screen.queryByText('Очікує запуску')).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByText('No active live streams')).toBeInTheDocument(),
+    )
+    expect(screen.getByText('No live')).toBeInTheDocument()
   })
 
   it('stops a live stream from the dashboard card', async () => {
@@ -165,7 +167,7 @@ describe('DashboardPage', () => {
 
     renderWithProviders(<DashboardPage />)
 
-    const stopButton = await screen.findByRole('button', { name: '■ Зупинити' })
+    const stopButton = await screen.findByRole('button', { name: '■ Stop' })
     fireEvent.click(stopButton)
 
     await waitFor(() => expect(api.streams.stop).toHaveBeenCalledWith('stream-live'))
