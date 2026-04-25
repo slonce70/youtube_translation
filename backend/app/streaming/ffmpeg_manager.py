@@ -1684,9 +1684,14 @@ class FFmpegStreamManager:
                 await self._mark_stream_failed(stream_uuid, returncode, recent_errors)
 
         else:
+            # `attempts` is only defined in the will_restart branch above. When
+            # we hit the terminal path (max attempts exhausted, or ceiling
+            # tripped under the lock), fall back to the in-memory counter so
+            # observability still gets a sensible number instead of an
+            # UnboundLocalError.
             self._capture_terminal_failure_observability(
                 returncode=returncode,
-                restart_attempts=attempts,
+                restart_attempts=in_memory_attempts,
                 recent_errors=recent_errors,
             )
         if not will_restart and stream_uuid:
@@ -1878,7 +1883,11 @@ class FFmpegStreamManager:
 
                 stream = await session.get(Stream, stream_uuid)
                 if stream is None:
-                    return max(int(in_memory_attempts), 0)
+                    # Stream row removed during failure handling. Mirror the
+                    # SQLAlchemyError fallback so the in-memory ceiling check
+                    # still trips eventually instead of silently leaving the
+                    # counter at zero forever.
+                    return max(int(in_memory_attempts), 0) + (1 if increment else 0)
 
                 persisted = int(getattr(stream, "runtime_restart_attempts", 0) or 0)
                 new_value = max(int(in_memory_attempts), persisted)
