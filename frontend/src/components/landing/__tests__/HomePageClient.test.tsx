@@ -72,6 +72,9 @@ describe('HomePageClient landing', () => {
 
     expect(screen.getByRole('heading', { name: heroTitle })).toBeInTheDocument()
     expect(screen.getByText(routingValue)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: enMessages.landing.nav.toggleNavigation })
+    ).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('button', { name: primaryCta })[0])
 

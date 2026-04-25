@@ -44,6 +44,11 @@ const nextConfig = {
   output: 'standalone',
   outputFileTracingRoot: __dirname,
   reactStrictMode: true,
+  eslint: {
+    // `npm run lint` is the canonical lint gate. Next's build-time lint shim still
+    // passes legacy ESLint options that conflict with this project's flat config.
+    ignoreDuringBuilds: true,
+  },
   skipTrailingSlashRedirect: true,
   allowedDevOrigins: allowedOrigins,
   experimental: {

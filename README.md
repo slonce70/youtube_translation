@@ -273,6 +273,7 @@ Makefile               команди для розробки та CI
 - `docs/operations/first_stream_checklist.md` — чекліст і визначення першого успішного стріму
 - `docs/operations/systemd.md` — post-MVP host-native backend + systemd stream units для Linux production
 - `docs/operations/mediamtx.md` — optional MediaMTX relay/metrics layer для майбутнього scale-up
+- `docs/audit/2026-04-25_project_uix_code_audit.md` — свіжий audit pass по dependency security, UIX, документації та структурі коду
 - `docs/design/README.md` — archived standalone mockups і design reference assets, які не входять у shipping baseline
 - `docs/DATABASE_MIGRATIONS_LOCAL.md` — локальні нюанси міграцій і DB bootstrap
 
@@ -321,6 +322,7 @@ make verify-v0          # строгий V0 gate: black + mypy + tests + build +
 make mvp-status         # друк фінального MVP contract і manual launch gates
 make verify-mvp         # фінальний MVP gate поверх strict V0
 make verify-mvp-localdb # фінальний MVP gate поверх localdb fallback
+make security-audit     # backend pip-audit + frontend npm audit --omit=dev
 make clean              # очистка временных файлов
 ```
 
@@ -331,8 +333,9 @@ make clean              # очистка временных файлов
 - `npm run build` у `frontend/` — production-білд Next.js з перевіркою типів та ESLint.
 - Точкові сценарії: `pytest backend/tests/test_ffmpeg_manager.py -vv`, `pytest backend/tests/test_auth_multitenancy.py -vv`, `pytest backend/tests/test_collection_quorum.py -vv`.
 - Frontend streaming helper seams уже винесені в `frontend/src/app/dashboard/streaming/{builder-helpers.ts,log-audit.ts,platform.ts,schedule-utils.ts}`; library upload flow нормалізує tusd origin через `frontend/src/lib/tusd.ts`.
+- Dependency security gate: `make security-audit`. Backend app packages are checked with `pip-audit`; frontend production dependencies are checked with `npm audit --omit=dev`.
 
-Усі ці команди прогнані й успішні станом на цей коміт.
+Перед релізом проганяйте релевантний gate свіжо, а не покладайтеся на історичний статус документації.
 
 ## 🐳 Docker
 

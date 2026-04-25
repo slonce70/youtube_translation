@@ -10,7 +10,8 @@ Close the project as a narrow, honest MVP by codifying one supported launch path
 
 The supported MVP path is:
 
-- one node running `frontend`, `backend`, `postgres`, `redis`, `tusd`, and `runner`
+- one node running `frontend`, `backend`, `postgres`, `redis`, and `tusd`
+- stream execution through the supported runtime for the lane: backend-managed `manager` locally, or post-MVP host-native `systemd` stream units
 - one authenticated user
 - one upload flow through tusd
 - one compatible playlist

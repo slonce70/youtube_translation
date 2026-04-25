@@ -5,7 +5,8 @@
     "howItWorks": "How it works",
     "pricing": "Pricing",
     "benefits": "Why creators use us",
-    "startStreaming": "Open dashboard"
+    "startStreaming": "Open dashboard",
+    "toggleNavigation": "Toggle navigation"
   },
   "hero": {
     "badge": "Stream 24/7 on autopilot",

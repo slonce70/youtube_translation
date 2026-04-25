@@ -5,7 +5,8 @@
     "howItWorks": "Как это работает",
     "pricing": "Тарифы",
     "benefits": "Почему выбирают нас",
-    "startStreaming": "Начать стримить"
+    "startStreaming": "Начать стримить",
+    "toggleNavigation": "Переключить навигацию"
   },
   "hero": {
     "badge": "Канал в эфире круглые сутки",

@@ -1,3 +1,10 @@
+## 2026-04-25
+- Audit/cleanup pass:
+  - оновлено frontend dependency audit: `postcss` вирівняно до `8.5.10` через npm override, `npm audit --omit=dev` повернувся до green state
+  - актуалізовано `make security-audit`, `README.md`, `docs/TESTING.md`, MediaMTX/MVP docs і `requirements.md` під реальний runtime/service baseline без Compose `runner`
+  - додано `docs/audit/2026-04-25_project_uix_code_audit.md` з UIX, dependency, documentation і code-structure висновками
+  - локалізовано landing mobile navigation aria-label і прибрано прямі WebSocket `console.*` з dashboard streaming hook
+
 ## 2026-03-21
 - Docs: додано `docs/YOUTUBE_NEXT_WAVE_TECH_DESIGN.md` з техдизайном для YouTube OAuth/API, lifecycle broadcast/stream, VOD segmentation та live controls; додано офіційні посилання на OAuth, YouTube Data API, Live Streaming API та quota docs.
 

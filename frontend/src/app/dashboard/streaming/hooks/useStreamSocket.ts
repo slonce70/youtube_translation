@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Stream } from '@/lib/types'
 import { api } from '@/lib/api'
+import { createLogger } from '@/lib/logger'
 
 const RECONNECT_DELAY = 3000
 const API_PORT_FALLBACK = '8000'
+const streamSocketLogger = createLogger('StreamSocket')
 
 function resolveWebSocketUrl(): string | null {
   if (typeof window === 'undefined') return null
@@ -89,7 +91,7 @@ export function useStreamSocket(userId?: string) {
       socketRef.current = ws
 
       ws.onopen = () => {
-        console.log('Stream WebSocket connected')
+        streamSocketLogger.debug('Stream WebSocket connected')
         if (!reconnectEnabledRef.current) {
           ws.close()
           return
@@ -128,19 +130,19 @@ export function useStreamSocket(userId?: string) {
             })
           }
         } catch (err) {
-          console.error('Error parsing WS message:', err)
+          streamSocketLogger.error('Error parsing WS message', err)
         }
       }
 
       ws.onclose = () => {
-        console.log('Stream WebSocket disconnected')
+        streamSocketLogger.debug('Stream WebSocket disconnected')
         setIsConnected(false)
         socketRef.current = null
         scheduleReconnect()
       }
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
+        streamSocketLogger.error('WebSocket error', error)
         ws.close()
       }
     }

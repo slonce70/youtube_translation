@@ -59,7 +59,7 @@ export function LandingNavBar({ onStartStreaming }: Props) {
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="rounded-2xl border border-transparent p-2 text-slate-100 transition hover:border-white/10 hover:bg-white/5 md:hidden"
-              aria-label="Toggle navigation"
+              aria-label={t('toggleNavigation')}
             >
               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>

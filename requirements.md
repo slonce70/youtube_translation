@@ -352,10 +352,10 @@ Upstream описує себе як cloud‑платформу для 24/7 ст�
 - + швидко  
 - – при рестарті backend все падає
 
-**Варіант B (рекомендовано):** окремий “stream‑runner” layer
+**Варіант B (рекомендовано):** окремий “stream‑runner” layer як runtime lane, не як обов'язковий Compose service
 - backend: API + DB  
-- worker/runner: supervisor запускає `python -m app.cli.run_stream <stream_id>`  
-- backend керує runner через supervisor API/ctl (у вас вже є заготовки)
+- worker/runner: локально це backend-managed `manager`, у Linux production lane — host-native `systemd` unit запускає `python -m app.cli.run_stream <stream_id>`
+- backend керує runtime через наявний manager/systemd control path і reconcile/heartbeat механіку
 
 **Варіант C (майбутнє/scale):** винести streaming у окремий сервіс (Go/Rust) або інтегрувати datarhei/core
 - + зрілий процес‑менеджмент, resource limits, API
@@ -541,8 +541,9 @@ Upstream описує себе як cloud‑платформу для 24/7 ст�
 ### 11.2. [MVP] Production default: supervisor runner
 **Goal:** зробити так, щоб у production стріми не падали при перезапуску backend.  
 **DoD:**  
-- У docker compose додати окремий service `runner` або налаштувати supervisor всередині backend контейнера (але стабільно).  
-- Backend при `start_stream` створює supervisor program конфіг та запускає.  
+- Не додавати неіснуючий Compose service `runner` у deployment path. Поточний Compose baseline має `postgres`, `redis`, `backend`, `tusd`, `frontend`, `mediamtx`.
+- Для локального MVP використати backend-managed `manager`; для post-MVP Linux production використовувати host-native `systemd` stream units як окремий rollout lane.
+- Backend при `start_stream` запускає stream runtime через підтриманий lane (`manager` або `systemd`).
 - При рестарті backend: reconcile повертає статуси і підʼєднується до вже працюючих процесів.  
 **Test:**  
 - Запустити стрім, рестартнути backend контейнер → стрім продовжує йти.
@@ -600,4 +601,3 @@ Upstream описує себе як cloud‑платформу для 24/7 ст�
 - YouTube Help: encoder settings, keyframe 2s, RTMPS recommended: https://support.google.com/youtube/answer/2853702  
 - datarhei/core (FFmpeg process management API): https://github.com/datarhei/core  
 - comfy-channel (24/7 playout + overlays): https://github.com/mvarhola/comfy-channel  
-

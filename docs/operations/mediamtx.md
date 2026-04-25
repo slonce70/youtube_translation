@@ -33,8 +33,9 @@ make dev-bootstrap-v2
 - `postgres`
 - `redis`
 - `tusd`
-- `runner`
 - `mediamtx`
+
+`runner` тут не є Docker Compose service. У поточному baseline FFmpeg execution запускається через backend-managed `manager` runtime локально або через post-MVP host-native `systemd` stream units.
 
 Локально MediaMTX management surfaces публікуються лише на loopback:
 
@@ -48,7 +49,7 @@ paths:
   all_others:
 ```
 
-Тобто FFmpeg/runner може публікувати в адреси на кшталт `rtmp://mediamtx:1935/test/<stream-id>` без ручного додавання кожного path у конфіг.
+Тобто FFmpeg runtime може публікувати в адреси на кшталт `rtmp://mediamtx:1935/test/<stream-id>` без ручного додавання кожного path у конфіг.
 
 ## Backend env
 
@@ -87,5 +88,5 @@ MEDIAMTX_METRICS_URL=http://mediamtx:9998/metrics
 Це дає чистіший поділ:
 
 - backend = orchestration / auth / quotas / scheduling
-- runner = FFmpeg playout/publish execution
+- FFmpeg runtime = playout/publish execution (`manager` локально або `systemd` stream unit у post-MVP production lane)
 - MediaMTX = relay / observability / future fan-out hub

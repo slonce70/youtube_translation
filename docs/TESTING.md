@@ -202,6 +202,17 @@ npm run test:e2e
 
 Для frontend e2e `NEXT_PUBLIC_TUSD_URL` має вказувати на origin tusd, наприклад `http://localhost:1080`; helper у `frontend/src/lib/tusd.ts` додає рівно один `/files/`. Library upload modal now loads lazily, so opening the modal is the point where the upload bundle is fetched.
 
+## Security audit
+
+Dependency audit is part of the release hygiene check:
+
+```bash
+make security-audit
+```
+
+Цей target перевіряє backend virtualenv через `pip-audit` і production frontend dependency graph через `npm audit --omit=dev`.
+`pip` itself currently reports `CVE-2026-3219` with no fixed release available in the configured index; the target ignores only that installer advisory because `pip` is not an app runtime dependency. Application packages still fail the audit normally.
+
 ## Нотатки
 
 - Для ручного dashboard smoke локально зручно використовувати DEV auth (`NEXT_PUBLIC_DEV_BYPASS_AUTH=1`).

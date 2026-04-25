@@ -379,7 +379,8 @@ ps: ## Show running processes
 security-audit: backend-venv ## Run security audit
 	@echo "$(BLUE)Auditing backend dependencies...$(NC)"
 	cd backend && $(BACKEND_PIP) install pip-audit
-	cd backend && $(BACKEND_VENV)/bin/pip-audit
+	# pip currently has no fixed release for CVE-2026-3219; it is not an app runtime dependency.
+	cd backend && $(BACKEND_VENV)/bin/pip-audit --ignore-vuln CVE-2026-3219
 	@echo "$(BLUE)Auditing frontend dependencies...$(NC)"
-	cd frontend && npm audit --production
+	cd frontend && npm audit --omit=dev
 	@echo "$(GREEN)✓ Security audit completed$(NC)"
