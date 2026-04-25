@@ -49,6 +49,20 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
+      - name: Trivy table report (backend, diagnostic)
+        # Always-run informational pass that prints a CVE table to logs so
+        # failures are immediately actionable. Does not fail the job.
+        if: always()
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: youtube-translation-backend:trivy-${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"
+          vuln-type: os,library
+          trivyignores: .trivyignore
+
       - name: Run Trivy vulnerability scan (HIGH,CRITICAL — fixed-only)
         uses: aquasecurity/trivy-action@0.35.0
         with:
@@ -92,6 +106,18 @@ jobs:
             NEXT_PUBLIC_SUPABASE_URL=https://example.invalid
             NEXT_PUBLIC_SUPABASE_ANON_KEY=ci-placeholder
             NEXT_PUBLIC_API_URL=https://example.invalid
+
+      - name: Trivy table report (frontend, diagnostic)
+        if: always()
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: youtube-translation-frontend:trivy-${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"
+          vuln-type: os,library
+          trivyignores: .trivyignore
 
       - name: Run Trivy vulnerability scan (HIGH,CRITICAL — fixed-only)
         uses: aquasecurity/trivy-action@0.35.0

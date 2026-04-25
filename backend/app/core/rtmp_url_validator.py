@@ -36,7 +36,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Sequence
+from typing import Callable, Iterable, List, Optional, Sequence
 from urllib.parse import urlparse
 
 # Schemes the platform supports.
@@ -203,7 +203,7 @@ def validate_destination_url(
     *,
     allowed_ports: Optional[Iterable[int]] = None,
     denied_ports: Optional[Iterable[int]] = None,
-    resolver: Optional[callable] = None,  # type: ignore[type-arg]
+    resolver: Optional[Callable[[str], List[str]]] = None,
 ) -> ValidatedDestination:
     """Validate ``url`` and return a normalized ``ValidatedDestination``.
 

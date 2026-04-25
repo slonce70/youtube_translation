@@ -11,7 +11,7 @@ from uuid import UUID, uuid5, NAMESPACE_DNS
 import httpx
 import jwt
 from fastapi import Depends, HTTPException, Header, Request, status
-from gotrue.errors import AuthRetryableError  # type: ignore[import-untyped]
+from gotrue.errors import AuthRetryableError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -537,6 +537,7 @@ async def get_current_user_id(
 
 
 async def get_current_user_optional(
+    request: Request,
     authorization: Optional[str] = Header(None),
 ) -> Optional[str]:
     """
@@ -547,7 +548,7 @@ async def get_current_user_optional(
         return None
 
     try:
-        return await get_current_user_id(authorization)
+        return await get_current_user_id(request, authorization)
     except HTTPException:
         return None
 
