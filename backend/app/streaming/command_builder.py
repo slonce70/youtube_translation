@@ -4,6 +4,36 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.core.config import settings
 
+# Characters that, if present anywhere in a destination URL or stream key,
+# would break ffmpeg's tee muxer parsing or allow injection of additional
+# tee outputs / options. We reject early; we never escape — escaping is
+# version-fragile across ffmpeg builds and there is no legitimate reason
+# for these bytes to appear in an RTMP URL or stream key.
+TEE_FORBIDDEN_CHARS: frozenset[str] = frozenset({"[", "]", "|", "\\", "\n", "\r", "\t"})
+
+
+class TeeMetaCharacterError(ValueError):
+    """Raised when a destination URL or key contains tee meta-characters."""
+
+
+def _reject_tee_meta(value: str, *, field: str) -> None:
+    """Defence-in-depth check: refuse strings that would break tee assembly.
+
+    The primary defence lives in ``core.rtmp_url_validator`` which rejects
+    these bytes in the *hostname* at quota-validation time. This second
+    layer covers any other component (path, query, stream key) and protects
+    the tee assembly even when the validator is bypassed (e.g. via direct
+    service-layer call paths that don't go through the API).
+    """
+    if not value:
+        return
+    bad = [c for c in TEE_FORBIDDEN_CHARS if c in value]
+    if bad:
+        raise TeeMetaCharacterError(
+            f"Destination {field} contains forbidden tee meta-character(s): "
+            + "".join(repr(c) for c in bad)
+        )
+
 
 @dataclass(frozen=True)
 class FFmpegDestinationOutputArgs:
@@ -22,6 +52,10 @@ def normalize_destinations(destinations: List[Dict[str, str]]) -> List[Dict[str,
     for dest in destinations:
         base_url = str(dest.get("url") or "").rstrip("/")
         stream_key = str(dest.get("key") or "").strip()
+
+        _reject_tee_meta(base_url, field="url")
+        _reject_tee_meta(stream_key, field="key")
+
         if not base_url:
             normalized.append({"uri": stream_key})
         else:
@@ -76,6 +110,14 @@ def build_tee_destination(uri: str, *, settings_module: Optional[Any] = None) ->
         else "0"
     )
     target_uri = apply_output_transport_options(uri, settings_module=settings_obj)
+
+    # Final guard before the tee target string is emitted into argv. If any
+    # forbidden meta-character has slipped through (e.g. via a future code
+    # path that bypasses normalize_destinations), refuse to render the
+    # target rather than emit a string that would let an attacker inject
+    # an extra tee output.
+    _reject_tee_meta(target_uri, field="url")
+
     return (
         "[select='v\\:0,a\\:0':"
         f"onfail={tee_fail_policy}:"
