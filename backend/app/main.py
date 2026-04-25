@@ -47,6 +47,7 @@ from app.api.routes import (
     media_collections,
     youtube,
 )
+from app.api.health import router as health_router
 from app.middleware.rate_limiter import RateLimitMiddleware, global_rate_limiter
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.api_metrics import APIMetricsMiddleware
@@ -120,6 +121,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(health_router)  # /healthz, /readyz, /health
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(quota.router, prefix="/api", tags=["quota"])  # Quota management
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])  # Admin panel
@@ -260,12 +262,6 @@ async def root():
         "version": "1.0.0",
         "status": "running",
     }
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy"}
 
 
 if __name__ == "__main__":

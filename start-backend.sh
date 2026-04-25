@@ -93,7 +93,7 @@ resolve_media_tool_bin() {
 
 echo "🚀 Starting Backend..."
 echo "📍 API will be at: http://localhost:${API_PORT}"
-echo "❤️  Health: http://localhost:${API_PORT}/health"
+echo "❤️  Live: http://localhost:${API_PORT}/healthz  |  Ready: http://localhost:${API_PORT}/readyz"
 echo "📖 Docs will be at: http://localhost:${API_PORT}/docs"
 echo "🧭 Canonical hybrid local boot: 'make dev-bootstrap' -> './start-backend.sh' -> './start-frontend.sh'"
 echo ""

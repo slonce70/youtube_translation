@@ -24,10 +24,21 @@ ENV/
 env/
 .venv/
 
+# Test artifacts
+.coverage
+.coverage.*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+backend/.coverage
+
 # FastAPI
 .env
 .env.local
 .env.production
+.env.bak
+.env.bak-*
+**/.env.bak*
 backend/.env
 /backend/.env.bak-*
 frontend/.env.local
