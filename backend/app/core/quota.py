@@ -39,6 +39,10 @@ QUOTA_LOCK_NAMESPACE_START_STREAM = 0x59545253  # 'YTRS' — ascii literal
 QUOTA_LOCK_NAMESPACE_DESTINATIONS = 0x59544445  # 'YTDE'
 QUOTA_LOCK_NAMESPACE_ASSETS = 0x59544153  # 'YTAS'
 QUOTA_LOCK_NAMESPACE_STORAGE = 0x59545353  # 'YTSS'
+# Restart-counter namespace: keyed by stream_id (NOT user_id) so two failures
+# of the same stream serialize while two different streams progress in
+# parallel. Used by ffmpeg_manager._persist_restart_state.
+QUOTA_LOCK_NAMESPACE_RESTART_COUNTER = 0x59545243  # 'YTRC'
 
 # All four namespaces share the same hash function so the same user_id maps
 # to the same key within each namespace; this keeps reads predictable in
@@ -1149,6 +1153,12 @@ class QuotaEnforcer:
         """
         Check if user has enough storage quota.
 
+        Holds the STORAGE-namespace advisory lock so two concurrent upload
+        finalize calls cannot both pass the cap and double-charge the
+        user. The actual storage delta is applied by
+        ``services/assets/storage.py::apply_storage_delta`` in the same
+        request transaction, so the lock outlives the check.
+
         Args:
             additional_bytes: Additional bytes to check
 
@@ -1162,6 +1172,10 @@ class QuotaEnforcer:
         await self._load_limits()
         limits = self._require_limits()
         profile = self._require_profile()
+
+        await acquire_user_quota_lock(
+            self.db, self.user_id, QUOTA_LOCK_NAMESPACE_STORAGE
+        )
 
         current_bytes = profile.current_storage_bytes or 0
         limit_bytes = limits.storage_gb * 1024**3 if limits.storage_gb else float("inf")

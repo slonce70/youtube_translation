@@ -114,6 +114,12 @@ class TestPrivateAddressBlocking:
             "fd00::1",  # IPv6 ULA
             "::1",  # IPv6 loopback
             "fe80::1",  # IPv6 link-local
+            "100.64.0.5",  # CGNAT (RFC 6598) — Python is_private does NOT cover
+            "100.127.255.254",  # CGNAT upper end
+            "192.0.0.1",  # IETF protocol assignments (RFC 6890)
+            "224.0.0.1",  # multicast
+            "255.255.255.255",  # broadcast / reserved
+            "ff02::1",  # IPv6 multicast
         ],
     )
     def test_rejects_private_resolved_ip(self, private_ip: str) -> None:
