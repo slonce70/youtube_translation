@@ -20,6 +20,10 @@ jest.mock('../../DarkModeToggle', () => ({
   DarkModeToggle: () => <div data-testid="dark-mode-toggle">theme toggle</div>,
 }))
 
+jest.mock('../Hero3DGlobe', () => ({
+  Hero3DGlobe: () => <div data-testid="hero-3d-globe" />,
+}))
+
 describe('HomePageClient landing', () => {
   beforeAll(() => {
     Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
@@ -61,7 +65,7 @@ describe('HomePageClient landing', () => {
 
   it('renders the immersive hero and routes CTA clicks to login', () => {
     const heroTitle = enMessages.landing.hero.title
-    const routingValue = enMessages.landing.hero.scene.routingValue
+    const healthDescription = enMessages.landing.hero.panel.healthDescription
     const primaryCta = enMessages.landing.hero.primaryCTA
 
     render(
@@ -71,7 +75,7 @@ describe('HomePageClient landing', () => {
     )
 
     expect(screen.getByRole('heading', { name: heroTitle })).toBeInTheDocument()
-    expect(screen.getByText(routingValue)).toBeInTheDocument()
+    expect(screen.getByText(healthDescription)).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('button', { name: primaryCta })[0])
 
