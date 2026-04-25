@@ -978,14 +978,31 @@ echo "=== /forensic dump ==="
 # ----------------------------------------------------------------------------
 env_file_path="$repo_root/backend/.env"
 if [[ -f "$env_file_path" ]]; then
+  # Find the *last* DATABASE_URL line (the one pydantic-settings/systemd will use).
   current_db_url="$(sed -n -E 's/^[[:space:]]*DATABASE_URL=//p' "$env_file_path" | tail -n 1)"
   if [[ -n "$current_db_url" && "$current_db_url" != *"@"* ]]; then
     pg_password="$(sed -n -E 's/^[[:space:]]*POSTGRES_PASSWORD=//p' "$env_file_path" | tail -n 1)"
     if [[ -n "$pg_password" ]]; then
-      echo "Detected malformed DATABASE_URL in $env_file_path (no @host); appending corrected line."
-      printf '\n# Auto-repaired by deploy_vps.sh — see commit history.\n' >> "$env_file_path"
-      printf 'DATABASE_URL=postgresql://youtube_user:%s@127.0.0.1:5432/youtube_streaming\n' "$pg_password" >> "$env_file_path"
-      echo "Appended healthy DATABASE_URL (password redacted) — last-wins semantics will apply on next backend boot."
+      echo "Detected malformed DATABASE_URL in $env_file_path (no @host); replacing every DATABASE_URL line with a healthy one."
+      # URL-encode the password so passwords with @/:/!/etc. don't break asyncpg's URL parser.
+      pg_password_encoded="$(python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.quote(sys.argv[1], safe=""))' "$pg_password")"
+      healthy_url="postgresql://youtube_user:${pg_password_encoded}@127.0.0.1:5432/youtube_streaming"
+      tmp_env="$(mktemp)"
+      # Drop every existing DATABASE_URL line, regardless of position. Keep
+      # everything else verbatim. This is safer than appending because some
+      # operators may have legacy lines and pydantic + systemd handle
+      # duplicates differently in edge cases.
+      grep -vE '^[[:space:]]*DATABASE_URL=' "$env_file_path" > "$tmp_env"
+      {
+        echo
+        echo '# Auto-repaired by deploy_vps.sh — original DATABASE_URL was missing @host.'
+        echo "DATABASE_URL=${healthy_url}"
+      } >> "$tmp_env"
+      cp "$tmp_env" "$env_file_path"
+      rm -f "$tmp_env"
+      # Echo a sanitized version of the now-current line so the deploy log
+      # confirms what landed in the file.
+      echo "Sanitized post-heal DATABASE_URL: $(sed -n -E 's/^[[:space:]]*DATABASE_URL=//p' "$env_file_path" | tail -n 1 | sed -E 's#://[^@]*@#://***@#g')"
     else
       echo "WARN: malformed DATABASE_URL detected but no POSTGRES_PASSWORD available to construct a healthy replacement."
     fi
