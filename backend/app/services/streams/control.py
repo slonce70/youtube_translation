@@ -42,12 +42,12 @@ from .control_helpers import (
     build_status_payload,
     build_stop_activity_payload,
     build_stop_audit_metadata,
-    clear_schedule as _helper_clear_schedule,
-    clear_start_schedule as _helper_clear_start_schedule,
-    clear_stop_schedule as _helper_clear_stop_schedule,
-    finalize_stopped as _helper_finalize_stopped,
-    mark_restart_success as _helper_mark_restart_success,
-    stream_may_still_be_live as _helper_stream_may_still_be_live,
+    clear_schedule,
+    clear_start_schedule,
+    clear_stop_schedule,
+    finalize_stopped,
+    mark_restart_success,
+    stream_may_still_be_live,
 )
 from .helpers import (
     collect_live_output_compatibility_violations,
@@ -200,7 +200,7 @@ class StreamControlService:
                 stream.error_message = None
                 stream.log_path = str(log_file)
                 if not preserve_schedule:
-                    self._clear_start_schedule(stream)
+                    clear_start_schedule(stream)
                 await self.db.commit()
                 try:
                     await systemd_start_unit(stream_id)
@@ -263,7 +263,7 @@ class StreamControlService:
             stream.pid = info.get("pid")
             stream.log_path = str(log_file)
             if not preserve_schedule:
-                self._clear_start_schedule(stream)
+                clear_start_schedule(stream)
             await self.db.commit()
             usage = await self._get_usage_snapshot(enforcer)
             return self._status_payload(
@@ -306,7 +306,7 @@ class StreamControlService:
     ) -> StreamStatus:
         stream = await self._get_stream_basic(stream_id)
         was_scheduled = stream.status == "scheduled"
-        audit_metadata = self._build_stop_audit_metadata(
+        audit_metadata = build_stop_audit_metadata(
             stream,
             source=source,
             actor_user_id=actor_user_id,
@@ -316,9 +316,9 @@ class StreamControlService:
         await self._persist_stop_request_attribution(stream, metadata=audit_metadata)
         try:
             await self._stop_for_runtime(stream)
-            self._clear_stop_schedule(stream)
+            clear_stop_schedule(stream)
             if was_scheduled:
-                self._clear_start_schedule(stream)
+                clear_start_schedule(stream)
             await self._record_stop_audit(
                 stream, phase="completed", metadata=audit_metadata
             )
@@ -360,7 +360,7 @@ class StreamControlService:
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err)
                 ) from err
             stream = await self._get_stream_basic_for_update(stream_id)
-            self._mark_restart_success(stream, orchestrated=False)
+            mark_restart_success(stream, orchestrated=False)
             stream.started_at = None
             await self.db.commit()
             return
@@ -389,7 +389,7 @@ class StreamControlService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to restart stream",
             )
-        self._mark_restart_success(stream, orchestrated=orchestrated)
+        mark_restart_success(stream, orchestrated=orchestrated)
         await self.db.commit()
 
     async def enqueue_hot_swap(
@@ -455,7 +455,7 @@ class StreamControlService:
         reason: str | None = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        audit_metadata = self._build_stop_audit_metadata(
+        audit_metadata = build_stop_audit_metadata(
             stream,
             source=source,
             actor_user_id=actor_user_id,
@@ -477,7 +477,7 @@ class StreamControlService:
             stream.status = "stopped"
             stream.pid = None
             stream.stopped_at = _utcnow()
-            self._clear_schedule(stream)
+            clear_schedule(stream)
             await self._record_stop_audit(
                 stream, phase="completed", metadata=audit_metadata
             )
@@ -488,7 +488,7 @@ class StreamControlService:
         stream.status = "stopped"
         stream.pid = None
         stream.stopped_at = _utcnow()
-        self._clear_schedule(stream)
+        clear_schedule(stream)
         await self._record_stop_audit(
             stream, phase="completed", metadata=audit_metadata
         )
@@ -784,7 +784,7 @@ class StreamControlService:
                 await self.db.flush()
                 await self.manager.stop_stream(str(stream.id))
 
-        self._finalize_stopped(stream)
+        finalize_stopped(stream)
 
     async def _mark_stop_requested(self, stream: Stream) -> None:
         if stream.status != "stopping":
@@ -793,24 +793,6 @@ class StreamControlService:
             await self.db.commit()
 
     @staticmethod
-    def _build_stop_audit_metadata(
-        self,
-        stream: Stream,
-        *,
-        source: str,
-        actor_user_id: UUID | None,
-        reason: str | None,
-        metadata: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """Sprint 8.2 thin façade — see control_helpers.build_stop_audit_metadata."""
-        return build_stop_audit_metadata(
-            stream,
-            source=source,
-            actor_user_id=actor_user_id,
-            reason=reason,
-            metadata=metadata,
-        )
-
     async def _record_stop_audit(
         self,
         stream: Stream,
@@ -838,12 +820,6 @@ class StreamControlService:
             metadata=event_metadata,
         )
 
-    def _build_stop_activity_payload(
-        self, stream: Stream, *, metadata: Dict[str, Any]
-    ) -> Dict[str, Any] | None:
-        """Sprint 8.2 thin façade — see control_helpers.build_stop_activity_payload."""
-        return build_stop_activity_payload(stream, metadata=metadata)
-
     async def _persist_stop_request_attribution(
         self,
         stream: Stream,
@@ -864,7 +840,7 @@ class StreamControlService:
             message=message,
             metadata=event_metadata,
             log_path=stream.log_path,
-            activity_payload=self._build_stop_activity_payload(
+            activity_payload=build_stop_activity_payload(
                 stream, metadata=metadata
             ),
         )
@@ -895,11 +871,6 @@ class StreamControlService:
             metadata=event_metadata,
             log_path=stream_snapshot["log_path"],
         )
-
-    @staticmethod
-    def _finalize_stopped(stream: Stream) -> None:
-        """Sprint 8.2 thin façade — see control_helpers.finalize_stopped."""
-        _helper_finalize_stopped(stream)
 
     async def _get_stream_basic(self, stream_id: UUID) -> Stream:
         query = select(Stream).where(
@@ -937,35 +908,11 @@ class StreamControlService:
                 detail="Cannot schedule start while stream is running",
             )
 
-        if not active_state and self._stream_may_still_be_live(stream):
+        if not active_state and stream_may_still_be_live(stream):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot schedule start while runtime liveness cannot be verified",
             )
-
-    def _stream_may_still_be_live(self, stream: Stream) -> bool:
-        """Sprint 8.2 thin façade — see control_helpers.stream_may_still_be_live."""
-        return _helper_stream_may_still_be_live(stream)
-
-    @staticmethod
-    def _clear_start_schedule(stream: Stream) -> None:
-        """Sprint 8.2 thin façade — see control_helpers.clear_start_schedule."""
-        _helper_clear_start_schedule(stream)
-
-    @staticmethod
-    def _clear_stop_schedule(stream: Stream) -> None:
-        """Sprint 8.2 thin façade — see control_helpers.clear_stop_schedule."""
-        _helper_clear_stop_schedule(stream)
-
-    @staticmethod
-    def _clear_schedule(stream: Stream) -> None:
-        """Sprint 8.2 thin façade — see control_helpers.clear_schedule."""
-        _helper_clear_schedule(stream)
-
-    @staticmethod
-    def _mark_restart_success(stream: Stream, *, orchestrated: bool) -> None:
-        """Sprint 8.2 thin façade — see control_helpers.mark_restart_success."""
-        _helper_mark_restart_success(stream, orchestrated=orchestrated)
 
 
 __all__ = ["StreamControlService"]

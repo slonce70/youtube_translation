@@ -5,8 +5,7 @@ Middleware and decorators for enforcing subscription tier limits
 across all API operations.
 """
 
-from functools import wraps
-from typing import Optional, Callable, List, Dict, Any
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -363,49 +362,6 @@ class QuotaEnforcer:
             tier=self._require_profile().subscription_tier,
         )
 
-    async def _streams_within_window(self, window_start: datetime) -> List[Stream]:
-        result = await self.db.execute(
-            select(Stream).where(
-                Stream.user_id == self.user_id,
-                Stream.started_at.isnot(None),
-                func.coalesce(Stream.stopped_at, func.now()) >= window_start,
-            )
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
-    def _calculate_streaming_seconds(
-        streams: List[Stream],
-        window_start: datetime,
-        window_end: datetime,
-    ) -> float:
-        total_seconds = 0.0
-
-        for stream in streams:
-            started_at = QuotaEnforcer._ensure_aware(stream.started_at)
-            if not started_at:
-                continue
-
-            stopped_at = QuotaEnforcer._ensure_aware(stream.stopped_at) or window_end
-
-            if stopped_at <= window_start:
-                continue
-
-            effective_start = max(started_at, window_start)
-            effective_end = min(max(stopped_at, effective_start), window_end)
-
-            total_seconds += (effective_end - effective_start).total_seconds()
-
-        return max(total_seconds, 0.0)
-
-    @staticmethod
-    def _ensure_aware(value: Optional[datetime]) -> Optional[datetime]:
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
-
     async def check_assets_limit(self) -> bool:
         """
         Check if user can create another asset.
@@ -693,48 +649,3 @@ class QuotaEnforcer:
             # Don't fail the main operation
 
 
-def require_quota(check_func: str):
-    """
-    Decorator for endpoints that require quota checks.
-
-    Usage:
-        @router.post("/streams")
-        @require_quota("check_concurrent_streams")
-        async def create_stream(...):
-            ...
-
-    Args:
-        check_func: Name of the QuotaEnforcer method to call
-    """
-
-    def decorator(endpoint: Callable):
-        @wraps(endpoint)
-        async def wrapper(*args, **kwargs):
-            # Extract db and user_id from user_deps parameter
-            user_deps = kwargs.get("user_deps")
-            if not user_deps:
-                # Try to find it in args
-                for arg in args:
-                    if isinstance(arg, tuple) and len(arg) == 2:
-                        user_deps = arg
-                        break
-
-            if not user_deps:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Internal error: user_deps not found",
-                )
-
-            db, user_id = user_deps
-
-            # Create enforcer and check quota
-            enforcer = QuotaEnforcer(db, user_id)
-            check_method = getattr(enforcer, check_func)
-            await check_method()
-
-            # Call original endpoint
-            return await endpoint(*args, **kwargs)
-
-        return wrapper
-
-    return decorator

@@ -802,6 +802,21 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
   exit 1
 fi
 
+# Validate backend config via Pydantic before touching docker/systemd/migrations.
+# Catches malformed DATABASE_URL (hostless, password-as-port), default secrets
+# left in production, and pooler misconfig. Replaces the previous shell-based
+# DATABASE_URL self-heal block — failure now surfaces as a clean preflight
+# error instead of a half-applied deploy.
+preflight_python="${HOST_BACKEND_PYTHON_BIN:-}"
+if [[ -z "$preflight_python" ]]; then
+  if [[ -x "$repo_root/backend/.venv/bin/python" ]]; then
+    preflight_python="$repo_root/backend/.venv/bin/python"
+  else
+    preflight_python="${HOST_BACKEND_BOOTSTRAP_PYTHON:-python3}"
+  fi
+fi
+"$preflight_python" "$repo_root/scripts/preflight_check.py"
+
 ensure_environment_alignment
 ensure_host_runtime_mode_alignment
 ensure_host_storage_env_alignment
@@ -881,65 +896,6 @@ fi
 # even on host-only deploys.
 if ! service_selected backend; then
   run_database_migrations
-fi
-
-# ----------------------------------------------------------------------------
-# Self-heal a malformed ``DATABASE_URL`` in ``backend/.env``.
-#
-# This block is idempotent on a healthy ``.env`` — the ``no-@`` guard below
-# does nothing when the URL is well-formed. It can be retired once an
-# operator cleans up the canonical ``.env`` on the VPS (Phase D of
-# docs/runbooks/2026-04-25_prod_recovery_database_url.md). Until then it
-# remains the last line of defence in front of ``Settings()``'s fail-fast
-# validator (added in PR #60).
-#
-# Forensic from PRs #54-55 confirmed prod ``backend/.env`` has the literal
-# line ``DATABASE_URL=postgresql://youtube_user:***/youtube_streaming`` —
-# missing the ``@host:port`` component. ``apply_migrations.py`` runs with
-# a shell-injected env var that overrides this, so the migrator sees a
-# valid URL and the migration persists. The systemd backend, however,
-# loads ``.env`` via ``EnvironmentFile=`` which has *no* shell expansion,
-# inherits the broken literal, and asyncpg ends up dialling the wrong
-# postgres (or no host at all) — yielding the persistent
-# ``UndefinedColumnError`` on every restart.
-#
-# Fix: append an authoritative DATABASE_URL line at the end of ``.env``.
-# pydantic-settings + systemd EnvironmentFile both resolve duplicates by
-# "last wins", so the fresh line takes precedence without touching any
-# operator-curated value above. The password is sourced from the same
-# ``POSTGRES_PASSWORD`` line the docker compose file already trusts.
-# ----------------------------------------------------------------------------
-env_file_path="$repo_root/backend/.env"
-if [[ -f "$env_file_path" ]]; then
-  # Find the *last* DATABASE_URL line (the one pydantic-settings/systemd will use).
-  current_db_url="$(sed -n -E 's/^[[:space:]]*DATABASE_URL=//p' "$env_file_path" | tail -n 1)"
-  if [[ -n "$current_db_url" && "$current_db_url" != *"@"* ]]; then
-    pg_password="$(sed -n -E 's/^[[:space:]]*POSTGRES_PASSWORD=//p' "$env_file_path" | tail -n 1)"
-    if [[ -n "$pg_password" ]]; then
-      echo "Detected malformed DATABASE_URL in $env_file_path (no @host); replacing every DATABASE_URL line with a healthy one."
-      # URL-encode the password so passwords with @/:/!/etc. don't break asyncpg's URL parser.
-      pg_password_encoded="$(python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.quote(sys.argv[1], safe=""))' "$pg_password")"
-      healthy_url="postgresql://youtube_user:${pg_password_encoded}@127.0.0.1:5432/youtube_streaming"
-      tmp_env="$(mktemp)"
-      # Drop every existing DATABASE_URL line, regardless of position. Keep
-      # everything else verbatim. This is safer than appending because some
-      # operators may have legacy lines and pydantic + systemd handle
-      # duplicates differently in edge cases.
-      grep -vE '^[[:space:]]*DATABASE_URL=' "$env_file_path" > "$tmp_env"
-      {
-        echo
-        echo '# Auto-repaired by deploy_vps.sh — original DATABASE_URL was missing @host.'
-        echo "DATABASE_URL=${healthy_url}"
-      } >> "$tmp_env"
-      cp "$tmp_env" "$env_file_path"
-      rm -f "$tmp_env"
-      # Echo a sanitized version of the now-current line so the deploy log
-      # confirms what landed in the file.
-      echo "Sanitized post-heal DATABASE_URL: $(sed -n -E 's/^[[:space:]]*DATABASE_URL=//p' "$env_file_path" | tail -n 1 | sed -E 's#://[^@]*@#://***@#g')"
-    else
-      echo "WARN: malformed DATABASE_URL detected but no POSTGRES_PASSWORD available to construct a healthy replacement."
-    fi
-  fi
 fi
 
 maybe_restart_host_native_backend
