@@ -18,7 +18,7 @@ from app.models.database import (
     AdminAction, SystemAlert,
     MediaFolder, AssetFolderLink, MediaCollection, CollectionItem,
 )
-from app.core.database import get_db
+from app.core.database import apply_schema_patches, get_db
 
 
 async def _require_table(db: AsyncSession, table_name: str) -> None:
@@ -551,6 +551,42 @@ class TestRLSPolicies:
             db, "admin_actions", "admin_user_id", "user_profiles"
         )
         assert await _has_foreign_key(db, "system_alerts", "resolved_by", "user_profiles")
+
+
+class TestApplySchemaChangesRespectsMigration037:
+    """Regression test for the 2026-04-25 incident.
+
+    ``_apply_schema_changes`` runs on every backend boot via the FastAPI
+    lifespan hook. It used to contain a stale DROP block that removed the
+    columns migration 037 had just added (``runtime_restart_attempts`` and
+    ``runtime_last_failure_at``), producing a 3,255-attempt restart loop on
+    prod (see ``docs/runbooks/2026-04-25_prod_recovery_database_url.md``).
+    PR #59 removed the two columns from that DROP list.
+
+    This test pins the contract in CI: any future change that re-adds a
+    DROP for these columns will fail here instead of taking prod down.
+    """
+
+    @pytest.mark.asyncio
+    async def test_runtime_restart_columns_survive_schema_patches(
+        self, db: AsyncSession
+    ):
+        """After ``apply_schema_patches`` runs, migration 037's columns must remain."""
+        await _require_table(db, "streams")
+        # Ensure 037's columns are present going in (migration runner already
+        # applied them in the test fixture's bootstrap path; if not, this
+        # test is meaningless and we want to know).
+        await _require_column(db, "streams", "runtime_restart_attempts")
+        await _require_column(db, "streams", "runtime_last_failure_at")
+
+        # Re-run the in-code DDL block. With the PR #59 fix in place this
+        # is a no-op for the runtime_* columns; pre-fix it would have
+        # silently dropped them.
+        await apply_schema_patches()
+
+        # Both columns must still be present.
+        await _require_column(db, "streams", "runtime_restart_attempts")
+        await _require_column(db, "streams", "runtime_last_failure_at")
 
 
 # Pytest fixtures
