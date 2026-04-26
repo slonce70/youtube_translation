@@ -146,22 +146,54 @@ export default function PlansPage() {
               role="button"
               tabIndex={0}
             >
-              <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {isCurrent ? <Badge variant="live">{tPlans('toolbar.currentPlanBadge')}</Badge> : null}
                   {message.badge ? <Badge variant={cfg.badgeVariant}>{message.badge}</Badge> : null}
                 </div>
                 <div>
-                  <div style={{ fontSize: 20, fontWeight: 700 }}>{message.name ?? planId}</div>
-                  <div style={{ fontSize: 30, fontWeight: 700, marginTop: 10 }}>{message.price ?? tPlans('toolbar.fallbackPrice')}</div>
-                  <div className="page-sub">{message.period ?? ''}</div>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 30,
+                      fontWeight: 400,
+                      letterSpacing: '-0.015em',
+                      lineHeight: 1.05,
+                    }}
+                  >
+                    {message.name ?? planId}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono-app)',
+                      fontSize: 38,
+                      fontWeight: 400,
+                      letterSpacing: '-0.02em',
+                      marginTop: 14,
+                      color: 'var(--txt)',
+                    }}
+                  >
+                    {message.price ?? tPlans('toolbar.fallbackPrice')}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono-app)',
+                      fontSize: 11,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.16em',
+                      color: 'var(--txt-3)',
+                      marginTop: 6,
+                    }}
+                  >
+                    {message.period ?? ''}
+                  </div>
                 </div>
                 <div className="page-sub">{message.summary ?? ''}</div>
-                <div className="summary-list" style={{ gap: 6 }}>
+                <div className="summary-list" style={{ gap: 8 }}>
                   {(message.highlights ?? []).map((highlight) => (
-                    <div key={highlight} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                      <span style={{ color: 'var(--green)' }} aria-hidden="true">{'✓'}</span>
-                      <span>{highlight}</span>
+                    <div key={highlight} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: 14 }}>
+                      <span style={{ color: 'var(--txt-3)', lineHeight: 1.5 }} aria-hidden="true">·</span>
+                      <span style={{ color: 'var(--txt-2)', lineHeight: 1.5 }}>{highlight}</span>
                     </div>
                   ))}
                 </div>
