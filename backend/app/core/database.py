@@ -250,14 +250,20 @@ async def _apply_schema_changes(conn):
         text("DROP INDEX IF EXISTS idx_streams_runtime_lease_expires_at")
     )
     await conn.execute(text("DROP INDEX IF EXISTS idx_streams_runtime_next_restart_at"))
+    # Drop ONLY the four legacy columns migration 036 retired. Migration 037
+    # reintroduces ``runtime_restart_attempts`` + ``runtime_last_failure_at``
+    # for the persistent FFmpeg restart counter (Sprint 2 H5 — see
+    # ``backend/migrations/037_stream_runtime_restart_persistence.sql``).
+    # Until 2026-04-26 this block silently DROPped both newly-reintroduced
+    # columns on every backend boot, producing a perpetual
+    # ``UndefinedColumnError`` on ``streams.runtime_restart_attempts`` —
+    # see ``docs/runbooks/2026-04-25_prod_recovery_database_url.md``.
     await conn.execute(text("""
             ALTER TABLE streams
             DROP COLUMN IF EXISTS runtime_owner_id,
             DROP COLUMN IF EXISTS runtime_lease_expires_at,
-            DROP COLUMN IF EXISTS runtime_restart_attempts,
             DROP COLUMN IF EXISTS runtime_next_restart_at,
-            DROP COLUMN IF EXISTS runtime_last_restart_at,
-            DROP COLUMN IF EXISTS runtime_last_failure_at
+            DROP COLUMN IF EXISTS runtime_last_restart_at
             """))
 
     # Add check constraint for mix_mode if not exists

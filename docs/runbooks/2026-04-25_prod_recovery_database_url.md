@@ -1,4 +1,6 @@
-# 2026-04-25 — Prod recovery: malformed `DATABASE_URL` in `backend/.env`
+# 2026-04-25 — Prod recovery: `_apply_schema_changes` was silently dropping migration 037's columns on every backend boot
+
+> **Initial diagnosis (PRs #50–#57) was wrong.** The malformed `DATABASE_URL` in `.env` was a real but secondary issue — the *primary* root cause was a stale `DROP COLUMN` block in `app/core/database.py::_apply_schema_changes` that ran on every backend startup and removed the very columns migration 037 had just added. SSH verification on 2026-04-26 found the column gone *after* the migration log claimed success, even after PR #57's `.env` self-heal landed cleanly. Real fix: PR #59 (this runbook's accompanying patch) removes the two columns from the legacy DROP list.
 
 ## TL;DR
 Sprint 8 merges (PRs #47–49) introduced no app-behavior bugs, but each subsequent push from 22:17 UTC onward triggered a Deploy VPS failure that misled the chase across **eight follow-up PRs (#50–#57)**. The actual root cause was a **malformed `DATABASE_URL` line in `/opt/youtube_translation/backend/.env` on the production VPS**:
