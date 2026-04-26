@@ -102,7 +102,6 @@ function renderUseStreamMutations() {
   })
   const invalidateQueriesSpy = jest.spyOn(queryClient, 'invalidateQueries')
   const openQualityGate = jest.fn()
-  const onDestinationSaved = jest.fn()
   const onDeleteStreamSuccess = jest.fn()
 
   const rendered = renderHook(
@@ -111,7 +110,6 @@ function renderUseStreamMutations() {
         userId: 'user-1',
         streamingToasts: t,
         openQualityGate,
-        onDestinationSaved,
         onDeleteStreamSuccess,
       }),
     {
@@ -123,7 +121,6 @@ function renderUseStreamMutations() {
     ...rendered,
     invalidateQueriesSpy,
     openQualityGate,
-    onDestinationSaved,
     onDeleteStreamSuccess,
   }
 }
@@ -133,70 +130,11 @@ describe('useStreamMutations', () => {
     jest.clearAllMocks()
   })
 
-  it('creates a destination, invalidates the page-owned lists, and resets the channel form via callback', async () => {
-    destinationsCreate.mockResolvedValue({ id: 'dest-1' })
-
-    const { result, invalidateQueriesSpy, onDestinationSaved } = renderUseStreamMutations()
-    const payload = {
-      name: 'Main channel',
-      rtmps_url: 'rtmps://example.test/live',
-      stream_key: 'abc123',
-      enabled: true,
-      provider_connection_id: 'provider-1',
-    }
-
-    await act(async () => {
-      await result.current.createDestinationMutation.mutateAsync(payload)
-    })
-
-    expect(destinationsCreate).toHaveBeenCalledWith(payload)
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['destinations', 'user-1'] })
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['streams', 'user-1'] })
-    expect(toastSuccess).toHaveBeenCalledWith('destination.created')
-    expect(onDestinationSaved).toHaveBeenCalledTimes(1)
-  })
-
-  it('trims destination updates before sending them to the API', async () => {
-    destinationsUpdate.mockResolvedValue({ id: 'dest-1' })
-
-    const { result } = renderUseStreamMutations()
-
-    await act(async () => {
-      await result.current.updateDestinationMutation.mutateAsync({
-        id: 'dest-1',
-        data: {
-          name: 'Updated channel',
-          rtmps_url: 'rtmps://example.test/updated',
-          stream_key: '  next-key  ',
-          enabled: false,
-          provider_connection_id: null,
-        },
-      })
-    })
-
-    expect(destinationsUpdate).toHaveBeenCalledWith('dest-1', {
-      name: 'Updated channel',
-      rtmps_url: 'rtmps://example.test/updated',
-      stream_key: 'next-key',
-      enabled: false,
-      provider_connection_id: null,
-    })
-  })
-
-  it('deletes a destination and refreshes the destination and stream lists', async () => {
-    destinationsDelete.mockResolvedValue(undefined)
-
-    const { result, invalidateQueriesSpy } = renderUseStreamMutations()
-
-    await act(async () => {
-      await result.current.deleteDestinationMutation.mutateAsync('dest-1')
-    })
-
-    expect(destinationsDelete).toHaveBeenCalledWith('dest-1')
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['destinations', 'user-1'] })
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['streams', 'user-1'] })
-    expect(toastSuccess).toHaveBeenCalledWith('destination.deleted')
-  })
+  // Track 5a (2026-04-26): destination mutations moved to /dashboard/channels
+  // (inline). The 3 destination-mutation tests previously here were deleted
+  // along with the hook surface they covered. New tests for the inline
+  // mutations belong with the channels page; not adding here to keep this
+  // file focused on stream mutations.
 
   it('updates a stream schedule and refreshes the stream list', async () => {
     streamsUpdate.mockResolvedValue({ id: 'stream-1' })

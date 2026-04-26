@@ -6,19 +6,14 @@ import { toast } from 'sonner'
 
 import { api, ApiError } from '@/lib/api'
 import type {
-  DestinationUpdatePayload,
   StreamQualityResponse,
   StreamSchedulePayload,
   StreamStatusResponse,
 } from '@/lib/types'
 
-export type DestinationFormState = {
-  name: string
-  rtmps_url: string
-  stream_key: string
-  enabled: boolean
-  provider_connection_id: string | null
-}
+// IA restructure 2026-04-26: destination create/update/delete mutations
+// moved with the Channels card to /dashboard/channels (inline). This hook
+// now owns only stream-related mutations.
 
 type StartStreamVariables = {
   streamId: string
@@ -38,7 +33,6 @@ type UseStreamMutationsParams = {
     streamName?: string | null
     quality: StreamQualityResponse
   }) => void
-  onDestinationSaved: () => void
   onDeleteStreamSuccess?: (streamId: string) => void
 }
 
@@ -46,61 +40,11 @@ export function useStreamMutations({
   userId,
   streamingToasts,
   openQualityGate,
-  onDestinationSaved,
   onDeleteStreamSuccess,
 }: UseStreamMutationsParams) {
   const queryClient = useQueryClient()
   const [optimisticRunningStreamIds, setOptimisticRunningStreamIds] = useState<string[]>([])
   const [optimisticStoppingStreamIds, setOptimisticStoppingStreamIds] = useState<string[]>([])
-
-  const createDestinationMutation = useMutation({
-    mutationFn: (data: DestinationFormState) => api.destinations.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['destinations', userId] })
-      queryClient.invalidateQueries({ queryKey: ['streams', userId] })
-      toast.success(streamingToasts('destination.created'))
-      onDestinationSaved()
-    },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  const updateDestinationMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: DestinationFormState }) => {
-      const payload: DestinationUpdatePayload = {
-        name: data.name,
-        rtmps_url: data.rtmps_url,
-        enabled: data.enabled,
-      }
-
-      if (data.stream_key.trim()) {
-        payload.stream_key = data.stream_key.trim()
-      }
-
-      payload.provider_connection_id = data.provider_connection_id
-
-      return api.destinations.update(id, payload)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['destinations', userId] })
-      queryClient.invalidateQueries({ queryKey: ['streams', userId] })
-      toast.success(streamingToasts('destination.updated'))
-      onDestinationSaved()
-    },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
-  })
-
-  const deleteDestinationMutation = useMutation({
-    mutationFn: (destinationId: string) => api.destinations.delete(destinationId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['destinations', userId] })
-      queryClient.invalidateQueries({ queryKey: ['streams', userId] })
-      toast.success(streamingToasts('destination.deleted'))
-    },
-    onError: (error: Error) =>
-      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
-  })
 
   const updateScheduleMutation = useMutation({
     mutationFn: ({ streamId, payload }: { streamId: string; payload: StreamSchedulePayload }) =>
@@ -235,9 +179,6 @@ export function useStreamMutations({
   const pendingDeleteStreamId = deleteStreamMutation.isPending ? deleteStreamMutation.variables ?? null : null
 
   return {
-    createDestinationMutation,
-    updateDestinationMutation,
-    deleteDestinationMutation,
     updateScheduleMutation,
     startStreamMutation,
     stopStreamMutation,
