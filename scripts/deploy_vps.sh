@@ -884,81 +884,14 @@ if ! service_selected backend; then
 fi
 
 # ----------------------------------------------------------------------------
-# Belt-and-suspenders: re-issue migration 037's column adds via the *Docker*
-# postgres container directly. The host-native python migrator at
-# ``backend/apply_migrations.py`` reports success on every deploy and a
-# cross-connection probe inside the same Python process confirms the column
-# exists, but the host-native systemd backend then crashes on startup with
-# ``column streams.runtime_restart_attempts does not exist``. Hypothesis: the
-# migrator and the runtime backend resolve ``localhost:5432`` to *different*
-# Postgres processes (host-native vs the Docker-mapped one). Sidestep the
-# divergence by issuing the DDL through ``docker exec`` against the named
-# container the cutover scripts already trust as the production DB
-# (``youtube-streaming-postgres``). Migration 037 is idempotent
-# (``IF NOT EXISTS``), so this is safe to run on every deploy.
-if docker ps --format '{{.Names}}' | grep -qx 'youtube-streaming-postgres'; then
-  echo "Reissuing migration 037 column adds via docker exec on youtube-streaming-postgres"
-  docker exec -i youtube-streaming-postgres \
-    psql -U youtube_user -d youtube_streaming -v ON_ERROR_STOP=1 <<'EOF_037'
-ALTER TABLE streams
-    ADD COLUMN IF NOT EXISTS runtime_restart_attempts INTEGER NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS runtime_last_failure_at TIMESTAMPTZ;
-COMMENT ON COLUMN streams.runtime_restart_attempts IS
-    'Persistent FFmpeg restart counter. Survives backend restarts so a flapping stream cannot bypass ffmpeg_auto_restart_attempts ceiling by counting on in-memory amnesia.';
-COMMENT ON COLUMN streams.runtime_last_failure_at IS
-    'Wall-clock timestamp of the most recent ffmpeg child non-zero exit; used for restart backoff and observability.';
-EOF_037
-  if [[ $? -ne 0 ]]; then
-    echo "WARN: docker-exec migration 037 fallback failed; backend may crash on startup."
-  fi
-else
-  echo "youtube-streaming-postgres container not running; skipping docker-exec safety net."
-fi
-
-# ----------------------------------------------------------------------------
-# Forensic diag: prod is failing with ``column streams.runtime_restart_attempts
-# does not exist`` *after* both the host-native python migrator (against
-# ``localhost:5432``) AND the docker-exec psql safety net (inside the
-# ``youtube-streaming-postgres`` container) confirm the column is present.
-# That means the runtime backend is connecting to a *third* postgres instance
-# that neither path reached. Dump all the relevant facts so we can see the
-# divergence in the next deploy log.
-# ----------------------------------------------------------------------------
-echo "=== Forensic dump: where does runtime backend think postgres lives? ==="
-echo "--- /opt/youtube_translation/backend/.env (DB host:port only, password redacted) ---"
-# Print DATABASE_URL with the password redacted but host/port/db visible —
-# we need to see *where* the runtime backend is dialling.
-awk -F= '
-  /^[[:space:]]*DATABASE_URL=/ {
-    # gsub anything between "://...@" to "://***@" so password is masked
-    sub(/=.*/, "");
-    line = $0;
-    val = substr($0, length(line) + 2);
-    # Re-read full line then redact
-  }
-' "$repo_root/backend/.env" 2>/dev/null
-grep -E '^[[:space:]]*(DATABASE_URL|POSTGRES_HOST|POSTGRES_PORT|DB_HOST|DB_PORT)=' \
-  "$repo_root/backend/.env" 2>/dev/null \
-  | sed -E 's#://[^@]*@#://***@#g' \
-  | sed -E 's/(PASSWORD=).*/\1***/' \
-  || echo "  (.env unreadable)"
-echo "--- listening postgres sockets on host ---"
-ss -ltnp 2>/dev/null | grep -E '54(32|33|34)\b' || echo "  (no postgres listener on 5432-5434)"
-echo "--- docker port mapping for youtube-streaming-postgres ---"
-docker port youtube-streaming-postgres 2>/dev/null || echo "  (container not running)"
-echo "--- streams table columns in docker postgres (truth source A) ---"
-docker exec -i youtube-streaming-postgres psql -U youtube_user -d youtube_streaming -tAc \
-  "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='streams' AND column_name LIKE 'runtime_%' ORDER BY column_name" \
-  2>/dev/null || echo "  (psql failed)"
-echo "--- streams table columns visible from host:5432 (truth source B) ---"
-PGPASSWORD="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$repo_root/backend/.env" 2>/dev/null | head -1)" \
-  psql -h 127.0.0.1 -p 5432 -U youtube_user -d youtube_streaming -tAc \
-  "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='streams' AND column_name LIKE 'runtime_%' ORDER BY column_name" \
-  2>/dev/null || echo "  (host:5432 psql failed)"
-echo "=== /forensic dump ==="
-
-# ----------------------------------------------------------------------------
 # Self-heal a malformed ``DATABASE_URL`` in ``backend/.env``.
+#
+# This block is idempotent on a healthy ``.env`` — the ``no-@`` guard below
+# does nothing when the URL is well-formed. It can be retired once an
+# operator cleans up the canonical ``.env`` on the VPS (Phase D of
+# docs/runbooks/2026-04-25_prod_recovery_database_url.md). Until then it
+# remains the last line of defence in front of ``Settings()``'s fail-fast
+# validator (added in PR #60).
 #
 # Forensic from PRs #54-55 confirmed prod ``backend/.env`` has the literal
 # line ``DATABASE_URL=postgresql://youtube_user:***/youtube_streaming`` —
@@ -1003,20 +936,6 @@ if [[ -f "$env_file_path" ]]; then
       # Echo a sanitized version of the now-current line so the deploy log
       # confirms what landed in the file.
       echo "Sanitized post-heal DATABASE_URL: $(sed -n -E 's/^[[:space:]]*DATABASE_URL=//p' "$env_file_path" | tail -n 1 | sed -E 's#://[^@]*@#://***@#g')"
-      # Dump the resolved systemd unit's Environment + EnvironmentFile so we
-      # can see whether a drop-in is shadowing our healed .env. If
-      # ``systemctl show`` reports a ``DATABASE_URL=`` value that disagrees
-      # with the file we just wrote, we've found the next problem.
-      echo "--- systemctl show youtube-backend (Environment lines) ---"
-      systemctl show youtube-backend -p Environment 2>&1 \
-        | sed -E 's#://[^@]*@#://***@#g' \
-        | sed -E 's/(DATABASE_URL=postgresql:\/\/[^@:]+:)[^@]*@/\1***@/g' \
-        || echo "  (systemctl show failed — non-systemd or insufficient privileges)"
-      echo "--- systemctl cat youtube-backend (drop-ins included) ---"
-      systemctl cat youtube-backend 2>&1 \
-        | grep -E '^(EnvironmentFile|Environment|\[)' \
-        | sed -E 's#://[^@]*@#://***@#g' \
-        || echo "  (systemctl cat failed)"
     else
       echo "WARN: malformed DATABASE_URL detected but no POSTGRES_PASSWORD available to construct a healthy replacement."
     fi
