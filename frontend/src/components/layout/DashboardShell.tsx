@@ -1,10 +1,8 @@
 'use client'
 
 import {
-  CalendarDays,
   CreditCard,
   FolderOpen,
-  Gauge,
   Radio,
   SatelliteDish,
   UploadCloud,
@@ -67,11 +65,11 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
 
   const commandItems = useMemo(
     () => [
-      { id: 'dashboard', icon: Gauge, label: nav('sidebar.items.dashboard.label'), sub: nav('commands.items.dashboardSub'), href: '/dashboard', group: nav('commands.navigationGroup'), shortcut: 'G D' },
-      { id: 'library', icon: FolderOpen, label: nav('sidebar.items.library.label'), sub: nav('commands.items.librarySub'), href: '/dashboard/library', group: nav('commands.navigationGroup'), shortcut: 'G F' },
+      // IA restructure 2026-04-26: dropped Dashboard + Schedule entries
+      // (their pages now redirect to /streaming).
       { id: 'streaming', icon: SatelliteDish, label: nav('sidebar.items.streaming.label'), sub: nav('commands.items.streamingSub'), href: '/dashboard/streaming', group: nav('commands.navigationGroup'), shortcut: 'G S' },
+      { id: 'library', icon: FolderOpen, label: nav('sidebar.items.library.label'), sub: nav('commands.items.librarySub'), href: '/dashboard/library', group: nav('commands.navigationGroup'), shortcut: 'G F' },
       { id: 'plans', icon: CreditCard, label: nav('sidebar.items.plans.label'), sub: nav('commands.items.plansSub'), href: '/dashboard/plans', group: nav('commands.navigationGroup'), shortcut: 'G P' },
-      { id: 'schedule', icon: CalendarDays, label: nav('sidebar.items.schedule.label'), sub: nav('commands.items.scheduleSub'), href: '/dashboard/schedule', group: nav('commands.navigationGroup'), shortcut: 'G C' },
       { id: 'new-stream', icon: Radio, label: nav('commands.items.newStream'), sub: nav('commands.items.newStreamSub'), href: '/dashboard/streaming?new=1', group: nav('commands.actionsGroup'), shortcut: 'N' },
       { id: 'upload', icon: UploadCloud, label: nav('commands.items.upload'), sub: nav('commands.items.uploadSub'), href: '/dashboard/library?tab=assets', group: nav('commands.actionsGroup'), shortcut: 'U' },
     ] satisfies Array<{
