@@ -89,6 +89,67 @@
       "errorWithMessage": "Error: {message}"
     }
   },
+  "hero": {
+    "status": {
+      "live": "ON AIR",
+      "degraded": "DEGRADED",
+      "down": "DOWN",
+      "idle": "IDLE"
+    },
+    "actions": {
+      "restart": "Restart",
+      "stop": "Stop",
+      "wait": "…"
+    },
+    "metrics": {
+      "bitrate": "Bitrate",
+      "fps": "FPS",
+      "drops": "Drops",
+      "reconnects": "Reconnects",
+      "viewers": "Viewers",
+      "queue": "Queue",
+      "bitrateUnit": "kb/s",
+      "fpsUnit": "fps",
+      "fpsTarget": "target 30",
+      "framesUnit": "frames",
+      "in24h": "last 24h",
+      "online": "online",
+      "queueUnit": "queued",
+      "loop": "loop ∞",
+      "samplesAwaiting": "awaiting data",
+      "samplesCount": "{count} samples",
+      "dropsCleanState": "clean",
+      "dropsAlertState": "network/encoder",
+      "reconnectAlert": "check RTMP",
+      "reconnectClean": "—",
+      "ytLive": "YouTube live",
+      "ytWaiting": "awaiting YouTube"
+    },
+    "ticker": {
+      "viewersSuffix": "viewer(s)",
+      "key": "key"
+    },
+    "nowPlaying": {
+      "title": "Now playing",
+      "waiting": "Awaiting source",
+      "next": "Up next",
+      "queueSummary": "{count} queued · {loop}",
+      "loopOn": "loop ∞",
+      "loopOff": "no loop"
+    },
+    "timeline": {
+      "title": "Event stream",
+      "filterAll": "All",
+      "loading": "Loading events…",
+      "emptyFiltered": "No {level} events.",
+      "emptySteady": "0 incidents in {days} {days, plural, one {day} other {days}} — channel is steady.",
+      "emptyFresh": "No events yet. Once you go live, the timeline fills up.",
+      "levelError": "ERROR",
+      "levelWarn": "WARN",
+      "levelInfo": "INFO",
+      "levelDebug": "DEBUG"
+    }
+  },
   "page": {
     "loading": "Loading streaming...",
     "fetching": "Fetching streams...",

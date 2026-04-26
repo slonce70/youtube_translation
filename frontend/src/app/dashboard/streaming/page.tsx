@@ -24,6 +24,7 @@ import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamingPageData } from './hooks/useStreamingPageData'
 import { useStreamMutations } from './hooks/useStreamMutations'
+import { LiveStreamHero } from '@/components/streaming/LiveStreamHero'
 
 // Heavy modals are gated by boolean state and never appear on first paint.
 // Lazy-load them so the streaming page's first-load JS shrinks by the
@@ -423,6 +424,21 @@ export default function StreamingPage() {
 
       {activeStreamTab === 'live' ? (
         <div className="summary-list">
+          {/* Track 5b/D: modern operator hero — sits above the legacy
+            *  card list so the most-asked questions ("is it up?",
+            *  "what's playing?", bitrate stability) are answered before
+            *  the operator scrolls. Per-stream hero self-fetches
+            *  status + events + metrics. */}
+          {liveEntries.map(({ stream }) => (
+            <LiveStreamHero
+              key={`hero-${stream.id}`}
+              stream={stream}
+              isStopping={pendingStopStreamId === stream.id}
+              isRestarting={pendingStartStreamId === stream.id}
+              onStop={() => handleStopStream(stream.id)}
+              onRestart={() => handleStartStream(stream)}
+            />
+          ))}
           {liveEntries.length > 0 ? liveEntries.map(({ stream, derived }) => {
             const sourceName = getStreamSourceLabel(stream)
             const sourceTotalSeconds = getStreamSourceTotalSeconds(stream)

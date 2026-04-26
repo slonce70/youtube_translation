@@ -8,6 +8,8 @@ import type {
   Stream,
   StreamStatusResponse,
   StreamLogsResponse,
+  StreamEventResponse,
+  StreamLiveMetrics,
   MetricsResponse,
   CreateStreamPayload,
   StreamSchedulePayload,
@@ -364,6 +366,15 @@ export const api = {
         },
       }),
     quality: (id: string) => apiRequest<StreamQualityResponse>(`/streams/${id}/quality`),
+    // Track 5b/D: modern operator-panel surfaces.
+    events: (id: string, options?: { limit?: number }) =>
+      apiRequest<StreamEventResponse[]>(`/streams/${id}/events`, {
+        params: { limit: options?.limit ?? 50 },
+      }),
+    metrics: (id: string, options?: { samples?: number }) =>
+      apiRequest<StreamLiveMetrics>(`/streams/${id}/metrics`, {
+        params: { samples: options?.samples ?? 60 },
+      }),
     liveUpdate: (id: string, payload: StreamLiveUpdatePayload) =>
       apiRequest<Stream>(`/streams/${id}/live-config`, {
         method: 'PATCH',
