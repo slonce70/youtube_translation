@@ -218,8 +218,35 @@ class Settings(BaseSettings):
 
         parsed = urlparse(v)
 
+        # Detect malformed netloc — the failure mode that put prod into a
+        # 3,255-attempt restart loop on 2026-04-25 (see
+        # ``docs/runbooks/2026-04-25_prod_recovery_database_url.md``).
+        #
+        # Two failure shapes both surface as hostless / mis-parsed URLs:
+        #   * ``postgresql:///db``        → hostname is None
+        #   * ``postgresql://u:p/db``     → hostname='u' (urlparse interprets
+        #                                    ``u:p`` as ``host:port`` because
+        #                                    there's no ``@`` separator), and
+        #                                    accessing ``.port`` raises
+        #                                    ``ValueError`` because ``p`` is
+        #                                    not a number.
+        # asyncpg's silent fallback to PGHOST / UNIX-socket made both invisible
+        # until queries failed at runtime. Refuse to start instead so
+        # ``Settings()`` instantiation surfaces the typo at the very first boot.
+        try:
+            _ = parsed.port
+        except ValueError as port_err:
+            raise ValueError(
+                "DATABASE_URL has a malformed netloc — the `@host:port` segment "
+                "looks missing (urlparse pushed the password into the port "
+                f"field): {port_err}. Refusing to start."
+            ) from port_err
+
         if not parsed.hostname:
-            return v
+            raise ValueError(
+                "DATABASE_URL is hostless (e.g. `postgresql:///db`). "
+                "Provide an explicit `host:port`. Refusing to start."
+            )
 
         hostname = parsed.hostname.lower()
 
