@@ -1508,35 +1508,62 @@
     @apply mt-4 flex items-center border-t border-slate-200 pt-4 dark:border-slate-700;
   }
 
+  /* Dashboard palette retinted to match the Loopcast landing aesthetic
+   * (OLED bg, oklch purple accent, off-white serif-friendly fg). All
+   * downstream `.dashboard-v2 .foo` selectors consume these vars, so the
+   * retint propagates automatically without rewriting per-component
+   * styles. The original CSS-var names are kept (--indigo, --cyan, etc.)
+   * to avoid renaming churn across 1300+ LOC of selectors below. */
   .dashboard-v2 {
-    --bg: #080d16;
-    --bg-2: #111824;
-    --bg-3: #182233;
-    --surface-glass: rgba(17, 24, 36, .82);
-    --border: rgba(99, 118, 154, .28);
-    --border-lt: rgba(139, 158, 194, .42);
-    --indigo: #6d5dfc;
-    --indigo-lt: #9aa4ff;
-    --indigo-dk: #5346d6;
-    --cyan: #38bdf8;
-    --violet: #a78bfa;
-    --green: #22c55e;
-    --red: #ef4444;
-    --amber: #f59e0b;
-    --txt: #edf4ff;
-    --txt-2: #9fb0c8;
-    --txt-3: #6f819c;
+    --bg: #07070a;
+    --bg-2: #0c0c12;
+    --bg-3: #11111a;
+    --surface-glass: rgba(12, 12, 18, .82);
+    --border: rgba(255, 255, 255, .08);
+    --border-lt: rgba(255, 255, 255, .14);
+    --indigo: oklch(0.72 0.18 295);
+    --indigo-lt: oklch(0.78 0.14 295);
+    --indigo-dk: oklch(0.62 0.18 295);
+    --cyan: oklch(0.82 0.12 200);
+    --violet: oklch(0.74 0.16 290);
+    --green: oklch(0.78 0.18 150);
+    --red: oklch(0.66 0.22 25);
+    --amber: oklch(0.78 0.16 60);
+    --txt: #f5f3ee;
+    --txt-2: rgba(245, 243, 238, .62);
+    --txt-3: rgba(245, 243, 238, .40);
     --nav-w: 240px;
     --nav-w-sm: 64px;
     --top-h: 56px;
     --radius: 14px;
-    --shadow: 0 20px 60px rgba(0,0,0,.42);
-    background:
-      radial-gradient(circle at 16% -10%, rgba(109, 93, 252, .22), transparent 34rem),
-      radial-gradient(circle at 95% 2%, rgba(56, 189, 248, .13), transparent 28rem),
-      linear-gradient(145deg, #070b13 0%, #0a111d 52%, #0d1422 100%);
+    --shadow: 0 20px 60px rgba(0,0,0,.55);
+    --font-display: var(--font-serif), 'Times New Roman', serif;
+    --font-mono-app: var(--font-mono), ui-monospace, monospace;
+    background: var(--bg);
     color: var(--txt);
     min-height: 100vh;
+  }
+
+  /* Subtle grid + grain backdrop, ported from loopcast.css for visual
+   * coherence with the landing page. Fixed-position layers don't affect
+   * dashboard layout / scroll. */
+  .dashboard-v2::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 64px 64px;
+    -webkit-mask-image: radial-gradient(ellipse at top, black 0%, transparent 75%);
+    mask-image: radial-gradient(ellipse at top, black 0%, transparent 75%);
+  }
+
+  .dashboard-v2 > * {
+    position: relative;
+    z-index: 1;
   }
 
   .dashboard-v2 a {
@@ -1914,81 +1941,67 @@
   }
 
   .dashboard-v2 .nav-item.active {
-    background:
-      linear-gradient(90deg, rgba(109, 93, 252, .25), rgba(56, 189, 248, .08));
-    color: #fff;
-    box-shadow: inset 0 0 0 1px rgba(154, 164, 255, .14);
+    background: rgba(255, 255, 255, .04);
+    color: var(--txt);
   }
 
   .dashboard-v2 .nav-active-rail {
     position: absolute;
     left: 0;
-    width: 3px;
-    height: 22px;
-    border-radius: 9999px;
-    background: linear-gradient(180deg,var(--cyan),var(--indigo));
+    width: 2px;
+    height: 18px;
+    border-radius: 0;
+    background: var(--indigo);
     opacity: 0;
-    transform: scaleY(.5);
-    transition: opacity .15s, transform .15s;
+    transition: opacity .15s;
   }
-  .dashboard-v2 .nav-item.active .nav-active-rail {
-    opacity: 1;
-    transform: scaleY(1);
-  }
+  .dashboard-v2 .nav-item.active .nav-active-rail { opacity: 1; }
 
+  /* Editorial: nav icons are simple inline glyphs, not boxed quads. */
   .dashboard-v2 .nav-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-size: 18px;
     flex-shrink: 0;
-    width: 28px;
-    height: 28px;
-    border-radius: 10px;
-    background: rgba(148, 163, 184, .08);
+    width: 22px;
+    height: 22px;
     color: var(--txt-2);
-    text-align: center;
   }
-  .dashboard-v2 .nav-item.active .nav-icon {
-    color: #fff;
-    background: rgba(255,255,255,.11);
-  }
+  .dashboard-v2 .nav-item.active .nav-icon { color: var(--txt); }
 
-  .dashboard-v2 .nav-txt { display: flex; min-width: 0; flex-direction: column; gap: 1px; font-size: 13px; }
+  .dashboard-v2 .nav-txt { display: flex; min-width: 0; flex-direction: column; font-size: 13px; }
   .dashboard-v2 .nav-main { overflow: hidden; text-overflow: ellipsis; }
-  .dashboard-v2 .nav-sub { color: var(--txt-3); font-size: 11px; font-weight: 500; }
-  .dashboard-v2 .nav-item.active .nav-sub { color: rgba(237,244,255,.64); }
+  /* Decorative subtitle ("Огляд системи" etc.) — hidden in editorial mode.
+   * The component still renders it for screen-reader context, but visually
+   * one label per nav item is enough. */
+  .dashboard-v2 .nav-sub { display: none; }
   .dashboard-v2 .dashboard-app.nav-collapsed .nav-item .nav-txt,
   .dashboard-v2 .dashboard-app.nav-collapsed .collapse-btn .nav-txt,
   .dashboard-v2 .dashboard-app.nav-collapsed .nav-go-live .nav-txt { display: none; }
 
+  /* Loopcast-style primary CTA: solid off-white, dark text, hairline glow. */
   .dashboard-v2 .nav-go-live {
-    margin: 8px;
-    padding: 11px 12px;
-    border-radius: 16px;
-    background:
-      radial-gradient(circle at 20% 0%, rgba(255,255,255,.28), transparent 30%),
-      linear-gradient(135deg,var(--indigo),var(--cyan));
-    color: #fff;
-    font-weight: 600;
+    margin: 12px 8px 16px;
+    padding: 12px 14px;
+    border-radius: 999px;
+    background: var(--txt);
+    color: #0a0a0f;
+    font-weight: 500;
     font-size: 13px;
-    justify-content: flex-start;
-    box-shadow: 0 14px 30px rgba(99,102,241,.22);
-    transition: filter .15s, transform .15s, box-shadow .15s;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, .1);
+    box-shadow: 0 10px 30px -10px oklch(0.72 0.20 295 / 0.45);
+    transition: transform .15s, box-shadow .15s;
   }
   .dashboard-v2 .nav-go-live.is-collapsed {
     justify-content: center;
     padding-inline: 0;
   }
-  .dashboard-v2 .nav-go-live .nav-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
+  .dashboard-v2 .nav-go-live .nav-icon { color: #0a0a0f; }
   .dashboard-v2 .nav-go-live:hover {
-    filter: saturate(1.12) brightness(1.04);
     transform: translateY(-1px);
-    box-shadow: 0 18px 36px rgba(56,189,248,.22);
+    box-shadow: 0 16px 40px -10px oklch(0.72 0.20 295 / 0.55);
   }
 
   .dashboard-v2 .sidebar-bottom {
@@ -2127,35 +2140,56 @@
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 18px;
   }
+  /* Editorial stat-card: hairline border, no colored top accent, no icon
+   * quad. Big serif number, small uppercase mono label. Mirrors Loopcast's
+   * "5 треків · loop ∞" typographic pattern from the landing demo. */
   .dashboard-v2 .stat-card {
-    background: var(--bg-2);
+    background: transparent;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 22px 24px;
+    padding: 24px 26px;
     position: relative;
-    overflow: hidden;
   }
-  .dashboard-v2 .stat-card::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 2px;
-    background: var(--accent, var(--indigo));
-  }
+  .dashboard-v2 .stat-card::before { content: none; }
+  /* Icons inside stat-cards become tiny inline glyphs at the top — no
+   * colored quad. Component still renders <div class="stat-icon">; we just
+   * detune it visually. */
   .dashboard-v2 .stat-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    background: var(--icon-bg, rgba(99,102,241,.15));
-    display: flex;
+    width: 18px;
+    height: 18px;
+    border-radius: 0;
+    background: transparent;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    margin-bottom: 14px;
+    justify-content: flex-start;
+    font-size: 15px;
+    color: var(--txt-3);
+    margin-bottom: 18px;
   }
-  .dashboard-v2 .stat-value { font-size: 26px; font-weight: 700; letter-spacing: -.5px; }
-  .dashboard-v2 .stat-label { font-size: 12px; color: var(--txt-2); margin-top: 2px; }
-  .dashboard-v2 .stat-delta { font-size: 12px; margin-top: 6px; display: inline-flex; gap: 3px; }
+  .dashboard-v2 .stat-value {
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 400;
+    letter-spacing: -.02em;
+    line-height: 1;
+    color: var(--txt);
+  }
+  .dashboard-v2 .stat-label {
+    font-family: var(--font-mono-app);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--txt-3);
+    margin-top: 12px;
+  }
+  .dashboard-v2 .stat-delta {
+    font-family: var(--font-mono-app);
+    font-size: 11px;
+    margin-top: 8px;
+    display: inline-flex;
+    gap: 4px;
+    color: var(--txt-3);
+  }
   .dashboard-v2 .delta-up { color: var(--green); }
   .dashboard-v2 .delta-down { color: var(--red); }
 

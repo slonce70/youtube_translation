@@ -14,24 +14,25 @@ source of truth for config correctness.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-BACKEND = ROOT / "backend"
-sys.path.insert(0, str(BACKEND))
-
-# Load backend/.env even when this script is invoked from the repo root.
-import os
-
-os.chdir(BACKEND)
-
 
 def main() -> int:
+    root = Path(__file__).resolve().parent.parent
+    backend = root / "backend"
+    sys.path.insert(0, str(backend))
+    # Load backend/.env even when this script is invoked from the repo root.
+    os.chdir(backend)
+
     # config.py instantiates `settings = Settings()` at module load, so any
-    # validation error fires during import. Wrap the whole load in one block
-    # and report a clean preflight failure either way.
+    # validation error fires during import. Catch the specific exception types
+    # Pydantic + our validators raise; let MemoryError, KeyboardInterrupt and
+    # other unexpected errors bubble up untouched.
     try:
+        from pydantic import ValidationError
+
         from app.core.config import Settings  # noqa: F401  (side-effects)
     except ImportError as exc:
         print(
@@ -41,7 +42,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    except Exception as exc:  # pydantic ValidationError or ValueError
+    except (ValidationError, ValueError, TypeError) as exc:
         print(f"preflight: configuration invalid — {exc}", file=sys.stderr)
         print(
             "Fix backend/.env (or root .env) and re-run the deploy. "
