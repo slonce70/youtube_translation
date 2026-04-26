@@ -1,12 +1,10 @@
 'use client'
 
 import {
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
   CreditCard,
   FolderOpen,
-  Gauge,
   Radio,
   SatelliteDish,
   Settings,
@@ -37,14 +35,18 @@ interface SidebarProps {
 type NavItem = {
   href: string
   icon: ComponentType<{ className?: string }>
-  key: 'dashboard' | 'streaming' | 'library' | 'schedule' | 'plans' | 'profile'
+  key: 'streaming' | 'library' | 'plans' | 'profile'
 }
 
+// IA restructure 2026-04-26: dropped "Дашборд" (was a low-fidelity mirror of
+// the streams page; now redirects there) and "Розклад" (was 154 LOC of
+// calendar-shaped redirector; scheduling will live as a per-stream tab on
+// the streams detail route). Sidebar is now 4 daily-use items + the always-
+// visible Go-Live CTA. Operator opens the app and lands on the streams
+// page, the actual operator surface, instead of a generic dashboard.
 const items: NavItem[] = [
-  { href: '/dashboard', icon: Gauge, key: 'dashboard' },
   { href: '/dashboard/streaming', icon: SatelliteDish, key: 'streaming' },
   { href: '/dashboard/library', icon: FolderOpen, key: 'library' },
-  { href: '/dashboard/schedule', icon: CalendarDays, key: 'schedule' },
   { href: '/dashboard/plans', icon: CreditCard, key: 'plans' },
   { href: '/dashboard/profile', icon: Settings, key: 'profile' },
 ] as const
