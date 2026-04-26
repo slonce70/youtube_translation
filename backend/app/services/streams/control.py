@@ -732,9 +732,27 @@ class StreamControlService:
     ) -> StreamStatus:
         """Project (stream, runtime info) into a StreamStatus DTO.
 
-        Sprint 8.2 thin façade — body lives in
-        ``control_helpers.build_status_payload``. Behavior unchanged.
+        Track 5b/C (2026-04-26): now also enriches the response with the
+        per-stream playback snapshot (current/next asset, queue depth)
+        from ``hot_swap_manager`` and the live ffmpeg-stderr metrics
+        snapshot (bitrate, fps, drops, samples) from ``ffmpeg_metrics``.
+        Both are best-effort — missing data resolves to None and the
+        operator panel shows the "—" placeholder for unknown values.
         """
+        playback: Optional[Dict[str, Any]] = None
+        live_metrics: Optional[Dict[str, Any]] = None
+        if is_running:
+            try:
+                playback = hot_swap_manager.get_now_playing(str(stream.id))
+            except Exception:  # pragma: no cover - defensive
+                playback = None
+            try:
+                from app.streaming.ffmpeg_metrics import ffmpeg_metrics
+
+                live_metrics = ffmpeg_metrics.snapshot(str(stream.id), samples=60)
+            except Exception:  # pragma: no cover - defensive
+                live_metrics = None
+
         return build_status_payload(
             stream,
             is_running,
@@ -744,6 +762,8 @@ class StreamControlService:
             error_message=error_message,
             usage=usage,
             manager_info=manager_info,
+            playback=playback,
+            live_metrics=live_metrics,
         )
 
     async def _get_usage_snapshot(

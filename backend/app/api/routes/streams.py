@@ -24,6 +24,8 @@ from app.core.logging_config import get_logger
 from app.core.quota import QuotaEnforcer  # noqa: F401 - compatibility for tests
 from app.schemas.api import (
     StreamCreate,
+    StreamEventResponse,
+    StreamLiveMetrics,
     StreamLiveUpdateRequest,
     StreamLogsResponse,
     StreamQualityResponse,
@@ -232,6 +234,81 @@ async def get_stream_logs(
     db, user_id = user_deps
     _, control = _build_services(db, user_id)
     return await control.get_stream_logs(stream_id, lines, mode=mode)
+
+
+@router.get("/{stream_id}/events", response_model=List[StreamEventResponse])
+async def get_stream_events(
+    stream_id: UUID,
+    limit: int = Query(default=50, ge=1, le=500),
+    user_deps: tuple = Depends(require_user),
+):
+    """Track 5b/C #3: structured event timeline for the operator panel.
+
+    Replaces the frontend's prior workaround of parsing the logs file
+    via ``extractStopAuditEntries``. Filters to the user's streams via
+    a join with the ``streams`` table to prevent cross-tenant reads.
+    """
+    from sqlalchemy import select
+    from app.models.database import Stream, StreamEvent
+
+    db, user_id = user_deps
+    # Tenant guard: ensure the stream belongs to the requesting user.
+    owns = await db.execute(
+        select(Stream.id).where(Stream.id == stream_id, Stream.user_id == user_id)
+    )
+    if owns.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Stream not found")
+
+    rows = await db.execute(
+        select(StreamEvent)
+        .where(StreamEvent.stream_id == stream_id)
+        .order_by(StreamEvent.created_at.desc())
+        .limit(limit)
+    )
+    events = rows.scalars().all()
+    return [
+        StreamEventResponse(
+            id=event.id,
+            stream_id=event.stream_id,
+            level=event.level,
+            message=event.message,
+            metadata=event.event_metadata,
+            created_at=event.created_at,
+        )
+        for event in events
+    ]
+
+
+@router.get("/{stream_id}/metrics", response_model=StreamLiveMetrics)
+async def get_stream_metrics(
+    stream_id: UUID,
+    samples: int = Query(default=60, ge=1, le=120),
+    user_deps: tuple = Depends(require_user),
+):
+    """Track 5b/C #2: live FFmpeg-stderr metrics for sparklines.
+
+    Returns the latest bitrate/fps + the last N samples (default 60 ≈ 1
+    minute at 1 Hz). The sliding window lives in-memory in
+    ``ffmpeg_metrics``; cleared on stream stop. Returns an empty
+    payload (no samples) when the stream has never published a tick —
+    e.g. between ``start_stream`` accepting and the first FFmpeg
+    progress line landing.
+    """
+    from sqlalchemy import select
+    from app.models.database import Stream
+    from app.streaming.ffmpeg_metrics import ffmpeg_metrics
+
+    db, user_id = user_deps
+    owns = await db.execute(
+        select(Stream.id).where(Stream.id == stream_id, Stream.user_id == user_id)
+    )
+    if owns.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Stream not found")
+
+    snap = ffmpeg_metrics.snapshot(str(stream_id), samples=samples)
+    if snap is None:
+        return StreamLiveMetrics()
+    return StreamLiveMetrics(**snap)
 
 
 @router.delete("/{stream_id}", status_code=204)

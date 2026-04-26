@@ -802,6 +802,55 @@ class StreamResponse(StreamBase):
         )
 
 
+class StreamPlaybackAssetInfo(BaseModel):
+    """Lightweight playback descriptor for "now playing" / "up next" UI.
+
+    Track 5b/C #1 (2026-04-26): operator panel needs to answer "what's
+    on air right now?" without leaving the page. Sourced from
+    ``hot_swap.StreamHotSwapManager.get_now_playing``.
+    """
+
+    asset_id: Optional[UUID] = None
+    filename: Optional[str] = None
+    duration_seconds: Optional[float] = None
+
+
+class StreamPlaybackInfo(BaseModel):
+    target: str  # "video" | "audio"
+    loop_enabled: bool = True
+    shuffle_enabled: bool = False
+    current: Optional[StreamPlaybackAssetInfo] = None
+    next: Optional[StreamPlaybackAssetInfo] = None
+    queue_remaining_count: int = 0
+    queue_remaining_seconds: float = 0.0
+    playhead_index: int = 0
+    slots_count: int = 0
+
+
+class StreamLiveMetricsSample(BaseModel):
+    """One stderr-derived metric tick (~1 Hz)."""
+
+    ts: float  # unix seconds
+    bitrate_kbps: Optional[float] = None
+    fps: Optional[float] = None
+    dropped_frames: Optional[int] = None
+    speed: Optional[float] = None
+
+
+class StreamLiveMetrics(BaseModel):
+    """Aggregate live metrics surface for the operator panel.
+
+    The panel consumes ``samples`` for sparklines (last 60 seconds by
+    default) and the rolling counts for headline tiles.
+    """
+
+    bitrate_kbps: Optional[float] = None
+    fps: Optional[float] = None
+    dropped_frames_total: int = 0
+    reconnect_count_24h: int = 0
+    samples: List[StreamLiveMetricsSample] = Field(default_factory=list)
+
+
 class StreamStatus(BaseModel):
     id: UUID
     status: str
@@ -825,6 +874,10 @@ class StreamStatus(BaseModel):
     runtime_incident_summary: StreamIncidentSummary = Field(
         default_factory=StreamIncidentSummary
     )
+    # Track 5b/C: live operator-panel surfaces. All optional so old clients
+    # ignore them; missing values fall back to "unknown" in the UI.
+    playback: Optional[StreamPlaybackInfo] = None
+    live_metrics: Optional[StreamLiveMetrics] = None
 
 
 class StreamWsTokenResponse(BaseModel):

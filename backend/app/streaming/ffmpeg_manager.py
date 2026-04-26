@@ -338,6 +338,20 @@ class FFmpegStreamManager:
             logger.info(f"Stream {stream_id} started with PID {process.pid}")
             track_stream_start()
 
+            # Track 5b/C #2: reset live metrics on each (re)start so
+            # sparklines start clean. On manual restart (operator pressed
+            # restart) keep the reconnect counter intact via the existing
+            # ``recent_errors`` carry-over below; we only zero the sample
+            # window itself.
+            try:
+                from app.streaming.ffmpeg_metrics import ffmpeg_metrics
+
+                ffmpeg_metrics.reset(stream_id)
+                if restart:
+                    ffmpeg_metrics.record_reconnect(stream_id)
+            except Exception:  # pragma: no cover - defensive
+                pass
+
             try:
                 await hot_swap_manager.register_stream(stream_id, normalized_playlists)
             except Exception:
@@ -546,8 +560,17 @@ class FFmpegStreamManager:
             and playlists.audio_copy_compatible
         )
 
-        # Keep logs user-friendly by default (no frame progress spam).
-        cmd: List[str] = [self.ffmpeg_bin, "-hide_banner", "-nostats"]
+        # Track 5b/C #2: emit progress lines at 1 Hz so ffmpeg_metrics can
+        # parse live bitrate/fps/drops. The previous "-nostats" silenced
+        # FFmpeg's per-frame spam — `-stats_period 1` keeps that win
+        # (1-second cadence vs. ~30/s) while restoring the data we need
+        # for the operator panel's sparklines.
+        cmd: List[str] = [
+            self.ffmpeg_bin,
+            "-hide_banner",
+            "-stats_period",
+            "1",
+        ]
         input_sections: List[Dict[str, Any]] = []
 
         def add_input(
