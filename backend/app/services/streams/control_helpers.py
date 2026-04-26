@@ -182,6 +182,8 @@ def build_status_payload(
     error_message: Optional[str] = None,
     usage: Optional[Dict[str, Any]] = None,
     manager_info: Optional[Dict[str, Any]] = None,
+    playback: Optional[Dict[str, Any]] = None,
+    live_metrics: Optional[Dict[str, Any]] = None,
 ) -> StreamStatus:
     """Pure synchronous projection of (stream, runtime info) → StreamStatus.
 
@@ -259,4 +261,6 @@ def build_status_payload(
             settings_provider=settings_provider,
         ),
         runtime_incident_summary=runtime_incident_summary or {},
+        playback=playback,
+        live_metrics=live_metrics,
     )

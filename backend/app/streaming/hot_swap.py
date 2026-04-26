@@ -303,6 +303,68 @@ class StreamHotSwapManager:
             raise ValueError(f"Stream {stream_id} is not registered for hot swapping")
         await state.replace_queue(target, assets, loop=loop, shuffle=shuffle)
 
+    def get_now_playing(self, stream_id: str) -> Optional[Dict[str, Any]]:
+        """Snapshot the current playhead for a registered stream.
+
+        Returns ``None`` when the stream is not registered. Otherwise returns
+        a dict with the current asset, the next asset (looking at the
+        playhead+1 slot or the head of the pending queue), the queue depth,
+        and total seconds remaining in the queue if durations are known.
+
+        Track 5b/C #1 (2026-04-26): operator panel needs "now playing" +
+        "up next" without leaving the page. The data has been tracked in
+        ``SlotQueue.assigned`` + ``SlotQueue.queue`` since hot-swap shipped;
+        this method is the public read-only window.
+        """
+        state = self._states.get(stream_id)
+        if not state:
+            return None
+
+        # Prefer the video queue if a stream has both; audio-only streams
+        # fall back to the audio queue.
+        queue = state.queues.get("video") or state.queues.get("audio")
+        if not queue or not queue.slot_paths:
+            return None
+
+        slots_count = len(queue.slot_paths)
+        current_index = queue.playhead_index % slots_count if slots_count else 0
+        current = queue.assigned.get(current_index)
+
+        # Next: head of pending queue if any; else the next assigned slot;
+        # else the current slot (when looping a single-asset queue).
+        next_asset: Optional[Dict[str, Any]] = None
+        if queue.queue:
+            next_asset = queue.queue[0]
+        elif slots_count > 1:
+            next_asset = queue.assigned.get((current_index + 1) % slots_count)
+        elif queue.loop_enabled:
+            next_asset = current
+
+        def _summarize(asset: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+            if not asset:
+                return None
+            return {
+                "asset_id": asset.get("asset_id"),
+                "filename": asset.get("filename"),
+                "duration_seconds": _safe_duration(asset),
+            }
+
+        # Queue-remaining covers the pending deque only; the looping
+        # behaviour is open-ended ("∞") and signaled separately.
+        remaining_seconds = sum(_safe_duration(item) for item in queue.queue)
+
+        return {
+            "target": queue.name,
+            "loop_enabled": queue.loop_enabled,
+            "shuffle_enabled": queue.shuffle_enabled,
+            "current": _summarize(current),
+            "next": _summarize(next_asset),
+            "queue_remaining_count": len(queue.queue),
+            "queue_remaining_seconds": remaining_seconds,
+            "playhead_index": current_index,
+            "slots_count": slots_count,
+        }
+
 
 hot_swap_manager = StreamHotSwapManager()
 

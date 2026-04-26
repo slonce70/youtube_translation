@@ -199,6 +199,15 @@ async def write_logs_to_file(
                             recent_errors.append(decoded)
                             info["last_error_at"] = _utcnow()
                         await record_runtime_log_health(stream_id, decoded)
+                    # Track 5b/C #2: feed parsed bitrate/fps/drops into the
+                    # in-memory metrics registry. The parser is cheap (regex
+                    # over the line) and silently ignores non-progress lines.
+                    try:
+                        from app.streaming.ffmpeg_metrics import ffmpeg_metrics
+
+                        ffmpeg_metrics.feed_line(stream_id, decoded)
+                    except Exception:  # pragma: no cover - never block log writer
+                        pass
         finally:
             await f.flush()
             await f.close()
