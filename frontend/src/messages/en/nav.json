@@ -29,6 +29,7 @@
       "dashboard": { "label": "Dashboard", "sub": "System overview" },
       "streaming": { "label": "Streaming", "sub": "Live and channels" },
       "library": { "label": "Files", "sub": "Media and playlists" },
+      "channels": { "label": "Channels", "sub": "RTMPS and YouTube" },
       "schedule": { "label": "Schedule", "sub": "Stream launches" },
       "plans": { "label": "Plans", "sub": "Limits and upgrades" },
       "profile": { "label": "Settings", "sub": "Account and channels" }
@@ -65,6 +66,7 @@
       "dashboardSub": "Home panel",
       "librarySub": "Library and playlists",
       "streamingSub": "Channels, live and archive",
+      "channelsSub": "RTMPS and YouTube channels",
       "plansSub": "Plans and limits",
       "scheduleSub": "Scheduled launches",
       "newStream": "New stream",

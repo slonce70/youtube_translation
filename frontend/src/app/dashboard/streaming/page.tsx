@@ -14,7 +14,6 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import type {
-  Destination,
   StreamLogsResponse,
   SubscriptionTierKey,
   Stream,
@@ -24,7 +23,7 @@ import { useDashboardContext } from '../dashboard-context'
 import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamingPageData } from './hooks/useStreamingPageData'
-import { useStreamMutations, type DestinationFormState } from './hooks/useStreamMutations'
+import { useStreamMutations } from './hooks/useStreamMutations'
 
 // Heavy modals are gated by boolean state and never appear on first paint.
 // Lazy-load them so the streaming page's first-load JS shrinks by the
@@ -41,21 +40,15 @@ const QualityGateModal = dynamic(
   () => import('./components/QualityGateModal').then((mod) => mod.QualityGateModal),
   { ssr: false },
 )
-const AddChannelModal = dynamic(
-  () => import('@/components/streaming/AddChannelModal').then((mod) => mod.AddChannelModal),
-  { ssr: false },
-)
 import {
   buildStreamIncidentNotice,
   deriveStreamState,
   getStreamLogLineClassName,
   summarizeStreamLogIncidents,
 } from '@/lib/stream-state'
-import { getDestinationPlatformPresentation } from './platform'
 import { formatDuration } from '@/lib/utils'
 import { formatDateTimeLocal, type ScheduleDraft } from './schedule-utils'
 import { extractStopAuditEntries } from './log-audit'
-import { getProviderBadgeVariant } from '@/lib/provider-status'
 
 export default function StreamingPage() {
   const router = useRouter()
@@ -75,16 +68,6 @@ export default function StreamingPage() {
     }
   }, [router, searchParams])
 
-  const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
-  const [showChannelForm, setShowChannelForm] = useState(false)
-  const [editingChannelId, setEditingChannelId] = useState<string | null>(null)
-  const [channelForm, setChannelForm] = useState<DestinationFormState>({
-    name: '',
-    rtmps_url: 'rtmps://a.rtmp.youtube.com/live2',
-    stream_key: '',
-    enabled: true,
-    provider_connection_id: null,
-  })
   const [viewingLogs, setViewingLogs] = useState<string | null>(null)
   const [logsMode, setLogsMode] = useState<'important' | 'raw'>('important')
   const [showCreateStream, setShowCreateStream] = useState(false)
@@ -100,8 +83,6 @@ export default function StreamingPage() {
     destinations,
     destinationsLimit,
     formatLimitValue,
-    formatProviderStatus,
-    formatProviderSummary,
     getStreamSourceLabel,
     getStreamSourceTotalSeconds,
     isLoadingAssets,
@@ -111,26 +92,12 @@ export default function StreamingPage() {
     isLoadingVideoCollections,
     planQualityLimits,
     streams,
-    shouldShowProviderBadge,
     videoCollections,
-    youtubeConnections,
   } = useStreamingPageData({
     userId: user?.id,
     quota,
     tStreaming,
   })
-
-  function resetChannelForm() {
-    setChannelForm({
-      name: '',
-      rtmps_url: 'rtmps://a.rtmp.youtube.com/live2',
-      stream_key: '',
-      enabled: true,
-      provider_connection_id: null,
-    })
-    setEditingChannelId(null)
-    setShowChannelForm(false)
-  }
 
   function handleDeleteStreamSuccess(streamId: string) {
     if (viewingLogs === streamId) {
@@ -139,9 +106,6 @@ export default function StreamingPage() {
   }
 
   const {
-    createDestinationMutation,
-    updateDestinationMutation,
-    deleteDestinationMutation,
     updateScheduleMutation,
     startStreamMutation,
     stopStreamMutation,
@@ -155,30 +119,8 @@ export default function StreamingPage() {
     userId: user?.id,
     streamingToasts,
     openQualityGate,
-    onDestinationSaved: resetChannelForm,
     onDeleteStreamSuccess: handleDeleteStreamSuccess,
   })
-
-  const handleSubmitChannel = (event: React.FormEvent) => {
-    event.preventDefault()
-    if (editingChannelId) {
-      updateDestinationMutation.mutate({ id: editingChannelId, data: channelForm })
-    } else {
-      createDestinationMutation.mutate(channelForm)
-    }
-  }
-
-  const handleEditChannel = (destination: Destination) => {
-    setEditingChannelId(destination.id)
-    setChannelForm({
-      name: destination.name,
-      rtmps_url: destination.rtmps_url,
-      stream_key: '',
-      enabled: destination.enabled,
-      provider_connection_id: destination.provider_connection_id ?? null,
-    })
-    setShowChannelForm(true)
-  }
 
   const primeStreamEditorDrafts = (stream: Stream) => {
     setLiveEditorScheduleDraft({
@@ -193,24 +135,6 @@ export default function StreamingPage() {
   const handleOpenStreamEditor = (stream: Stream) => {
     primeStreamEditorDrafts(stream)
     openLiveEditor(stream)
-  }
-
-  const handleDeleteChannel = (destinationId: string) => {
-    if (confirm(tStreaming('channels.form.confirmDelete'))) {
-      deleteDestinationMutation.mutate(destinationId)
-    }
-  }
-
-  const handleStartYouTubeConnect = async () => {
-    try {
-      const redirect_origin = window.location.origin
-      const redirect_path = '/dashboard/streaming'
-      const response = await api.youtube.oauthStart({ redirect_origin, redirect_path })
-      window.location.href = response.auth_url
-    } catch (error) {
-      const message = error instanceof Error ? error.message : tStreaming('provider.oauth.startFailed')
-      toast.error(streamingToasts('generic.errorWithMessage', { message }))
-    }
   }
 
   const handleStartStream = (stream: Stream) => {
@@ -463,86 +387,6 @@ export default function StreamingPage() {
           </div>
         </div>
       </div>
-
-      <Card>
-        <CardHeader className="mb-4 flex-row items-center justify-between">
-          <div>
-            <CardTitle>{tStreaming('channelsTitle')}</CardTitle>
-            <div className="page-sub" style={{ marginTop: 4 }}>
-              {tStreaming('provider.channelsDescription')}
-            </div>
-          </div>
-          <Button size="sm" onClick={() => setShowChannelForm(true)}>{tStreaming('addChannel')}</Button>
-        </CardHeader>
-        <CardContent className="channels-list">
-          {isLoadingDestinations ? (
-            <LoadingState />
-          ) : destinations && destinations.length > 0 ? (
-            destinations.map((destination) => {
-              const platform = getDestinationPlatformPresentation(destination)
-              return (
-              <div
-                key={destination.id}
-                className={`channel-row${selectedChannel === destination.id ? ' active' : ''}`}
-                onClick={() => setSelectedChannel(destination.id)}
-                role="button"
-                tabIndex={0}
-              >
-                <div className={platform.className} aria-label={platform.label}>{platform.icon}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{destination.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>
-                    {destination.rtmps_url} · {tStreaming('destinationKey')}: {destination.stream_key_masked}
-                  </div>
-                  {formatProviderSummary(destination) ? (
-                    <div style={{ fontSize: 12, color: 'var(--txt-2)', marginTop: 4 }}>
-                      {formatProviderSummary(destination)}
-                    </div>
-                  ) : null}
-                </div>
-                <Badge variant={destination.enabled ? 'live' : 'idle'}>
-                  {destination.enabled ? tStreaming('destinationActive') : tStreaming('destinationDisabled')}
-                </Badge>
-                {shouldShowProviderBadge(destination) ? (
-                  <Badge variant={getProviderBadgeVariant(destination.provider_status)}>
-                    {formatProviderStatus(destination.provider_status)}
-                  </Badge>
-                ) : null}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    handleEditChannel(destination)
-                  }}
-                >
-                  {tStreaming('destinationEdit')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    handleDeleteChannel(destination.id)
-                  }}
-                >
-                  {tStreaming('destinationDelete')}
-                </Button>
-              </div>
-              )
-            })
-          ) : (
-            <div className="empty-state" style={{ padding: '32px 12px' }}>
-              <div className="empty-icon" aria-hidden="true">{'📡'}</div>
-              <div className="empty-title">{tStreaming('channelsEmptyTitle')}</div>
-              <div className="empty-sub">{tStreaming('provider.channelsEmpty')}</div>
-              <Button size="sm" variant="outline" onClick={() => setShowChannelForm(true)} style={{ marginTop: 12 }}>
-                {tStreaming('channels.add')}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       <div className="tabs" role="tablist" aria-label={tStreaming('tablistLabel')}>
         <button
@@ -864,23 +708,10 @@ export default function StreamingPage() {
         </Card>
       ) : null}
 
-      <AddChannelModal
-        open={showChannelForm}
-        editingChannelId={editingChannelId}
-        channelForm={channelForm}
-        youtubeConnections={youtubeConnections}
-        onChange={setChannelForm}
-        onSubmit={handleSubmitChannel}
-        onCancel={resetChannelForm}
-        onStartYouTubeConnect={handleStartYouTubeConnect}
-        isSaving={createDestinationMutation.isPending || updateDestinationMutation.isPending}
-        t={tStreaming}
-      />
-
       <StreamBuilderModal
         open={showCreateStream}
         onClose={() => setShowCreateStream(false)}
-        onOpenChannelForm={() => setShowChannelForm(true)}
+        onOpenChannelForm={() => router.push('/dashboard/channels')}
         destinations={destinations}
         isLoadingDestinations={isLoadingDestinations}
         assets={assets}

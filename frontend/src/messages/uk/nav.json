@@ -29,6 +29,7 @@
       "dashboard": { "label": "Дашборд", "sub": "Огляд системи" },
       "streaming": { "label": "Трансляції", "sub": "Live та канали" },
       "library": { "label": "Файли", "sub": "Медіа й плейлисти" },
+      "channels": { "label": "Канали", "sub": "RTMPS і YouTube" },
       "schedule": { "label": "Розклад", "sub": "Запуски ефірів" },
       "plans": { "label": "Тарифи", "sub": "Ліміти та апгрейд" },
       "profile": { "label": "Налаштування", "sub": "Акаунт і канали" }
@@ -65,6 +66,7 @@
       "dashboardSub": "Головна панель",
       "librarySub": "Бібліотека та плейлисти",
       "streamingSub": "Канали, live та архів",
+      "channelsSub": "RTMPS і YouTube канали",
       "plansSub": "Плани та ліміти",
       "scheduleSub": "Заплановані запуски",
       "newStream": "Нова трансляція",

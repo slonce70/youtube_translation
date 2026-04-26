@@ -6,6 +6,7 @@ import {
   CreditCard,
   FolderOpen,
   Radio,
+  RadioTower,
   SatelliteDish,
   Settings,
 } from 'lucide-react'
@@ -35,18 +36,20 @@ interface SidebarProps {
 type NavItem = {
   href: string
   icon: ComponentType<{ className?: string }>
-  key: 'streaming' | 'library' | 'plans' | 'profile'
+  key: 'streaming' | 'library' | 'channels' | 'plans' | 'profile'
 }
 
-// IA restructure 2026-04-26: dropped "Дашборд" (was a low-fidelity mirror of
-// the streams page; now redirects there) and "Розклад" (was 154 LOC of
-// calendar-shaped redirector; scheduling will live as a per-stream tab on
-// the streams detail route). Sidebar is now 4 daily-use items + the always-
-// visible Go-Live CTA. Operator opens the app and lands on the streams
-// page, the actual operator surface, instead of a generic dashboard.
+// IA restructure 2026-04-26:
+//  • Track 4: dropped Дашборд (low-fidelity mirror of streams) and
+//    Розклад (calendar-shaped redirector); both now redirect to
+//    /dashboard/streaming.
+//  • Track 5a: extracted Channels (RTMPS destinations) out of the
+//    streaming page into its own route — setup-once concern that
+//    deserves a dedicated surface so first-run users see it clearly.
 const items: NavItem[] = [
   { href: '/dashboard/streaming', icon: SatelliteDish, key: 'streaming' },
   { href: '/dashboard/library', icon: FolderOpen, key: 'library' },
+  { href: '/dashboard/channels', icon: RadioTower, key: 'channels' },
   { href: '/dashboard/plans', icon: CreditCard, key: 'plans' },
   { href: '/dashboard/profile', icon: Settings, key: 'profile' },
 ] as const
