@@ -434,8 +434,15 @@ class QuotaEnforcer:
 
         # Tier gate first — cheaper than a DNS round-trip and keeps an
         # attacker's free-tier custom-host attempts off the resolver.
+        # Both `rtmp.youtube.com` and `rtmps.youtube.com` are official
+        # YouTube ingest hostnames (a.rtmps.youtube.com has been the
+        # recommended secure ingest since 2020). Accept both on the free
+        # tier; bug surfaced by Track B real-stream test 2026-04-26.
         if not limits.custom_rtmps_enabled:
-            if not hostname.endswith("rtmp.youtube.com"):
+            if not (
+                hostname.endswith("rtmp.youtube.com")
+                or hostname.endswith("rtmps.youtube.com")
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail={
