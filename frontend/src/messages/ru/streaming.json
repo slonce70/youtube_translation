@@ -89,6 +89,67 @@
       "errorWithMessage": "Ошибка: {message}"
     }
   },
+  "hero": {
+    "status": {
+      "live": "В ЭФИРЕ",
+      "degraded": "НЕСТАБИЛЬНО",
+      "down": "ОФФЛАЙН",
+      "idle": "ОСТАНОВЛЕН"
+    },
+    "actions": {
+      "restart": "Перезапуск",
+      "stop": "Стоп",
+      "wait": "…"
+    },
+    "metrics": {
+      "bitrate": "Битрейт",
+      "fps": "FPS",
+      "drops": "Дропы",
+      "reconnects": "Реконнекты",
+      "viewers": "Зрители",
+      "queue": "Очередь",
+      "bitrateUnit": "kb/s",
+      "fpsUnit": "fps",
+      "fpsTarget": "цель 30",
+      "framesUnit": "кадров",
+      "in24h": "за 24ч",
+      "online": "онлайн",
+      "queueUnit": "в очереди",
+      "loop": "loop ∞",
+      "samplesAwaiting": "ожидает данных",
+      "samplesCount": "{count} замеров",
+      "dropsCleanState": "всё чисто",
+      "dropsAlertState": "сеть/энкодер",
+      "reconnectAlert": "проверь RTMP",
+      "reconnectClean": "—",
+      "ytLive": "YouTube live",
+      "ytWaiting": "ожидает YouTube"
+    },
+    "ticker": {
+      "viewersSuffix": "зритель(ей)",
+      "key": "key"
+    },
+    "nowPlaying": {
+      "title": "Сейчас играет",
+      "waiting": "Ожидает материал",
+      "next": "Дальше",
+      "queueSummary": "{count} в очереди · {loop}",
+      "loopOn": "loop ∞",
+      "loopOff": "без петли"
+    },
+    "timeline": {
+      "title": "Лента событий",
+      "filterAll": "Все",
+      "loading": "Загрузка событий…",
+      "emptyFiltered": "Событий уровня {level} нет.",
+      "emptySteady": "0 инцидентов за {days} {days, plural, one {день} few {дня} other {дней}} — канал стабилен.",
+      "emptyFresh": "Событий ещё нет. Запусти эфир — лента наполнится.",
+      "levelError": "ERROR",
+      "levelWarn": "WARN",
+      "levelInfo": "INFO",
+      "levelDebug": "DEBUG"
+    }
+  },
   "page": {
     "loading": "Загрузка трансляций...",
     "fetching": "Загружаем список трансляций...",

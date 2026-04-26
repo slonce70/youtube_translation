@@ -368,6 +368,49 @@ export interface Stream {
   runtime_restart: StreamRuntimeRestartInfo
 }
 
+export interface StreamPlaybackAssetInfo {
+  asset_id?: string | null
+  filename?: string | null
+  duration_seconds?: number | null
+}
+
+export interface StreamPlaybackInfo {
+  target: string
+  loop_enabled: boolean
+  shuffle_enabled: boolean
+  current?: StreamPlaybackAssetInfo | null
+  next?: StreamPlaybackAssetInfo | null
+  queue_remaining_count: number
+  queue_remaining_seconds: number
+  playhead_index: number
+  slots_count: number
+}
+
+export interface StreamLiveMetricsSample {
+  ts: number
+  bitrate_kbps?: number | null
+  fps?: number | null
+  dropped_frames?: number | null
+  speed?: number | null
+}
+
+export interface StreamLiveMetrics {
+  bitrate_kbps?: number | null
+  fps?: number | null
+  dropped_frames_total: number
+  reconnect_count_24h: number
+  samples: StreamLiveMetricsSample[]
+}
+
+export interface StreamEventResponse {
+  id: string
+  stream_id: string
+  level: 'info' | 'warning' | 'error' | 'debug'
+  message: string
+  metadata?: Record<string, unknown> | null
+  created_at: string
+}
+
 export interface StreamStatusResponse {
   id: string
   status: StreamStatusValue
@@ -389,6 +432,9 @@ export interface StreamStatusResponse {
   provider_mismatch?: boolean
   runtime_restart: StreamRuntimeRestartInfo
   runtime_incident_summary?: StreamIncidentSummary
+  // Track 5b/D — modern operator panel surface (additive, optional).
+  playback?: StreamPlaybackInfo | null
+  live_metrics?: StreamLiveMetrics | null
 }
 
 export interface YoutubeConnection {

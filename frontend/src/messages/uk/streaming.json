@@ -89,6 +89,67 @@
       "errorWithMessage": "Помилка: {message}"
     }
   },
+  "hero": {
+    "status": {
+      "live": "У ЕФІРІ",
+      "degraded": "НЕСТАБІЛЬНО",
+      "down": "ОФЛАЙН",
+      "idle": "ЗУПИНЕНО"
+    },
+    "actions": {
+      "restart": "Перезапуск",
+      "stop": "Стоп",
+      "wait": "…"
+    },
+    "metrics": {
+      "bitrate": "Бітрейт",
+      "fps": "FPS",
+      "drops": "Дропи",
+      "reconnects": "Реконнекти",
+      "viewers": "Глядачі",
+      "queue": "Черга",
+      "bitrateUnit": "kb/s",
+      "fpsUnit": "fps",
+      "fpsTarget": "ціль 30",
+      "framesUnit": "кадрів",
+      "in24h": "за 24г",
+      "online": "онлайн",
+      "queueUnit": "в черзі",
+      "loop": "loop ∞",
+      "samplesAwaiting": "очікує дані",
+      "samplesCount": "{count} вибірок",
+      "dropsCleanState": "все чисто",
+      "dropsAlertState": "мережа/енкодер",
+      "reconnectAlert": "звір з RTMP",
+      "reconnectClean": "—",
+      "ytLive": "YouTube live",
+      "ytWaiting": "очікує YouTube"
+    },
+    "ticker": {
+      "viewersSuffix": "глядач(ів)",
+      "key": "key"
+    },
+    "nowPlaying": {
+      "title": "Зараз грає",
+      "waiting": "Очікує на матеріал",
+      "next": "Далі",
+      "queueSummary": "{count} у черзі · {loop}",
+      "loopOn": "loop ∞",
+      "loopOff": "без петлі"
+    },
+    "timeline": {
+      "title": "Стрічка подій",
+      "filterAll": "Усі",
+      "loading": "Завантаження подій…",
+      "emptyFiltered": "Подій рівня {level} немає.",
+      "emptySteady": "0 інцидентів за {days} {days, plural, one {день} few {дні} other {днів}} — канал працює стабільно.",
+      "emptyFresh": "Подій ще немає. Запусти ефір — стрічка наповниться.",
+      "levelError": "ERROR",
+      "levelWarn": "WARN",
+      "levelInfo": "INFO",
+      "levelDebug": "DEBUG"
+    }
+  },
   "page": {
     "loading": "Завантаження трансляцій...",
     "fetching": "Завантажуємо список трансляцій...",
