@@ -250,14 +250,26 @@ async def _apply_schema_changes(conn):
         text("DROP INDEX IF EXISTS idx_streams_runtime_lease_expires_at")
     )
     await conn.execute(text("DROP INDEX IF EXISTS idx_streams_runtime_next_restart_at"))
-    # Drop ONLY the four legacy columns migration 036 retired. Migration 037
-    # reintroduces ``runtime_restart_attempts`` + ``runtime_last_failure_at``
-    # for the persistent FFmpeg restart counter (Sprint 2 H5 — see
-    # ``backend/migrations/037_stream_runtime_restart_persistence.sql``).
-    # Until 2026-04-26 this block silently DROPped both newly-reintroduced
-    # columns on every backend boot, producing a perpetual
-    # ``UndefinedColumnError`` on ``streams.runtime_restart_attempts`` —
+    # Drop ONLY the four legacy columns migration 036 retired and that no
+    # later migration reintroduces. Audit (2026-04-26):
+    #   * ``runtime_owner_id``         — added 030, dropped 036, never re-added
+    #   * ``runtime_lease_expires_at`` — added 030, dropped 036, never re-added
+    #   * ``runtime_next_restart_at``  — added 031, dropped 036, never re-added
+    #   * ``runtime_last_restart_at``  — added 031, dropped 036, never re-added
+    # Migration 037 reintroduces ``runtime_restart_attempts`` +
+    # ``runtime_last_failure_at`` for the persistent FFmpeg restart counter
+    # (Sprint 2 H5 — see
+    # ``backend/migrations/037_stream_runtime_restart_persistence.sql``), so
+    # those two MUST stay out of this DROP list. Until 2026-04-26 this block
+    # silently DROPped both newly-reintroduced columns on every backend boot,
+    # producing a perpetual ``UndefinedColumnError`` on
+    # ``streams.runtime_restart_attempts`` —
     # see ``docs/runbooks/2026-04-25_prod_recovery_database_url.md``.
+    #
+    # Pinned by ``backend/tests/test_migrations.py::TestApplySchemaChanges
+    # RespectsMigration037`` — adding any other ``runtime_*`` column to this
+    # DROP list (without first checking the migration files for a later
+    # ADD) will fail CI immediately.
     await conn.execute(text("""
             ALTER TABLE streams
             DROP COLUMN IF EXISTS runtime_owner_id,
