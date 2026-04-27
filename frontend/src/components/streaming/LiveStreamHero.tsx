@@ -11,6 +11,7 @@ import type {
   StreamLiveMetrics,
   StreamStatusResponse,
 } from '@/lib/types'
+import { useStreamFavicon } from '@/lib/useStreamFavicon'
 import { useStreamTabTitle } from '@/lib/useStreamTabTitle'
 
 import { HeroTile } from './HeroTile'
@@ -32,6 +33,11 @@ interface LiveStreamHeroProps {
    *  stream is running. Polling pauses on hidden tabs by React-Query
    *  default behavior. */
   status?: StreamStatusResponse
+  /** When true, the stream-name label in the StatusStrip becomes a
+   *  link to ``/dashboard/streams/<id>``. Set on list pages where the
+   *  hero is rendered for navigation; suppressed on the detail page
+   *  itself to avoid linking to the page already showing. */
+  linkToDetail?: boolean
   isStopping?: boolean
   isRestarting?: boolean
   onRestart?: () => void
@@ -53,6 +59,7 @@ function deriveHealth(stream: Stream, status: StreamStatusResponse | undefined):
 export function LiveStreamHero({
   stream,
   status: statusOverride,
+  linkToDetail = false,
   isStopping,
   isRestarting,
   onRestart,
@@ -70,10 +77,13 @@ export function LiveStreamHero({
   const health = deriveHealth(stream, status)
   const tHero = useTranslations('streaming.hero')
 
-  // Tab title + favicon-equivalent: only mount the title hook when this
-  // stream is actually live so multi-stream pages don't fight over the
-  // title bar.
+  // Tab title + favicon: turn the pinned tab into the monitoring
+  // surface — green/amber/red dot + state prefix in the title.
+  // Multi-stream pages: each hero mounts its own hook; whichever
+  // re-renders last wins, but for the common single-stream case the
+  // signal is correct and stable.
   useStreamTabTitle(health, stream.name || 'YouTube Streaming')
+  useStreamFavicon(health)
 
   const { data: events, isLoading: eventsLoading } = useQuery<StreamEventResponse[]>({
     queryKey: ['stream-events', stream.id],
@@ -130,6 +140,7 @@ export function LiveStreamHero({
       <StatusStrip
         health={health}
         label={stream.name}
+        labelHref={linkToDetail ? `/dashboard/streams/${stream.id}` : null}
         liveDurationSeconds={status?.live_duration_seconds ?? status?.uptime_seconds ?? null}
         viewers={status?.provider_viewers ?? null}
         bitrateKbps={metrics?.bitrate_kbps ?? null}

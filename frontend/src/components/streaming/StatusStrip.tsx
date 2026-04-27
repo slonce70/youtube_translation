@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 
 // Track 5b/D / RULE 1, 2, 4, 16: at-a-glance health pill + ticking uptime
@@ -13,6 +14,9 @@ interface StatusStripProps {
   health: StreamHealth
   /** Stream display name; falls back to id. */
   label?: string | null
+  /** Optional href for the label — turns it into a deep-link to the
+   *  per-stream detail page. */
+  labelHref?: string | null
   /** Seconds the current run has been live; the strip counts up locally
    *  between refetches so the operator sees a smooth ticker. */
   liveDurationSeconds?: number | null
@@ -80,6 +84,7 @@ function useLocalTicker(initialSeconds: number | null | undefined) {
 export function StatusStrip({
   health,
   label,
+  labelHref,
   liveDurationSeconds,
   maskedKey,
   viewers,
@@ -155,20 +160,40 @@ export function StatusStrip({
         </span>
 
         {label ? (
-          <span
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 18,
-              color: 'var(--txt-2)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              maxWidth: 280,
-            }}
-            title={label}
-          >
-            {label}
-          </span>
+          labelHref ? (
+            <Link
+              href={labelHref}
+              title={label}
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 18,
+                color: 'var(--txt-2)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: 280,
+                textDecoration: 'none',
+                borderBottom: '1px dashed var(--border)',
+              }}
+            >
+              {label}
+            </Link>
+          ) : (
+            <span
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 18,
+                color: 'var(--txt-2)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: 280,
+              }}
+              title={label}
+            >
+              {label}
+            </span>
+          )
         ) : null}
       </div>
 
