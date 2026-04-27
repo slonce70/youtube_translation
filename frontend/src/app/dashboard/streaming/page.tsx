@@ -24,6 +24,7 @@ import { useLiveEditor } from './hooks/useLiveEditor'
 import { useQualityGate } from './hooks/useQualityGate'
 import { useStreamingPageData } from './hooks/useStreamingPageData'
 import { useStreamMutations } from './hooks/useStreamMutations'
+import { EmptyStateWizard } from '@/components/streaming/EmptyStateWizard'
 import { LiveStreamHero } from '@/components/streaming/LiveStreamHero'
 
 // Heavy modals are gated by boolean state and never appear on first paint.
@@ -337,6 +338,17 @@ export default function StreamingPage() {
     return <LoadingState text={tStreaming('loading')} />
   }
 
+  // Track 5b/D / RULE 6, 7: detect first-run state. When the operator
+  // has neither a channel nor an asset, show the 3-step wizard instead
+  // of the empty stat-strip + tabs cascade. Once they finish setup, the
+  // wizard goes away on its own and the regular page returns.
+  const isFirstRun =
+    !isLoadingDestinations &&
+    !isLoadingAssets &&
+    (destinations?.length ?? 0) === 0 &&
+    (assets?.length ?? 0) === 0 &&
+    (streams?.length ?? 0) === 0
+
   return (
     <div className="page-shell">
       <div className="page-header">
@@ -351,6 +363,13 @@ export default function StreamingPage() {
           </Button>
         </div>
       </div>
+
+      {isFirstRun ? (
+        <EmptyStateWizard
+          hasChannel={(destinations?.length ?? 0) > 0}
+          hasAsset={(assets?.length ?? 0) > 0}
+        />
+      ) : null}
 
       <div className="stat-strip">
         <div className="stat-strip-card">
@@ -433,6 +452,7 @@ export default function StreamingPage() {
             <LiveStreamHero
               key={`hero-${stream.id}`}
               stream={stream}
+              linkToDetail
               isStopping={pendingStopStreamId === stream.id}
               isRestarting={pendingStartStreamId === stream.id}
               onStop={() => handleStopStream(stream.id)}

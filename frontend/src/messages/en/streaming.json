@@ -89,6 +89,58 @@
       "errorWithMessage": "Error: {message}"
     }
   },
+  "detail": {
+    "back": "Back to list",
+    "idPrefix": "id:",
+    "tablistLabel": "Stream sections",
+    "tabs": {
+      "overview": "Overview",
+      "logs": "Logs",
+      "events": "Events"
+    },
+    "logs": {
+      "title": "FFmpeg logs",
+      "loading": "Loading logs…",
+      "empty": "No logs yet.",
+      "refresh": "Refresh",
+      "modes": {
+        "important": "Important only",
+        "raw": "All"
+      }
+    },
+    "events": {
+      "title": "All events",
+      "refresh": "Refresh"
+    },
+    "notFound": {
+      "title": "Stream not found",
+      "description": "It may have been deleted or the ID is wrong."
+    }
+  },
+  "wizard": {
+    "eyebrow": "First run",
+    "title": "Three steps to a 24/7 stream",
+    "description": "Your studio is set up. Add a channel, upload a video, then hit Go Live. Every step saves — come back any time.",
+    "done": "Done",
+    "locked": "Waiting",
+    "steps": {
+      "channel": {
+        "title": "Connect an RTMPS channel",
+        "description": "Paste the URL and key from YouTube Studio Live, or connect via OAuth.",
+        "cta": "Add channel"
+      },
+      "asset": {
+        "title": "Upload a video or audio file",
+        "description": "Drop a file into the library — H.264 + AAC stream in passthrough mode.",
+        "cta": "Upload file"
+      },
+      "stream": {
+        "title": "Start the stream",
+        "description": "Pick a channel and a file, give it a name — we run the loop without OBS or a PC.",
+        "cta": "Create stream"
+      }
+    }
+  },
   "hero": {
     "status": {
       "live": "ON AIR",
