@@ -84,7 +84,26 @@ class StreamWebSocketManager:
     def snapshot_for_user(
         self, user_id: str, active_streams: Dict[str, Dict[str, Any]]
     ) -> Dict[str, Dict[str, Any]]:
-        """Build a sanitized active-stream snapshot for a single user."""
+        """Build a sanitized active-stream snapshot for a single user.
+
+        Track 5b/G (2026-04-26): each per-stream entry now also carries
+        the latest ``live_metrics`` and ``playback`` snapshots so the
+        operator panel can switch from 5-second HTTP polling to a 1-Hz
+        WebSocket feed for sparkline updates. Both keys are best-effort —
+        missing data resolves to None and the UI falls back to the
+        polled /metrics endpoint.
+        """
+        # Local imports keep this module free of streaming-layer deps at
+        # cold-start time (the manager is created during app boot).
+        try:
+            from app.streaming.ffmpeg_metrics import ffmpeg_metrics
+        except Exception:  # pragma: no cover - defensive
+            ffmpeg_metrics = None  # type: ignore[assignment]
+        try:
+            from app.streaming.hot_swap import hot_swap_manager
+        except Exception:  # pragma: no cover - defensive
+            hot_swap_manager = None  # type: ignore[assignment]
+
         filtered: Dict[str, Dict[str, Any]] = {}
         for stream_id, info in active_streams.items():
             if not info or not isinstance(info, dict):
@@ -92,7 +111,18 @@ class StreamWebSocketManager:
             metadata = info.get("metadata") or {}
             if str(metadata.get("user_id")) != str(user_id):
                 continue
-            filtered[stream_id] = self._sanitize_stream_info(info)
+            entry = self._sanitize_stream_info(info)
+            if ffmpeg_metrics is not None:
+                try:
+                    entry["live_metrics"] = ffmpeg_metrics.snapshot(stream_id, samples=60)
+                except Exception:  # pragma: no cover
+                    entry["live_metrics"] = None
+            if hot_swap_manager is not None:
+                try:
+                    entry["playback"] = hot_swap_manager.get_now_playing(stream_id)
+                except Exception:  # pragma: no cover
+                    entry["playback"] = None
+            filtered[stream_id] = entry
         return filtered
 
 

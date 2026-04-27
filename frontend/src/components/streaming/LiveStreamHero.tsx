@@ -12,6 +12,7 @@ import type {
   StreamStatusResponse,
 } from '@/lib/types'
 import { useStreamFavicon } from '@/lib/useStreamFavicon'
+import { useStreamMetricsSocket } from '@/lib/useStreamMetricsSocket'
 import { useStreamTabTitle } from '@/lib/useStreamTabTitle'
 
 import { HeroTile } from './HeroTile'
@@ -93,19 +94,27 @@ export function LiveStreamHero({
     refetchOnWindowFocus: false,
   })
 
-  // Live FFmpeg-stderr metrics: only poll while the stream is actually
-  // running. The status payload already includes a snapshot, but a
-  // dedicated 5-second cadence drives smoother sparkline updates.
+  // Live FFmpeg-stderr metrics. Three sources, in priority order:
+  //   1. WebSocket snapshot (1 Hz, push) — preferred when connected.
+  //   2. /api/streams/{id}/metrics (5s poll) — fallback when WS is down.
+  //   3. status.live_metrics (5s poll, bundled with /status) — last
+  //      resort for the very first paint.
+  const { snapshots: socketSnapshots, connected: socketConnected } = useStreamMetricsSocket({
+    enabled: isRunning,
+  })
+  const socketMetrics = socketSnapshots[stream.id]?.live_metrics ?? null
+  const socketPlayback = socketSnapshots[stream.id]?.playback ?? null
+
   const { data: metricsFromEndpoint } = useQuery<StreamLiveMetrics>({
     queryKey: ['stream-metrics', stream.id],
     queryFn: () => api.streams.metrics(stream.id, { samples: 60 }),
-    enabled: Boolean(stream.id) && isRunning,
+    enabled: Boolean(stream.id) && isRunning && !socketConnected,
     refetchInterval: 5_000,
     refetchOnWindowFocus: false,
   })
 
-  const metrics = metricsFromEndpoint ?? status?.live_metrics ?? null
-  const playback = status?.playback ?? null
+  const metrics = socketMetrics ?? metricsFromEndpoint ?? status?.live_metrics ?? null
+  const playback = socketPlayback ?? status?.playback ?? null
 
   const bitrateSeries = useMemo(
     () => (metrics?.samples ?? []).map((sample) => sample.bitrate_kbps ?? null),
