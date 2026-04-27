@@ -44,7 +44,11 @@ from app.streaming.ffmpeg_manager import (
 )  # noqa: F401 - compatibility for tests
 
 router = APIRouter()
-WS_STATUS_POLL_SECONDS = 3
+# Track 5b/G: dropped 3s → 1s so live_metrics sparklines on the operator
+# panel update at the same cadence as FFmpeg's stderr progress lines
+# (also 1 Hz). Bandwidth cost per connection: ~1-2 KB/s of JSON, fine
+# for the single-operator dev/MVP target.
+WS_STATUS_POLL_SECONDS = 1
 logger = get_logger(__name__)
 
 

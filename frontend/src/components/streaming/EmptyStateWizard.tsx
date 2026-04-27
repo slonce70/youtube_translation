@@ -42,7 +42,9 @@ function computeSteps(hasChannel: boolean, hasAsset: boolean): StepDescriptor[] 
 const HREF: Record<StepDescriptor['key'], string> = {
   channel: '/dashboard/channels',
   asset: '/dashboard/library',
-  stream: '/dashboard/streaming?new=1',
+  // Track 5b/F: deep-linkable create-stream route (replaces the
+  // ?new=1 modal-on-page query path).
+  stream: '/dashboard/streams/new',
 }
 
 export function EmptyStateWizard({ hasChannel, hasAsset }: EmptyStateWizardProps) {
