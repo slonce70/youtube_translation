@@ -26,7 +26,7 @@ export function getProviderHealthIssueCount(provider?: ProviderHealthAware | nul
 
 export function hasProviderHealthAttention(provider?: ProviderHealthAware | null): boolean {
   const healthStatus = provider?.provider_health_status ?? null
-  return healthStatus === 'ok' || healthStatus === 'bad' || getProviderHealthIssueCount(provider) > 0
+  return healthStatus === 'bad' || healthStatus === 'noData' || getProviderHealthIssueCount(provider) > 0
 }
 
 export function countLiveProviders(streams: Stream[]): number {

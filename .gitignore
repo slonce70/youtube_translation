@@ -109,6 +109,7 @@ FIXES_*.md
 /output/
 # Claude Preview / Claude Code local dev-server configs
 .claude/launch.json
+.claude/settings.local.json
 
 # Historical prototypes (keep on disk for reference, do not track)
 prototype-v2.html
