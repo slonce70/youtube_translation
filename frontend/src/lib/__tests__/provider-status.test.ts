@@ -59,9 +59,11 @@ describe('provider-status helpers', () => {
   })
 
   it('flags provider health degradation and counts issues', () => {
-    expect(hasProviderHealthAttention({ provider_health_status: 'ok' })).toBe(true)
-    expect(hasProviderHealthAttention({ provider_health_status: 'bad' })).toBe(true)
     expect(hasProviderHealthAttention({ provider_health_status: 'good' })).toBe(false)
+    expect(hasProviderHealthAttention({ provider_health_status: 'ok' })).toBe(false)
+    expect(hasProviderHealthAttention({ provider_health_status: 'noData' })).toBe(true)
+    expect(hasProviderHealthAttention({ provider_health_status: 'bad' })).toBe(true)
+    expect(hasProviderHealthAttention({ provider_health_status: 'ok', provider_health_issues: ['gopSizeOver'] })).toBe(true)
     expect(getProviderHealthIssueCount({ provider_health_issues: ['gopSizeOver', 'noAudioStream'] })).toBe(2)
   })
 })
