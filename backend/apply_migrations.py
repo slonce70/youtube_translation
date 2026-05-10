@@ -59,6 +59,7 @@ MIGRATIONS = [
     "migrations/035_stream_runtime_refusal_alert_type.sql",
     "migrations/036_drop_legacy_stream_runtime_state.sql",
     "migrations/037_stream_runtime_restart_persistence.sql",
+    "migrations/038_youtube_rtmps_default.sql",
 ]
 
 
@@ -536,6 +537,7 @@ async def get_migration_status(conn: AsyncConnection) -> dict:
         "035",
         "036",
         "037",
+        "038",
     ):
         status[migration_num] = await verify_migration(conn, migration_num)
 
@@ -1434,6 +1436,17 @@ async def verify_migration(conn: AsyncConnection, migration_num: str) -> bool:
         failure_at_ok = bool((await conn.execute(query)).scalar())
 
         return attempts_ok and failure_at_ok
+
+    elif migration_num == "038":
+        query = text("""
+            SELECT COUNT(*) = 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'destinations'
+              AND column_name = 'rtmps_url'
+              AND column_default LIKE '%rtmps://a.rtmps.youtube.com/live2%'
+        """)
+        return bool((await conn.execute(query)).scalar())
 
     return False
 
