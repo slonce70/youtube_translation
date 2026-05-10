@@ -5,7 +5,11 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import type { DestinationFormState, TranslationFn } from '@/app/dashboard/streaming/types'
+import {
+  YOUTUBE_DEFAULT_RTMPS_URL,
+  type DestinationFormState,
+  type TranslationFn,
+} from '@/app/dashboard/streaming/types'
 import type { YoutubeConnection } from '@/lib/types'
 
 interface AddChannelModalProps {
@@ -62,7 +66,7 @@ export function AddChannelModal({
             required
             value={channelForm.rtmps_url}
             onChange={(event) => onChange({ ...channelForm, rtmps_url: event.target.value })}
-            placeholder="rtmps://a.rtmps.youtube.com/live2"
+            placeholder={YOUTUBE_DEFAULT_RTMPS_URL}
           />
         </div>
 
@@ -130,7 +134,7 @@ export function AddChannelModal({
                 <span style={{ color: '#ff0000' }} aria-hidden="true">{'▶'}</span>
                 <span>{t('provider.youtubeCta')}</span>
               </span>
-              <Badge variant="live" style={{ fontSize: 10, padding: '2px 6px' }}>{t('provider.youtubeBadge')}</Badge>
+              <Badge variant="live" style={{ fontSize: 12, padding: '2px 6px' }}>{t('provider.youtubeBadge')}</Badge>
             </Button>
             <Button
               type="button"
@@ -144,7 +148,7 @@ export function AddChannelModal({
                 <span style={{ color: '#9146ff' }} aria-hidden="true">{'🎮'}</span>
                 <span>{t('provider.twitchCta')}</span>
               </span>
-              <Badge variant="warn" style={{ fontSize: 10, padding: '2px 6px' }}>{t('provider.twitchBadge')}</Badge>
+              <Badge variant="warn" style={{ fontSize: 12, padding: '2px 6px' }}>{t('provider.twitchBadge')}</Badge>
             </Button>
           </div>
           <div style={{ color: 'var(--txt-3)', fontSize: 12, marginTop: 8 }}>

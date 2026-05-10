@@ -241,7 +241,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"YouTube Primary\",\n  \"rtmps_url\": \"rtmps://a.rtmp.youtube.com/live2\",\n  \"stream_key\": \"abcd-efgh\",\n  \"enabled\": true\n}"
+              "raw": "{\n  \"name\": \"YouTube Primary\",\n  \"rtmps_url\": \"rtmps://a.rtmps.youtube.com/live2\",\n  \"stream_key\": \"abcd-efgh\",\n  \"enabled\": true\n}"
             },
             "url": "{{base_url}}/api/destinations/"
           }
@@ -407,4 +407,3 @@
     }
   ]
 }
-

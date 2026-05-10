@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, time, timezone
 from uuid import UUID
 
+from app.core.defaults import YOUTUBE_DEFAULT_RTMPS_URL
 from app.core.stream_schedule import (
     ensure_utc,
     normalize_schedule_repeat,
@@ -241,7 +242,7 @@ class PlaylistResponse(PlaylistBase):
 # Destination schemas
 class DestinationBase(BaseModel):
     name: str
-    rtmps_url: str = "rtmps://a.rtmp.youtube.com/live2"
+    rtmps_url: str = YOUTUBE_DEFAULT_RTMPS_URL
     enabled: bool = True
     provider_connection_id: Optional[UUID] = None
 

@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS destinations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES user_profiles(user_id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    rtmps_url TEXT NOT NULL DEFAULT 'rtmps://a.rtmp.youtube.com/live2',
+    rtmps_url TEXT NOT NULL DEFAULT 'rtmps://a.rtmps.youtube.com/live2',
     stream_key_encrypted TEXT NOT NULL,
     enabled BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),

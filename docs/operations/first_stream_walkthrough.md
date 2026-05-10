@@ -94,9 +94,11 @@ panel makes the operator walk through is high. Each line is a candidate for
 the modern-panel rebuild.
 
 1. **Custom RTMPS URL placeholder mismatched the actually-recommended host.**
-   Form pre-fills `rtmps://a.rtmp.youtube.com/live2` (no `s` after `rtmp`)
+   Fixed in the default form/schema values after this walkthrough: new channels
+   now pre-fill `rtmps://a.rtmps.youtube.com/live2`. Previously the form used
+   `rtmps://a.rtmp.youtube.com/live2` (no `s` after `rtmp`)
    while YouTube's own docs say to use `rtmps://a.rtmps.youtube.com/live2/`.
-   Both work post-fix, but the placeholder should match docs.
+   Both hosts continue to validate so existing saved channels are not broken.
 
 2. **Stream creation accepts `asset_ids` but the UI/forms still talk in
    "stream_assets" elsewhere.** Different entry points use different shapes
