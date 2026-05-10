@@ -24,14 +24,11 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Deque, Dict, List, Optional
-
+from typing import Deque, Dict, Optional
 
 # Match each `key=value` token. Values may include digits, decimal points,
 # the letter `N` (FFmpeg's "N/A"), or units (`kbits/s`, `kB`, `x`).
-_TOKEN_PATTERN = re.compile(
-    r"(?P<key>[A-Za-z_]+)\s*=\s*(?P<value>\S+)"
-)
+_TOKEN_PATTERN = re.compile(r"(?P<key>[A-Za-z_]+)\s*=\s*(?P<value>\S+)")
 
 # Tokens we care about. Anything else in the line is ignored.
 _FIELDS = {"bitrate", "fps", "drop", "speed", "frame"}
@@ -157,7 +154,7 @@ class FFmpegMetricsRegistry:
             state = self._states.get(stream_id)
             if state is None:
                 return None
-            tail = list(state.samples)[-max(samples, 1):]
+            tail = list(state.samples)[-max(samples, 1) :]
             latest = tail[-1] if tail else None
             return {
                 "bitrate_kbps": latest.bitrate_kbps if latest else None,

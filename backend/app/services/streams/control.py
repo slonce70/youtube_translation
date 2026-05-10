@@ -860,9 +860,7 @@ class StreamControlService:
             message=message,
             metadata=event_metadata,
             log_path=stream.log_path,
-            activity_payload=build_stop_activity_payload(
-                stream, metadata=metadata
-            ),
+            activity_payload=build_stop_activity_payload(stream, metadata=metadata),
         )
 
     async def _persist_stop_failure_attribution(
