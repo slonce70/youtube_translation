@@ -32,7 +32,6 @@ from urllib.parse import urlsplit, urlunsplit
 
 from app.streaming import runtime_signals
 
-
 # Keyframe interval ceilings used by ``_select_keyframe_settings``. Pinned
 # to RTMP-friendly bounds: at <0.5 s ffmpeg's GOP encoder thrashes; at >4 s
 # YouTube's HLS packager rejects the upload.

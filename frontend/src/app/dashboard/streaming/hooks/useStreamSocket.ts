@@ -42,17 +42,33 @@ export function useStreamSocket(userId?: string) {
   const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
-    if (!userId) return
-    if (process.env.NODE_ENV === 'test') return
-
-    reconnectEnabledRef.current = true
-
     const clearReconnectTimeout = () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
         reconnectTimeoutRef.current = null
       }
     }
+
+    const cleanupConnection = () => {
+      reconnectEnabledRef.current = false
+      setIsConnected(false)
+      clearReconnectTimeout()
+      if (socketRef.current) {
+        socketRef.current.close()
+        socketRef.current = null
+      }
+    }
+
+    if (!userId) {
+      cleanupConnection()
+      return cleanupConnection
+    }
+    if (process.env.NODE_ENV === 'test') {
+      cleanupConnection()
+      return cleanupConnection
+    }
+
+    reconnectEnabledRef.current = true
 
     const scheduleReconnect = () => {
       if (!reconnectEnabledRef.current) {
@@ -147,15 +163,7 @@ export function useStreamSocket(userId?: string) {
 
     void connect()
 
-    return () => {
-      reconnectEnabledRef.current = false
-      setIsConnected(false)
-      clearReconnectTimeout()
-      if (socketRef.current) {
-        socketRef.current.close()
-        socketRef.current = null
-      }
-    }
+    return cleanupConnection
   }, [userId, queryClient])
 
   return isConnected

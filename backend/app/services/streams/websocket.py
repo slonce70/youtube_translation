@@ -114,7 +114,9 @@ class StreamWebSocketManager:
             entry = self._sanitize_stream_info(info)
             if ffmpeg_metrics is not None:
                 try:
-                    entry["live_metrics"] = ffmpeg_metrics.snapshot(stream_id, samples=60)
+                    entry["live_metrics"] = ffmpeg_metrics.snapshot(
+                        stream_id, samples=60
+                    )
                 except Exception:  # pragma: no cover
                     entry["live_metrics"] = None
             if hot_swap_manager is not None:
