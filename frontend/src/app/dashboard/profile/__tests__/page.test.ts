@@ -16,6 +16,7 @@ const toastSuccessMock = jest.fn()
 const youtubeListConnectionsMock = jest.fn()
 const youtubeDeleteConnectionMock = jest.fn()
 const youtubeOauthStartMock = jest.fn()
+const youtubeOauthConfigMock = jest.fn()
 
 jest.mock('@/lib/supabase', () => {
   return {
@@ -42,6 +43,7 @@ jest.mock('@/lib/api', () => ({
     youtube: {
       listConnections: (...args: unknown[]) => youtubeListConnectionsMock(...args),
       deleteConnection: (...args: unknown[]) => youtubeDeleteConnectionMock(...args),
+      oauthConfig: (...args: unknown[]) => youtubeOauthConfigMock(...args),
       oauthStart: (...args: unknown[]) => youtubeOauthStartMock(...args),
     },
   },
@@ -95,6 +97,7 @@ describe('ProfilePage password change', () => {
     signInWithPasswordMock.mockResolvedValue({ error: null })
     youtubeListConnectionsMock.mockResolvedValue([])
     youtubeDeleteConnectionMock.mockResolvedValue(undefined)
+    youtubeOauthConfigMock.mockResolvedValue({ configured: true })
     youtubeOauthStartMock.mockResolvedValue({ auth_url: 'https://accounts.google.com/' })
     process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH = '0'
     window.localStorage.clear()
@@ -176,5 +179,15 @@ describe('ProfilePage password change', () => {
       expect(youtubeDeleteConnectionMock).toHaveBeenCalledWith('conn-1')
       expect(toastSuccessMock).toHaveBeenCalledWith('YouTube connection removed')
     })
+  })
+
+  it('disables YouTube OAuth connect when deployment config is missing', async () => {
+    youtubeOauthConfigMock.mockResolvedValue({ configured: false })
+
+    renderProfilePage()
+
+    const connectButton = await screen.findByRole('button', { name: '▶ Connect YouTube' })
+    await waitFor(() => expect(connectButton).toBeDisabled())
+    expect(screen.getByText(/YouTube OAuth is not configured on this deployment/)).toBeInTheDocument()
   })
 })

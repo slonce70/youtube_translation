@@ -756,6 +756,7 @@
       "twitchBadge": "Out of scope",
       "twitchDisabledTitle": "Out of scope for this release",
       "scopeHint": "Only YouTube OAuth is active in this MVP. Twitch is intentionally excluded from this release.",
+      "oauthUnavailable": "YouTube OAuth is not configured on this deployment. Add an RTMPS URL and stream key manually, or configure Google OAuth secrets first.",
       "oauth": {
         "startFailed": "Failed to start YouTube OAuth"
       }

@@ -910,6 +910,10 @@ class YoutubeOAuthStartResponse(BaseModel):
     auth_url: str
 
 
+class YoutubeOAuthConfigResponse(BaseModel):
+    configured: bool
+
+
 class StreamAssetLink(BaseModel):
     asset_id: UUID
     position: int

@@ -61,6 +61,13 @@ export default function ProfilePage() {
     staleTime: 30_000,
   })
 
+  const { data: youtubeOAuthConfig } = useQuery({
+    queryKey: ['youtube-oauth-config', user?.id],
+    queryFn: () => api.youtube.oauthConfig(),
+    enabled: !!user,
+    staleTime: 60_000,
+  })
+
   const disconnectYoutubeMutation = useMutation({
     mutationFn: (connectionId: string) => api.youtube.deleteConnection(connectionId),
     onSuccess: () => {
@@ -291,8 +298,19 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent>
             <div className="page-actions" style={{ marginLeft: 0, marginBottom: 16 }}>
-              <Button onClick={handleStartYouTubeConnect}>{t('provider.connectCta')}</Button>
+              <Button
+                onClick={handleStartYouTubeConnect}
+                disabled={youtubeOAuthConfig?.configured === false}
+                title={youtubeOAuthConfig?.configured === false ? t('provider.oauthUnavailable') : undefined}
+              >
+                {t('provider.connectCta')}
+              </Button>
             </div>
+            {youtubeOAuthConfig?.configured === false ? (
+              <div className="card-description" style={{ marginBottom: 16 }}>
+                {t('provider.oauthUnavailable')}
+              </div>
+            ) : null}
             {(youtubeConnections?.length ?? 0) > 0 ? (
               <div className="summary-list">
                 {youtubeConnections?.map((connection) => (

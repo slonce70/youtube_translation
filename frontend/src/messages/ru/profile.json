@@ -63,6 +63,7 @@
     "healthIssues": "{count} проблем ingest",
     "healthDegraded": "Проблемы ingest",
     "startFailed": "Не удалось начать YouTube OAuth",
+    "oauthUnavailable": "YouTube OAuth не настроен в этом деплое. Ручная RTMPS-трансляция работает с вашим URL и ключом трансляции.",
     "status": {
       "live": "YouTube live",
       "offline": "YouTube offline",

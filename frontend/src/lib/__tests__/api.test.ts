@@ -114,4 +114,19 @@ describe('api client', () => {
       auth_url: 'https://accounts.google.com/o/oauth2/v2/auth?state=test',
     })
   })
+
+  it('reads youtube oauth configuration status', async () => {
+    getAccessToken.mockResolvedValue('token')
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ configured: false }),
+    })
+
+    const result = await api.youtube.oauthConfig()
+
+    const url = new URL((global.fetch as jest.Mock).mock.calls[0][0], 'http://localhost')
+    expect(url.pathname).toContain('/api/youtube/oauth/config')
+    expect(result).toEqual({ configured: false })
+  })
 })

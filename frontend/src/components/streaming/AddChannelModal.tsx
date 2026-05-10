@@ -21,6 +21,7 @@ interface AddChannelModalProps {
   onSubmit: (event: FormEvent) => void
   onCancel: () => void
   onStartYouTubeConnect: () => void
+  youtubeOAuthConfigured?: boolean
   isSaving: boolean
   t: TranslationFn
 }
@@ -34,6 +35,7 @@ export function AddChannelModal({
   onSubmit,
   onCancel,
   onStartYouTubeConnect,
+  youtubeOAuthConfigured = true,
   isSaving,
   t,
 }: AddChannelModalProps) {
@@ -129,6 +131,8 @@ export function AddChannelModal({
               size="sm"
               className="flex-1 min-w-[180px] justify-between"
               onClick={onStartYouTubeConnect}
+              disabled={!youtubeOAuthConfigured}
+              title={!youtubeOAuthConfigured ? t('provider.oauthUnavailable') : undefined}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: '#ff0000' }} aria-hidden="true">{'▶'}</span>
@@ -152,7 +156,7 @@ export function AddChannelModal({
             </Button>
           </div>
           <div style={{ color: 'var(--txt-3)', fontSize: 12, marginTop: 8 }}>
-            {t('provider.scopeHint')}
+            {youtubeOAuthConfigured ? t('provider.scopeHint') : t('provider.oauthUnavailable')}
           </div>
         </div>
 

@@ -8,7 +8,12 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_user
-from app.schemas.api import YoutubeConnectionResponse, YoutubeOAuthStartResponse
+from app.core.config import settings
+from app.schemas.api import (
+    YoutubeConnectionResponse,
+    YoutubeOAuthConfigResponse,
+    YoutubeOAuthStartResponse,
+)
 from app.services.youtube.client import YoutubeOAuthConfigError
 from app.services.youtube.oauth_state import (
     YoutubeOAuthStateError,
@@ -19,6 +24,17 @@ from app.services.youtube.service import YoutubeConnectionService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.get("/oauth/config", response_model=YoutubeOAuthConfigResponse)
+async def youtube_oauth_config(user_deps: tuple = Depends(require_user)):
+    return YoutubeOAuthConfigResponse(
+        configured=bool(
+            settings.google_oauth_client_id
+            and settings.google_oauth_client_secret
+            and settings.google_oauth_redirect_uri
+        )
+    )
 
 
 @router.get("/oauth/start", response_model=YoutubeOAuthStartResponse)

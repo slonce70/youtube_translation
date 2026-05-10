@@ -756,6 +756,7 @@
       "twitchBadge": "Вне релиза",
       "twitchDisabledTitle": "Вне рамок этого релиза",
       "scopeHint": "В этом MVP активен только YouTube OAuth. Twitch намеренно исключён из релиза.",
+      "oauthUnavailable": "YouTube OAuth не настроен в этом деплое. Добавьте RTMPS URL и ключ трансляции вручную или сначала настройте Google OAuth secrets.",
       "oauth": {
         "startFailed": "Не удалось начать YouTube OAuth"
       }
