@@ -17,10 +17,13 @@ jest.mock('@/lib/api', () => ({
     },
     youtube: {
       listConnections: jest.fn().mockResolvedValue([]),
+      oauthConfig: jest.fn().mockResolvedValue({ configured: true }),
       oauthStart: jest.fn(),
     },
   },
 }))
+
+const { api } = jest.requireMock('@/lib/api')
 
 const renderChannelsPage = () => {
   const queryClient = new QueryClient({
@@ -65,6 +68,19 @@ describe('ChannelsPage', () => {
 
     expect(
       await screen.findByDisplayValue('rtmps://a.rtmps.youtube.com/live2'),
+    ).toBeInTheDocument()
+  })
+
+  it('disables YouTube OAuth when deployment config is missing', async () => {
+    api.youtube.oauthConfig.mockResolvedValueOnce({ configured: false })
+
+    renderChannelsPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add channel' }))
+
+    expect(await screen.findByRole('button', { name: /Connect YouTube OAuth/ })).toBeDisabled()
+    expect(
+      screen.getByText(/YouTube OAuth is not configured on this deployment/),
     ).toBeInTheDocument()
   })
 })

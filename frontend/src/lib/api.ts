@@ -43,6 +43,7 @@ import type {
   UploadTokenResponse,
   UploadIngest,
   YoutubeConnection,
+  YoutubeOAuthConfigResponse,
   YoutubeOAuthStartResponse,
 } from './types'
 
@@ -332,6 +333,7 @@ export const api = {
   },
 
   youtube: {
+    oauthConfig: () => apiRequest<YoutubeOAuthConfigResponse>('/youtube/oauth/config'),
     oauthStart: (params: { redirect_origin: string; redirect_path?: string }) =>
       apiRequest<YoutubeOAuthStartResponse>('/youtube/oauth/start', { params }),
     listConnections: () => apiRequest<YoutubeConnection[]>('/youtube/connections'),

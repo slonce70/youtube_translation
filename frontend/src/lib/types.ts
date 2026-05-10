@@ -459,6 +459,10 @@ export interface YoutubeOAuthStartResponse {
   auth_url: string
 }
 
+export interface YoutubeOAuthConfigResponse {
+  configured: boolean
+}
+
 export interface StreamLogsResponse {
   stream_id: string
   logs: string[]

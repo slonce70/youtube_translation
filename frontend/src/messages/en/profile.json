@@ -63,6 +63,7 @@
     "healthIssues": "{count} ingest issues",
     "healthDegraded": "Ingest degraded",
     "startFailed": "Failed to start YouTube OAuth",
+    "oauthUnavailable": "YouTube OAuth is not configured on this deployment. Manual RTMPS streaming still works with your URL and stream key.",
     "status": {
       "live": "YouTube live",
       "offline": "YouTube offline",

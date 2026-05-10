@@ -77,6 +77,13 @@ export default function ChannelsPage() {
     staleTime: 30_000,
   })
 
+  const { data: youtubeOAuthConfig } = useQuery({
+    queryKey: ['youtube-oauth-config', user?.id],
+    queryFn: () => api.youtube.oauthConfig(),
+    enabled: !!user,
+    staleTime: 60_000,
+  })
+
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null)
   const [showChannelForm, setShowChannelForm] = useState(false)
   const [channelForm, setChannelForm] = useState<DestinationFormState>(EMPTY_FORM)
@@ -280,6 +287,7 @@ export default function ChannelsPage() {
           onSubmit={handleSubmit}
           onCancel={resetForm}
           onStartYouTubeConnect={handleStartYouTubeConnect}
+          youtubeOAuthConfigured={youtubeOAuthConfig?.configured ?? true}
           isSaving={createMutation.isPending || updateMutation.isPending}
           t={tStreaming}
         />
