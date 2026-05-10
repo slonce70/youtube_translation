@@ -330,12 +330,19 @@ ensure_environment_alignment() {
       ;;
   esac
 
-  local effective_environment="${ENVIRONMENT:-}"
-  if [[ -n "$effective_environment" ]]; then
-    effective_environment="$(printf '%s' "$effective_environment" | tr '[:upper:]' '[:lower:]')"
-  else
-    effective_environment="$deploy_environment"
+  local current_environment="${ENVIRONMENT:-}"
+  if [[ -z "$current_environment" && -f "$backend_env" ]]; then
+    current_environment="$(sed -n 's/^[[:space:]]*ENVIRONMENT=//p' "$backend_env" | head -n 1)"
+  fi
+  if [[ -n "$current_environment" ]]; then
+    current_environment="$(printf '%s' "$current_environment" | tr '[:upper:]' '[:lower:]')"
+  fi
+
+  local effective_environment="$deploy_environment"
+  if [[ -z "$current_environment" ]]; then
     echo "ENVIRONMENT missing in backend/.env; aligning deploy environment to ${effective_environment}."
+  elif [[ "$current_environment" != "$effective_environment" ]]; then
+    echo "overriding stale ENVIRONMENT=${current_environment} with deploy environment ${effective_environment}."
   fi
 
   case "$effective_environment" in
@@ -347,11 +354,20 @@ ensure_environment_alignment() {
       ;;
   esac
 
-  if ! grep -Eq '^[[:space:]]*ENVIRONMENT=' "$backend_env"; then
-    upsert_env_kv "$backend_env" "ENVIRONMENT" "$effective_environment"
-  fi
-  if [[ -f "$root_env" ]] && ! grep -Eq '^[[:space:]]*ENVIRONMENT=' "$root_env"; then
+  upsert_env_kv "$backend_env" "ENVIRONMENT" "$effective_environment"
+  if [[ -f "$root_env" ]]; then
     upsert_env_kv "$root_env" "ENVIRONMENT" "$effective_environment"
+  fi
+
+  if [[ "$effective_environment" != "development" ]]; then
+    if grep -Eiq '^[[:space:]]*ENABLE_DEV_AUTH=(1|true|yes|on)[[:space:]]*$' "$backend_env"; then
+      echo "Disabling ENABLE_DEV_AUTH for ${effective_environment} deploy."
+    fi
+    upsert_env_kv "$backend_env" "ENABLE_DEV_AUTH" "false"
+    if [[ -f "$root_env" ]] && grep -Eq '^[[:space:]]*ENABLE_DEV_AUTH=' "$root_env"; then
+      upsert_env_kv "$root_env" "ENABLE_DEV_AUTH" "false"
+    fi
+    export ENABLE_DEV_AUTH="false"
   fi
 
   export ENVIRONMENT="$effective_environment"
@@ -802,6 +818,8 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
   exit 1
 fi
 
+ensure_environment_alignment
+
 # Validate backend config via Pydantic before touching docker/systemd/migrations.
 # Catches malformed DATABASE_URL (hostless, password-as-port), default secrets
 # left in production, and pooler misconfig. Replaces the previous shell-based
@@ -817,7 +835,6 @@ if [[ -z "$preflight_python" ]]; then
 fi
 "$preflight_python" "$repo_root/scripts/preflight_check.py"
 
-ensure_environment_alignment
 ensure_host_runtime_mode_alignment
 ensure_host_storage_env_alignment
 ensure_host_ffmpeg_env_alignment

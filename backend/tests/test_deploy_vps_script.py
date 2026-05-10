@@ -153,6 +153,82 @@ def test_deploy_vps_script_aligns_environment_when_missing(tmp_path) -> None:
     assert "aligning deploy environment to staging" in result.stdout
 
 
+def test_deploy_vps_script_overrides_stale_development_environment_for_production(
+    tmp_path,
+) -> None:
+    script = _script_path()
+    backend_env = tmp_path / "backend.env"
+    root_env = tmp_path / "root.env"
+    backend_env.write_text(
+        "ENVIRONMENT=development\nENABLE_DEV_AUTH=true\n",
+        encoding="utf-8",
+    )
+    root_env.write_text("ENVIRONMENT=development\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                f"backend_env='{backend_env}'; "
+                f"root_env='{root_env}'; "
+                "unset ENVIRONMENT; "
+                "DEPLOY_ENVIRONMENT=production; "
+                "ensure_environment_alignment; "
+                "printf 'effective=%s\\n' \"$ENVIRONMENT\""
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ENVIRONMENT=production" in backend_env.read_text(encoding="utf-8")
+    assert "ENVIRONMENT=production" in root_env.read_text(encoding="utf-8")
+    assert "ENABLE_DEV_AUTH=false" in backend_env.read_text(encoding="utf-8")
+    assert "effective=production" in result.stdout
+    assert "overriding stale ENVIRONMENT=development" in result.stdout
+
+
+def test_deploy_vps_script_preserves_dev_auth_for_development_deploy(
+    tmp_path,
+) -> None:
+    script = _script_path()
+    backend_env = tmp_path / "backend.env"
+    root_env = tmp_path / "root.env"
+    backend_env.write_text(
+        "ENVIRONMENT=development\nENABLE_DEV_AUTH=true\n",
+        encoding="utf-8",
+    )
+    root_env.write_text("ENVIRONMENT=development\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"DEPLOY_VPS_SOURCE_ONLY=1 source {script}; "
+                f"backend_env='{backend_env}'; "
+                f"root_env='{root_env}'; "
+                "unset ENVIRONMENT; "
+                "DEPLOY_ENVIRONMENT=development; "
+                "ensure_environment_alignment; "
+                "printf 'effective=%s\\n' \"$ENVIRONMENT\""
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ENVIRONMENT=development" in backend_env.read_text(encoding="utf-8")
+    assert "ENABLE_DEV_AUTH=true" in backend_env.read_text(encoding="utf-8")
+    assert "effective=development" in result.stdout
+
+
 def test_deploy_vps_script_aligns_host_storage_env_for_active_backend(tmp_path) -> None:
     script = _script_path()
     backend_env = tmp_path / ".env"
