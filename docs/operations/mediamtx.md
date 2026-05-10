@@ -33,7 +33,6 @@ make dev-bootstrap-v2
 - `postgres`
 - `redis`
 - `tusd`
-- `runner`
 - `mediamtx`
 
 Локально MediaMTX management surfaces публікуються лише на loopback:
@@ -48,7 +47,7 @@ paths:
   all_others:
 ```
 
-Тобто FFmpeg/runner може публікувати в адреси на кшталт `rtmp://mediamtx:1935/test/<stream-id>` без ручного додавання кожного path у конфіг.
+Тобто FFmpeg runtime може публікувати в адреси на кшталт `rtmp://mediamtx:1935/test/<stream-id>` без ручного додавання кожного path у конфіг.
 
 ## Backend env
 
@@ -71,7 +70,7 @@ MEDIAMTX_METRICS_URL=http://mediamtx:9998/metrics
 
 Але `v2` уже перевірений практично:
 
-1. Runner може успішно publish-ити тестовий RTMP stream у MediaMTX.
+1. FFmpeg runtime може успішно publish-ити тестовий RTMP stream у MediaMTX.
 2. `GET /v3/paths/list` повертає live path з track metadata.
 3. `GET /metrics` відображає `paths{state="ready"}` і RTMP connection counters.
 
@@ -87,5 +86,5 @@ MEDIAMTX_METRICS_URL=http://mediamtx:9998/metrics
 Це дає чистіший поділ:
 
 - backend = orchestration / auth / quotas / scheduling
-- runner = FFmpeg playout/publish execution
+- systemd stream unit = FFmpeg playout/publish execution
 - MediaMTX = relay / observability / future fan-out hub

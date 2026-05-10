@@ -12,8 +12,8 @@
 - High-level architecture: `docs/ARCHITECTURE.md`
 - Work log / change notes: `docs/WORKLOG.md`
 - Testing notes: `docs/TESTING.md`
-- Ops (Supervisor): `docs/operations/`, `docs/supervisor/`
-- Ops (systemd): `docs/systemd/`
+- Ops: `docs/operations/`
+- systemd unit examples: `docs/systemd/`
 - API collections: `docs/postman/`
 
 ## Patterns & Conventions

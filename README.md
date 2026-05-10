@@ -232,7 +232,7 @@ Library upload modal is lazy-loaded when opened, so the upload bundle stays out 
 | `STREAM_RUNTIME_NODE_ID` | Стабільний ідентифікатор runtime-вузла | hostname або явне ім'я ноди/worker-групи |
 | `ALLOW_UNSAFE_MANAGER_RUNTIME` | `true` \| `false` | `false`; у `staging`/`production` manager runtime заборонений без явного override |
 | `ALLOW_UNSAFE_CONTAINERIZED_SYSTEMD_RUNTIME` | `true` \| `false` | `false`; у `staging`/`production` containerized backend + `systemd` runtime блокується без явного override |
-| `STREAM_RUNTIME_HEARTBEAT_INTERVAL_SECONDS` | Інтервал heartbeat managed runner (сек) | `10` |
+| `STREAM_RUNTIME_HEARTBEAT_INTERVAL_SECONDS` | Інтервал heartbeat stream runtime (сек) | `10` |
 | `STREAM_RUNTIME_HEARTBEAT_TTL_SECONDS` | Через скільки heartbeat вважається застарілим (сек) | `45` |
 | `FFMPEG_OUTPUT_RECOVERY_MAX_ATTEMPTS` | Ліміт fifo-recovery для publish outputs; `0` залишає безлімітний budget FFmpeg | `12` |
 | `MEDIAMTX_ENABLED` | `true` \| `false` | `false` за замовчуванням; увімкніть для optional media-plane summary |
@@ -273,7 +273,6 @@ Makefile               команди для розробки та CI
 - `docs/operations/first_stream_checklist.md` — чекліст і визначення першого успішного стріму
 - `docs/operations/systemd.md` — post-MVP host-native backend + systemd stream units для Linux production
 - `docs/operations/mediamtx.md` — optional MediaMTX relay/metrics layer для майбутнього scale-up
-- `docs/design/README.md` — archived standalone mockups і design reference assets, які не входять у shipping baseline
 - `docs/DATABASE_MIGRATIONS_LOCAL.md` — локальні нюанси міграцій і DB bootstrap
 
 ### Post-MVP rollout: systemd

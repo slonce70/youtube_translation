@@ -9,7 +9,7 @@
 Поточний ownership contract для цього режиму навмисно мінімальний:
 
 - `systemd` unit лишається єдиним owner process lifecycle і restart policy
-- API та runner більше не координують ownership через DB lease як активний control plane
+- API та stream unit більше не координують ownership через DB lease як активний control plane
 - `runtime_last_heartbeat_at` лишається корисним diagnostic signal, але `runtime_owner_id/runtime_lease_expires_at` більше не є operational truth для `systemd`
 
 ## Коли використовувати
@@ -193,7 +193,7 @@ sudo SYSTEMD_INSTALL_ROOT=/opt/youtube_translation \
   ./scripts/install_systemd_runtime.sh
 ```
 
-Контрольоване переключення з Docker `backend`/`runner` на host-native backend service:
+Контрольоване переключення з Docker backend на host-native backend service:
 
 ```bash
 sudo BACKEND_ENV=/opt/youtube_translation/backend/.env \
@@ -284,7 +284,7 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 - Для локальної розробки prefer `manager`, а не `systemd`
 - Якщо вам потрібен лише local smoke path, використовуйте DEV auth і hybrid boot з `docker compose -f docker/docker-compose.yml up -d postgres redis tusd`
 - Containerized backend + `systemd` runtime не вважається підтриманим production control path за замовчуванням
-- Якщо ви переходите на host-native backend control plane, не запускайте одночасно Docker `backend`/`runner` як production executors для тих самих live streams
+- Якщо ви переходите на host-native backend control plane, не запускайте одночасно containerized backend як production executor для тих самих live streams
 - Якщо використовуєте `scripts/install_systemd_runtime.sh`, пам'ятайте: без `SYSTEMD_ENABLE_BACKEND=1` / `SYSTEMD_ENABLE_STREAM_UNIT=...` helper лише ставить unit-файли й робить `daemon-reload`, але не активує сервіси
 - `scripts/deploy_vps.sh` тепер уміє ідемпотентно провіжинити `backend/.venv`, коли host-native backend уже активний або коли ви готуєте cutover через `DEPLOY_PREPARE_HOST_NATIVE=1`
 - `scripts/deploy_vps.sh` також вирівнює `backend/{uploads,streams,logs,supervisord}` на symlink-и до `/opt/youtube_translation_data/...`, щоб host-native backend і containerized edge дивилися в один persistent storage root
@@ -293,7 +293,7 @@ CLI сам збирає плейлист, запускає FFmpeg і підтр�
 - legacy `SUPERVISOR_*` ключі в production `backend/.env` можна безпечно прибрати під час cleanup; config loader тимчасово толерує їх лише для backward-compatible host refresh
 - `scripts/check_host_runtime_readiness.sh` тепер окремо показує `backend/.venv` vs repo-root `.venv` і перевіряє, чи service user реально може зробити `systemctl start --dry-run ffmpeg@__readiness_probe`
 - `scripts/cutover_host_runtime.sh` навмисно fail-closed відмовляється від cutover при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_CUTOVER=1`
-- `scripts/cutover_host_runtime.sh` також fail-closed перевіряє, що host loopback `127.0.0.1:5432` і `127.0.0.1:6379` вже слухають, інакше host-native backend не отримає доступу до PostgreSQL/Redis після відключення Docker `backend`/`runner`
+- `scripts/cutover_host_runtime.sh` також fail-closed перевіряє, що host loopback `127.0.0.1:5432` і `127.0.0.1:6379` вже слухають, інакше host-native backend не отримає доступу до PostgreSQL/Redis після відключення Docker backend
 - `scripts/cutover_host_runtime.sh` також перепіднімає `frontend` і `tusd` з upstream `http://host.docker.internal:8000`, щоб containerized edge продовжив ходити в host-native backend, і на UFW-hostах додає вузьке allow-rule лише для Docker bridge -> `tcp/8000`
 - `scripts/rollback_host_runtime.sh` так само fail-closed відмовляється від rollback при активних стрімах, якщо ви явно не задали `ALLOW_LIVE_STREAM_RUNTIME_ROLLBACK=1`
 - `scripts/rollback_host_runtime.sh` повертає `frontend` і `tusd` назад на upstream `http://backend:8000`

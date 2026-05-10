@@ -8,7 +8,7 @@ consult before relaxing any knob.
 
 The defaults are sufficient to run the service correctly, but not safely
 enough for a machine that may also host other workloads. The goal is to
-make a stream runner (and the backend API) a **badly-behaving tenant**:
+make a stream worker (and the backend API) a **badly-behaving tenant**:
 unable to read other users' data, unable to touch the kernel, unable to
 spawn containers, unable to write executable memory, and unable to make
 system calls outside a narrow whitelist. Kernel-level defense-in-depth.
