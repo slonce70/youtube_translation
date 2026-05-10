@@ -20,11 +20,12 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from apply_migrations import (
+from apply_migrations import (  # noqa: E402
     _DUPLICATE_OBJECT_SQLSTATES,
     _has_autocommit_marker,
     _is_duplicate_object_error,
     _split_statements,
+    MIGRATIONS,
 )
 
 
@@ -34,6 +35,7 @@ MIGRATION_018 = (
 MIGRATION_018_ROLLBACK = (
     BACKEND_ROOT / "migrations" / "018_performance_indexes_rollback.sql"
 )
+MIGRATION_038 = BACKEND_ROOT / "migrations" / "038_youtube_rtmps_default.sql"
 
 
 class TestAutocommitMarker:
@@ -202,3 +204,15 @@ class TestMigration018Rollback:
             assert f"DROP INDEX CONCURRENTLY IF EXISTS {name}" in sql, (
                 f"rollback file is missing DROP for {name}"
             )
+
+
+class TestMigration038File:
+    def test_migration_is_in_active_runner_list(self) -> None:
+        assert "migrations/038_youtube_rtmps_default.sql" in MIGRATIONS
+
+    def test_migration_updates_destination_column_default(self) -> None:
+        sql = MIGRATION_038.read_text(encoding="utf-8")
+
+        assert "ALTER TABLE destinations" in sql
+        assert "ALTER COLUMN rtmps_url SET DEFAULT" in sql
+        assert "rtmps://a.rtmps.youtube.com/live2" in sql

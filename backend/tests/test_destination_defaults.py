@@ -9,3 +9,8 @@ def test_destination_defaults_use_youtube_recommended_rtmps_ingest() -> None:
     )
     assert Destination.__table__.c.rtmps_url.default is not None
     assert Destination.__table__.c.rtmps_url.default.arg == YOUTUBE_DEFAULT_RTMPS_URL
+    assert Destination.__table__.c.rtmps_url.server_default is not None
+    assert (
+        Destination.__table__.c.rtmps_url.server_default.arg
+        == YOUTUBE_DEFAULT_RTMPS_URL
+    )

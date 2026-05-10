@@ -383,7 +383,12 @@ class Destination(Base):
     )
 
     name = Column(Text, nullable=False)
-    rtmps_url = Column(Text, nullable=False, default=YOUTUBE_DEFAULT_RTMPS_URL)
+    rtmps_url = Column(
+        Text,
+        nullable=False,
+        default=YOUTUBE_DEFAULT_RTMPS_URL,
+        server_default=YOUTUBE_DEFAULT_RTMPS_URL,
+    )
     stream_key_encrypted = Column(Text, nullable=False)
     enabled = Column(Boolean, default=True, index=True)
     provider_kind = Column(Text, index=True)
