@@ -32,6 +32,7 @@ import type {
 } from '@/lib/types'
 import { useDashboardContext } from '../dashboard-context'
 import { getDestinationPlatformPresentation } from '../streaming/platform'
+import { YOUTUBE_DEFAULT_RTMPS_URL } from '../streaming/types'
 
 const AddChannelModal = dynamic(
   () =>
@@ -51,7 +52,7 @@ type DestinationFormState = {
 
 const EMPTY_FORM: DestinationFormState = {
   name: '',
-  rtmps_url: 'rtmps://a.rtmp.youtube.com/live2',
+  rtmps_url: YOUTUBE_DEFAULT_RTMPS_URL,
   stream_key: '',
   enabled: true,
   provider_connection_id: null,

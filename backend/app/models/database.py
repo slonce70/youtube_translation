@@ -19,6 +19,8 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 
+from app.core.defaults import YOUTUBE_DEFAULT_RTMPS_URL
+
 Base = declarative_base()
 
 
@@ -381,7 +383,7 @@ class Destination(Base):
     )
 
     name = Column(Text, nullable=False)
-    rtmps_url = Column(Text, nullable=False, default="rtmps://a.rtmp.youtube.com/live2")
+    rtmps_url = Column(Text, nullable=False, default=YOUTUBE_DEFAULT_RTMPS_URL)
     stream_key_encrypted = Column(Text, nullable=False)
     enabled = Column(Boolean, default=True, index=True)
     provider_kind = Column(Text, index=True)
