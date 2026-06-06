@@ -9,13 +9,6 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  push:
-    branches:
-      - main
-  schedule:
-    # Hourly watchdog — the job still short-circuits when needs_deploy != 'true',
-    # so we avoid 288 SSH probes/day while keeping the self-heal safety net.
-    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
