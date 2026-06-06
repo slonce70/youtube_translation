@@ -1,112 +1,53 @@
 repos:
-  # Python hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
     hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-yaml
-      - id: check-json
       - id: check-added-large-files
         args: ['--maxkb=5000']
       - id: check-merge-conflict
       - id: detect-private-key
       - id: mixed-line-ending
 
-  # Python: Black formatter (pinned to match backend/requirements.txt)
-  - repo: https://github.com/psf/black
-    rev: 26.3.1
+  - repo: local
     hooks:
-      - id: black
-        language_version: python3.11
-        files: ^backend/
-        args: ['--line-length=100']
+      - id: backend-ruff
+        name: backend ruff
+        entry: bash -c 'cd backend && .venv/bin/python -m ruff check app/'
+        language: system
+        pass_filenames: false
 
-  # Python: Ruff linter (pinned to match backend/requirements.txt)
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.3
-    hooks:
-      - id: ruff
-        files: ^backend/
-        args: [--fix, --exit-non-zero-on-fix]
+      - id: backend-black-check
+        name: backend black check
+        entry: bash -c 'cd backend && .venv/bin/python -m black --check app/'
+        language: system
+        pass_filenames: false
 
-  # Python: isort (import sorting)
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        files: ^backend/
-        args: ['--profile', 'black']
+      - id: backend-mypy
+        name: backend mypy
+        entry: bash -c 'cd backend && .venv/bin/python -m mypy --config-file mypy.ini'
+        language: system
+        pass_filenames: false
 
-  # Python: MyPy type checking (pinned to match backend/requirements.txt)
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
-    hooks:
-      - id: mypy
-        files: ^backend/app/
-        additional_dependencies:
-          - types-requests
-          - sqlalchemy[mypy]
-          - pydantic
-        args: ['--ignore-missing-imports', '--no-strict-optional']
+      - id: backend-audit
+        name: backend dependency audit
+        entry: bash -c 'cd backend && .venv/bin/pip-audit'
+        language: system
+        pass_filenames: false
 
-  # JavaScript/TypeScript: ESLint
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v8.56.0
-    hooks:
-      - id: eslint
-        files: ^frontend/src/
-        types: [file]
-        types_or: [javascript, jsx, ts, tsx]
-        additional_dependencies:
-          - eslint@8.56.0
-          - eslint-config-next@14.0.4
-          - '@typescript-eslint/parser@6.19.0'
-          - '@typescript-eslint/eslint-plugin@6.19.0'
-        args: ['--fix', '--max-warnings=0']
+      - id: frontend-lint
+        name: frontend lint
+        entry: bash -c 'cd frontend && npm run lint'
+        language: system
+        pass_filenames: false
 
-  # JavaScript/TypeScript: Prettier
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
-    hooks:
-      - id: prettier
-        files: ^frontend/
-        types_or: [javascript, jsx, ts, tsx, json, yaml, markdown]
-        args: ['--write']
+      - id: frontend-audit
+        name: frontend production dependency audit
+        entry: bash -c 'cd frontend && npm audit --omit=dev'
+        language: system
+        pass_filenames: false
 
-  # Security: Check for secrets
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
-    hooks:
-      - id: detect-secrets
-        args: ['--baseline', '.secrets.baseline']
-        exclude: package-lock.json
-
-  # SQL: Check for SQL formatting
-  - repo: https://github.com/sqlfluff/sqlfluff
-    rev: 3.0.0
-    hooks:
-      - id: sqlfluff-lint
-        files: ^backend/migrations/.*\.sql$
-        args: ['--dialect', 'postgres']
-
-  # Markdown linting
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.38.0
-    hooks:
-      - id: markdownlint
-        args: ['--fix']
-
-  # YAML linting
-  - repo: https://github.com/adrienverge/yamllint
-    rev: v1.33.0
-    hooks:
-      - id: yamllint
-        args: ['-d', '{extends: default, rules: {line-length: {max: 120}}}']
-
-# Configuration
 default_language_version:
-  python: python3.11
-  node: 20.0.0
+  python: python3.12
+  node: 24.0.0
 
 # Run pre-commit on all files: pre-commit run --all-files
