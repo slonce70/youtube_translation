@@ -41,6 +41,8 @@ make dev-bootstrap
 
 Якщо `cd frontend && npm run test:e2e` саме піднімає локальний Next server через `frontend/playwright.config.ts`, він примусово ставить `NEXT_PUBLIC_DEV_BYPASS_AUTH=0`. Це робить smoke-перевірки на редірект `/dashboard -> /login` детермінованими й не вимагає окремого ручного `start-frontend.sh`.
 
+Managed Playwright runs force `NEXT_PUBLIC_DEV_BYPASS_AUTH=0` so `/dashboard` redirect tests exercise the real-auth boundary. When using `PLAYWRIGHT_BASE_URL`, start the target server with `NEXT_PUBLIC_DEV_BYPASS_AUTH=0`; the config fails fast if the local environment still advertises bypass mode.
+
 ### Продуктова перевірка auth
 
 Якщо потрібно перевірити справжній auth flow:
