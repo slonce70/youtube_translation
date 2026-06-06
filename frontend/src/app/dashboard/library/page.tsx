@@ -1,7 +1,7 @@
 'use client'
 // Sprint 7.3: full i18n migration to library.page.* keys lifted the eslint-disable.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -68,6 +68,14 @@ const LazyUploadModal = dynamic(
 )
 
 export default function LibraryPage() {
+  return (
+    <Suspense fallback={null}>
+      <LibraryPageContent />
+    </Suspense>
+  )
+}
+
+function LibraryPageContent() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { user, quota } = useDashboardContext()

@@ -70,6 +70,7 @@ describe('CommandPalette', () => {
     render(<CommandPalette open onClose={onClose} items={items} />)
 
     expect(screen.getByRole('dialog', { name: 'Палітра команд' })).toBeInTheDocument()
+    expect(screen.getByRole('searchbox', { name: 'Палітра команд' })).toBeInTheDocument()
 
     const input = screen.getByPlaceholderText('Перейдіть до… наприклад «Файли» або «Трансляції»')
     input.focus()

@@ -52,26 +52,29 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   }, [filtered, nav])
 
   useEffect(() => {
-    if (!open) {
-      setQuery('')
-      setActiveIndex(0)
-      return
-    }
+    if (!open) return
     const timer = window.setTimeout(() => inputRef.current?.focus(), 30)
     return () => window.clearTimeout(timer)
   }, [open])
-
-  useEffect(() => {
-    setActiveIndex(0)
-  }, [query])
 
   useEffect(() => {
     const activeButton = itemRefs.current[activeIndex]
     activeButton?.scrollIntoView?.({ block: 'nearest' })
   }, [activeIndex])
 
-  const runItem = (item: CommandItem) => {
+  const closePalette = () => {
+    setQuery('')
+    setActiveIndex(0)
     onClose()
+  }
+
+  const updateQuery = (nextQuery: string) => {
+    setQuery(nextQuery)
+    setActiveIndex(0)
+  }
+
+  const runItem = (item: CommandItem) => {
+    closePalette()
     if (item.action) {
       item.action()
       return
@@ -80,13 +83,15 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} ariaLabel={t('label')} className="cmd-palette-modal">
+    <Modal open={open} onClose={closePalette} ariaLabel={t('label')} className="cmd-palette-modal">
       <div className="cmd-palette-head">
         <span className="cmd-palette-icon" aria-hidden="true">{'⌘'}</span>
         <input
+          type="search"
+          aria-label={t('label')}
           ref={inputRef}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => updateQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'ArrowDown') {
               event.preventDefault()
@@ -100,7 +105,7 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
               runItem(filtered[activeIndex])
             } else if (event.key === 'Escape') {
               event.stopPropagation()
-              onClose()
+              closePalette()
             }
           }}
           aria-activedescendant={filtered[activeIndex] ? `cmd-item-${filtered[activeIndex].id}` : undefined}

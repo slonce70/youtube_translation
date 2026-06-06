@@ -148,6 +148,7 @@ export function ComparisonTable() {
               return (
                 <button
                   key={planKey}
+                  type="button"
                   onClick={() => setSelectedPlan(planKey)}
                   className={cn(
                     'shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition',

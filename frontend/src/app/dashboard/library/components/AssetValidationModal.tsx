@@ -13,6 +13,7 @@ import {
   formatBitrateDisplay,
   formatFpsDisplay,
   formatSampleRateDisplay,
+  getAssetWarningKey,
   type AssetDisplayInfo,
 } from '../asset-utils'
 
@@ -163,18 +164,18 @@ export function AssetValidationModal({
 
               {(info.issues.length > 0 || info.warnings.length > 0) && (
                 <div className="space-y-2">
-                  {info.issues.map((issue, index) => (
+                  {info.issues.map((issue) => (
                     <div
-                      key={`modal-issue-${index}`}
+                      key={`modal-issue-${issue}`}
                       className="flex items-start text-sm text-error-600 dark:text-error-400"
                     >
                       <XCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
                       <span>{issue}</span>
                     </div>
                   ))}
-                  {info.warnings.map((warning, index) => (
+                  {info.warnings.map((warning) => (
                     <div
-                      key={`modal-warning-${index}`}
+                      key={`modal-warning-${getAssetWarningKey(warning)}`}
                       className="flex items-start text-sm text-amber-600 dark:text-amber-400"
                     >
                       <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />

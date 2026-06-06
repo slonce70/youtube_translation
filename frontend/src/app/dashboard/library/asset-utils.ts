@@ -58,6 +58,20 @@ export type AssetDisplayInfo = {
 
 type AssetWarningTranslator = (key: string, values?: TranslationValues) => string
 
+export const getAssetWarningKey = (warning: AssetWarning): string => {
+  switch (warning.kind) {
+    case 'custom':
+      return `${warning.kind}:${warning.message}`
+    case 'fpsOutOfGuideline':
+    case 'noVideoStream':
+    case 'noAudioStream':
+    case 'missingMetadata':
+      return warning.kind
+    default:
+      return `${warning.kind}:${JSON.stringify(warning.payload ?? {})}`
+  }
+}
+
 export const formatBitrateDisplay = (bps?: number): string => {
   if (!bps || !Number.isFinite(bps)) return '—'
   if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(2)} Mbps`

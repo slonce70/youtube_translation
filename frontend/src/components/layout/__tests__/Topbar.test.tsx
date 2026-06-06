@@ -69,7 +69,7 @@ describe('Topbar', () => {
     const menuButton = screen.getByRole('button', { name: 'Відкрити меню користувача Developer' })
     await user.click(menuButton)
 
-    expect(screen.getByRole('menu', { name: 'Меню користувача' })).toBeInTheDocument()
+    expect(screen.getByRole('menu', { name: 'Меню користувача' })).toHaveAttribute('tabindex', '-1')
 
     await user.keyboard('{Escape}')
 

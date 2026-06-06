@@ -24,8 +24,8 @@ import {
 // distinguish UX-friendly mismatches from generic supabase errors. They are
 // matched by reference, not displayed to the user — the real toast text
 // always comes from the i18n layer (toasts.missingEmail / toasts.currentIncorrect).
-const ERR_MISSING_EMAIL = 'Missing email on account'
-const ERR_CURRENT_PASSWORD_INCORRECT = 'Current password is incorrect'
+const ERR_MISSING_EMAIL = 'profile.missingEmail'
+const ERR_CURRENT_AUTH_INCORRECT = 'profile.currentAuthIncorrect'
 
 export default function ProfilePage() {
   const devBypass = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
@@ -92,9 +92,7 @@ export default function ProfilePage() {
       else if (tz.includes('London')) setTimezoneLabel(t('profileForm.timezoneLondon'))
       else if (tz.includes('New_York')) setTimezoneLabel(t('profileForm.timezoneNewYork'))
     } catch {}
-    // Run once on mount; the locale-resolved labels are stable for the session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -208,7 +206,7 @@ export default function ProfilePage() {
         throw new Error(ERR_MISSING_EMAIL)
       }
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: currentPassword })
-      if (signInError) throw new Error(ERR_CURRENT_PASSWORD_INCORRECT)
+      if (signInError) throw new Error(ERR_CURRENT_AUTH_INCORRECT)
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
 
@@ -221,7 +219,7 @@ export default function ProfilePage() {
       const translated = translateSupabaseError(error, supabaseErrors)
       if (translated) toast.error(translated)
       else if (message === ERR_MISSING_EMAIL) toast.error(toasts('missingEmail'))
-      else if (message === ERR_CURRENT_PASSWORD_INCORRECT) toast.error(toasts('currentIncorrect'))
+      else if (message === ERR_CURRENT_AUTH_INCORRECT) toast.error(toasts('currentIncorrect'))
       else toast.error(message ?? toasts('passwordUpdateError'))
     } finally {
       setPasswordLoading(false)

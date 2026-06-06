@@ -205,9 +205,9 @@ export function DeleteAssetsModal({
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-300">
                   {usageBadges.length > 0 ? (
-                    usageBadges.map((label, index) => (
+                    usageBadges.map((label) => (
                       <span
-                        key={`${asset.id}-usage-${index}`}
+                        key={`${asset.id}-usage-${label}`}
                         className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800/60"
                       >
                         {label}
