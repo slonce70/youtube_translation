@@ -154,6 +154,11 @@ const nextConfig = {
   reactStrictMode: true,
   skipTrailingSlashRedirect: true,
   allowedDevOrigins: allowedOrigins,
+  // Next's embedded build linter is incompatible with this repo's flat ESLint
+  // config. Keep `npm run lint` as the explicit lint gate.
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',
