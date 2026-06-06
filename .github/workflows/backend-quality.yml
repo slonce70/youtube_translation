@@ -57,6 +57,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: Audit Python dependencies
+        run: |
+          python -m pip install pip-audit
+          pip-audit
+
       - name: Validate tusd hooks bash syntax
         run: |
           bash -n tusd-hooks/pre-create tusd-hooks/post-finish
