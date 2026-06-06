@@ -204,6 +204,7 @@ const EditorPanel = ({
               }
               return (
                 <button
+                  type="button"
                   key={asset.id}
                   className={cn(
                     'w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors',

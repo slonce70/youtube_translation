@@ -30,7 +30,7 @@ export function StreamLogsModal({ open, logs, onClose, t }: Props) {
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs max-h-96 overflow-y-auto">
-            {logs?.length ? logs.map((line, index) => <p key={index}>{line}</p>) : <p>{t('streams.logs.empty')}</p>}
+            {logs?.length ? logs.map((line) => <p key={line}>{line}</p>) : <p>{t('streams.logs.empty')}</p>}
           </div>
         </CardContent>
       </Card>

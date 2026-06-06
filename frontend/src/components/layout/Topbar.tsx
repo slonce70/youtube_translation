@@ -115,6 +115,7 @@ export function Topbar({
               className="topbar-menu"
               role="menu"
               aria-label={nav('userMenu.label')}
+              tabIndex={-1}
               onKeyDown={(event) => {
                 if (event.key === 'Escape') {
                   event.stopPropagation()

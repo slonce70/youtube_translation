@@ -28,6 +28,7 @@ import {
   formatBitrateDisplay,
   formatFpsDisplay,
   formatSampleRateDisplay,
+  getAssetWarningKey,
   type AssetWarning,
 } from '@/app/dashboard/library/asset-utils'
 import { formatAbsoluteDateTime } from '@/lib/dates'
@@ -380,8 +381,8 @@ export function AssetCard({
                   {optimizationBadge.label}
                 </Badge>
               ) : null}
-              {usageBadges.map((label, index) => (
-                <Badge key={`usage-${index}`} variant="secondary" className="px-2 py-0.5 text-[10px]">
+              {usageBadges.map((label) => (
+                <Badge key={`usage-${label}`} variant="secondary" className="px-2 py-0.5 text-[10px]">
                   {label}
                 </Badge>
               ))}
@@ -468,14 +469,14 @@ export function AssetCard({
 
                 {(info.issues.length > 0 || info.warnings.length > 0) && (
                   <div className="space-y-1.5">
-                    {info.issues.map((issue, index) => (
-                      <div key={`issue-${index}`} className="flex items-start text-error-600 dark:text-error-400">
+                    {info.issues.map((issue) => (
+                      <div key={`issue-${issue}`} className="flex items-start text-error-600 dark:text-error-400">
                         <XCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
                         <span>{issue}</span>
                       </div>
                     ))}
-                    {info.warnings.map((warning, index) => (
-                      <div key={`warning-${index}`} className="flex items-start text-amber-600 dark:text-amber-400">
+                    {info.warnings.map((warning) => (
+                      <div key={`warning-${getAssetWarningKey(warning)}`} className="flex items-start text-amber-600 dark:text-amber-400">
                         <AlertCircle className="mr-1.5 mt-0.5 h-3 w-3 flex-shrink-0" />
                         <span>{formatWarningMessage(warning)}</span>
                       </div>

@@ -104,6 +104,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {layout(errorMessageKey ?? 'errors.default')}
           </p>
           <button
+            type="button"
             onClick={() => router.push('/dashboard')}
             className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
           >
@@ -143,6 +144,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {user?.email ?? layout('userFallback')}
               </span>
               <button
+                type="button"
                 onClick={() => router.push('/dashboard')}
                 className="admin-exit-btn text-sm"
               >

@@ -193,14 +193,17 @@ function Hero({ onCtaMain }: { onCtaMain: () => void }) {
 function UptimeTicker() {
   const m = useMessages() as unknown as LoopcastMessages
   const items = m.landing.loopcast.ticker.items
-  const all = [...items, ...items]
+  const all = [
+    ...items.map((label) => ({ id: `primary-${label}`, label })),
+    ...items.map((label) => ({ id: `loop-${label}`, label })),
+  ]
   return (
     <div className="lpc-ticker">
       <div className="lpc-ticker-track">
-        {all.map((it, i) => (
-          <span key={i}>
+        {all.map((item) => (
+          <span key={item.id}>
             <span className="lpc-dot" />
-            {it}
+            {item.label}
           </span>
         ))}
       </div>
@@ -462,7 +465,7 @@ function Testimonials() {
       </div>
       <div className="lpc-testis">
         {items.map((it, i) => (
-          <div key={i} className="lpc-testi lpc-reveal" style={{ transitionDelay: `${i * 80}ms` }}>
+          <div key={it.name} className="lpc-testi lpc-reveal" style={{ transitionDelay: `${i * 80}ms` }}>
             <div className="lpc-testi-quote">{it.quote}</div>
             <div className="lpc-testi-author">
               <div className="lpc-testi-avatar" aria-hidden="true">
@@ -500,7 +503,7 @@ function FAQ() {
       <div className="lpc-faq">
         {items.map((q, i) => (
           <div
-            key={i}
+            key={q.q}
             className={`lpc-faq-item ${open === i ? 'open' : ''}`}
             onClick={() => setOpen(open === i ? -1 : i)}
             role="button"
@@ -565,8 +568,8 @@ function Pricing({ onCta }: { onCta: () => void }) {
               <sub>{tier.sub}</sub>
             </div>
             <ul className="lpc-price-list">
-              {tier.list.map((l, i) => (
-                <li key={i}>{l}</li>
+              {tier.list.map((l) => (
+                <li key={l}>{l}</li>
               ))}
             </ul>
             <button

@@ -1,7 +1,7 @@
 'use client'
 // Sprint 7.2: full i18n migration to streaming.page.* keys.
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Play, Loader2, X } from 'lucide-react'
@@ -53,6 +53,14 @@ import { formatDateTimeLocal, type ScheduleDraft } from './schedule-utils'
 import { extractStopAuditEntries } from './log-audit'
 
 export default function StreamingPage() {
+  return (
+    <Suspense fallback={null}>
+      <StreamingPageContent />
+    </Suspense>
+  )
+}
+
+function StreamingPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, quota, currentTier } = useDashboardContext()
@@ -867,8 +875,8 @@ export default function StreamingPage() {
               ) : null}
               <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs max-h-96 overflow-y-auto">
                 {logsResponse?.logs?.length ? (
-                  logsResponse.logs.map((line, index) => (
-                    <p key={index} className={getStreamLogLineClassName(line)}>
+                  logsResponse.logs.map((line) => (
+                    <p key={line} className={getStreamLogLineClassName(line)}>
                       {line}
                     </p>
                   ))

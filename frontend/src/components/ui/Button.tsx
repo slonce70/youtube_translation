@@ -41,12 +41,13 @@ export interface ButtonProps
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, fullWidth, isLoading, loadingText, children, disabled, ...props }, ref) => {
+  ({ className, variant, size, fullWidth, isLoading, loadingText, children, disabled, type = 'button', ...props }, ref) => {
     return (
       <button
         className={cn(buttonVariants({ variant, size, fullWidth, className }))}
         ref={ref}
         disabled={disabled || isLoading}
+        type={type}
         {...props}
       >
         {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

@@ -57,6 +57,7 @@ export function LandingNavBar({ onStartStreaming }: Props) {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
+              type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="rounded-2xl border border-transparent p-2 text-slate-100 transition hover:border-white/10 hover:bg-white/5 md:hidden"
               aria-label="Toggle navigation"
@@ -80,6 +81,7 @@ export function LandingNavBar({ onStartStreaming }: Props) {
             {navItems.map((item) => (
               <button
                 key={item.key}
+                type="button"
                 onClick={() => scrollToSection(item.href)}
                 className="rounded-full border border-transparent px-4 py-2 text-sm font-medium text-slate-300/92 transition hover:border-white/10 hover:bg-white/6 hover:text-white"
               >
@@ -123,6 +125,7 @@ export function LandingNavBar({ onStartStreaming }: Props) {
                   {navItems.map((item) => (
                     <button
                       key={item.key}
+                      type="button"
                       onClick={() => scrollToSection(item.href)}
                       className="block w-full rounded-2xl px-4 py-3 text-left text-base font-medium text-slate-100 transition hover:bg-white/5"
                     >
