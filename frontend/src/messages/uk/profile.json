@@ -48,9 +48,9 @@
     "youtubeDisconnected": "Підключення YouTube видалено"
   },
   "provider": {
-    "title": "📺 Підключення YouTube",
+    "title": "Підключення YouTube",
     "description": "Тут показуємо лише реальний статус провайдера YouTube. Twitch навмисно виключено з MVP.",
-    "connectCta": "▶ Підключити YouTube",
+    "connectCta": "Підключити YouTube",
     "disconnectCta": "Відключити",
     "emptyTitle": "Ще немає підключення YouTube",
     "emptyDescription": "Підключіть власний канал через OAuth, а потім прив’яжіть його до RTMPS-каналу на сторінці «Трансляції».",

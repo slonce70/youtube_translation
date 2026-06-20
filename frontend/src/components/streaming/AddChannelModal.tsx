@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { RadioTower, Twitch } from 'lucide-react'
+import { RadioTower, Twitch, Youtube } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -136,7 +136,7 @@ export function AddChannelModal({
               title={!youtubeOAuthConfigured ? t('provider.oauthUnavailable') : undefined}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#ff0000' }} aria-hidden="true">{'▶'}</span>
+                <span style={{ color: '#ff0033', display: 'inline-flex' }} aria-hidden="true"><Youtube className="h-4 w-4" /></span>
                 <span>{t('provider.youtubeCta')}</span>
               </span>
               <Badge variant="live" style={{ fontSize: 12, padding: '2px 6px' }}>{t('provider.youtubeBadge')}</Badge>

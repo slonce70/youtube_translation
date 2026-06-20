@@ -314,7 +314,7 @@ export default function ProfilePage() {
               <div className="summary-list">
                 {youtubeConnections?.map((connection) => (
                   <div key={connection.id} className="stream-row" style={{ alignItems: 'flex-start' }}>
-                    <div className="stream-thumb" aria-hidden="true">{'▶'}</div>
+                    <div className="stream-thumb" aria-hidden="true" style={{ color: '#ff0033' }}><Youtube className="h-5 w-5" /></div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600 }}>{connection.youtube_channel_title || connection.youtube_channel_id}</div>
                       <div style={{ fontSize: 13, color: 'var(--txt-2)' }}>{formatConnectionSummary(connection)}</div>
