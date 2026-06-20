@@ -4,6 +4,10 @@ All key findings confirmed against the live files. I have enough to produce the 
 
 # Loopcast SIGNAL Redesign — Execution Backlog
 
+> **Execution status — 2026-06-20.** DONE this session (verified: lint+tsc+jest(160)+next build+playwright e2e 5/5, browser-checked): all §2 quick-wins (1–33), the i18n leaks (2,3,7,8,21,33), a11y/responsive batch (9,11,14,16,17,18,19,20,23,31), dead-component removal, the live-tab duplicate-card removal, **F1** (command-palette operator verbs), **F4** (health spine + warning chip), **R1** (StreamBuilderModal → SummaryRail + SourceStep), and the orphaned-landing-component + dead `stream-v3-*` CSS deletion (guardrail §5.1, ~2719 LOC). RECOMMENDED next (deferred — higher risk or not browser-verifiable unsupervised): **F2** schedule recurrence (large new surface), **F3** density toggle (lower value now the duplicate card is gone), **R2** library playlists extraction (optional), **R3** admin/users (needs real Supabase to verify), **R5** UploadModal extraction, **R6/R7** backend `ffmpeg_manager.py`/`control.py` (runtime-streaming risk; do as isolated backend PRs with pytest).
+
+
+
 ## 1. Executive Summary
 
 The SIGNAL retint is **structurally landed but leaky**: the spine, accent tokens, lucide icons, and a11y scaffolding (focus-visible, skip-link, reduced-motion CSS) are in place, but the migration left a trail of off-palette stragglers (purple/cyan literals and gradients in the most operator-facing surfaces: `/login`, the Go-Live CTA, stat numerals, logo glow) and a large dead-code tail (~1100 lines of `stream-v3-*` CSS plus 10 orphaned landing components). The two highest-value *correctness* themes are **i18n leaks** (a MISSING_MESSAGE badge plus hardcoded Ukrainian strings shown to en/ru users) and **mobile responsiveness gaps** (non-wrapping rows, non-collapsing grids, sub-40px touch targets), with **a11y announcement gaps** (no live region for stream up/down, broken modal focus trap, JS-driven motion ignoring reduced-motion) close behind. The redesign is ~70% complete; the work below closes the leaks, deletes the dead weight, and adds the keyboard-first/operator differentiators the plan promises.
