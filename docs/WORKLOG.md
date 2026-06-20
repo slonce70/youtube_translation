@@ -25,3 +25,11 @@
   - Resilience: every API request is now bounded by a 15s `AbortController` timeout, wrapping timeouts (408) and network errors (0) as `ApiError` so dashboards surface a recoverable error instead of an indefinite loading spinner.
   - Repo hygiene: merged all work to `main`; deleted stale local + remote work branches (kept `main` + bot-managed dependabot branches).
   - Gates green: `lint`, `i18n:check`, `jest` (175), `next build`.
+- **SIGNAL redesign — adversarial review + deferred-work execution.** Ran an 80-agent multi-dimension review workflow (design/a11y/bugs/dead-code/i18n/responsive/structure/competitive); 58 findings adversarially confirmed → `docs/design/SIGNAL_REVIEW_BACKLOG.md`. Then executed the verifiable backlog:
+  - Closed remaining palette leaks (gradient-text, go-live glow, logo/focus/cmd glows, serif console numerals) + deleted dead CSS (`animated-gradient`, `--violet`, duplicate `.badge-error`, unused badge/btn variants).
+  - i18n: fixed `MISSING_MESSAGE` on the channels health badge, localized stream-source labels + start toast + aria-labels, deleted dead `dashboard.home`, swapped emoji platform icons for lucide.
+  - a11y: `role=status`/`aria-live` on stream health, `MotionConfig reducedMotion=user`, real focus-trap in UploadModal, DropdownMenu menu semantics, tabpanel wiring; mobile grids collapse; `.btn-sm` 40px on coarse pointers. Fixed the 15s API timeout to also cover the body read.
+  - Structure (#9): removed dead/superseded streaming components (StreamsList/StreamStatsCards/…), removed the duplicate legacy live card (kept `LiveStreamHero`), deleted ~2719 LOC of orphaned landing components + dead `stream-v3-*` CSS, decomposed StreamBuilderModal (507→350).
+  - Competitive (#8): **F1** command-palette operator verbs (Start/Stop/Stop-all/Copy-link, scoped to live streams) and **F4** stream health spine + global warning chip.
+  - Net since the redesign baseline: 71 files, +1870 / −5625 (≈ −3755 LOC). Gates: `lint`, `i18n:check`, `tsc`, `jest` (160), `next build`, `playwright` e2e (5/5) — all green.
+  - Deferred (documented in the backlog): F2 schedule recurrence, F3 density toggle, R2 library extraction, R3 admin/users, R5 UploadModal, R6/R7 backend god-module splits.
