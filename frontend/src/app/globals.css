@@ -1928,21 +1928,20 @@
 
   .dashboard-v2 .nav-item:hover,
   .dashboard-v2 .collapse-btn:hover {
-    background: rgba(99,102,241,.1);
+    background: rgba(91, 108, 255, .08);
     color: var(--txt);
-    transform: translateX(2px);
   }
 
   .dashboard-v2 .nav-item:focus-visible,
   .dashboard-v2 .collapse-btn:focus-visible {
     outline: 2px solid var(--indigo-lt);
     outline-offset: -2px;
-    background: rgba(99,102,241,.14);
+    background: rgba(91, 108, 255, .12);
     color: var(--txt);
   }
 
   .dashboard-v2 .nav-item.active {
-    background: rgba(255, 255, 255, .04);
+    background: rgba(91, 108, 255, .12);
     color: var(--txt);
   }
 
@@ -1969,7 +1968,7 @@
     height: 22px;
     color: var(--txt-2);
   }
-  .dashboard-v2 .nav-item.active .nav-icon { color: var(--txt); }
+  .dashboard-v2 .nav-item.active .nav-icon { color: var(--indigo-lt); }
 
   .dashboard-v2 .nav-txt { display: flex; min-width: 0; flex-direction: column; font-size: 13px; }
   .dashboard-v2 .nav-main { overflow: hidden; text-overflow: ellipsis; }
