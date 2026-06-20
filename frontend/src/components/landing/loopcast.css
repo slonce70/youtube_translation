@@ -10,9 +10,9 @@
   --lpc-bg-2: #11111a;
   --lpc-line: rgba(255, 255, 255, 0.08);
   --lpc-line-2: rgba(255, 255, 255, 0.14);
-  --lpc-fg: #f5f3ee;
-  --lpc-fg-dim: rgba(245, 243, 238, 0.62);
-  --lpc-fg-mute: rgba(245, 243, 238, 0.4);
+  --lpc-fg: #f4f5f6;
+  --lpc-fg-dim: rgba(244, 245, 246, 0.62);
+  --lpc-fg-mute: rgba(244, 245, 246, 0.4);
   --lpc-accent: #5b6cff;
   --lpc-accent-rgb: 91, 108, 255;
   --lpc-accent-soft: rgba(91, 108, 255, 0.18);
@@ -107,6 +107,15 @@
 .loopcast-root .lpc-nav-inner {
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px 32px; max-width: 1280px; margin: 0 auto;
+}
+
+/* Phones: tighten the fixed 32px side gutters so content isn't crowded. */
+@media (max-width: 640px) {
+  .loopcast-root .lpc-wrap,
+  .loopcast-root .lpc-nav-inner {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
 }
 .loopcast-root .lpc-logo {
   display: flex; align-items: center; gap: 10px;
@@ -280,7 +289,7 @@
   background: var(--lpc-bg-1); border: 1px solid var(--lpc-line);
 }
 .loopcast-root .lpc-proof-big {
-  font-family: var(--lpc-serif); font-size: 96px; font-weight: 400;
+  font-family: var(--lpc-serif); font-size: clamp(44px, 9vw, 96px); font-weight: 400;
   letter-spacing: -0.04em; line-height: 0.9; margin: 12px 0 8px; color: var(--lpc-fg);
 }
 .loopcast-root .lpc-proof-big em { font-style: italic; color: var(--lpc-accent); }
@@ -359,7 +368,7 @@
 }
 .loopcast-root .lpc-price-name { font-family: var(--lpc-mono); font-size: 12px; color: var(--lpc-fg-mute); text-transform: uppercase; letter-spacing: 0.08em; }
 .loopcast-root .lpc-price-amt {
-  font-family: var(--lpc-serif); font-size: 64px; font-weight: 400;
+  font-family: var(--lpc-serif); font-size: clamp(40px, 8vw, 64px); font-weight: 400;
   letter-spacing: -0.03em; color: var(--lpc-fg); display: flex; align-items: baseline;
 }
 .loopcast-root .lpc-price-amt sup { font-size: 0.4em; margin-right: 4px; color: var(--lpc-fg-dim); }
