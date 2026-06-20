@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Modal } from './Modal'
 
-type CommandItem = {
+export type CommandItem = {
   id: string
   icon: ComponentType<{ className?: string }>
   label: string
