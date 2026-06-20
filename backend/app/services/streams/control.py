@@ -812,7 +812,6 @@ class StreamControlService:
             stream.pid = None
             await self.db.commit()
 
-    @staticmethod
     async def _record_stop_audit(
         self,
         stream: Stream,
