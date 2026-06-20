@@ -21,6 +21,7 @@ import type { Stream } from '@/lib/types'
 import { useDashboardContext } from '@/app/dashboard/dashboard-context'
 import { CommandPalette, type CommandItem as CommandPaletteItem } from '@/components/ui/CommandPalette'
 import { deriveStreamState } from '@/lib/stream-state'
+import { HealthSpine } from './HealthSpine'
 import { Sidebar, readSidebarCollapsed, writeSidebarCollapsed } from './Sidebar'
 import { Topbar } from './Topbar'
 
@@ -65,6 +66,17 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
 
   const liveCount = useMemo(
     () => (streams ?? []).filter((stream) => deriveStreamState(stream).isRunning).length,
+    [streams],
+  )
+
+  // Degraded live streams + anything in an error state. These are the streams a
+  // glance-able status chip should flag with a warning marker.
+  const warningCount = useMemo(
+    () =>
+      (streams ?? []).filter((stream) => {
+        const state = deriveStreamState(stream)
+        return state.isDegraded || state.derivedStatus === 'error'
+      }).length,
     [streams],
   )
 
@@ -203,10 +215,12 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
           userName={userName}
           userEmail={userEmail}
           liveCount={liveCount}
+          warningCount={warningCount}
           showLiveBadge={showLiveBadge}
           onOpenPalette={() => setPaletteOpen(true)}
           onSignOut={onSignOut}
         />
+        <HealthSpine streams={streams ?? []} />
         <Sidebar
           collapsed={collapsed}
           onToggle={() => {

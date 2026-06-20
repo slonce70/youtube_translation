@@ -1550,6 +1550,8 @@
     --nav-w: 240px;
     --nav-w-sm: 64px;
     --top-h: 56px;
+    /* health spine: 3px bar + 1px bottom border */
+    --spine-h: 4px;
     --radius: 12px;
     --shadow: 0 16px 40px rgba(0, 0, 0, .5), 0 0 0 1px rgba(0, 0, 0, .2);
     --font-display: var(--font-tech), Inter, system-ui, sans-serif;
@@ -1600,7 +1602,8 @@
   .dashboard-v2 .dashboard-app {
     display: grid;
     grid-template-columns: var(--nav-w) 1fr;
-    grid-template-rows: var(--top-h) 1fr;
+    /* topbar row · health-spine row (thin, full width) · content row */
+    grid-template-rows: var(--top-h) auto 1fr;
     min-height: 100dvh;
     transition: grid-template-columns .2s ease;
   }
@@ -1746,6 +1749,123 @@
   @keyframes pulse-live {
     0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,.6); }
     50% { box-shadow: 0 0 0 5px rgba(34,197,94,0); }
+  }
+
+  /* Stream health spine — a thin full-width bar of equal-width segments, one
+   * per stream, that sits directly under the topbar (its own grid row). */
+  .dashboard-v2 .health-spine {
+    grid-column: 1 / -1;
+    position: sticky;
+    top: var(--top-h);
+    z-index: 99;
+    display: flex;
+    gap: 2px;
+    height: 3px;
+    padding: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dashboard-v2 .health-spine-empty {
+    display: block;
+    background: var(--border-lt);
+    opacity: .35;
+  }
+
+  .dashboard-v2 .health-seg {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 2px;
+    border-radius: 2px;
+    background: var(--border-lt);
+    transition: filter .15s ease, transform .15s ease;
+  }
+
+  .dashboard-v2 .health-seg:hover {
+    filter: brightness(1.25);
+    transform: scaleY(1.6);
+  }
+
+  .dashboard-v2 .health-seg-live { background: var(--green); }
+  .dashboard-v2 .health-seg-degraded { background: var(--amber); }
+  .dashboard-v2 .health-seg-error { background: var(--red); }
+  .dashboard-v2 .health-seg-starting {
+    background: var(--indigo);
+    animation: health-seg-pulse 1.6s ease-in-out infinite;
+  }
+  .dashboard-v2 .health-seg-idle {
+    background: var(--border-lt);
+    opacity: .55;
+  }
+
+  @keyframes health-seg-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .45; }
+  }
+
+  /* Hover mini-card — name + localized status, anchored under its segment. */
+  .dashboard-v2 .health-seg-card {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 120;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 120px;
+    max-width: 220px;
+    padding: 7px 10px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* Flip the card inward for the right-most segments so it never clips. */
+  .dashboard-v2 .health-seg:nth-last-child(-n+3) .health-seg-card {
+    left: auto;
+    right: 0;
+  }
+
+  .dashboard-v2 .health-seg:hover .health-seg-card {
+    display: flex;
+  }
+
+  .dashboard-v2 .health-seg-card-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--txt);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dashboard-v2 .health-seg-card-status {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--txt-3);
+  }
+
+  /* Topbar warning marker appended to the live badge when warnings exist. */
+  .dashboard-v2 .topbar-live-badge.has-warning {
+    background: rgba(227, 179, 65, .12);
+    border-color: rgba(227, 179, 65, .35);
+  }
+  .dashboard-v2 .topbar-warn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--amber);
+  }
+  .dashboard-v2 .topbar-warn-sep { color: var(--txt-3); }
+  .dashboard-v2 .topbar-warn-icon { width: 13px; height: 13px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dashboard-v2 .health-seg-starting { animation: none !important; }
+    .dashboard-v2 .health-seg:hover { transform: none; }
   }
 
   .dashboard-v2 .topbar-actions {
@@ -1914,8 +2034,8 @@
     flex-direction: column;
     overflow: hidden;
     position: sticky;
-    top: var(--top-h);
-    height: calc(100dvh - var(--top-h));
+    top: calc(var(--top-h) + var(--spine-h));
+    height: calc(100dvh - var(--top-h) - var(--spine-h));
   }
 
   .dashboard-v2 .nav-group { padding: 8px 8px 0; flex: 1; overflow-y: auto; }
@@ -2918,7 +3038,8 @@
     .dashboard-v2 .dashboard-app,
     .dashboard-v2 .dashboard-app.nav-collapsed {
       grid-template-columns: 1fr;
-      grid-template-rows: var(--top-h) auto 1fr;
+      /* topbar · health-spine · horizontal nav rail · content */
+      grid-template-rows: var(--top-h) auto auto 1fr;
     }
     .dashboard-v2 .topbar-logo,
     .dashboard-v2 .dashboard-app.nav-collapsed .topbar-logo { width: auto; }

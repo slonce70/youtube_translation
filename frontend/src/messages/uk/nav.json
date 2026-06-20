@@ -8,6 +8,17 @@
     "noLive": "Немає live",
     "planFree": "Free"
   },
+  "health": {
+    "ariaLabel": "Стан здоровʼя трансляцій ({count})",
+    "warningCount": "{count, plural, one {# попередження} few {# попередження} many {# попереджень} other {# попередження}}",
+    "status": {
+      "live": "У ефірі",
+      "degraded": "Деградує",
+      "error": "Помилка",
+      "starting": "Перехід",
+      "idle": "Очікує"
+    }
+  },
   "menu": {
     "dashboard": "Панель",
     "library": "Файли",

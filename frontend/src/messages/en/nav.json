@@ -8,6 +8,17 @@
     "noLive": "No live",
     "planFree": "Free"
   },
+  "health": {
+    "ariaLabel": "Stream health ({count})",
+    "warningCount": "{count, plural, one {# warning} other {# warnings}}",
+    "status": {
+      "live": "Live",
+      "degraded": "Degraded",
+      "error": "Error",
+      "starting": "Transitioning",
+      "idle": "Idle"
+    }
+  },
   "menu": {
     "dashboard": "Dashboard",
     "library": "Files",

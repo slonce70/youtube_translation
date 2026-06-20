@@ -8,6 +8,17 @@
     "noLive": "Нет live",
     "planFree": "Free"
   },
+  "health": {
+    "ariaLabel": "Состояние трансляций ({count})",
+    "warningCount": "{count, plural, one {# предупреждение} few {# предупреждения} many {# предупреждений} other {# предупреждения}}",
+    "status": {
+      "live": "В эфире",
+      "degraded": "Деградирует",
+      "error": "Ошибка",
+      "starting": "Переход",
+      "idle": "Ожидает"
+    }
+  },
   "menu": {
     "dashboard": "Панель",
     "library": "Файлы",
