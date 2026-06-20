@@ -61,16 +61,16 @@
       "list": "List"
     },
     "uploadAria": "Upload files",
-    "uploadButton": "⬆ Upload",
+    "uploadButton": "Upload",
     "dropZone": {
       "title": "Drop the file here",
       "description": "We'll add it to uploads and prepare it for streaming."
     },
     "filtersExtra": {
       "all": "All",
-      "video": "🎬 Video",
-      "audio": "🎵 Audio",
-      "archives": "📦 Archives"
+      "video": "Video",
+      "audio": "Audio",
+      "archives": "Archives"
     },
     "notImplemented": {
       "archives": "Archives"
