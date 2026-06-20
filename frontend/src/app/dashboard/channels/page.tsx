@@ -13,6 +13,7 @@ import dynamic from 'next/dynamic'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
+import { RadioTower } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
@@ -266,7 +267,7 @@ export default function ChannelsPage() {
             })
           ) : (
             <div className="empty-state" style={{ padding: '48px 12px' }}>
-              <div className="empty-icon" aria-hidden="true">{'📡'}</div>
+              <div className="empty-icon" aria-hidden="true"><RadioTower className="h-7 w-7" /></div>
               <div className="empty-title">{tStreaming('channelsEmptyTitle')}</div>
               <div className="empty-sub">{tStreaming('provider.channelsEmpty')}</div>
               <Button variant="outline" onClick={() => setShowChannelForm(true)} style={{ marginTop: 16 }}>

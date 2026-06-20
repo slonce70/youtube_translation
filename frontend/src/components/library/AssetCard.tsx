@@ -14,6 +14,11 @@ import {
   CalendarClock,
   Waves,
   FileImage,
+  Film,
+  Music,
+  Download,
+  FolderInput,
+  Trash2,
 } from 'lucide-react'
 
 import type { Asset } from '@/lib/types'
@@ -193,8 +198,14 @@ export function AssetCard({
                 onError={() => setThumbnailSrc(null)}
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-4xl">
-                {asset.asset_type === 'audio' ? '🎵' : '🎬'}
+              <div className="flex h-full w-full items-center justify-center text-slate-500 dark:text-slate-500">
+                {asset.asset_type === 'audio' ? (
+                  <Music className="h-8 w-8" />
+                ) : asset.asset_type === 'image' ? (
+                  <FileImage className="h-8 w-8" />
+                ) : (
+                  <Film className="h-8 w-8" />
+                )}
               </div>
             )}
             {asset.duration_seconds ? (
@@ -227,13 +238,13 @@ export function AssetCard({
 
             <div className="mt-3 flex items-center gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={onDownload} aria-label={t.iconActions.download}>
-                <span aria-hidden="true">{'⬇'}</span>
+                <Download className="h-4 w-4" aria-hidden="true" />
               </Button>
               <Button type="button" variant="ghost" size="sm" onClick={onCheck} aria-label={t.iconActions.validate}>
-                <span aria-hidden="true">{'✓'}</span>
+                <CheckCircle className="h-4 w-4" aria-hidden="true" />
               </Button>
               <Button type="button" variant="ghost" size="sm" onClick={onMove} aria-label={t.iconActions.move}>
-                <span aria-hidden="true">{'📁'}</span>
+                <FolderInput className="h-4 w-4" aria-hidden="true" />
               </Button>
               <Button
                 type="button"
@@ -243,7 +254,7 @@ export function AssetCard({
                 onClick={onDelete}
                 aria-label={t.iconActions.delete}
               >
-                <span aria-hidden="true">{'🗑'}</span>
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
           </div>

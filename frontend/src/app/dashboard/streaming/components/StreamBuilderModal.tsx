@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import type { TranslationValues } from 'next-intl'
+import { RadioTower, Film, ListVideo, Music, Youtube, Twitch } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -172,7 +173,11 @@ export function StreamBuilderModal({
                         onClick={() => handleDestinationToggle(destination.id)}
                       >
                         <div className="channel-logo" aria-hidden="true">
-                          {destination.name.toLowerCase().includes('twitch') ? '🎮' : '▶'}
+                          {destination.name.toLowerCase().includes('twitch') ? (
+                            <Twitch className="h-4 w-4" />
+                          ) : (
+                            <Youtube className="h-4 w-4" />
+                          )}
                         </div>
                         <div style={{ flex: 1, textAlign: 'left' }}>
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{destination.name}</div>
@@ -186,7 +191,7 @@ export function StreamBuilderModal({
                   })
                 ) : (
                   <div className="empty-state" style={{ padding: '24px 12px' }}>
-                    <div className="empty-icon" aria-hidden="true">{'📡'}</div>
+                    <div className="empty-icon" aria-hidden="true"><RadioTower className="h-7 w-7" /></div>
                     <div className="empty-title">{builder('channelsEmptyTitle')}</div>
                     <div className="empty-sub">{builder('channelsEmptyDescription')}</div>
                   </div>
@@ -232,7 +237,7 @@ export function StreamBuilderModal({
                               isSelected ? removeAssetFromEditor('video', asset.id) : addAssetToEditor('video', asset.id)
                             }
                           >
-                            <div className="asset-thumb" aria-hidden="true">{'🎬'}</div>
+                            <div className="asset-thumb" aria-hidden="true"><Film className="h-4 w-4" /></div>
                             <div style={{ flex: 1, textAlign: 'left' }}>
                               <div style={{ fontWeight: 600, fontSize: 13 }}>{asset.filename}</div>
                               <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
@@ -252,7 +257,7 @@ export function StreamBuilderModal({
                       })
                     ) : (
                       <div className="empty-state" style={{ padding: '24px 12px' }}>
-                        <div className="empty-icon" aria-hidden="true">{'🎬'}</div>
+                        <div className="empty-icon" aria-hidden="true"><Film className="h-7 w-7" /></div>
                         <div className="empty-title">{builder('videosEmptyTitle')}</div>
                         <div className="empty-sub">{builder('videosEmptyDescription')}</div>
                       </div>
@@ -278,7 +283,7 @@ export function StreamBuilderModal({
                             className={`playlist-row${isSelected ? ' active' : ''}`}
                             onClick={() => handleSelectCollection('video', collection.id)}
                           >
-                            <div className="asset-thumb" aria-hidden="true">{'📋'}</div>
+                            <div className="asset-thumb" aria-hidden="true"><ListVideo className="h-4 w-4" /></div>
                             <div style={{ flex: 1, textAlign: 'left' }}>
                               <div style={{ fontWeight: 600, fontSize: 13 }}>{collection.name}</div>
                               <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
@@ -291,7 +296,7 @@ export function StreamBuilderModal({
                       })
                     ) : (
                       <div className="empty-state" style={{ padding: '24px 12px' }}>
-                        <div className="empty-icon" aria-hidden="true">{'📋'}</div>
+                        <div className="empty-icon" aria-hidden="true"><ListVideo className="h-7 w-7" /></div>
                         <div className="empty-title">{builder('playlistsEmptyTitle')}</div>
                         <div className="empty-sub">{builder('playlistsEmptyDescription')}</div>
                       </div>
@@ -395,7 +400,7 @@ export function StreamBuilderModal({
                             isSelected ? removeAssetFromEditor('audio', asset.id) : addAssetToEditor('audio', asset.id)
                           }
                         >
-                          <div className="asset-thumb" aria-hidden="true">{'🎵'}</div>
+                          <div className="asset-thumb" aria-hidden="true"><Music className="h-4 w-4" /></div>
                           <div style={{ flex: 1, textAlign: 'left' }}>
                             <div style={{ fontWeight: 600, fontSize: 13 }}>{asset.filename}</div>
                             <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
