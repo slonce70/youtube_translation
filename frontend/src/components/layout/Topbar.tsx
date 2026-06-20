@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, ChevronDown, CreditCard, LogOut, Search, Settings, Sparkles } from 'lucide-react'
+import { Bell, ChevronDown, CreditCard, LogOut, Search, Settings, Sparkles, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { LiveDot } from '@/components/ui/LiveDot'
 import { LogoMark } from '@/components/ui/Logo'
@@ -13,6 +13,7 @@ interface TopbarProps {
   userName: string
   userEmail: string
   liveCount: number
+  warningCount?: number
   showLiveBadge?: boolean
   onOpenPalette: () => void
   onSignOut: () => void
@@ -22,6 +23,7 @@ export function Topbar({
   userName,
   userEmail,
   liveCount,
+  warningCount = 0,
   showLiveBadge = true,
   onOpenPalette,
   onSignOut,
@@ -78,11 +80,18 @@ export function Topbar({
       {showLiveBadge ? (
         <button
           type="button"
-          className="topbar-live-badge"
+          className={`topbar-live-badge${warningCount > 0 ? ' has-warning' : ''}`}
           onClick={() => router.push('/dashboard/streaming')}
         >
           <LiveDot />
           {liveLabel}
+          {warningCount > 0 ? (
+            <span className="topbar-warn">
+              <span className="topbar-warn-sep" aria-hidden="true">·</span>
+              <TriangleAlert className="topbar-warn-icon" aria-hidden="true" />
+              {nav('health.warningCount', { count: warningCount })}
+            </span>
+          ) : null}
         </button>
       ) : null}
 
