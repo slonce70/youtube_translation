@@ -1,6 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
+import { RadioTower, Twitch } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -43,7 +44,7 @@ export function AddChannelModal({
 
   return (
     <Modal open={open} onClose={onCancel} ariaLabel={title} className="w-full max-w-[520px]">
-      <div style={{ fontSize: 32, marginBottom: 12 }} aria-hidden="true">{'📡'}</div>
+      <div style={{ color: 'var(--indigo)', marginBottom: 12 }} aria-hidden="true"><RadioTower className="h-7 w-7" /></div>
       <div className="card-title" style={{ fontSize: 17, marginBottom: 8 }}>
         {title}
       </div>
@@ -149,7 +150,7 @@ export function AddChannelModal({
               title={t('provider.twitchDisabledTitle')}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#9146ff' }} aria-hidden="true">{'🎮'}</span>
+                <span style={{ color: '#9146ff', display: 'inline-flex' }} aria-hidden="true"><Twitch className="h-4 w-4" /></span>
                 <span>{t('provider.twitchCta')}</span>
               </span>
               <Badge variant="warn" style={{ fontSize: 12, padding: '2px 6px' }}>{t('provider.twitchBadge')}</Badge>

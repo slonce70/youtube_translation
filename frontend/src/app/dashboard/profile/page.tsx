@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api'
 import { writeDevBypassDisplayName } from '@/lib/devBypassUser'
+import { Youtube } from 'lucide-react'
 import { useDashboardContext } from '../dashboard-context'
 import { toast } from 'sonner'
 import {
@@ -345,7 +346,7 @@ export default function ProfilePage() {
               </div>
             ) : (
               <div className="stream-row" style={{ opacity: 0.85, alignItems: 'flex-start' }}>
-                <div className="stream-thumb" aria-hidden="true">{'📡'}</div>
+                <div className="stream-thumb" aria-hidden="true"><Youtube className="h-5 w-5" /></div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600 }}>{t('provider.emptyTitle')}</div>
                   <div style={{ fontSize: 13, color: 'var(--txt-2)' }}>{t('provider.emptyDescription')}</div>

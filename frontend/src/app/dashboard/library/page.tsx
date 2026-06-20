@@ -546,7 +546,7 @@ function LibraryPageContent() {
       {isGlobalDragOver ? (
         <div className="drop-overlay">
           <div className="empty-state" style={{ padding: 0 }}>
-            <div className="empty-icon" aria-hidden="true">{'⬆️'}</div>
+            <div className="empty-icon" aria-hidden="true"><Upload className="h-7 w-7" /></div>
             <div className="empty-title">{tLibrary('dropZone.title')}</div>
             <div className="empty-sub">{tLibrary('dropZone.description')}</div>
           </div>
@@ -814,7 +814,7 @@ function LibraryPageContent() {
                 {!currentFolders.length && visibleAssets.length === 0 && (
                   <button type="button" onClick={openUploadModal} className="library-upload-tile" style={{ margin: 0 }}>
                     <div className="empty-state" style={{ padding: 0 }}>
-                      <div className="empty-icon" aria-hidden="true">{'⬆'}</div>
+                      <div className="empty-icon" aria-hidden="true"><Upload className="h-7 w-7" /></div>
                       <div className="empty-title">{tLibrary('dropEmpty.title')}</div>
                       <div className="empty-sub">{tLibrary('dropEmpty.description')}</div>
                     </div>
@@ -1062,7 +1062,7 @@ function LibraryPageContent() {
           <div className="summary-list">
             {uploadStatusEntries.map(([uploadId, status]) => (
               <div key={uploadId} className="stream-row" style={{ alignItems: 'center' }}>
-                <div className="stream-thumb" aria-hidden="true">{'⬆️'}</div>
+                <div className="stream-thumb" aria-hidden="true"><Upload className="h-5 w-5" /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{uploadId}</div>
                   <div style={{ fontSize: 12, color: 'var(--txt-2)' }}>
