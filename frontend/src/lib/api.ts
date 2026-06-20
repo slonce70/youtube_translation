@@ -52,6 +52,9 @@ const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === '1'
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
+// Hard ceiling for any single API call. Past this, fail fast with a clear
+// error so the UI can render a retry state rather than hang forever.
+const REQUEST_TIMEOUT_MS = 15000
 
 function resolveUserTimezone(): string | undefined {
   if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
@@ -247,8 +250,21 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
       requestHeaders['Authorization'] = `Bearer ${overrideToken}`
     }
 
-    const response = await fetch(urlString, { ...requestInit, headers: requestHeaders })
-    return response
+    // Bound every request so an unreachable/slow backend surfaces a clear
+    // error state instead of an indefinite loading spinner. Operators need
+    // fast, honest feedback on a 24/7 control plane.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    try {
+      return await fetch(urlString, { ...requestInit, headers: requestHeaders, signal: controller.signal })
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new ApiError(408, 'Request timed out')
+      }
+      throw new ApiError(0, err instanceof Error ? err.message : 'Network error')
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   let response = await executeRequest()
