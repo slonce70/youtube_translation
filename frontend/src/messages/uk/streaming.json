@@ -22,7 +22,7 @@
     "fallbackDuration": "—",
     "nameLabel": "Назва трансляції *",
     "startTime": "Час початку",
-    "startNow": "▶ Зараз",
+    "startNow": "Зараз",
     "startSchedule": "Запланувати",
     "durationHours": "{hours} год",
     "loopFile": "Повторювати файл у циклі",
@@ -269,7 +269,7 @@
     "scheduled": {
       "title": "Заплановані",
       "fallbackLabel": "Заплановано",
-      "startStream": "▶ Запустити",
+      "startStream": "Запустити",
       "editStream": "Редагувати",
       "logButton": "Лог",
       "scheduleStream": "+ Запланувати стрім",
