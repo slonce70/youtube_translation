@@ -41,7 +41,7 @@ export function Logo({ className, markClassName, size = 28, showWordmark = true 
   return (
     <span className={cn('inline-flex items-center gap-2', className)}>
       <LogoMark className={markClassName} size={size} />
-      {showWordmark ? <span className="logo-wordmark">Loopcast</span> : null}
+      {showWordmark ? <span className="logo-wordmark">{'Loopcast'}</span> : null}
     </span>
   )
 }

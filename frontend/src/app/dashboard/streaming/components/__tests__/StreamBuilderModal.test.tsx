@@ -139,12 +139,12 @@ describe('StreamBuilderModal', () => {
   it('renders the new single-screen 3-step layout', () => {
     renderModal()
 
-    expect(screen.getByText('📡 New stream')).toBeInTheDocument()
+    expect(screen.getByText('New stream')).toBeInTheDocument()
     expect(screen.getByText('1 · Pick channel')).toBeInTheDocument()
     expect(screen.getByText('2 · Video source')).toBeInTheDocument()
     expect(screen.getByText('3 · Settings')).toBeInTheDocument()
-    expect(screen.getByText('📋 Stream summary')).toBeInTheDocument()
-    expect(screen.getByText('✅ Readiness')).toBeInTheDocument()
+    expect(screen.getByText('Stream summary')).toBeInTheDocument()
+    expect(screen.getByText('Readiness')).toBeInTheDocument()
   })
 
   it('shows selected destination and source in the sticky summary', () => {
@@ -170,7 +170,7 @@ describe('StreamBuilderModal', () => {
       },
     })
 
-    fireEvent.click(screen.getByRole('button', { name: '📋 Playlist' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Playlist' }))
 
     expect(handleSelectCollection).not.toHaveBeenCalled()
   })
@@ -183,16 +183,16 @@ describe('StreamBuilderModal', () => {
       audioEnabled: false,
     })
 
-    expect(screen.getByText('✗ Pick a channel')).toBeInTheDocument()
-    expect(screen.getByText('✗ File picked')).toBeInTheDocument()
-    expect(screen.getByText('✗ Enter a name')).toBeInTheDocument()
+    expect(screen.getByText(/✗\s+Pick a channel/)).toBeInTheDocument()
+    expect(screen.getByText(/✗\s+File picked/)).toBeInTheDocument()
+    expect(screen.getByText(/✗\s+Enter a name/)).toBeInTheDocument()
   })
 
   it('calls audio toggle via the new settings section button', () => {
     const handleAudioToggle = jest.fn()
     renderModal({ audioEnabled: false, handleAudioToggle })
 
-    fireEvent.click(screen.getByRole('button', { name: '🎵 Add audio' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add audio' }))
 
     expect(handleAudioToggle).toHaveBeenCalledWith(true)
   })
