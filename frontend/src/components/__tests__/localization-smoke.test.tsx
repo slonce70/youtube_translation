@@ -54,7 +54,7 @@ describe('Localization smoke tests', () => {
       'Ваші RTMPS-канали з необов’язковою прив’язкою до YouTube'
     )
     expect(ukMessages.streaming.provider.modalDescription).toContain('ключ трансляції')
-    expect(ukMessages.profile.provider.title).toBe('📺 Підключення YouTube')
+    expect(ukMessages.profile.provider.title).toBe('Підключення YouTube')
     expect(ukMessages.profile.provider.emptyHint).toContain('верхня панель')
   })
 
@@ -63,7 +63,7 @@ describe('Localization smoke tests', () => {
       'Ваши RTMPS-каналы с необязательной привязкой к YouTube'
     )
     expect(ruMessages.streaming.provider.modalDescription).toContain('ключ трансляции')
-    expect(ruMessages.profile.provider.title).toBe('📺 Подключения YouTube')
+    expect(ruMessages.profile.provider.title).toBe('Подключения YouTube')
     expect(ruMessages.profile.provider.emptyHint).toContain('верхняя строка')
   })
 })

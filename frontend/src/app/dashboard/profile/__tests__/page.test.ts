@@ -186,7 +186,7 @@ describe('ProfilePage password change', () => {
 
     renderProfilePage()
 
-    const connectButton = await screen.findByRole('button', { name: '▶ Connect YouTube' })
+    const connectButton = await screen.findByRole('button', { name: 'Connect YouTube' })
     await waitFor(() => expect(connectButton).toBeDisabled())
     expect(screen.getByText(/YouTube OAuth is not configured on this deployment/)).toBeInTheDocument()
   })

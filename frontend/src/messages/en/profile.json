@@ -50,7 +50,7 @@
   "provider": {
     "title": "YouTube connections",
     "description": "Only real YouTube provider status is shown here. Twitch is intentionally excluded from this MVP.",
-    "connectCta": "▶ Connect YouTube",
+    "connectCta": "Connect YouTube",
     "disconnectCta": "Disconnect",
     "emptyTitle": "No YouTube connection yet",
     "emptyDescription": "Connect your own channel over OAuth, then link it to an RTMPS destination on the Streaming page.",
