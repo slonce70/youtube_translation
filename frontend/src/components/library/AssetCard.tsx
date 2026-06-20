@@ -199,13 +199,7 @@ export function AssetCard({
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-slate-500 dark:text-slate-500">
-                {asset.asset_type === 'audio' ? (
-                  <Music className="h-8 w-8" />
-                ) : asset.asset_type === 'image' ? (
-                  <FileImage className="h-8 w-8" />
-                ) : (
-                  <Film className="h-8 w-8" />
-                )}
+                {asset.asset_type === 'audio' ? <Music className="h-8 w-8" /> : <Film className="h-8 w-8" />}
               </div>
             )}
             {asset.duration_seconds ? (
