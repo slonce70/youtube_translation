@@ -416,6 +416,8 @@ function StreamingPageContent() {
         <button
           type="button"
           role="tab"
+          id="stream-tab-live"
+          aria-controls="stream-tabpanel-live"
           aria-selected={activeStreamTab === 'live'}
           className={`tab-btn ${activeStreamTab === 'live' ? 'active' : ''}`}
           onClick={() => setActiveStreamTab('live')}
@@ -426,6 +428,8 @@ function StreamingPageContent() {
         <button
           type="button"
           role="tab"
+          id="stream-tab-scheduled"
+          aria-controls="stream-tabpanel-scheduled"
           aria-selected={activeStreamTab === 'scheduled'}
           className={`tab-btn ${activeStreamTab === 'scheduled' ? 'active' : ''}`}
           onClick={() => setActiveStreamTab('scheduled')}
@@ -436,6 +440,8 @@ function StreamingPageContent() {
         <button
           type="button"
           role="tab"
+          id="stream-tab-archive"
+          aria-controls="stream-tabpanel-archive"
           aria-selected={activeStreamTab === 'archive'}
           className={`tab-btn ${activeStreamTab === 'archive' ? 'active' : ''}`}
           onClick={() => setActiveStreamTab('archive')}
@@ -446,7 +452,12 @@ function StreamingPageContent() {
       </div>
 
       {activeStreamTab === 'live' ? (
-        <div className="summary-list">
+        <div
+          className="summary-list"
+          role="tabpanel"
+          id="stream-tabpanel-live"
+          aria-labelledby="stream-tab-live"
+        >
           {/* Track 5b/D: modern operator hero answers the most-asked
             *  questions ("is it up?", "what's playing?", bitrate
             *  stability) up front. Per-stream hero self-fetches
@@ -477,7 +488,7 @@ function StreamingPageContent() {
       ) : null}
 
       {activeStreamTab === 'scheduled' ? (
-        <Card>
+        <Card role="tabpanel" id="stream-tabpanel-scheduled" aria-labelledby="stream-tab-scheduled">
           <CardHeader><CardTitle>{tStreaming('scheduled.title')}</CardTitle></CardHeader>
           <CardContent className="summary-list">
             {scheduledEntries.length > 0 ? scheduledEntries.map(({ stream }) => (
@@ -522,7 +533,7 @@ function StreamingPageContent() {
       ) : null}
 
       {activeStreamTab === 'archive' ? (
-        <Card>
+        <Card role="tabpanel" id="stream-tabpanel-archive" aria-labelledby="stream-tab-archive">
           <CardHeader><CardTitle>{tStreaming('archive.title')}</CardTitle></CardHeader>
           <CardContent className="table-wrap">
             {archiveEntries.length > 0 ? (

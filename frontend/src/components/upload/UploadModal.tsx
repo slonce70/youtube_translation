@@ -160,6 +160,21 @@ function detectMediaKind(file: File | DashboardFile): { isVideo: boolean; isAudi
   return { isVideo: false, isAudio: false }
 }
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true',
+  )
+}
+
 export function UploadModal({
   isOpen,
   onClose,
@@ -181,6 +196,8 @@ export function UploadModal({
 const mediaInfoPromiseRef = useRef<Promise<MediaInfo<'JSON'>> | null>(null)
 const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const modalRef = useRef<HTMLDivElement | null>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
   const isMountedRef = useRef(true)
   const analysisQueueRef = useRef<Promise<void>>(Promise.resolve())
 
@@ -556,6 +573,35 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !isProcessingUpload && !hasBlockingUpload) {
         onClose()
+        return
+      }
+
+      if (event.key !== 'Tab' || !modalRef.current) return
+
+      const focusableElements = getFocusableElements(modalRef.current)
+      if (focusableElements.length === 0) {
+        event.preventDefault()
+        modalRef.current.focus({ preventScroll: true })
+        return
+      }
+
+      const firstElement = focusableElements[0]
+      const lastElement = focusableElements[focusableElements.length - 1]
+      const activeElement = document.activeElement
+
+      if (!modalRef.current.contains(activeElement)) {
+        event.preventDefault()
+        const targetElement = event.shiftKey ? lastElement : firstElement
+        targetElement.focus({ preventScroll: true })
+        return
+      }
+
+      if (event.shiftKey && (activeElement === firstElement || activeElement === modalRef.current)) {
+        event.preventDefault()
+        lastElement.focus({ preventScroll: true })
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault()
+        firstElement.focus({ preventScroll: true })
       }
     }
 
@@ -564,6 +610,26 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [isOpen, isProcessingUpload, hasBlockingUpload, onClose])
+
+  // Save the previously-focused element on open, move focus into the modal,
+  // and restore focus to the trigger when the modal closes/unmounts.
+  useEffect(() => {
+    if (!isOpen) return undefined
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const requestFrame =
+      window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 0))
+    const cancelFrame = window.cancelAnimationFrame ?? window.clearTimeout
+    const frame = requestFrame(() => {
+      if (modalRef.current && !modalRef.current.contains(document.activeElement)) {
+        modalRef.current.focus({ preventScroll: true })
+      }
+    })
+    return () => {
+      cancelFrame(frame)
+      previousFocusRef.current?.focus({ preventScroll: true })
+    }
+  }, [isOpen])
 
   const overallProgress = useMemo(() => {
     if (!uploadItems.length) return 0
@@ -729,10 +795,12 @@ const mediaInfoRef = useRef<MediaInfo<'JSON'> | null>(null)
 
   return (
     <div
+      ref={modalRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="upload-modal-title"
       aria-describedby="upload-modal-description"
+      tabIndex={-1}
       className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-sm"
     >
       <div className="flex min-h-full items-center justify-center px-4 py-12">

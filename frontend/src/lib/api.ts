@@ -244,17 +244,21 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
 
   requestInit.headers = headers
 
+  // Bound every request — fetch *and* body read — so an unreachable/slow
+  // backend surfaces a clear error state instead of an indefinite loading
+  // spinner. Operators need fast, honest feedback on a 24/7 control plane.
+  // The controller/timer live for the whole request so a stalled response
+  // body stream is aborted too; the timer is cleared once in the `finally`
+  // below, after the body has been fully consumed.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
   const executeRequest = async (overrideToken?: string | null) => {
     const requestHeaders = { ...headers }
     if (overrideToken) {
       requestHeaders['Authorization'] = `Bearer ${overrideToken}`
     }
 
-    // Bound every request so an unreachable/slow backend surfaces a clear
-    // error state instead of an indefinite loading spinner. Operators need
-    // fast, honest feedback on a 24/7 control plane.
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     try {
       return await fetch(urlString, { ...requestInit, headers: requestHeaders, signal: controller.signal })
     } catch (err) {
@@ -262,46 +266,56 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
         throw new ApiError(408, 'Request timed out')
       }
       throw new ApiError(0, err instanceof Error ? err.message : 'Network error')
-    } finally {
-      clearTimeout(timer)
     }
   }
 
-  let response = await executeRequest()
+  try {
+    let response = await executeRequest()
 
-  const isAuthFailure =
-    (response.status === 401 || response.status === 403) &&
-    Boolean(response.headers.get('www-authenticate'))
-
-  if (!response.ok && isAuthFailure) {
-    const refreshedToken = await refreshAccessToken()
-    if (refreshedToken && refreshedToken !== token) {
-      response = await executeRequest(refreshedToken)
-    }
-
-    const retryAuthFailure =
+    const isAuthFailure =
       (response.status === 401 || response.status === 403) &&
       Boolean(response.headers.get('www-authenticate'))
 
-    if (!response.ok && retryAuthFailure) {
-      await clearAuthSession()
-      if (typeof window !== 'undefined') {
-        window.location.assign('/login')
+    if (!response.ok && isAuthFailure) {
+      const refreshedToken = await refreshAccessToken()
+      if (refreshedToken && refreshedToken !== token) {
+        response = await executeRequest(refreshedToken)
+      }
+
+      const retryAuthFailure =
+        (response.status === 401 || response.status === 403) &&
+        Boolean(response.headers.get('www-authenticate'))
+
+      if (!response.ok && retryAuthFailure) {
+        await clearAuthSession()
+        if (typeof window !== 'undefined') {
+          window.location.assign('/login')
+        }
       }
     }
-  }
 
-  if (!response.ok) {
-    const errorPayload = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    const detail = errorPayload?.detail ?? errorPayload
-    throw new ApiError(response.status, detail)
-  }
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      const detail = errorPayload?.detail ?? errorPayload
+      throw new ApiError(response.status, detail)
+    }
 
-  if (response.status === 204) {
-    return null as T
-  }
+    if (response.status === 204) {
+      return null as T
+    }
 
-  return response.json() as Promise<T>
+    return (await response.json()) as T
+  } catch (err) {
+    // A timeout that fires while the body is being read surfaces as an
+    // AbortError from `response.json()`; normalize it to the same 408 the
+    // fetch path produces so callers see a consistent timeout error.
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(408, 'Request timed out')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export const api = {

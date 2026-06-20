@@ -242,7 +242,10 @@ export default function ChannelsPage() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{destination.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>
+                    <div
+                      className="truncate"
+                      style={{ fontSize: 12, color: 'var(--txt-3)' }}
+                    >
                       {destination.rtmps_url} · {tStreaming('destinationKey')}: {destination.stream_key_masked}
                     </div>
                     {formatProviderSummary(destination) ? (

@@ -115,6 +115,9 @@ export function StatusStrip({
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
         <span
           aria-label={healthLabel}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
           style={{
             display: 'inline-flex',
             alignItems: 'center',

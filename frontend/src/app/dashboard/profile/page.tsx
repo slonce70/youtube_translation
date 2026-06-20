@@ -249,7 +249,7 @@ export default function ProfilePage() {
             </div>
 
             <form onSubmit={handleProfileSubmit} style={{ display: 'grid', gap: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="displayName" className="page-sub" style={{ display: 'block', marginBottom: 6 }}>
                     {t('profileForm.displayNameLabel')}
@@ -364,7 +364,7 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePasswordSubmit} style={{ display: 'grid', gap: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16 }}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="currentPassword" className="page-sub" style={{ display: 'block', marginBottom: 6 }}>{t('passwordForm.currentLabel')}</label>
                   <Input id="currentPassword" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder={t('passwordForm.currentPlaceholder')} />

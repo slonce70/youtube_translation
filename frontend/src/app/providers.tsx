@@ -1,6 +1,7 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MotionConfig } from 'framer-motion'
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl'
 import { useState, type ReactNode } from 'react'
 import { ApiError } from '@/lib/api'
@@ -38,7 +39,9 @@ export function Providers({ children, locale, messages }: ProvidersProps) {
       messages={messages}
       timeZone="Europe/Kyiv"
     >
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <MotionConfig reducedMotion="user">
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </MotionConfig>
     </NextIntlClientProvider>
   )
 }
