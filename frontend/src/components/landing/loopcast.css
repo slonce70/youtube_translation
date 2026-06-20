@@ -13,10 +13,10 @@
   --lpc-fg: #f5f3ee;
   --lpc-fg-dim: rgba(245, 243, 238, 0.62);
   --lpc-fg-mute: rgba(245, 243, 238, 0.4);
-  --lpc-accent: oklch(0.72 0.18 295);
-  --lpc-accent-rgb: 184, 146, 255;
-  --lpc-accent-soft: oklch(0.72 0.18 295 / 0.18);
-  --lpc-accent-glow: oklch(0.72 0.2 295 / 0.45);
+  --lpc-accent: #5b6cff;
+  --lpc-accent-rgb: 91, 108, 255;
+  --lpc-accent-soft: rgba(91, 108, 255, 0.18);
+  --lpc-accent-glow: rgba(91, 108, 255, 0.45);
   --lpc-teal: oklch(0.82 0.12 200);
   --lpc-warn: oklch(0.78 0.16 60);
   --lpc-good: oklch(0.78 0.18 150);

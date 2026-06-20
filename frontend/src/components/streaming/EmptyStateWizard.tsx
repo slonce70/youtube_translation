@@ -164,7 +164,7 @@ export function EmptyStateWizard({ hasChannel, hasAsset }: EmptyStateWizardProps
                     padding: '8px 16px',
                     borderRadius: 999,
                     textDecoration: 'none',
-                    boxShadow: '0 10px 30px -10px oklch(0.72 0.20 295 / 0.45)',
+                    boxShadow: '0 10px 30px -10px rgba(91, 108, 255, 0.45)',
                   }}
                 >
                   {t(`steps.${step.key}.cta`)}

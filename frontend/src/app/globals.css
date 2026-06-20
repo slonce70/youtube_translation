@@ -10,19 +10,19 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 271 91% 65%;
+    --primary: 231 100% 68%;
     --primary-foreground: 0 0% 100%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 189 94% 43%;
+    --accent: 213 100% 67%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 271 91% 65%;
+    --ring: 231 100% 68%;
     --radius: 0.75rem;
   }
 
@@ -33,19 +33,19 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 271 91% 65%;
+    --primary: 231 100% 68%;
     --primary-foreground: 0 0% 100%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 189 94% 43%;
+    --accent: 213 100% 67%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 271 91% 65%;
+    --ring: 231 100% 68%;
   }
 }
 
@@ -55,8 +55,8 @@
   }
   
   body {
-    @apply bg-gradient-to-br from-slate-100 via-purple-100/60 to-cyan-100/60 text-foreground antialiased;
-    @apply dark:from-slate-950 dark:via-purple-950 dark:to-cyan-950;
+    @apply bg-slate-50 text-foreground antialiased;
+    @apply dark:bg-[#08090a];
     min-height: 100vh;
   }
 
@@ -1318,9 +1318,8 @@
   }
 
   .btn-primary {
-    @apply btn bg-gradient-to-r from-primary-600 to-purple-600 text-white;
-    @apply hover:from-primary-700 hover:to-purple-700 hover:scale-105 hover:shadow-glow;
-    @apply active:scale-95;
+    @apply btn bg-primary-500 text-white;
+    @apply hover:bg-primary-600 active:bg-primary-700;
   }
 
   .btn-secondary {
@@ -1331,19 +1330,16 @@
   }
 
   .btn-success {
-    @apply btn bg-gradient-to-r from-success-500 to-emerald-500 text-white;
-    @apply hover:from-success-600 hover:to-emerald-600 hover:scale-105;
+    @apply btn bg-success-500 text-white hover:bg-success-600;
   }
 
   .btn-danger {
-    @apply btn bg-gradient-to-r from-error-500 to-rose-500 text-white;
-    @apply hover:from-error-600 hover:to-rose-600 hover:scale-105;
+    @apply btn bg-error-500 text-white hover:bg-error-600;
   }
 
   /* Card styles */
   .card {
-    @apply glass rounded-2xl p-6 transition-all duration-300;
-    @apply hover:shadow-2xl hover:scale-[1.02];
+    @apply glass rounded-2xl p-6 transition-colors duration-200;
   }
 
   /* Input styles */
@@ -1515,28 +1511,33 @@
    * styles. The original CSS-var names are kept (--indigo, --cyan, etc.)
    * to avoid renaming churn across 1300+ LOC of selectors below. */
   .dashboard-v2 {
-    --bg: #07070a;
-    --bg-2: #0c0c12;
-    --bg-3: #11111a;
-    --surface-glass: rgba(12, 12, 18, .82);
-    --border: rgba(255, 255, 255, .08);
-    --border-lt: rgba(255, 255, 255, .14);
-    --indigo: oklch(0.72 0.18 295);
-    --indigo-lt: oklch(0.78 0.14 295);
-    --indigo-dk: oklch(0.62 0.18 295);
-    --cyan: oklch(0.82 0.12 200);
-    --violet: oklch(0.74 0.16 290);
-    --green: oklch(0.78 0.18 150);
-    --red: oklch(0.66 0.22 25);
-    --amber: oklch(0.78 0.16 60);
-    --txt: #f5f3ee;
-    --txt-2: rgba(245, 243, 238, .62);
-    --txt-3: rgba(245, 243, 238, .40);
+    /* SIGNAL design language — cool-gray neutral spine + a single electric-indigo
+     * accent, semantic-only chroma (green=live, red=broken, amber=warn).
+     * Legacy CSS-var NAMES are intentionally kept (1300+ `.dashboard-v2 .foo`
+     * selectors consume them); only the VALUES are remapped to the SIGNAL token
+     * set, so the whole console retints with zero per-selector churn. */
+    --bg: #08090a;
+    --bg-2: #111316;
+    --bg-3: #16181c;
+    --surface-glass: rgba(17, 19, 22, .82);
+    --border: #20242b;
+    --border-lt: #2a2e35;
+    --indigo: #5b6cff;
+    --indigo-lt: #a6b0ff;
+    --indigo-dk: #4a5bf0;
+    --cyan: #58a6ff;
+    --violet: #5b6cff;
+    --green: #3fb950;
+    --red: #f85149;
+    --amber: #e3b341;
+    --txt: #f4f5f6;
+    --txt-2: #b4b8bf;
+    --txt-3: #8a8f98;
     --nav-w: 240px;
     --nav-w-sm: 64px;
     --top-h: 56px;
-    --radius: 14px;
-    --shadow: 0 20px 60px rgba(0,0,0,.55);
+    --radius: 12px;
+    --shadow: 0 16px 40px rgba(0, 0, 0, .5), 0 0 0 1px rgba(0, 0, 0, .2);
     --font-display: var(--font-serif), 'Times New Roman', serif;
     --font-mono-app: var(--font-mono), ui-monospace, monospace;
     background: var(--bg);
