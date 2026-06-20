@@ -192,7 +192,7 @@ describe('useStreamMutations', () => {
       ).rejects.toThrow('quality_rejected')
     })
 
-    expect(toastInfo).toHaveBeenCalledWith('Запускаємо трансляцію...')
+    expect(toastInfo).toHaveBeenCalledWith('stream.starting')
     expect(openQualityGate).toHaveBeenCalledWith({
       streamName: 'Morning show',
       quality,

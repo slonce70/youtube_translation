@@ -76,7 +76,7 @@ export function useStreamMutations({
       setOptimisticRunningStreamIds((current) =>
         current.includes(variables.streamId) ? current : [...current, variables.streamId],
       )
-      toast.info('Запускаємо трансляцію...')
+      toast.info(streamingToasts('stream.starting'))
     },
     onSuccess: (_, variables) => {
       toast.success(streamingToasts('stream.started'))

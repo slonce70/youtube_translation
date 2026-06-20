@@ -94,7 +94,7 @@ export function IncidentTimeline({
         >
           {tHero('timeline.title')}
         </span>
-        <div role="tablist" aria-label="Фільтр за рівнем" style={{ display: 'flex', gap: 4 }}>
+        <div role="tablist" aria-label={tHero('timeline.filterLabel')} style={{ display: 'flex', gap: 4 }}>
           {filters.map((option) => (
             <button
               key={option.value}

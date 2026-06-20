@@ -1,8 +1,10 @@
+import { RadioTower, Twitch, Youtube, type LucideIcon } from 'lucide-react'
+
 import type { Destination, StreamDestinationSummary } from '@/lib/types'
 
 export type DestinationPlatformPresentation = {
   kind: 'youtube' | 'twitch' | 'rtmps'
-  icon: string
+  icon: LucideIcon
   label: string
   className: string
 }
@@ -29,7 +31,7 @@ export function getDestinationPlatformPresentation(
   ) {
     return {
       kind: 'youtube',
-      icon: '▶',
+      icon: Youtube,
       label: 'YouTube',
       className: 'channel-logo channel-logo-youtube',
     }
@@ -38,7 +40,7 @@ export function getDestinationPlatformPresentation(
   if (haystack.includes('twitch')) {
     return {
       kind: 'twitch',
-      icon: '🎮',
+      icon: Twitch,
       label: 'Twitch',
       className: 'channel-logo channel-logo-twitch',
     }
@@ -46,7 +48,7 @@ export function getDestinationPlatformPresentation(
 
   return {
     kind: 'rtmps',
-    icon: '📡',
+    icon: RadioTower,
     label: 'RTMPS',
     className: 'channel-logo channel-logo-rtmps',
   }
