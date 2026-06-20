@@ -1057,7 +1057,7 @@ function LibraryPageContent() {
         <div className="floating-panel">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <strong style={{ fontSize: 13 }}>{tLibrary('uploadStatus.title')}</strong>
-            <button type="button" aria-label="close" style={{ marginLeft: 'auto', color: 'var(--txt-3)', fontSize: 18 }} onClick={clearUploadStatusOverrides}>{'×'}</button>
+            <button type="button" aria-label={actionLabels('close')} style={{ marginLeft: 'auto', color: 'var(--txt-3)', fontSize: 18 }} onClick={clearUploadStatusOverrides}>{'×'}</button>
           </div>
           <div className="summary-list">
             {uploadStatusEntries.map(([uploadId, status]) => (

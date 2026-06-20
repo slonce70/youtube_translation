@@ -62,6 +62,7 @@
     },
     "stream": {
       "created": "Stream created",
+      "starting": "Starting stream...",
       "started": "Stream started",
       "stopped": "Stream stopped",
       "deleted": "Stream deleted",
@@ -191,6 +192,7 @@
     },
     "timeline": {
       "title": "Event stream",
+      "filterLabel": "Filter by level",
       "filterAll": "All",
       "loading": "Loading events…",
       "emptyFiltered": "No {level} events.",
@@ -242,6 +244,12 @@
       "archive": "Archive"
     },
     "destinationsNone": "No channel selected",
+    "source": {
+      "videoSeries": "Video",
+      "playlist": "Playlist",
+      "queue": "Queue ({count})",
+      "none": "No source set"
+    },
     "statusLabels": {
       "stopping": "Stopping",
       "starting": "Starting",
@@ -733,6 +741,8 @@
       "channelsEmpty": "Add an RTMPS channel and link a YouTube OAuth connection when you need real provider status.",
       "viewersLabel": "YouTube viewers",
       "viewers": "{count} viewers",
+      "healthIssues": "{count} ingest issues",
+      "healthDegraded": "Ingest degraded",
       "runtimeMismatchTitle": "Runtime / YouTube mismatch",
       "runtimeMismatchBody": "Runtime: {runtime} · Provider: {provider}",
       "runtime": {

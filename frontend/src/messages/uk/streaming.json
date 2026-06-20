@@ -62,6 +62,7 @@
     },
     "stream": {
       "created": "Трансляцію створено",
+      "starting": "Запускаємо трансляцію...",
       "started": "Трансляцію запущено",
       "stopped": "Трансляцію зупинено",
       "deleted": "Трансляцію видалено",
@@ -191,6 +192,7 @@
     },
     "timeline": {
       "title": "Стрічка подій",
+      "filterLabel": "Фільтр за рівнем",
       "filterAll": "Усі",
       "loading": "Завантаження подій…",
       "emptyFiltered": "Подій рівня {level} немає.",
@@ -242,6 +244,12 @@
       "archive": "Архів"
     },
     "destinationsNone": "Канал не вказано",
+    "source": {
+      "videoSeries": "Відеоряд",
+      "playlist": "Плейлист",
+      "queue": "Черга ({count})",
+      "none": "Джерело не вказано"
+    },
     "statusLabels": {
       "stopping": "Зупиняється",
       "starting": "Запускається",
@@ -733,6 +741,8 @@
       "channelsEmpty": "Додайте RTMPS-канал і за потреби прив’яжіть YouTube OAuth-підключення для реального статусу провайдера.",
       "viewersLabel": "Глядачі YouTube",
       "viewers": "{count} глядачів",
+      "healthIssues": "{count} проблем ingest",
+      "healthDegraded": "Проблеми ingest",
       "runtimeMismatchTitle": "Розбіжність runtime і YouTube",
       "runtimeMismatchBody": "Runtime: {runtime} · Провайдер: {provider}",
       "runtime": {

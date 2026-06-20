@@ -62,6 +62,7 @@
     },
     "stream": {
       "created": "Трансляция создана",
+      "starting": "Запускаем трансляцию...",
       "started": "Трансляция запущена",
       "stopped": "Трансляция остановлена",
       "deleted": "Трансляция удалена",
@@ -191,6 +192,7 @@
     },
     "timeline": {
       "title": "Лента событий",
+      "filterLabel": "Фильтр по уровню",
       "filterAll": "Все",
       "loading": "Загрузка событий…",
       "emptyFiltered": "Событий уровня {level} нет.",
@@ -242,6 +244,12 @@
       "archive": "Архив"
     },
     "destinationsNone": "Канал не выбран",
+    "source": {
+      "videoSeries": "Видеоряд",
+      "playlist": "Плейлист",
+      "queue": "Очередь ({count})",
+      "none": "Источник не указан"
+    },
     "statusLabels": {
       "stopping": "Останавливается",
       "starting": "Запускается",
@@ -733,6 +741,8 @@
       "channelsEmpty": "Добавьте RTMPS-канал и при необходимости привяжите YouTube OAuth-подключение для реального статуса провайдера.",
       "viewersLabel": "Зрители YouTube",
       "viewers": "{count} зрителей",
+      "healthIssues": "{count} проблем ingest",
+      "healthDegraded": "Проблемы ingest",
       "runtimeMismatchTitle": "Расхождение runtime и YouTube",
       "runtimeMismatchBody": "Runtime: {runtime} · Провайдер: {provider}",
       "runtime": {

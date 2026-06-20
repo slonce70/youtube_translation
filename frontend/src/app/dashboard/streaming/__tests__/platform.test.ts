@@ -1,3 +1,5 @@
+import { RadioTower, Twitch, Youtube } from 'lucide-react'
+
 import { getDestinationPlatformPresentation } from '../platform'
 
 describe('getDestinationPlatformPresentation', () => {
@@ -10,7 +12,7 @@ describe('getDestinationPlatformPresentation', () => {
       }),
     ).toMatchObject({
       kind: 'youtube',
-      icon: '▶',
+      icon: Youtube,
       className: 'channel-logo channel-logo-youtube',
     })
   })
@@ -24,7 +26,7 @@ describe('getDestinationPlatformPresentation', () => {
       }),
     ).toMatchObject({
       kind: 'twitch',
-      icon: '🎮',
+      icon: Twitch,
       className: 'channel-logo channel-logo-twitch',
     })
   })
@@ -38,7 +40,7 @@ describe('getDestinationPlatformPresentation', () => {
       }),
     ).toMatchObject({
       kind: 'rtmps',
-      icon: '📡',
+      icon: RadioTower,
       className: 'channel-logo channel-logo-rtmps',
     })
   })

@@ -230,13 +230,16 @@ export default function ChannelsPage() {
           ) : destinations && destinations.length > 0 ? (
             destinations.map((destination) => {
               const platform = getDestinationPlatformPresentation(destination)
+              const PlatformIcon = platform.icon
               return (
                 <div
                   key={destination.id}
                   className="channel-row"
                   role="listitem"
                 >
-                  <div className={platform.className} aria-label={platform.label}>{platform.icon}</div>
+                  <div className={platform.className} aria-label={platform.label}>
+                    <PlatformIcon className="h-4 w-4" />
+                  </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{destination.name}</div>
                     <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>

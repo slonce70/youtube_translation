@@ -114,15 +114,15 @@ export const useStreamingPageData = ({
 
   const getStreamSourceLabel = (stream: Stream) => {
     if (stream.video_collection_id) {
-      return videoCollectionMap.get(stream.video_collection_id)?.name ?? 'Відеоряд'
+      return videoCollectionMap.get(stream.video_collection_id)?.name ?? tStreaming('source.videoSeries')
     }
     if (stream.playlist_id) {
-      return playlistMap.get(stream.playlist_id)?.name ?? 'Плейлист'
+      return playlistMap.get(stream.playlist_id)?.name ?? tStreaming('source.playlist')
     }
     if (stream.stream_assets?.length) {
-      return `Черга (${stream.stream_assets.length})`
+      return tStreaming('source.queue', { count: stream.stream_assets.length })
     }
-    return 'Джерело не вказано'
+    return tStreaming('source.none')
   }
 
   const getStreamSourceTotalSeconds = (stream: Stream) => {
