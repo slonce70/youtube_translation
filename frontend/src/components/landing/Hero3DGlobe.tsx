@@ -3,9 +3,11 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 
-const ACCENT = 0xff4a62
-const CYAN = 0x66e6ff
-const TEAL = 0x73f1c5
+// SIGNAL palette: keep the globe within the single electric-indigo family
+// (brand indigo + info blue + light indigo) instead of the old red/cyan/teal.
+const ACCENT = 0x5b6cff
+const CYAN = 0x58a6ff
+const TEAL = 0xa6b0ff
 
 export function Hero3DGlobe() {
   const mountRef = useRef<HTMLDivElement | null>(null)
