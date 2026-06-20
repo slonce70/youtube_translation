@@ -2,6 +2,7 @@
   "brand": {
     "name": "Loopcast"
   },
+  "skipToContent": "Skip to content",
   "topbar": {
     "liveCount": "{count} Live",
     "noLive": "No live",

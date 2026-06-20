@@ -80,6 +80,49 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply from-primary-600 to-accent-600;
   }
+
+  /* ── Accessibility baseline (applies app-wide) ─────────────────────── */
+
+  /* Visible keyboard focus for every interactive element. Uses
+   * :focus-visible so mouse users keep clean clicks; more specific
+   * component rules (e.g. .dashboard-v2 .btn) may override the colour. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Honour the OS "reduce motion" setting everywhere: kill pulses,
+   * spinners, parallax and smooth-scroll for users who opt out. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Skip-to-content link — first tab stop, hidden until focused. */
+  .skip-link {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 200;
+    transform: translateY(-160%);
+    background: hsl(var(--primary));
+    color: #fff;
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+    transition: transform .16s ease;
+  }
+  .skip-link:focus {
+    transform: translateY(0);
+  }
 }
 
 @layer components {
@@ -1565,6 +1608,17 @@
   .dashboard-v2 > * {
     position: relative;
     z-index: 1;
+  }
+
+  /* Keep the skip-link out of normal flow despite the rule above, and make
+   * the reveal-on-focus win the cascade inside the scoped console layer. */
+  .dashboard-v2 > .skip-link {
+    position: fixed;
+    z-index: 200;
+    transform: translateY(-160%);
+  }
+  .dashboard-v2 > .skip-link:focus {
+    transform: translateY(0);
   }
 
   .dashboard-v2 a {

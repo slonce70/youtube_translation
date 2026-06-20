@@ -88,6 +88,7 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
 
   return (
     <div className="dashboard-v2">
+      <a href="#main-content" className="skip-link">{nav('skipToContent')}</a>
       <div className={`dashboard-app${collapsed ? ' nav-collapsed' : ''}`}>
         <Topbar
           userName={userName}
@@ -105,7 +106,7 @@ export function DashboardShell({ userName, userEmail, onSignOut, children }: Das
             writeSidebarCollapsed(next)
           }}
         />
-        <main className="main">
+        <main className="main" id="main-content">
           <div className="page active">{children}</div>
         </main>
       </div>
