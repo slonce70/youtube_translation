@@ -22,7 +22,7 @@
     "fallbackDuration": "—",
     "nameLabel": "Stream name *",
     "startTime": "Start time",
-    "startNow": "▶ Now",
+    "startNow": "Now",
     "startSchedule": "Schedule",
     "durationHours": "{hours} h",
     "loopFile": "Loop the file",
@@ -269,7 +269,7 @@
     "scheduled": {
       "title": "Scheduled",
       "fallbackLabel": "Scheduled",
-      "startStream": "▶ Start",
+      "startStream": "Start",
       "editStream": "Edit",
       "logButton": "Log",
       "scheduleStream": "+ Schedule a stream",
