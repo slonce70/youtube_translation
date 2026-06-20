@@ -4,7 +4,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Play, Loader2, X, Radio, Gauge, RadioTower, AlertTriangle, Film, CalendarClock, Trash2, Archive } from 'lucide-react'
+import { Play, Loader2, X, Radio, Gauge, RadioTower, AlertTriangle, CalendarClock, Trash2, Archive } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -12,7 +12,6 @@ import { api } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 import type {
   StreamLogsResponse,
   SubscriptionTierKey,
@@ -48,7 +47,6 @@ import {
   getStreamLogLineClassName,
   summarizeStreamLogIncidents,
 } from '@/lib/stream-state'
-import { formatDuration } from '@/lib/utils'
 import { formatDateTimeLocal, type ScheduleDraft } from './schedule-utils'
 import { extractStopAuditEntries } from './log-audit'
 
@@ -68,7 +66,6 @@ function StreamingPageContent() {
   const activePlanLabel = planNames((currentTier ?? 'free') as SubscriptionTierKey)
   const streamingToasts = useTranslations('streaming.toasts')
   const tStreaming = useTranslations('streaming.page')
-  const streamStatus = useTranslations('streaming.status')
   const { qualityGate, openQualityGate, closeQualityGate, groupedViolations } = useQualityGate()
 
   useEffect(() => {
@@ -94,7 +91,6 @@ function StreamingPageContent() {
     destinationsLimit,
     formatLimitValue,
     getStreamSourceLabel,
-    getStreamSourceTotalSeconds,
     isLoadingAssets,
     isLoadingAudioCollections,
     isLoadingDestinations,
@@ -451,10 +447,9 @@ function StreamingPageContent() {
 
       {activeStreamTab === 'live' ? (
         <div className="summary-list">
-          {/* Track 5b/D: modern operator hero — sits above the legacy
-            *  card list so the most-asked questions ("is it up?",
-            *  "what's playing?", bitrate stability) are answered before
-            *  the operator scrolls. Per-stream hero self-fetches
+          {/* Track 5b/D: modern operator hero answers the most-asked
+            *  questions ("is it up?", "what's playing?", bitrate
+            *  stability) up front. Per-stream hero self-fetches
             *  status + events + metrics. */}
           {liveEntries.map(({ stream }) => (
             <LiveStreamHero
@@ -467,175 +462,7 @@ function StreamingPageContent() {
               onRestart={() => handleStartStream(stream)}
             />
           ))}
-          {liveEntries.length > 0 ? liveEntries.map(({ stream, derived }) => {
-            const sourceName = getStreamSourceLabel(stream)
-            const sourceTotalSeconds = getStreamSourceTotalSeconds(stream)
-            const destinationLabel = (stream.destinations ?? []).map((d) => d.name).join(', ') || tStreaming('destinationsNone')
-            const quotaLabel = derived.quotaReached
-              ? '0'
-              : formatLimitValue(derived.remainingDailySeconds ?? null)
-            const isOptimisticallyStarting = pendingStartStreamId === stream.id || (optimisticRunningStreamIds.includes(stream.id) && !derived.isRunning)
-            const isOptimisticallyStopping = pendingStopStreamId === stream.id || optimisticStoppingStreamIds.includes(stream.id) || derived.isStopping
-            const isTransitioning = isOptimisticallyStarting || isOptimisticallyStopping || derived.isTransitioning
-            const incidentNotice = buildStreamIncidentNotice(derived.incidentSummary)
-            const statusLabel = isOptimisticallyStopping
-              ? tStreaming('statusLabels.stopping')
-              : isOptimisticallyStarting || derived.isStarting
-                ? tStreaming('statusLabels.starting')
-                : derived.isDegraded
-                  ? tStreaming('statusLabels.degraded')
-                  : tStreaming('statusLabels.live')
-            const progressPercent = sourceTotalSeconds && derived.liveDurationSeconds != null
-              ? Math.min(100, Math.round((derived.liveDurationSeconds / sourceTotalSeconds) * 100))
-              : null
-
-            return (
-              <article
-                key={stream.id}
-                className="card stream-summary-card"
-                style={{
-                  borderColor: isTransitioning
-                    ? 'rgba(245,158,11,.35)'
-                    : derived.isDegraded
-                      ? 'rgba(245,158,11,.35)'
-                      : 'rgba(34,197,94,.25)',
-                }}
-              >
-                <div className="card-content">
-                  <div className="stream-card-header">
-                    <Badge variant={isTransitioning || derived.isDegraded ? 'warn' : 'live'} style={{ fontSize: 12 }}>
-                      {isTransitioning ? null : <span className="live-dot" />}{statusLabel}
-                    </Badge>
-                    <span style={{ fontWeight: 700, fontSize: 15 }}>
-                      {stream.name || tStreaming('streams.untitled')}
-                    </span>
-                    <span className="page-sub ml-auto">
-                      {destinationLabel} ·{' '}
-                      {derived.isRunning && stream.started_at
-                        ? tStreaming('startedAt', {
-                            time: new Date(stream.started_at).toLocaleTimeString(),
-                          })
-                        : statusLabel}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => handleStopStream(stream.id)}
-                      disabled={isTransitioning}
-                    >
-                      {isOptimisticallyStopping
-                        ? `⏳ ${streamStatus('stopping')}`
-                        : isOptimisticallyStarting || derived.isStarting
-                          ? `⏳ ${streamStatus('starting')}`
-                          : `■ ${tStreaming('streams.buttons.stop')}`}
-                    </Button>
-                  </div>
-
-                  {incidentNotice ? (
-                    <div
-                      className="rounded-lg border px-4 py-3 text-sm"
-                      style={{
-                        marginTop: 12,
-                        borderColor:
-                          incidentNotice.tone === 'critical'
-                            ? 'rgba(248,113,113,.35)'
-                            : 'rgba(245,158,11,.35)',
-                        background:
-                          incidentNotice.tone === 'critical'
-                            ? 'rgba(127,29,29,.18)'
-                            : 'rgba(120,53,15,.18)',
-                        color: 'var(--txt)',
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          textTransform: 'uppercase',
-                          letterSpacing: '.08em',
-                          color: incidentNotice.tone === 'critical' ? '#fecaca' : '#fde68a',
-                        }}
-                      >
-                        {incidentNotice.tone === 'critical' ? tStreaming('incidentLabel.critical') : tStreaming('incidentLabel.degraded')}
-                      </div>
-                      <div style={{ marginTop: 6, fontWeight: 600 }}>{incidentNotice.title}</div>
-                      {incidentNotice.details.length ? (
-                        <div style={{ marginTop: 6, color: 'var(--txt-2)' }}>
-                          {incidentNotice.details.join(' · ')}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  <div className="stream-playback-panel">
-                    <div className="flex items-center gap-8 mb-10">
-                      <span className="now-playing-ic" aria-hidden="true"><Film className="h-[18px] w-[18px]" /></span>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--txt-3)' }}>
-                          {tStreaming('playback.currentVideoLabel')}
-                        </div>
-                        <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{sourceName}</div>
-                      </div>
-                      <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                        <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>{tStreaming('fileProgress')}</div>
-                        <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: progressPercent == null ? 'var(--txt-2)' : 'var(--green)' }}>
-                          {progressPercent == null ? '—' : `${progressPercent}%`}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="progress-bar" style={{ height: 6 }}>
-                      <div className="progress-fill green" style={{ width: `${progressPercent ?? 0}%` }} />
-                    </div>
-                    <div className="flex items-center gap-8 mt-6">
-                      <span className="page-sub">
-                        {progressPercent == null
-                          ? tStreaming('playback.progressPending')
-                          : tStreaming('playback.progressPercent', { percent: progressPercent })}
-                      </span>
-                      <Badge variant="indigo" style={{ fontSize: 10, marginLeft: 'auto' }}>
-                        {tStreaming('playback.loopOn')}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="stream-metrics-grid">
-                    <div className="stream-metric-tile">
-                      <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>
-                        {formatDuration(Math.round(derived.totalDurationSeconds ?? 0))}
-                      </div>
-                      <div className="page-sub">{tStreaming('totalDuration')}</div>
-                    </div>
-                    <div className="stream-metric-tile">
-                      <div style={{ fontSize: 15, fontWeight: 700 }}>
-                        {sourceTotalSeconds ? formatDuration(Math.round(sourceTotalSeconds)) : '—'}
-                      </div>
-                      <div className="page-sub">{tStreaming('videoTotal')}</div>
-                    </div>
-                    <div className="stream-metric-tile">
-                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--amber)' }}>{quotaLabel}</div>
-                      <div className="page-sub">{tStreaming('limitRemaining')}</div>
-                    </div>
-                    <div className="stream-metric-tile">
-                      <div style={{ fontSize: 15, fontWeight: 700 }}>{planQualityLimits?.max_resolution ?? activePlanLabel}</div>
-                      <div className="page-sub">{tStreaming('streamQuality')}</div>
-                    </div>
-                  </div>
-
-                  <div className="page-actions" style={{ marginTop: 14, marginLeft: 0 }}>
-                    <Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(stream.provider_video_id ? `https://www.youtube.com/watch?v=${stream.provider_video_id}` : window.location.href)}>
-                      {tStreaming('linkButton')}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => { setLogsMode('important'); setViewingLogs(stream.id) }}>
-                      {tStreaming('logButton')}
-                    </Button>
-                    <Button size="sm" variant="outline" className="ml-auto" onClick={() => openLiveEditor(stream)}>
-                      {tStreaming('moreActions')}
-                    </Button>
-                  </div>
-                </div>
-              </article>
-            )
-          }) : (
+          {liveEntries.length === 0 ? (
             <Card>
               <CardContent>
                 <div className="empty-state" style={{ padding: '40px 20px' }}>
@@ -645,7 +472,7 @@ function StreamingPageContent() {
                 </div>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </div>
       ) : null}
 
