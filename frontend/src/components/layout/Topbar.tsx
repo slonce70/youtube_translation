@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, ChevronDown, CreditCard, LogOut, Search, Settings, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { LiveDot } from '@/components/ui/LiveDot'
+import { LogoMark } from '@/components/ui/Logo'
 
 interface TopbarProps {
   userName: string
@@ -56,12 +57,12 @@ export function Topbar({
 
   return (
     <header className="topbar">
-      <div className="topbar-logo">
-        <div className="logo-icon" aria-hidden="true">
-          {'📡'}
-        </div>
+      <Link href="/dashboard/streaming" className="topbar-logo" aria-label={brandName}>
+        <span className="logo-icon" aria-hidden="true">
+          <LogoMark size={22} />
+        </span>
         <span className="logo-text">{brandName}</span>
-      </div>
+      </Link>
 
       <button
         type="button"

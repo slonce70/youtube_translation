@@ -48,7 +48,7 @@
     "youtubeDisconnected": "YouTube connection removed"
   },
   "provider": {
-    "title": "📺 YouTube connections",
+    "title": "YouTube connections",
     "description": "Only real YouTube provider status is shown here. Twitch is intentionally excluded from this MVP.",
     "connectCta": "▶ Connect YouTube",
     "disconnectCta": "Disconnect",

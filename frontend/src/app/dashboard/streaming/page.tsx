@@ -4,7 +4,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Play, Loader2, X } from 'lucide-react'
+import { Play, Loader2, X, Radio, Gauge, RadioTower, AlertTriangle, Film, CalendarClock, Trash2, Archive } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -381,34 +381,34 @@ function StreamingPageContent() {
 
       <div className="stat-strip">
         <div className="stat-strip-card">
-          <div style={{ fontSize: 24 }} aria-hidden="true">{'🔴'}</div>
+          <span className="stat-strip-icon is-live" aria-hidden="true"><Radio className="h-[18px] w-[18px]" /></span>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>{runningStreams.length}</div>
+            <div className="stat-strip-value">{runningStreams.length}</div>
             <div className="page-sub">{tStreaming('stats.activeStreams')}</div>
           </div>
         </div>
         <div className="stat-strip-card">
-          <div style={{ fontSize: 24 }} aria-hidden="true">{'📊'}</div>
+          <span className="stat-strip-icon" aria-hidden="true"><Gauge className="h-[18px] w-[18px]" /></span>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>
+            <div className="stat-strip-value">
               {runningStreams.length}/{formatLimitValue(concurrentStreamsLimit)}
             </div>
             <div className="page-sub">{tStreaming('stats.parallelLimit')}</div>
           </div>
         </div>
         <div className="stat-strip-card">
-          <div style={{ fontSize: 24 }} aria-hidden="true">{'📡'}</div>
+          <span className="stat-strip-icon" aria-hidden="true"><RadioTower className="h-[18px] w-[18px]" /></span>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>
+            <div className="stat-strip-value">
               {destinations?.length || 0}/{formatLimitValue(destinationsLimit)}
             </div>
             <div className="page-sub">{tStreaming('stats.channelsAdded')}</div>
           </div>
         </div>
         <div className="stat-strip-card">
-          <div style={{ fontSize: 24 }} aria-hidden="true">{'⚠️'}</div>
+          <span className="stat-strip-icon is-warn" aria-hidden="true"><AlertTriangle className="h-[18px] w-[18px]" /></span>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--amber)' }}>
+            <div className="stat-strip-value" style={{ color: degradedLiveEntries.length ? 'var(--amber)' : undefined }}>
               {degradedLiveEntries.length}
             </div>
             <div className="page-sub">{tStreaming('stats.degraded')}</div>
@@ -569,7 +569,7 @@ function StreamingPageContent() {
 
                   <div className="stream-playback-panel">
                     <div className="flex items-center gap-8 mb-10">
-                      <span style={{ fontSize: 18 }} aria-hidden="true">{'🎬'}</span>
+                      <span className="now-playing-ic" aria-hidden="true"><Film className="h-[18px] w-[18px]" /></span>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--txt-3)' }}>
                           {tStreaming('playback.currentVideoLabel')}
@@ -639,7 +639,7 @@ function StreamingPageContent() {
             <Card>
               <CardContent>
                 <div className="empty-state" style={{ padding: '40px 20px' }}>
-                  <div className="empty-icon" aria-hidden="true">{'📡'}</div>
+                  <div className="empty-icon" aria-hidden="true"><RadioTower className="h-7 w-7" /></div>
                   <div className="empty-title">{tStreaming('active.emptyTitle')}</div>
                   <div className="empty-sub">{tStreaming('active.emptyDescription')}</div>
                 </div>
@@ -655,7 +655,7 @@ function StreamingPageContent() {
           <CardContent className="summary-list">
             {scheduledEntries.length > 0 ? scheduledEntries.map(({ stream }) => (
               <div key={stream.id} className="stream-row">
-                <div className="stream-thumb" aria-hidden="true">{'🗓️'}</div>
+                <div className="stream-thumb" aria-hidden="true"><CalendarClock className="h-5 w-5" /></div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || tStreaming('streams.untitled')}</div>
                   <div className="page-sub">{stream.scheduled_start_time ? new Date(stream.scheduled_start_time).toLocaleString() : tStreaming('scheduled.fallbackLabel')}</div>
@@ -675,14 +675,14 @@ function StreamingPageContent() {
                     {pendingDeleteStreamId === stream.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      `🗑 ${tStreaming('streams.buttons.delete')}`
+                      <span className="inline-flex items-center gap-1.5"><Trash2 className="h-3.5 w-3.5" />{tStreaming('streams.buttons.delete')}</span>
                     )}
                   </Button>
                 </div>
               </div>
             )) : (
               <div className="empty-state" style={{ padding: '36px 20px' }}>
-                <div className="empty-icon" aria-hidden="true">{'🗓️'}</div>
+                <div className="empty-icon" aria-hidden="true"><CalendarClock className="h-7 w-7" /></div>
                 <div className="empty-title">{tStreaming('scheduled.emptyTitle')}</div>
                 <div className="empty-sub">{tStreaming('scheduled.emptyDescription')}</div>
                 <Button size="sm" variant="outline" onClick={() => setShowCreateStream(true)} style={{ marginTop: 12 }}>
@@ -732,7 +732,7 @@ function StreamingPageContent() {
                             {pendingDeleteStreamId === stream.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              `🗑 ${tStreaming('streams.buttons.delete')}`
+                              <span className="inline-flex items-center gap-1.5"><Trash2 className="h-3.5 w-3.5" />{tStreaming('streams.buttons.delete')}</span>
                             )}
                           </Button>
                         </div>
@@ -743,7 +743,7 @@ function StreamingPageContent() {
               </table>
             ) : (
               <div className="empty-state" style={{ padding: '36px 20px' }}>
-                <div className="empty-icon" aria-hidden="true">{'📋'}</div>
+                <div className="empty-icon" aria-hidden="true"><Archive className="h-7 w-7" /></div>
                 <div className="empty-title">{tStreaming('archive.emptyTitle')}</div>
                 <div className="empty-sub">{tStreaming('archive.emptyDescription')}</div>
               </div>

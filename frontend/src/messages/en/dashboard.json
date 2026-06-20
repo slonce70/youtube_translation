@@ -5,8 +5,8 @@
     "userFallback": "Streamer",
     "planFallback": "Free",
     "actions": {
-      "schedule": "🗓️ Schedule",
-      "startStream": "🎙️ Start streaming"
+      "schedule": "Schedule",
+      "startStream": "Start streaming"
     },
     "liveBanner": {
       "activeStreams": "{count} active streams",
@@ -25,7 +25,7 @@
       "totalLifetime": "▲ Total {hours} h"
     },
     "liveStreams": {
-      "title": "🔴 Active streams",
+      "title": "Active streams",
       "live": "Live",
       "noLive": "No live",
       "untitled": "Untitled",
@@ -41,7 +41,7 @@
       "openSchedule": "Schedule"
     },
     "recentAssets": {
-      "title": "📁 Recent files",
+      "title": "Recent files",
       "viewAll": "All files →",
       "tableFile": "File",
       "tableSize": "Size",
@@ -50,25 +50,25 @@
       "open": "Open",
       "emptyTitle": "Library is empty",
       "emptyDescription": "Upload your first file to launch broadcasts directly from your library.",
-      "uploadCta": "⬆ Upload file"
+      "uploadCta": "Upload file"
     },
     "quickActions": {
-      "title": "⚡ Quick actions",
-      "startStreaming": "🎙️ Start streaming",
-      "uploadFile": "📁 Upload file",
-      "scheduleStream": "🗓️ Schedule stream"
+      "title": "Quick actions",
+      "startStreaming": "Start streaming",
+      "uploadFile": "Upload file",
+      "scheduleStream": "Schedule stream"
     },
     "storage": {
-      "title": "💾 Storage",
+      "title": "Storage",
       "ofLimit": "{used} / {limit} GB",
       "freeSpace": "~ {value} free",
-      "video": "🎬 Video",
-      "audio": "🎵 Audio",
-      "other": "📦 Other",
+      "video": "Video",
+      "audio": "Audio",
+      "other": "Other",
       "manage": "Manage files →"
     },
     "scheduleSidebar": {
-      "title": "🗓️ Today on schedule",
+      "title": "Today on schedule",
       "untitled": "Untitled",
       "scheduledFallback": "Scheduled",
       "emptyTitle": "No scheduled events",

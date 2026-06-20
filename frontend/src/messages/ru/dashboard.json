@@ -5,8 +5,8 @@
     "userFallback": "Стример",
     "planFallback": "Free",
     "actions": {
-      "schedule": "🗓️ Запланировать",
-      "startStream": "🎙️ Начать трансляцию"
+      "schedule": "Запланировать",
+      "startStream": "Начать трансляцию"
     },
     "liveBanner": {
       "activeStreams": "{count} активных трансляций",
@@ -25,7 +25,7 @@
       "totalLifetime": "▲ Всего {hours} ч"
     },
     "liveStreams": {
-      "title": "🔴 Активные трансляции",
+      "title": "Активные трансляции",
       "live": "Live",
       "noLive": "Нет live",
       "untitled": "Без названия",
@@ -41,7 +41,7 @@
       "openSchedule": "Расписание"
     },
     "recentAssets": {
-      "title": "📁 Недавние файлы",
+      "title": "Недавние файлы",
       "viewAll": "Все файлы →",
       "tableFile": "Файл",
       "tableSize": "Размер",
@@ -50,25 +50,25 @@
       "open": "Открыть",
       "emptyTitle": "Библиотека пока пуста",
       "emptyDescription": "Загрузите первый файл, чтобы быстро запускать трансляции из библиотеки.",
-      "uploadCta": "⬆ Загрузить файл"
+      "uploadCta": "Загрузить файл"
     },
     "quickActions": {
-      "title": "⚡ Быстрые действия",
-      "startStreaming": "🎙️ Начать трансляцию",
-      "uploadFile": "📁 Загрузить файл",
-      "scheduleStream": "🗓️ Запланировать стрим"
+      "title": "Быстрые действия",
+      "startStreaming": "Начать трансляцию",
+      "uploadFile": "Загрузить файл",
+      "scheduleStream": "Запланировать стрим"
     },
     "storage": {
-      "title": "💾 Хранилище",
+      "title": "Хранилище",
       "ofLimit": "{used} / {limit} ГБ",
       "freeSpace": "~ {value} свободно",
-      "video": "🎬 Видео",
-      "audio": "🎵 Аудио",
-      "other": "📦 Другое",
+      "video": "Видео",
+      "audio": "Аудио",
+      "other": "Другое",
       "manage": "Управлять файлами →"
     },
     "scheduleSidebar": {
-      "title": "🗓️ Сегодня в расписании",
+      "title": "Сегодня в расписании",
       "untitled": "Без названия",
       "scheduledFallback": "Запланировано",
       "emptyTitle": "Нет запланированных событий",

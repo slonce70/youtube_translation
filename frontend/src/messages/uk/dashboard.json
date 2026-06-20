@@ -5,8 +5,8 @@
     "userFallback": "Стример",
     "planFallback": "Free",
     "actions": {
-      "schedule": "🗓️ Запланувати",
-      "startStream": "🎙️ Почати трансляцію"
+      "schedule": "Запланувати",
+      "startStream": "Почати трансляцію"
     },
     "liveBanner": {
       "activeStreams": "{count} активні трансляції",
@@ -25,7 +25,7 @@
       "totalLifetime": "▲ Усього {hours} год"
     },
     "liveStreams": {
-      "title": "🔴 Активні трансляції",
+      "title": "Активні трансляції",
       "live": "Live",
       "noLive": "Немає live",
       "untitled": "Без назви",
@@ -41,7 +41,7 @@
       "openSchedule": "Розклад"
     },
     "recentAssets": {
-      "title": "📁 Останні файли",
+      "title": "Останні файли",
       "viewAll": "Всі файли →",
       "tableFile": "Файл",
       "tableSize": "Розмір",
@@ -50,25 +50,25 @@
       "open": "Відкрити",
       "emptyTitle": "Бібліотека поки порожня",
       "emptyDescription": "Завантажте перший файл, щоб швидко запускати трансляції зі стріму.",
-      "uploadCta": "⬆ Завантажити файл"
+      "uploadCta": "Завантажити файл"
     },
     "quickActions": {
-      "title": "⚡ Швидкі дії",
-      "startStreaming": "🎙️ Розпочати трансляцію",
-      "uploadFile": "📁 Завантажити файл",
-      "scheduleStream": "🗓️ Запланувати стрім"
+      "title": "Швидкі дії",
+      "startStreaming": "Розпочати трансляцію",
+      "uploadFile": "Завантажити файл",
+      "scheduleStream": "Запланувати стрім"
     },
     "storage": {
-      "title": "💾 Сховище",
+      "title": "Сховище",
       "ofLimit": "{used} / {limit} ГБ",
       "freeSpace": "~ {value} вільно",
-      "video": "🎬 Відео",
-      "audio": "🎵 Аудіо",
-      "other": "📦 Інше",
+      "video": "Відео",
+      "audio": "Аудіо",
+      "other": "Інше",
       "manage": "Керувати файлами →"
     },
     "scheduleSidebar": {
-      "title": "🗓️ Сьогодні в розкладі",
+      "title": "Сьогодні в розкладі",
       "untitled": "Без назви",
       "scheduledFallback": "Заплановано",
       "emptyTitle": "Немає запланованих подій",

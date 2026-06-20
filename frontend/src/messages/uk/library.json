@@ -61,16 +61,16 @@
       "list": "Список"
     },
     "uploadAria": "Завантажити файли",
-    "uploadButton": "⬆ Завантажити",
+    "uploadButton": "Завантажити",
     "dropZone": {
       "title": "Перетягніть файл сюди",
       "description": "Ми додамо його у завантаження та обробимо для стріму."
     },
     "filtersExtra": {
       "all": "Всі",
-      "video": "🎬 Відео",
-      "audio": "🎵 Аудіо",
-      "archives": "📦 Архіви"
+      "video": "Відео",
+      "audio": "Аудіо",
+      "archives": "Архіви"
     },
     "notImplemented": {
       "archives": "Архіви"
