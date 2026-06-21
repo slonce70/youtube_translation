@@ -10,61 +10,20 @@ import { useMemo } from 'react'
 import Link from 'next/link'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import {
-  Activity,
-  AlertTriangle,
-  ArrowUpRight,
-  CalendarClock,
-  CircleCheck,
-  CircleOff,
-  Eye,
-  Loader2,
-  Plus,
-} from 'lucide-react'
+import { Activity, ArrowUpRight, Eye, Plus } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { LoadingState } from '@/components/LoadingState'
 import type { Stream, StreamEventResponse, StreamStatusResponse } from '@/lib/types'
-import { deriveStreamState, type DerivedStreamState } from '@/lib/stream-state'
+import { deriveStreamState } from '@/lib/stream-state'
+import {
+  GlobalHealthBanner,
+  HealthPill,
+  healthOf,
+  STATE_COLOR,
+  STATE_RANK,
+} from '@/components/dashboard/stream-health'
 import { useDashboardContext } from './dashboard-context'
-
-type HealthState =
-  | 'healthy'
-  | 'degraded'
-  | 'down'
-  | 'offline'
-  | 'starting'
-  | 'stopping'
-  | 'scheduled'
-
-const STATE_COLOR: Record<HealthState, string> = {
-  healthy: 'var(--green)',
-  degraded: 'var(--amber)',
-  down: 'var(--red)',
-  offline: 'var(--txt-3)',
-  starting: 'var(--indigo)',
-  stopping: 'var(--indigo)',
-  scheduled: 'var(--txt-2)',
-}
-
-const STATE_RANK: Record<HealthState, number> = {
-  down: 0,
-  degraded: 1,
-  starting: 2,
-  stopping: 2,
-  healthy: 3,
-  scheduled: 4,
-  offline: 5,
-}
-
-function healthOf(derived: DerivedStreamState): HealthState {
-  if (derived.isStarting) return 'starting'
-  if (derived.isStopping) return 'stopping'
-  if (derived.isRunning) return derived.isDegraded ? 'degraded' : 'healthy'
-  if (derived.derivedStatus === 'error' || derived.requiresAttention) return 'down'
-  if (derived.group === 'scheduled') return 'scheduled'
-  return 'offline'
-}
 
 function fmtUptime(totalSeconds: number | null | undefined): string {
   if (totalSeconds == null || !Number.isFinite(totalSeconds) || totalSeconds < 0) return '—'
@@ -86,39 +45,6 @@ function fmtTime(iso: string): string {
   } catch {
     return iso
   }
-}
-
-function HealthPill({ state, label }: { state: HealthState; label: string }) {
-  const color = STATE_COLOR[state]
-  const Icon =
-    state === 'healthy'
-      ? CircleCheck
-      : state === 'degraded' || state === 'down'
-        ? AlertTriangle
-        : state === 'starting' || state === 'stopping'
-          ? Loader2
-          : state === 'scheduled'
-            ? CalendarClock
-            : CircleOff
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 5,
-        fontSize: 11,
-        fontWeight: 600,
-        color,
-        background: 'color-mix(in srgb, currentColor 14%, transparent)',
-        padding: '3px 9px',
-        borderRadius: 6,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <Icon className={`h-3 w-3${state === 'starting' || state === 'stopping' ? ' animate-spin' : ''}`} />
-      {label}
-    </span>
-  )
 }
 
 function OverviewTile({ stream }: { stream: Stream }) {
@@ -347,7 +273,6 @@ export function OverviewPage() {
   if (!user) return <LoadingState text={t('title')} />
 
   const hasStreams = (streams?.length ?? 0) > 0
-  const bannerTone = attentionCount > 0 ? 'var(--amber)' : runningCount > 0 ? 'var(--green)' : 'var(--txt-3)'
   const bannerText =
     runningCount === 0
       ? t('health.noStreams')
@@ -392,28 +317,13 @@ export function OverviewPage() {
         </div>
       ) : (
         <>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              background: 'color-mix(in srgb, ' + bannerTone + ' 8%, transparent)',
-              border: '1px solid color-mix(in srgb, ' + bannerTone + ' 28%, transparent)',
-              borderLeft: `3px solid ${bannerTone}`,
-              borderRadius: 'var(--radius)',
-              padding: '12px 16px',
-            }}
-          >
-            <span style={{ color: bannerTone, display: 'inline-flex' }}>
-              {attentionCount > 0 ? <AlertTriangle className="h-5 w-5" /> : <CircleCheck className="h-5 w-5" />}
-            </span>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>{bannerText}</span>
-            {runningCount > 0 ? (
-              <span className="page-sub" style={{ marginLeft: 'auto', fontSize: 12 }}>
-                {t('health.summary', { healthy: healthyCount, total: runningCount })}
-              </span>
-            ) : null}
-          </div>
+          <GlobalHealthBanner
+            attentionCount={attentionCount}
+            runningCount={runningCount}
+            healthyCount={healthyCount}
+            text={bannerText}
+            summary={runningCount > 0 ? t('health.summary', { healthy: healthyCount, total: runningCount }) : undefined}
+          />
 
           <div
             style={{
