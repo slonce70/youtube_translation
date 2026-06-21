@@ -279,6 +279,7 @@
     "archive": {
       "title": "Archive",
       "tableName": "Name",
+      "tableStatus": "Status",
       "tableSource": "Source",
       "tableChannel": "Channel",
       "tableDate": "Date",

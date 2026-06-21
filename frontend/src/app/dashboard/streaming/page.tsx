@@ -25,6 +25,7 @@ import { useStreamingPageData } from './hooks/useStreamingPageData'
 import { useStreamMutations } from './hooks/useStreamMutations'
 import { EmptyStateWizard } from '@/components/streaming/EmptyStateWizard'
 import { LiveStreamHero } from '@/components/streaming/LiveStreamHero'
+import { GlobalHealthBanner, HealthPill, healthOf } from '@/components/dashboard/stream-health'
 
 // Heavy modals are gated by boolean state and never appear on first paint.
 // Lazy-load them so the streaming page's first-load JS shrinks by the
@@ -66,6 +67,7 @@ function StreamingPageContent() {
   const activePlanLabel = planNames((currentTier ?? 'free') as SubscriptionTierKey)
   const streamingToasts = useTranslations('streaming.toasts')
   const tStreaming = useTranslations('streaming.page')
+  const tOverview = useTranslations('dashboard.overview')
   const { qualityGate, openQualityGate, closeQualityGate, groupedViolations } = useQualityGate()
 
   useEffect(() => {
@@ -368,6 +370,29 @@ function StreamingPageContent() {
         </div>
       </div>
 
+      {!isFirstRun && (streams?.length ?? 0) > 0 ? (
+        <GlobalHealthBanner
+          attentionCount={degradedLiveEntries.length}
+          runningCount={runningStreams.length}
+          healthyCount={runningStreams.length - degradedLiveEntries.length}
+          text={
+            runningStreams.length === 0
+              ? tOverview('health.noStreams')
+              : degradedLiveEntries.length > 0
+                ? tOverview('health.someAttention', { count: degradedLiveEntries.length })
+                : tOverview('health.allHealthy')
+          }
+          summary={
+            runningStreams.length > 0
+              ? tOverview('health.summary', {
+                  healthy: runningStreams.length - degradedLiveEntries.length,
+                  total: runningStreams.length,
+                })
+              : undefined
+          }
+        />
+      ) : null}
+
       {isFirstRun ? (
         <EmptyStateWizard
           hasChannel={(destinations?.length ?? 0) > 0}
@@ -491,11 +516,14 @@ function StreamingPageContent() {
         <Card role="tabpanel" id="stream-tabpanel-scheduled" aria-labelledby="stream-tab-scheduled">
           <CardHeader><CardTitle>{tStreaming('scheduled.title')}</CardTitle></CardHeader>
           <CardContent className="summary-list">
-            {scheduledEntries.length > 0 ? scheduledEntries.map(({ stream }) => (
+            {scheduledEntries.length > 0 ? scheduledEntries.map(({ stream, derived }) => (
               <div key={stream.id} className="stream-row">
                 <div className="stream-thumb" aria-hidden="true"><CalendarClock className="h-5 w-5" /></div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || tStreaming('streams.untitled')}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{stream.name || tStreaming('streams.untitled')}</span>
+                    {(() => { const s = healthOf(derived); return <HealthPill state={s} label={tOverview(`states.${s}`)} /> })()}
+                  </div>
                   <div className="page-sub">{stream.scheduled_start_time ? new Date(stream.scheduled_start_time).toLocaleString() : tStreaming('scheduled.fallbackLabel')}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -541,6 +569,7 @@ function StreamingPageContent() {
                 <thead>
                   <tr>
                     <th>{tStreaming('archive.tableName')}</th>
+                    <th>{tStreaming('archive.tableStatus')}</th>
                     <th>{tStreaming('archive.tableSource')}</th>
                     <th>{tStreaming('archive.tableChannel')}</th>
                     <th>{tStreaming('archive.tableDate')}</th>
@@ -548,9 +577,10 @@ function StreamingPageContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {archiveEntries.map(({ stream }) => (
+                  {archiveEntries.map(({ stream, derived }) => (
                     <tr key={stream.id}>
                       <td>{stream.name || tStreaming('streams.untitled')}</td>
+                      <td>{(() => { const s = healthOf(derived); return <HealthPill state={s} label={tOverview(`states.${s}`)} /> })()}</td>
                       <td>{getStreamSourceLabel(stream)}</td>
                       <td>{(stream.destinations ?? []).map((d) => d.name).join(', ') || tStreaming('archive.fallbackChannel')}</td>
                       <td>{new Date(stream.created_at).toLocaleString()}</td>
