@@ -279,6 +279,7 @@
     "archive": {
       "title": "Архив",
       "tableName": "Название",
+      "tableStatus": "Статус",
       "tableSource": "Источник",
       "tableChannel": "Канал",
       "tableDate": "Дата",
