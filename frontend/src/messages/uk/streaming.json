@@ -231,7 +231,7 @@
     "linkButton": "Посилання",
     "logButton": "Лог",
     "newStream": "Нова трансляція",
-    "channelsTitle": "Канали (RTMPS)",
+    "channelsTitle": "Канали",
     "addChannel": "+ Додати канал",
     "destinationKey": "Ключ",
     "destinationActive": "Активний",
@@ -294,7 +294,7 @@
       "goLive": "У ефір"
     },
     "channels": {
-      "title": "Канали",
+      "title": "Ваші канали",
       "add": "Додати канал",
       "badge": {
         "active": "Активний",

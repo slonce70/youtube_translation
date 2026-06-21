@@ -41,3 +41,9 @@
   - **Mission Control overview** — `/dashboard` is now the ops home (was a redirect): global health line + stream health tiles sorted most-broken-first (self-fetching status, 4-state health pill) + cross-stream events feed (`OverviewPage.tsx`). Re-added the "Дашборд" sidebar item. Enriched `dashboard.overview.*` i18n.
   - **Stream Cockpit controls** — the per-stream detail page (`/dashboard/streams/[id]`) already had Overview/Logs/Events; wired Stop/Restart into its `LiveStreamHero` (state-gated: Stop only when running), removed an unused `useRouter`.
   - Gates: `lint`, `type-check` (tsc), `i18n:check`, `jest` (160), `next build` — all green. Browser-verified landing (hero + scroll + features), overview, and cockpit.
+- **Audit bug fixes** (branch `fix/audit-bugs`):
+  - Plans: removed the dev-note leak — dropped the "Hybrid release" `header.releaseBadge` (+ its `<Badge>`/`Sparkles` import) and rewrote `toolbar.description` from "prototype shell + pricing логіка" to real copy about the quality toggle.
+  - Plans: fixed the duplicate "Поточний" badge on Free — `plans.free.badge` was hard-coded to the current-plan label; cleared it so only the dynamic `isCurrent` badge shows.
+  - Channels: dropped the "RTMPS" jargon from the page title (`channelsTitle` "Канали (RTMPS)" → "Канали") and renamed the inner card header to "Ваші канали" so the heading isn't duplicated.
+  - Library: storage usage showed "0 Bytes" with a file present — `user_profiles.current_storage_bytes` (the stored counter behind `quota.storage.used_bytes`) had drifted to 0 from the earlier dev re-seed (direct asset insert bypassed accounting). Reconciled the dev user's counter to the actual asset sum (192191 B). Not a code bug — a seed-data drift; library now shows "187.69 KB used of 3 GB".
+  - Gates: `i18n:check`, `lint`, `type-check`, `jest` (160), `next build` — all green. Browser-verified all four.
