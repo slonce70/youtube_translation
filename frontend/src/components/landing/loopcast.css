@@ -130,23 +130,25 @@
 
 /* Hero */
 .loopcast-root .lpc-hero {
-  position: relative; min-height: 92vh;
-  display: flex; flex-direction: column; justify-content: center;
-  padding: 80px 0 100px; overflow: hidden;
+  position: relative;
+  padding: 56px 0 72px; overflow: hidden;
 }
-.loopcast-root .lpc-hero-canvas { position: absolute; inset: 0; z-index: 0; }
-.loopcast-root .lpc-hero-vignette {
-  position: absolute; inset: 0; pointer-events: none; z-index: 1;
-  background:
-    radial-gradient(ellipse at center, transparent 0%, transparent 40%, var(--lpc-bg) 95%),
-    linear-gradient(to bottom, transparent 60%, var(--lpc-bg) 100%);
+.loopcast-root .lpc-hero-glow {
+  position: absolute; top: -140px; left: 50%; transform: translateX(-50%);
+  width: 920px; height: 660px; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse at center, var(--lpc-accent-soft) 0%, transparent 62%);
 }
-.loopcast-root .lpc-hero-content { position: relative; z-index: 2; text-align: center; padding: 60px 32px; }
+.loopcast-root .lpc-hero-grid {
+  position: relative; z-index: 2;
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 56px; align-items: center;
+}
+.loopcast-root .lpc-hero-content { text-align: left; }
 .loopcast-root .lpc-hero-pill {
   display: inline-flex; align-items: center; gap: 10px;
   padding: 6px 14px 6px 6px; border-radius: 999px;
   background: rgba(255, 255, 255, 0.04); border: 1px solid var(--lpc-line-2);
-  font-size: 12px; color: var(--lpc-fg-dim); margin-bottom: 32px;
+  font-size: 12px; color: var(--lpc-fg-dim); margin-bottom: 28px;
 }
 .loopcast-root .lpc-hero-pill-tag {
   background: var(--lpc-accent); color: #0a0a0f;
@@ -154,20 +156,56 @@
   font-weight: 600; font-size: 11px; font-family: var(--lpc-mono);
 }
 .loopcast-root .lpc-hero h1 {
-  font-family: var(--lpc-serif); font-size: clamp(48px, 8vw, 112px);
-  font-weight: 400; line-height: 0.94; letter-spacing: -0.025em;
-  margin: 0 auto 24px; max-width: 1100px; color: var(--lpc-fg);
+  font-family: var(--lpc-serif); font-size: clamp(40px, 5.4vw, 72px);
+  font-weight: 400; line-height: 0.98; letter-spacing: -0.025em;
+  margin: 0 0 22px; color: var(--lpc-fg);
 }
 .loopcast-root .lpc-hero h1 em { font-style: italic; color: var(--lpc-accent); text-shadow: 0 0 40px var(--lpc-accent-glow); }
 .loopcast-root .lpc-hero-sub {
-  max-width: 640px; margin: 0 auto 36px;
-  font-size: 18px; color: var(--lpc-fg-dim); line-height: 1.55;
+  max-width: 480px; margin: 0 0 30px;
+  font-size: 17px; color: var(--lpc-fg-dim); line-height: 1.55;
 }
-.loopcast-root .lpc-hero-cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.loopcast-root .lpc-hero-cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: flex-start; }
 .loopcast-root .lpc-hero-meta {
-  display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 10px 28px;
-  margin-top: 56px; font-family: var(--lpc-mono); font-size: 11px;
+  display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 10px 24px;
+  margin-top: 34px; font-family: var(--lpc-mono); font-size: 11px;
   text-transform: uppercase; letter-spacing: 0.1em; color: var(--lpc-fg-mute);
+}
+
+/* Hero console — product-as-hero */
+.loopcast-root .lpc-console {
+  background: var(--lpc-bg-1); border: 1px solid var(--lpc-line-2);
+  border-radius: var(--lpc-radius); padding: 18px;
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.85);
+}
+.loopcast-root .lpc-console-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.loopcast-root .lpc-console-live {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--lpc-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  color: #ff6166; background: rgba(255, 90, 95, 0.12); padding: 4px 10px; border-radius: 7px;
+}
+.loopcast-root .lpc-console-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #ff6166; animation: lpc-pulse-red 1.6s infinite; }
+@keyframes lpc-pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 90, 95, 0.5); } 70% { box-shadow: 0 0 0 7px rgba(255, 90, 95, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 90, 95, 0); } }
+.loopcast-root .lpc-console-meta { font-family: var(--lpc-mono); font-size: 11px; color: var(--lpc-fg-mute); }
+.loopcast-root .lpc-console-uplabel { font-family: var(--lpc-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--lpc-fg-mute); margin-bottom: 4px; }
+.loopcast-root .lpc-console-uptime { font-family: var(--lpc-mono); font-size: clamp(24px, 3vw, 30px); font-weight: 500; letter-spacing: 0.01em; color: var(--lpc-fg); font-variant-numeric: tabular-nums; margin-bottom: 16px; }
+.loopcast-root .lpc-console-bars { display: flex; align-items: flex-end; gap: 3px; height: 44px; margin-bottom: 14px; }
+.loopcast-root .lpc-console-bars span { flex: 1; background: var(--lpc-accent); border-radius: 2px; opacity: 0.85; }
+.loopcast-root .lpc-console-row { display: flex; align-items: center; justify-content: space-between; font-family: var(--lpc-mono); font-size: 12px; color: var(--lpc-fg-dim); margin-bottom: 14px; }
+.loopcast-root .lpc-console-row span { display: inline-flex; align-items: center; gap: 6px; }
+.loopcast-root .lpc-console-good { color: var(--lpc-good); }
+.loopcast-root .lpc-console-track { display: flex; align-items: center; gap: 10px; background: var(--lpc-bg-2); border: 1px solid var(--lpc-line); border-radius: 10px; padding: 10px 12px; }
+.loopcast-root .lpc-console-track-ico { color: var(--lpc-accent); display: inline-flex; }
+.loopcast-root .lpc-console-track-text { min-width: 0; flex: 1; }
+.loopcast-root .lpc-console-track-name { font-family: var(--lpc-mono); font-size: 12px; color: var(--lpc-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loopcast-root .lpc-console-track-sub { font-size: 11px; color: var(--lpc-fg-mute); }
+.loopcast-root .lpc-console-track-pulse { color: var(--lpc-good); display: inline-flex; }
+@media (max-width: 900px) {
+  .loopcast-root .lpc-hero-grid { grid-template-columns: 1fr; gap: 36px; }
+  .loopcast-root .lpc-console { max-width: 440px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loopcast-root .lpc-console-live-dot { animation: none; }
 }
 .loopcast-root .lpc-hero-meta-dot {
   display: inline-block; width: 6px; height: 6px; border-radius: 50%;

@@ -79,7 +79,42 @@
     "attention": {
       "title": "Action needed",
       "description": "Use the streaming page for retries, schedule fixes, and detailed recovery actions."
-    }
+    },
+    "subtitle": "Real-time health of your streams",
+    "health": {
+      "allHealthy": "All streams healthy",
+      "someAttention": "{count} need attention",
+      "noStreams": "No active streams yet",
+      "summary": "{healthy} of {total} healthy",
+      "updated": "updated just now"
+    },
+    "states": {
+      "healthy": "Healthy",
+      "degraded": "Degraded",
+      "down": "Error",
+      "offline": "Offline",
+      "starting": "Starting…",
+      "stopping": "Stopping…",
+      "scheduled": "Scheduled"
+    },
+    "events": {
+      "title": "Recent events",
+      "empty": "No events yet"
+    },
+    "tile": {
+      "open": "Open",
+      "uptime": "live",
+      "viewers": "viewers",
+      "mbps": "Mbps",
+      "start": "Start",
+      "stop": "Stop"
+    },
+    "empty": {
+      "title": "No streams yet",
+      "description": "Create your first stream to see its health here.",
+      "cta": "Create stream"
+    },
+    "newStream": "New stream"
   },
   "checklist": {
     "heading": "Streaming checklist",

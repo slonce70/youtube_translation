@@ -33,3 +33,11 @@
   - Competitive (#8): **F1** command-palette operator verbs (Start/Stop/Stop-all/Copy-link, scoped to live streams) and **F4** stream health spine + global warning chip.
   - Net since the redesign baseline: 71 files, +1870 / −5625 (≈ −3755 LOC). Gates: `lint`, `i18n:check`, `tsc`, `jest` (160), `next build`, `playwright` e2e (5/5) — all green.
   - Deferred (documented in the backlog): F2 schedule recurrence, F3 density toggle, R2 library extraction, R3 admin/users, R5 UploadModal, R6/R7 backend god-module splits.
+
+## 2026-06-21
+- **UX deep-audit + redesign directions** (external landing + operator panel). Canonical reference: `docs/design/UX_AUDIT_AND_REDESIGN_DIRECTIONS.md` (competitor teardown + premium-aesthetic playbook from a multi-agent research pass). Produced 5 landing + 5 dashboard visual prototypes for direction selection. Audit also surfaced real bugs to fix separately: `plans.json` dev-note leak (`releaseBadge`/`description`), duplicate "Поточний" badge, library storage counter, "RTMPS" jargon in the channels page title.
+- **Redesign hybrid implemented (branch `redesign/control-room`):**
+  - **Landing "Control Room" hero** — converted the centered-over-globe hero into a 2-column product-as-hero: copy left + a live operator console card right with a real-time ticking uptime, bitrate bars, viewers and now-playing. Dropped the Three.js `Hero3DGlobe` (landing First Load JS now ~121 kB) which also removed a dev scroll-lock. New `landing.loopcast.hero.console.*` i18n across uk/en/ru.
+  - **Mission Control overview** — `/dashboard` is now the ops home (was a redirect): global health line + stream health tiles sorted most-broken-first (self-fetching status, 4-state health pill) + cross-stream events feed (`OverviewPage.tsx`). Re-added the "Дашборд" sidebar item. Enriched `dashboard.overview.*` i18n.
+  - **Stream Cockpit controls** — the per-stream detail page (`/dashboard/streams/[id]`) already had Overview/Logs/Events; wired Stop/Restart into its `LiveStreamHero` (state-gated: Stop only when running), removed an unused `useRouter`.
+  - Gates: `lint`, `type-check` (tsc), `i18n:check`, `jest` (160), `next build` — all green. Browser-verified landing (hero + scroll + features), overview, and cockpit.

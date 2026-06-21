@@ -323,7 +323,16 @@
       "metaNoObs": "без OBS",
       "metaUptime": "99.97% uptime",
       "metaAutoRecovery": "auto-recovery",
-      "metaStartTime": "старт за 8 секунд"
+      "metaStartTime": "старт за 8 секунд",
+      "console": {
+        "uptimeLabel": "Безперервно в ефірі",
+        "viewers": "глядачів",
+        "resolution": "1080p · 60fps",
+        "track": "lofi-loop-04.mp4",
+        "channel": "YouTube — Demo channel",
+        "mbps": "6.0 Mbps",
+        "viewersValue": "1 248"
+      }
     },
     "ticker": {
       "items": [

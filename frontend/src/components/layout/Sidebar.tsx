@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CreditCard,
   FolderOpen,
+  LayoutGrid,
   Radio,
   RadioTower,
   SatelliteDish,
@@ -36,7 +37,7 @@ interface SidebarProps {
 type NavItem = {
   href: string
   icon: ComponentType<{ className?: string }>
-  key: 'streaming' | 'library' | 'channels' | 'plans' | 'profile'
+  key: 'dashboard' | 'streaming' | 'library' | 'channels' | 'plans' | 'profile'
 }
 
 // IA restructure 2026-04-26:
@@ -47,6 +48,7 @@ type NavItem = {
 //    streaming page into its own route — setup-once concern that
 //    deserves a dedicated surface so first-run users see it clearly.
 const items: NavItem[] = [
+  { href: '/dashboard', icon: LayoutGrid, key: 'dashboard' },
   { href: '/dashboard/streaming', icon: SatelliteDish, key: 'streaming' },
   { href: '/dashboard/library', icon: FolderOpen, key: 'library' },
   { href: '/dashboard/channels', icon: RadioTower, key: 'channels' },
