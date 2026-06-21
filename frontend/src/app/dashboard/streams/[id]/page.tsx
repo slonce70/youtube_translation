@@ -19,10 +19,11 @@
 // navigate here from any stream card via "Open" or directly via URL.
 
 import { useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import { ArrowLeft, RefreshCcw } from 'lucide-react'
 
 import { api } from '@/lib/api'
@@ -61,12 +62,40 @@ function fmtTimestamp(iso: string): string {
 
 export default function StreamDetailPage() {
   const params = useParams<{ id: string }>()
-  const router = useRouter()
   const tHero = useTranslations('streaming.hero')
   const tStreaming = useTranslations('streaming.page')
   const tDetail = useTranslations('streaming.detail')
+  const streamingToasts = useTranslations('streaming.toasts')
   const { user } = useDashboardContext()
+  const queryClient = useQueryClient()
   const streamId = params?.id
+
+  // Cockpit lifecycle controls. The Overview tab previously rendered the
+  // hero read-only; the operator could see "is it healthy?" but not act on
+  // it. Wire Stop/Restart so the detail page is a real control surface.
+  const invalidateStream = () => {
+    queryClient.invalidateQueries({ queryKey: ['streams', user?.id] })
+    if (streamId) queryClient.invalidateQueries({ queryKey: ['stream-status', streamId] })
+  }
+  const stopMutation = useMutation({
+    mutationFn: () => api.streams.stop(streamId!),
+    onSuccess: () => {
+      toast.info(streamingToasts('stream.stopped'))
+      invalidateStream()
+    },
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
+  })
+  const startMutation = useMutation({
+    mutationFn: () => api.streams.start(streamId!),
+    onMutate: () => toast.info(streamingToasts('stream.starting')),
+    onSuccess: () => {
+      toast.success(streamingToasts('stream.started'))
+      invalidateStream()
+    },
+    onError: (error: Error) =>
+      toast.error(streamingToasts('generic.errorWithMessage', { message: error.message })),
+  })
 
   const [tab, setTab] = useState<DetailTab>('overview')
   const [logsMode, setLogsMode] = useState<'important' | 'raw'>('important')
@@ -184,7 +213,13 @@ export default function StreamDetailPage() {
       </div>
 
       {tab === 'overview' && stream ? (
-        <LiveStreamHero stream={stream} />
+        <LiveStreamHero
+          stream={stream}
+          onStop={isRunning ? () => stopMutation.mutate() : undefined}
+          onRestart={() => startMutation.mutate()}
+          isStopping={stopMutation.isPending}
+          isRestarting={startMutation.isPending}
+        />
       ) : null}
 
       {tab === 'logs' ? (

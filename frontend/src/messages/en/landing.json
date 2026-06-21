@@ -323,7 +323,16 @@
       "metaNoObs": "no OBS",
       "metaUptime": "99.97% uptime",
       "metaAutoRecovery": "auto-recovery",
-      "metaStartTime": "live in 8 seconds"
+      "metaStartTime": "live in 8 seconds",
+      "console": {
+        "uptimeLabel": "Live, uninterrupted",
+        "viewers": "viewers",
+        "resolution": "1080p · 60fps",
+        "track": "lofi-loop-04.mp4",
+        "channel": "YouTube — Demo channel",
+        "mbps": "6.0 Mbps",
+        "viewersValue": "1,248"
+      }
     },
     "ticker": {
       "items": [

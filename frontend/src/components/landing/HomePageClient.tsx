@@ -4,7 +4,7 @@
 // Brand: dark editorial · OLED-black bg · oklch(0.72 0.18 295) accent · Instrument Serif + Geist + JetBrains Mono.
 
 import { useEffect, useState } from 'react'
-import dynamic from 'next/dynamic'
+import { Radio, Eye, Music } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useTranslations, useMessages } from 'next-intl'
 import { LoopcastDemo } from './LoopcastDemo'
@@ -33,8 +33,6 @@ type LoopcastMessages = {
     }
   }
 }
-
-const Hero3DGlobe = dynamic(() => import('./Hero3DGlobe').then((m) => m.Hero3DGlobe), { ssr: false })
 
 export function HomePageClient() {
   const router = useRouter()
@@ -149,44 +147,102 @@ function Hero({ onCtaMain }: { onCtaMain: () => void }) {
   const t = useTranslations('landing.loopcast.hero')
   return (
     <section className="lpc-hero">
-      <div className="lpc-hero-canvas">
-        <Hero3DGlobe />
-      </div>
-      <div className="lpc-hero-vignette" />
-      <div className="lpc-hero-content lpc-wrap">
-        <div className="lpc-hero-pill">
-          <span className="lpc-hero-pill-tag">{t('pillTag')}</span>
-          {t('pillText')}
+      <div className="lpc-hero-glow" aria-hidden="true" />
+      <div className="lpc-hero-grid lpc-wrap">
+        <div className="lpc-hero-content">
+          <div className="lpc-hero-pill">
+            <span className="lpc-hero-pill-tag">{t('pillTag')}</span>
+            {t('pillText')}
+          </div>
+          <h1>
+            {t('titleA')}
+            <em>{t('titleEm')}</em>
+            {t('titleB')}
+            <br />
+            {t('titleC')} <em>{t('titleAnd')}</em> {t('titleD')}
+          </h1>
+          <p className="lpc-hero-sub">{t('subtitle')}</p>
+          <div className="lpc-hero-cta">
+            <button type="button" onClick={onCtaMain} className="lpc-btn lpc-btn-primary">
+              {t('ctaMain')} {'→'}
+            </button>
+            <a href="#sec-demo" className="lpc-btn lpc-btn-ghost">
+              {'▷ '}
+              {t('ctaDemo')}
+            </a>
+          </div>
+          <div className="lpc-hero-meta">
+            <span>
+              <span className="lpc-hero-meta-dot" />
+              {t('metaLive')}
+            </span>
+            <span>{t('metaNoObs')}</span>
+            <span>{t('metaUptime')}</span>
+            <span>{t('metaAutoRecovery')}</span>
+            <span>{t('metaStartTime')}</span>
+          </div>
         </div>
-        <h1>
-          {t('titleA')}
-          <em>{t('titleEm')}</em>
-          {t('titleB')}
-          <br />
-          {t('titleC')} <em>{t('titleAnd')}</em> {t('titleD')}
-        </h1>
-        <p className="lpc-hero-sub">{t('subtitle')}</p>
-        <div className="lpc-hero-cta">
-          <button type="button" onClick={onCtaMain} className="lpc-btn lpc-btn-primary">
-            {t('ctaMain')} {'→'}
-          </button>
-          <a href="#sec-demo" className="lpc-btn lpc-btn-ghost">
-            {'▷ '}
-            {t('ctaDemo')}
-          </a>
-        </div>
-        <div className="lpc-hero-meta">
-          <span>
-            <span className="lpc-hero-meta-dot" />
-            {t('metaLive')}
-          </span>
-          <span>{t('metaNoObs')}</span>
-          <span>{t('metaUptime')}</span>
-          <span>{t('metaAutoRecovery')}</span>
-          <span>{t('metaStartTime')}</span>
-        </div>
+        <HeroConsole />
       </div>
     </section>
+  )
+}
+
+// Product-as-hero: a live operator console that ticks in real time so the
+// landing's core promise ("it keeps running without you") is demonstrated,
+// not just asserted. Replaces the heavy Three.js globe (LCP + the headline
+// no longer fights a busy wireframe behind it).
+function HeroConsole() {
+  const t = useTranslations('landing.loopcast.hero.console')
+  const [uptime, setUptime] = useState('14д 06:22:41')
+  useEffect(() => {
+    const base = Date.now() - (14 * 86400 + 6 * 3600 + 22 * 60 + 41) * 1000
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const tick = () => {
+      const s = Math.max(0, Math.floor((Date.now() - base) / 1000))
+      const d = Math.floor(s / 86400)
+      setUptime(`${d}д ${pad(Math.floor((s % 86400) / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
+  const bars = [55, 70, 48, 82, 66, 90, 72, 60, 84, 50, 76, 64]
+  return (
+    <div className="lpc-console" aria-hidden="true">
+      <div className="lpc-console-top">
+        <span className="lpc-console-live">
+          <span className="lpc-console-live-dot" />
+          LIVE
+        </span>
+        <span className="lpc-console-meta">{t('resolution')}</span>
+      </div>
+      <div className="lpc-console-uplabel">{t('uptimeLabel')}</div>
+      <div className="lpc-console-uptime">{uptime}</div>
+      <div className="lpc-console-bars">
+        {bars.map((h, i) => (
+          <span key={i} style={{ height: `${h}%` }} />
+        ))}
+      </div>
+      <div className="lpc-console-row">
+        <span>
+          <Eye size={13} /> {t('viewersValue')} {t('viewers')}
+        </span>
+        <span className="lpc-console-good">{t('mbps')}</span>
+      </div>
+      <div className="lpc-console-track">
+        <span className="lpc-console-track-ico">
+          <Music size={15} />
+        </span>
+        <div className="lpc-console-track-text">
+          <div className="lpc-console-track-name">{t('track')}</div>
+          <div className="lpc-console-track-sub">{t('channel')}</div>
+        </div>
+        <span className="lpc-console-track-pulse">
+          <Radio size={13} />
+        </span>
+      </div>
+    </div>
   )
 }
 
