@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useMessages, useTranslations } from 'next-intl'
-import { Check, Minus, Sparkles } from 'lucide-react'
+import { Check, Minus } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -104,9 +104,6 @@ export default function PlansPage() {
         <div>
           <div className="page-title">{tPlans('header.title')}</div>
           <div className="page-sub">{tPlans('header.description')}</div>
-        </div>
-        <div className="page-actions">
-          <Badge variant="indigo"><Sparkles className="h-3.5 w-3.5" /> {tPlans('header.releaseBadge')}</Badge>
         </div>
       </div>
 

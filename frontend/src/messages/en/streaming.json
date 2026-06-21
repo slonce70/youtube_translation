@@ -231,7 +231,7 @@
     "linkButton": "Link",
     "logButton": "Log",
     "newStream": "New stream",
-    "channelsTitle": "Channels (RTMPS)",
+    "channelsTitle": "Channels",
     "addChannel": "+ Add channel",
     "destinationKey": "Key",
     "destinationActive": "Active",
@@ -294,7 +294,7 @@
       "goLive": "Go Live"
     },
     "channels": {
-      "title": "Channels",
+      "title": "Your channels",
       "add": "Add Channel",
       "badge": {
         "active": "Active",
