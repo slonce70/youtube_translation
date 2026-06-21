@@ -1,12 +1,9 @@
-// The standalone "Dashboard" home page was a low-fidelity mirror of the
-// streams page (every CTA already routed there, the health bars were
-// hard-coded, and the stat cards duplicated /dashboard/streaming's stat
-// strip). UX restructure 2026-04-26 collapsed it into the streams page,
-// which is the operator's actual landing surface. This file remains as a
-// redirect target so old bookmarks and notification links keep working.
+// Mission Control overview is the operator's ops home (UX redesign 2026-06).
+// Previously this route redirected to /dashboard/streaming; it now renders an
+// at-a-glance health board (global health line + stream tiles + events feed).
 
-import { redirect } from 'next/navigation'
+import { OverviewPage } from './OverviewPage'
 
 export default function DashboardPage() {
-  redirect('/dashboard/streaming')
+  return <OverviewPage />
 }
