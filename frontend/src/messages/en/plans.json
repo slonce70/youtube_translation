@@ -3,12 +3,11 @@
     "header": {
       "badge": "Pick what fits your stream",
       "title": "Plans & Pricing",
-      "description": "Start on the Free tier, then scale memory, airtime, and destinations as your shows grow. All plans include analytics, smart encoding, and instant YouTube sync.",
-      "releaseBadge": "Hybrid release"
+      "description": "Start on the Free tier, then scale memory, airtime, and destinations as your shows grow. All plans include analytics, smart encoding, and instant YouTube sync."
     },
     "toolbar": {
       "title": "Streaming quality",
-      "description": "The plans page is implemented as a hybrid: prototype shell + current pricing logic.",
+      "description": "Pick a quality to see the matching limits and pricing for each plan.",
       "currentPlanBadge": "Current",
       "fallbackPrice": "—"
     },
@@ -39,7 +38,7 @@
         "1 active stream",
         "1080p @ 30 FPS passthrough"
       ],
-      "badge": "Current",
+      "badge": "",
       "ctaLabel": "Included"
     },
     "fhd_start": {
