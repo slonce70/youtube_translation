@@ -1,5 +1,9 @@
 # YouTube Multi-Channel Streaming Platform
 
+A self-hosted, multi-tenant platform for running 24/7 YouTube RTMP streams, built on FastAPI, Next.js, PostgreSQL, and Supabase Auth. It uses FFmpeg stream-copy (no transcoding), tusd resumable uploads, per-user quotas, an admin panel, and Prometheus metrics.
+
+*Full documentation below is in Ukrainian.*
+
 Багатокористувацька платформа для круглодобових YouTube-стрімів з розподілом квот, завантаженням великих файлів через tusd та адміністративною панеллю.
 
 ## ⚡️ Основні можливості
@@ -353,22 +357,6 @@ docker compose -f docker/docker-compose.yml up -d
 Пул-реквесты и issue приветствуются. Перед коммитом запускайте `make lint` и `make test`.  
 Вопросы и предложения можно оформлять через Issues на GitHub.
 
-# Docker
-make docker-up            # Start containers
-make docker-down          # Stop containers
-make docker-logs          # View logs
-
-# Database
-make migrate              # Apply migrations
-make create-admin         # Create admin user
-
-# Utilities
-make clean                # Clean temp files
-make security-audit       # Audit dependencies
-```
-
-For full list: `make help`
-
 ## 📝 License
 
 Available for personal and commercial use.
@@ -381,5 +369,3 @@ Available for personal and commercial use.
 ---
 
 **Built with ❤️ using FastAPI, Next.js, FFmpeg, and Supabase**
-
-**Development Time**: ~12 hours | **Lines of Code**: 8,000+ | **Status**: Production Ready 🚀
